@@ -9,6 +9,7 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Spiking Neural Network library, no_std, i16 fixed-point — NeuralOS sovereignty stack core"
+readme = "README.md"
 
 [lib]
 name = "neuralos_snn"
