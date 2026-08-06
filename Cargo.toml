@@ -19,9 +19,11 @@ keywords = ["neural-network", "spiking", "snn", "no_std", "riscv"]
 categories = ["science", "embedded", "no-std"]
 
 # Release profile: optimized for size and speed (embedded RISC-V target).
+# ThinLTO (not "fat"/true): ~2-3x faster link, near-identical runtime perf —
+# matters for the app bin (slint+candle), barely affects the small no_std SNN crate.
 [profile.release]
 opt-level = 3
-lto = true
+lto = "thin"
 codegen-units = 1
 debug = false
 strip = true
