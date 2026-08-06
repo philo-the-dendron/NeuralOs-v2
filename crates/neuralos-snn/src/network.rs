@@ -473,6 +473,19 @@ impl SpikingNeuralNetwork {
         self.plasticity_queue.clear();
     }
 
+    /// Read-only access to the synapse collection (for analysis / visualization).
+    /// Useful for demos, stats, and weight-evolution tracking.
+    #[must_use]
+    pub fn synapses(&self) -> &[Synapse] {
+        &self.synapses
+    }
+
+    /// Read-only access to the neuron collection (for analysis / visualization).
+    #[must_use]
+    pub fn neurons(&self) -> &[LIFNeuron] {
+        &self.neurons
+    }
+
     /// Read-only access to current stats.
     #[must_use]
     pub fn stats(&self) -> &NetworkStats {
