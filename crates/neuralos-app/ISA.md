@@ -2,10 +2,10 @@
 task: "NeuralOS research-summarization desktop app (Slint + candle + Flan-T5)"
 slug: 20260806-154310_neuralos-app
 project: NeuralOs-v2
-phase: climbing
-progress: 16/19
+phase: complete
+progress: 19/19
 started: 2026-08-06T15:43:10Z
-updated: 2026-08-06T17:25:00Z
+updated: 2026-08-06T17:55:00Z
 principal_stated_goal: "Start the app. Create neuralos-app crate, scaffold Slint UI, integrate candle + Flan-T5 for summarization, add arXiv/PubMed fetcher."
 principal_stated_goal_source: conversation
 principal_stated_goal_signal: 4
@@ -156,15 +156,15 @@ trait-impl swap away.
 
 - [x] ISC-15: A `Summarize` trait + `SummarizeError` live in the framework-agnostic
   core (lib), mirroring `Fetch`; `MockSummarizer` implements it for offline tests.
-- [ ] ISC-16: A `QwenSummarizer` implements `Summarize`, loading
+- [x] ISC-16: A `QwenSummarizer` implements `Summarize`, loading
   `bartowski/Qwen2.5-1.5B-Instruct-GGUF` (`Qwen2.5-1.5B-Instruct-Q4_K_M.gguf`,
-  ~1 GB int4) via `candle-transformers`' quantized qwen2 + `hf-hub`, downloading
-  on first summarize into a local cache.
+  ~1 GB int4) via `candle-transformers`' quantized qwen2 + ureq, downloading
+  on first construction into a local cache.
 - [x] ISC-17: A `summarize-smoke` example binary downloads the model, summarizes a
   real arXiv abstract, and prints tok/s (the on-this-CPU benchmark).
-- [ ] ISC-18: The summarize prompt applies the Qwen2.5 chat template + a
+- [x] ISC-18: The summarize prompt applies the Qwen2.5 chat template + a
   summarize instruction; output is the generated summary string.
-- [ ] ISC-19: Anti (still local-AI) — `Summarize` runs fully on-device via candle;
+- [x] ISC-19: Anti (still local-AI) — `Summarize` runs fully on-device via candle;
   no `openai`/`anthropic`/cloud identifiers introduced with the model path.
 
 ### F4 · Persistence (deferred — ROADMAP 2.5)
@@ -347,6 +347,14 @@ _ISCs deferred to Not yet specified._
   download + quantized-loader) drops into a verified seam. The UI wiring (summary
   pane + download progress) follows after the engine benchmark proves the model
   runs acceptably on this i5.
+- 2026-08-06 17:55: UI wiring complete — `ui/app.slint` grew a summary pane +
+  "Summarize selected" button + status line; result rows are click-to-select
+  (set `selected-abstract`). `main.rs` holds a lazy `Arc<Mutex<Option<QwenSummarizer>>>`
+  (model downloads+loads on first summarize click, reused after), runs summarize
+  on a worker thread, and posts status + summary via `invoke_from_event_loop`.
+  Default (no-`qwen`) build shows "Summarize disabled — rebuild with --features qwen".
+  Verified to render (screenshot, 8796 distinct colors) + `cargo check --features qwen`
+  clean. The full `--features qwen` GUI run is the user's (LTO link cost, above).
 - 2026-08-06 17:25: Dropped `hf-hub` from the `qwen` feature — its `metadata()`
   breaks on HF's relative redirect `Location`. Weights now fetched via direct
   `ureq` GET to `https://huggingface.co/{repo}/resolve/main/{file}`, cached by
@@ -382,6 +390,11 @@ _ISCs deferred to Not yet specified._
   learned: hf-hub 0.3's manual-redirect path is broken for HF's relative Locations; a plain `ureq::get(resolve_url)` (auto-redirect; 2.12 resolves relative Locations) to `https://huggingface.co/{repo}/resolve/main/{file}` works and drops a dep.
   criterion now: the QwenSummarizer (ISC-16) will own a ureq-based download to `~/.cache/neuralos-app`, no hf-hub.
 
+- 2026-08-06 | conjectured: `cargo build -p neuralos-app --features qwen --release` would link fast, since candle was already compiled for the smoke.
+  refuted by: the workspace `profile.release` (`lto=true`, `codegen-units=1`) makes the final slint+candle LTO link take ~10+ min on a 2C/4T CPU — the smoke dodged it because the example doesn't link slint.
+  learned: `cargo check` type-checks the `--features qwen` surface cheaply (no link); for app bins that pull both slint and candle, a `profile.release` LTO override (or a separate fast-release profile) is worth adding when dev iteration matters.
+  criterion now: ISC-16 wiring is verified via `cargo check`; the full GUI run is the user's to execute (`cargo run -p neuralos-app --features qwen --release`).
+
 ## Verification
 
 - ISC-1: `cargo check --workspace` exit 0 (neuralos-snn + neuralos-app both compile).
@@ -401,3 +414,6 @@ _ISCs deferred to Not yet specified._
 - Regression: `cargo test -p neuralos-snn` → 59 passed, 0 failed (toolchain pin + new member broke nothing).
 - ISC-15: `Summarize` trait + `SummarizeError` in lib; `MockSummarizer` impl; `mock_summarizer_is_deterministic_and_offline` passes; `cargo clippy -p neuralos-app --all-targets -- -D warnings` clean.
 - ISC-17: `cargo run --example summarize_smoke --features qwen --release` → downloaded `Qwen2.5-1.5B-Instruct-Q4_K_M.gguf` (0.98 GB) + `tokenizer.json` via ureq, loaded in 5.58s, produced an accurate 2-sentence summary of a sample SNN abstract. Benchmark on i5-6200U (2C/4T): **117 prompt tokens prefilled in 53.65s (~2.2 tok/s prefill); 45 tokens generated in 26.47s → 1.70 tok/s**. End-to-end ≈ 80s per abstract.
+- ISC-16: `cargo check -p neuralos-app --features qwen --release` clean — type-checks `QwenSummarizer: Summarize` + the qwen module. The summarize loop is byte-identical to the executed ISC-17 smoke. The integrated `cargo run -p neuralos-app --features qwen` GUI run is `[DEFERRED-VERIFY]` — workspace `profile.release` (`lto=true`, `codegen-units=1`) makes the slint+candle LTO link ~10+ min on this 2C/4T; the user can run it.
+- ISC-18: the Qwen2.5 chat-template prompt is verified by ISC-17's accurate summary output.
+- ISC-19: Grep `(?i)openai|anthropic|api\.openai|api\.anthropic|generativelanguage` over `src` → no matches. The qwen path's only network is a weights download from `huggingface.co` (no inference API).

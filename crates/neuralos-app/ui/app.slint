@@ -1,25 +1,35 @@
-import { Button, LineEdit, ListView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Button, LineEdit, ListView, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 // A single result row, exposed to Rust as the generated `TitleRow` struct.
 export struct TitleRow {
     title: string,
     abs-url: string,
+    abstract-text: string,
 }
 
 export component App inherits Window {
     title: "NeuralOS";
-    preferred-width: 900px;
-    preferred-height: 640px;
+    preferred-width: 1000px;
+    preferred-height: 720px;
     background: white;
 
-    // Edited by the user in the LineEdit, read by Rust on search.
+    // Search (existing).
     in-out property <string> search-query;
-    // Set by Rust from a worker thread, rendered by the ListView below.
     in property <[TitleRow]> results;
-    // Fired by the Search button; Rust registers a handler that runs the fetch.
     callback search-clicked();
 
+    // Summarize (new).
+    // Set by clicking a result row; read by Rust when Summarize is clicked.
+    in-out property <string> selected-abstract;
+    // Filled by Rust (worker thread) with the generated summary.
+    in property <string> summary-text;
+    // Status line ("Loading model…", "Summarizing…", "Summary ready.").
+    // in-out: Rust sets it during summarize; row-click sets "Selected: …".
+    in-out property <string> status-text;
+    callback summarize-clicked();
+
     VerticalBox {
+        // Search bar.
         HorizontalBox {
             spacing: 8px;
             LineEdit {
@@ -32,18 +42,59 @@ export component App inherits Window {
             }
         }
 
-        ListView {
-            for row[i] in root.results : Rectangle {
-                height: 56px;
-                background: white;
-                HorizontalBox {
-                    spacing: 8px;
-                    Text {
-                        text: row.title;
-                        wrap: word-wrap;
-                        vertical-alignment: center;
-                        overflow: elide;
-                        color: black;
+        // Main split: results list | summary pane.
+        HorizontalBox {
+            spacing: 12px;
+
+            // Left: results.
+            VerticalBox {
+                preferred-width: 500px;
+                ListView {
+                    for row[i] in root.results : Rectangle {
+                        height: 64px;
+                        background: white;
+                        // Click-to-select: capture this row's abstract for summarization.
+                        TouchArea {
+                            width: parent.width;
+                            height: parent.height;
+                            clicked => {
+                                root.selected-abstract = row.abstract-text;
+                                root.status-text = "Selected: " + row.title;
+                            }
+                        }
+                        HorizontalBox {
+                            spacing: 8px;
+                            Text {
+                                text: row.title;
+                                wrap: word-wrap;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                color: black;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Right: summary pane.
+            VerticalBox {
+                preferred-width: 460px;
+                spacing: 8px;
+                Button {
+                    text: "Summarize selected";
+                    clicked => { root.summarize-clicked(); }
+                }
+                Text {
+                    text: root.status-text;
+                    color: #666666;
+                }
+                ScrollView {
+                    VerticalBox {
+                        Text {
+                            text: root.summary-text;
+                            wrap: word-wrap;
+                            color: black;
+                        }
                     }
                 }
             }

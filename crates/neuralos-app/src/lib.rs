@@ -13,6 +13,11 @@ pub mod arxiv;
 pub mod mock;
 pub mod parse;
 
+// `QwenSummarizer` — candle-backed local summarizer. Heavy deps; gated so the
+// core lib + UI build light by default. Enabled via `--features qwen`.
+#[cfg(feature = "qwen")]
+pub mod qwen;
+
 /// A single fetched paper hit, source-agnostic.
 ///
 /// Fields mirror what the `arXiv` Atom feed actually exposes; other sources
