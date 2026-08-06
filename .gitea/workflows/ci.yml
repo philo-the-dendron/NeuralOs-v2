@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  check:
+    name: check + test + clippy + no_std
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins 1.92.0 (slint MSRV); rustup honors it.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # Slint's femtovg/winit backends link against these on Linux.
+      - name: Slint Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfreetype6-dev libfontconfig1-dev libxcb1-dev libxkbcommon-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxcursor-dev
+
+      - name: cargo check --workspace
+        run: cargo check --workspace --all-targets --locked
+
+      # Default features only — fully offline (live arXiv/PubMed tests are #[ignore]).
+      - name: cargo test --workspace
+        run: cargo test --workspace --locked
+
+      - name: cargo clippy --workspace
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      # The SNN core stays no_std (the embedded/RISC-V posture).
+      - name: no_std gate (neuralos-snn)
+        run: cargo build --no-default-features -p neuralos-snn --locked
