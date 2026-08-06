@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 62d8cea7c9393acfb0df3fd4ea9388fb5106ac375ce8fed119fdd7c111c28598 # shrinks to n = 5, topology = SmallWorld { local_connections: 5, rewiring_prob: 0.0 }
