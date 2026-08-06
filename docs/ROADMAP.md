@@ -7,10 +7,10 @@
 
 | # | Component | Status |
 |---|---|---|
-| **1** | `neuralos-snn` — `no_std` SNN library | Phase 0 done, Phase 1 in progress |
-| 2 | Debian distro (custom Live ISO via `live-build`) | Not started |
-| 3/4 | Microkernel RISC-V (QEMU first, then ESP32-C3) | Not started |
-| 3/4 | Research-summarization app (Slint + candle + Flan-T5) | Not started |
+| **1** | `neuralos-snn` — `no_std` SNN library | Phase 0–1 done; ALPHA shipped (crates.io `v0.1.0-alpha.1`, 59 tests) |
+| **2** | Research-summarization app (Slint + candle + Flan-T5) | Phase 2.1 + 2.2(arXiv) done this slice; Slint shell + live arXiv fetch wired |
+| 3 | Debian distro (custom Live ISO via `live-build`) | Not started |
+| 4 | Microkernel RISC-V (QEMU first, then ESP32-C3) | Not started |
 
 Ottawa RVO meetup (Aug 19, 2026) is a **parallel demo track**, not the main driver.
 
@@ -167,9 +167,16 @@ Default if principal doesn't pick: **Safe**.
 | 2026-08-05 | StandardResearch findings (4 corrections, 5 validations) | `9ef30ec` |
 | 2026-08-05 | Follow-up research (Bonsai, Slint, Flan-T5) | `c87fcc1` |
 | 2026-08-05 | **Phase 0: LIF neuron ported + tested** | `71bf09e` |
+| 2026-08-05 | Phase 1 complete: Synapse+STDP, Network+4 topologies, CLI demo | `bef06a9` |
+| 2026-08-05 | Release `v0.1.0-alpha.1` — crates.io publish (59 tests, no_std verified) | `1f7f32f` |
+| 2026-08-06 | Toolchain pinned to `1.92.0` in `rust-toolchain.toml` (slint 1.17 MSRV) | (this session) |
+| 2026-08-06 | **Phase 2.1 + 2.2(arXiv): `neuralos-app` workspace member — Slint shell + framework-agnostic core + live arXiv fetch + Atom parse** | (uncommitted) |
 
 ## Immediate next
 
-**Phase 1.1 — Synapse + STDP rule.** Copy `libneuralos/src/core/spiking_neural_network/synapse.rs` from v0.1, clean port, fix audit-flagged issues, add tests, commit. ~1 session.
+**Phase 2.3 — candle + Flan-T5 summarize pipeline.** Define the `Summarize` trait
+(mirrors `Fetch`), wire candle's `quantized-t5` example, resolve the model-acquisition
+fog (download-on-first-run from HuggingFace vs. point-at-path) — see
+`crates/neuralos-app/ISA.md` `## Not yet specified`. ~1–2 sessions.
 
 Confirm and I proceed.
