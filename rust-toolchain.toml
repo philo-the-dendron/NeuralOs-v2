@@ -1,4 +1,6 @@
 [toolchain]
-channel = "stable"
+# Pinned: slint 1.17.x MSRV is 1.92. Project-local pin (rustup auto-installs) so
+# the global `stable` default is left untouched for other projects.
+channel = "1.92.0"
 components = ["rustfmt", "clippy", "rust-src"]
 profile = "minimal"
