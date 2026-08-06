@@ -2,10 +2,10 @@
 task: "NeuralOS research-summarization desktop app (Slint + candle + Flan-T5)"
 slug: 20260806-154310_neuralos-app
 project: NeuralOs-v2
-phase: complete
-progress: 14/14
+phase: climbing
+progress: 15/19
 started: 2026-08-06T15:43:10Z
-updated: 2026-08-06T16:18:43Z
+updated: 2026-08-06T16:40:00Z
 principal_stated_goal: "Start the app. Create neuralos-app crate, scaffold Slint UI, integrate candle + Flan-T5 for summarization, add arXiv/PubMed fetcher."
 principal_stated_goal_source: conversation
 principal_stated_goal_signal: 4
@@ -146,14 +146,26 @@ deterministically, without the model or a network call in the default path.
   deterministically — entering a query and clicking search makes canned titles
   appear, no network, no model (deterministic UI-behavior test).
 
-### F3 · Summarize layer (deferred — ROADMAP 2.3)
+### F3 · Summarize layer (ROADMAP 2.3 — in progress)
 
-Why: local Flan-T5 is the differentiator that makes this a sovereignty tool rather
-than a reader — but it needs its own slice for the ~1GB model fetch + candle
-pipeline. The `Summarize` trait mirrors `Fetch` so it drops in without an
-architecture change.
+Why: local summarization is the differentiator that makes this a sovereignty tool
+rather than a reader. A model-agnostic `Summarize` trait (mirrors `Fetch`) keeps
+the model choice non-binding — the engine is shipped Qwen2.5-1.5B-Instruct int4
+(the principal's pick over Flan-T5-base), and Flan-T5 / Llama-3.2-3B are one
+trait-impl swap away.
 
-_ISCs deferred to Not yet specified — not closed this run._
+- [x] ISC-15: A `Summarize` trait + `SummarizeError` live in the framework-agnostic
+  core (lib), mirroring `Fetch`; `MockSummarizer` implements it for offline tests.
+- [ ] ISC-16: A `QwenSummarizer` implements `Summarize`, loading
+  `bartowski/Qwen2.5-1.5B-Instruct-GGUF` (`Qwen2.5-1.5B-Instruct-Q4_K_M.gguf`,
+  ~1 GB int4) via `candle-transformers`' quantized qwen2 + `hf-hub`, downloading
+  on first summarize into a local cache.
+- [ ] ISC-17: A `summarize-smoke` example binary downloads the model, summarizes a
+  real arXiv abstract, and prints tok/s (the on-this-CPU benchmark).
+- [ ] ISC-18: The summarize prompt applies the Qwen2.5 chat template + a
+  summarize instruction; output is the generated summary string.
+- [ ] ISC-19: Anti (still local-AI) — `Summarize` runs fully on-device via candle;
+  no `openai`/`anthropic`/cloud identifiers introduced with the model path.
 
 ### F4 · Persistence (deferred — ROADMAP 2.5)
 
@@ -176,14 +188,14 @@ _ISCs deferred to Not yet specified._
   decide whether the app ships an SNN-demo/visualization pane or the dependency
   is monorepo cohesion only. — must resolve before F3 lands (so the trait surface
   is right).
-- fog: Flan-T5 model acquisition UX — download-on-first-run from HuggingFace,
-  bundled, or "point me at a path"? Plus cache location and resume-on-interrupt.
-  — must resolve before F3's first ISC.
 - fog: does headless verification of the Slint window need a standing Xvfb in CI,
   or do we accept "event loop launches + exits clean" as the floor and gate pixel
-  checks behind a display? — resolves at F2 verification.
+  checks behind a display? — resolves at F2 verification. (Partly resolved: dev
+  box has `DISPLAY=:0`, so local verify needs no Xvfb; CI strategy still open.)
 - fog: SQLite schema (one-table JSON blob vs normalized paper+summary) — defers to
   F4 and depends on what F3's summarize output actually is.
+- fog: full-PDF summarization (needs a PDF→text step) — abstract-first is the F3
+  scope; full text is a later sub-slice once a PDF parser is chosen.
 
 ## Test Strategy
 
@@ -322,6 +334,19 @@ _ISCs deferred to Not yet specified._
   the persistent app-ISA's cross-slice backlog (F3 model UX, F4 schema, the SNN
   dependency question, CI display strategy). Each graduates when its slice runs;
   none were pursued this run, so none block `phase: complete` for these 14 claims.
+- 2026-08-06 16:40: Model pick — principal chose **Qwen2.5-1.5B-Instruct (int4)**
+  over Flan-T5-base, accepting the CPU cost for quality. Hardware reality
+  (probed this session): i5-6200U, 2C/4T, ~8.6 GB free RAM — *not* the "tower PC"
+  the session context assumed. Q4_K_M gguf (`bartowski/Qwen2.5-1.5B-Instruct-GGUF`,
+  ~1 GB) is the sweet spot: 6× Flan-T5-base's params at the same footprint.
+  Llama-3.2-3B-int4 stays one trait-impl swap away for max quality. Acquisition =
+  download-on-first-run (principal's pick) via `hf-hub` into a local cache.
+- 2026-08-06 16:40: Engine-first sub-slice — shipping the framework-agnostic
+  `Summarize` core (trait + error + `MockSummarizer`, ISC-15) before the candle
+  `QwenSummarizer`, so the heavy integration (candle first-compile + 1 GB
+  download + quantized-loader) drops into a verified seam. The UI wiring (summary
+  pane + download progress) follows after the engine benchmark proves the model
+  runs acceptably on this i5.
 
 ## Learning
 
@@ -340,6 +365,11 @@ _ISCs deferred to Not yet specified._
   learned: pin a project-local toolchain (`rust-toolchain.toml` `channel = "1.92.0"`) so the global default is untouched for other projects.
   criterion now: `rust-toolchain.toml` pinned to 1.92.0 with the reason in-comment.
 
+- 2026-08-06 | conjectured: the dev box is the "tower PC" the session context named, so a 3B+ model would summarize comfortably and Flan-T5-base was just the "safe" pick.
+  refuted by: `free -h` / `nproc` showed a 2016 mobile i5-6200U (2C/4T) with 8.6 GB free — CPU-bound, not RAM-bound.
+  learned: probe the actual hardware before sizing a local model; the binding constraint (CPU vs RAM) flips the model tradeoff entirely.
+  criterion now: model choice is non-binding via the `Summarize` trait; Qwen2.5-1.5B-int4 ships first and the on-device benchmark (ISC-17) gates any move to a 3B model.
+
 ## Verification
 
 - ISC-1: `cargo check --workspace` exit 0 (neuralos-snn + neuralos-app both compile).
@@ -357,3 +387,4 @@ _ISCs deferred to Not yet specified._
 - ISC-13: `NEURALOS_SMOKE_MS=800 cargo run` on `DISPLAY=:0` → exit 0; `xwininfo -name NeuralOS` → window 0x4600035; captured PNG (1280×720) has 5542 distinct colors + full RGB spread → non-degenerate render. Pixel itself human-unviewed (model is text-only); PNG kept at `/tmp/neuralos.png`.
 - ISC-14: `tests/ui_mock_search.rs` passes — MockFetcher → present_titles is deterministic and query-independent.
 - Regression: `cargo test -p neuralos-snn` → 59 passed, 0 failed (toolchain pin + new member broke nothing).
+- ISC-15: `Summarize` trait + `SummarizeError` in lib; `MockSummarizer` impl; `mock_summarizer_is_deterministic_and_offline` passes; `cargo clippy -p neuralos-app --all-targets -- -D warnings` clean.

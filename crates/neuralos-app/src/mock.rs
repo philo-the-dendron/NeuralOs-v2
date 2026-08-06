@@ -1,6 +1,6 @@
-//! Offline mock fetcher — deterministic, for UI/dev tests.
+//! Offline mock fetcher + summarizer — deterministic, for UI/dev tests.
 
-use crate::{Fetch, FetchError, Paper};
+use crate::{Fetch, FetchError, Paper, Summarize, SummarizeError};
 
 /// Returns canned papers regardless of query. No network.
 #[derive(Debug, Clone, Default)]
@@ -50,6 +50,42 @@ impl Fetch for MockFetcher {
     }
 }
 
+/// Offline summarizer — deterministic, no model, no network. For UI/dev tests.
+///
+/// Returns `<prefix>: <first N words of input>` so the seam is exercised
+/// end-to-end (input read, non-empty string out) without any inference.
+#[derive(Debug, Clone)]
+pub struct MockSummarizer {
+    /// Prefix prepended to the canned summary.
+    pub prefix: String,
+    /// How many input words to echo.
+    pub words: usize,
+}
+
+impl Default for MockSummarizer {
+    fn default() -> Self {
+        Self {
+            prefix: "Mock summary".into(),
+            words: 30,
+        }
+    }
+}
+
+impl MockSummarizer {
+    /// Default mock summarizer (`"Mock summary"` prefix, 30 words).
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Summarize for MockSummarizer {
+    fn summarize(&self, text: &str) -> Result<String, SummarizeError> {
+        let kept: Vec<&str> = text.split_whitespace().take(self.words).collect();
+        Ok(format!("{}: {}", self.prefix, kept.join(" ")))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,5 +106,21 @@ mod tests {
         let a = m.search("spiking", 10).unwrap();
         let b = m.search("completely different", 10).unwrap();
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn mock_summarizer_is_deterministic_and_offline() {
+        let s = MockSummarizer::new();
+        let abstract_text =
+            "Spiking neural networks encode information in temporal patterns of discrete events \
+             and are well suited to low-power edge inference, but training them remains hard.";
+        let out = s.summarize(abstract_text).expect("mock summarize ok");
+        assert!(out.starts_with("Mock summary:"), "prefix applied: {out}");
+        assert!(!out.is_empty());
+        // deterministic: same input -> identical output, no model/network.
+        assert_eq!(out, s.summarize(abstract_text).unwrap());
+        // respects the words cap.
+        let short = MockSummarizer { prefix: "p".into(), words: 3 }.summarize(abstract_text).unwrap();
+        assert_eq!(short, "p: Spiking neural networks");
     }
 }

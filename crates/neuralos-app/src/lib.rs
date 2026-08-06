@@ -76,3 +76,37 @@ pub fn present_titles(papers: &[Paper]) -> Vec<(String, String)> {
         .map(|p| (p.title.clone(), p.abs_url.clone()))
         .collect()
 }
+
+/// Why a summarize call failed. Non-leaky — no candle/tokenizer types escape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SummarizeError {
+    /// Model load/init failure (missing weights, unsupported format, OOM).
+    Model(String),
+    /// Tokenizer failure (encode/decode, chat-template).
+    Tokenizer(String),
+    /// Inference/generation failure (forward pass, sampling).
+    Infer(String),
+}
+
+impl core::fmt::Display for SummarizeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Model(m) => write!(f, "summarize model error: {m}"),
+            Self::Tokenizer(m) => write!(f, "summarize tokenizer error: {m}"),
+            Self::Infer(m) => write!(f, "summarize inference error: {m}"),
+        }
+    }
+}
+
+impl std::error::Error for SummarizeError {}
+
+/// The swappable summarize seam — mirrors [`Fetch`]. The input is the raw text
+/// to condense (caller picks abstract vs. full text); the output is the summary.
+///
+/// Implementations are blocking by contract — callers run them off the UI
+/// thread, exactly as `Fetch`. First impl: `MockSummarizer` (offline); the
+/// candle-backed `QwenSummarizer` (Qwen2.5-1.5B-Instruct int4) drops in here.
+pub trait Summarize: Send + Sync {
+    /// Condense `text` into a summary.
+    fn summarize(&self, text: &str) -> Result<String, SummarizeError>;
+}
