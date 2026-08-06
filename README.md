@@ -3,6 +3,9 @@
 > **Sovereignty stack** — open ISA, owned code, real crypto, local AI.
 > SNN library at the core, Debian distro, RISC-V microkernel, research-summarization app.
 
+[![crates.io](https://img.shields.io/crates/v/neuralos-snn.svg)](https://crates.io/crates/neuralos-snn)
+[![Documentation](https://docs.rs/neuralos-snn/badge.svg)](https://docs.rs/neuralos-snn)
+
 ## What it is
 
 NeuralOS v2 is a sovereignty stack in Rust — not an "AI OS," but an open software
