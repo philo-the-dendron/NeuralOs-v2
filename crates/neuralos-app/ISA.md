@@ -3,9 +3,9 @@ task: "NeuralOS research-summarization desktop app (Slint + candle + Flan-T5)"
 slug: 20260806-154310_neuralos-app
 project: NeuralOs-v2
 phase: climbing
-progress: 15/19
+progress: 16/19
 started: 2026-08-06T15:43:10Z
-updated: 2026-08-06T16:40:00Z
+updated: 2026-08-06T17:25:00Z
 principal_stated_goal: "Start the app. Create neuralos-app crate, scaffold Slint UI, integrate candle + Flan-T5 for summarization, add arXiv/PubMed fetcher."
 principal_stated_goal_source: conversation
 principal_stated_goal_signal: 4
@@ -160,7 +160,7 @@ trait-impl swap away.
   `bartowski/Qwen2.5-1.5B-Instruct-GGUF` (`Qwen2.5-1.5B-Instruct-Q4_K_M.gguf`,
   ~1 GB int4) via `candle-transformers`' quantized qwen2 + `hf-hub`, downloading
   on first summarize into a local cache.
-- [ ] ISC-17: A `summarize-smoke` example binary downloads the model, summarizes a
+- [x] ISC-17: A `summarize-smoke` example binary downloads the model, summarizes a
   real arXiv abstract, and prints tok/s (the on-this-CPU benchmark).
 - [ ] ISC-18: The summarize prompt applies the Qwen2.5 chat template + a
   summarize instruction; output is the generated summary string.
@@ -347,6 +347,13 @@ _ISCs deferred to Not yet specified._
   download + quantized-loader) drops into a verified seam. The UI wiring (summary
   pane + download progress) follows after the engine benchmark proves the model
   runs acceptably on this i5.
+- 2026-08-06 17:25: Dropped `hf-hub` from the `qwen` feature — its `metadata()`
+  breaks on HF's relative redirect `Location`. Weights now fetched via direct
+  `ureq` GET to `https://huggingface.co/{repo}/resolve/main/{file}`, cached by
+  file existence in `~/.cache/neuralos-app`. **ISC-17 benchmark on i5-6200U
+  (2C/4T): 1.70 tok/s generation, ~80s per abstract** (prefill dominates at
+  ~2.2 tok/s). Usable for a research tool, not snappy — the UI MUST show a
+  working indicator when summarizing (F2 extension).
 
 ## Learning
 
@@ -370,6 +377,11 @@ _ISCs deferred to Not yet specified._
   learned: probe the actual hardware before sizing a local model; the binding constraint (CPU vs RAM) flips the model tradeoff entirely.
   criterion now: model choice is non-binding via the `Summarize` trait; Qwen2.5-1.5B-int4 ships first and the on-device benchmark (ISC-17) gates any move to a 3B model.
 
+- 2026-08-06 | conjectured: use the `hf-hub` crate (the one candle's own example uses) to download the model weights.
+  refuted by: hf-hub 0.3.2's `metadata()` disables ureq auto-redirect, then manually follows the `Location` header — and HuggingFace returns a **relative** redirect (`/cdn-lfs/…`) which ureq cannot parse without a base (`RelativeUrlWithoutBase`).
+  learned: hf-hub 0.3's manual-redirect path is broken for HF's relative Locations; a plain `ureq::get(resolve_url)` (auto-redirect; 2.12 resolves relative Locations) to `https://huggingface.co/{repo}/resolve/main/{file}` works and drops a dep.
+  criterion now: the QwenSummarizer (ISC-16) will own a ureq-based download to `~/.cache/neuralos-app`, no hf-hub.
+
 ## Verification
 
 - ISC-1: `cargo check --workspace` exit 0 (neuralos-snn + neuralos-app both compile).
@@ -388,3 +400,4 @@ _ISCs deferred to Not yet specified._
 - ISC-14: `tests/ui_mock_search.rs` passes — MockFetcher → present_titles is deterministic and query-independent.
 - Regression: `cargo test -p neuralos-snn` → 59 passed, 0 failed (toolchain pin + new member broke nothing).
 - ISC-15: `Summarize` trait + `SummarizeError` in lib; `MockSummarizer` impl; `mock_summarizer_is_deterministic_and_offline` passes; `cargo clippy -p neuralos-app --all-targets -- -D warnings` clean.
+- ISC-17: `cargo run --example summarize_smoke --features qwen --release` → downloaded `Qwen2.5-1.5B-Instruct-Q4_K_M.gguf` (0.98 GB) + `tokenizer.json` via ureq, loaded in 5.58s, produced an accurate 2-sentence summary of a sample SNN abstract. Benchmark on i5-6200U (2C/4T): **117 prompt tokens prefilled in 53.65s (~2.2 tok/s prefill); 45 tokens generated in 26.47s → 1.70 tok/s**. End-to-end ≈ 80s per abstract.
