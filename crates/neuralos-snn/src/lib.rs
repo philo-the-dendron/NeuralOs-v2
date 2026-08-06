@@ -5,10 +5,12 @@
 #![doc = include_str!("../README.md")]
 
 pub mod lif_neuron;
+pub mod synapse;
 
 pub use lif_neuron::{
     LIFNeuron, NeuronBuilder, NeuronType, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN, MAX_SPIKE_HISTORY,
 };
+pub use synapse::{STDPRule, Synapse, SynapseBuilder, SynapseType};
 
 /// Crate-level error type.
 ///
