@@ -1,0 +1,22 @@
+# Rust
+/target/
+**/target/
+**/*.rs.bk
+Cargo.lock
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+.DS_Store
+
+# Tauri (future app)
+dist/
+node_modules/
+
+# OS
+Thumbs.db
+
+# Editor
+*.sublime-*

@@ -1,0 +1,25 @@
+[package]
+name = "neuralos-snn"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Spiking Neural Network library, no_std, i16 fixed-point — NeuralOS sovereignty stack core"
+
+[lib]
+name = "neuralos_snn"
+
+[features]
+default = ["std"]
+std = []
+
+# Pas de dependencies runtime pour le moment — la crate reste autonome.
+# thiserror / serde / heapless seront ajoutés quand le code réel en aura besoin.
+
+[dev-dependencies]
+# Property-based tests — Cardano-grade rigor (leçon v0.1: tout test doit être réel)
+proptest = "1.5"

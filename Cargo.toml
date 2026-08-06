@@ -1,0 +1,33 @@
+# NeuralOs-v2 workspace
+#
+# Une seule crate au scaffold: neuralos-snn. Les autres (neuralos-ml,
+# neuralos-runtime, neuralos-domain, neuralos-persistence, neuralos-app,
+# neuralos-crypto, neuralos-riscv) seront ajoutées quand elles auront du
+# code réel à contenir — pas de scaffolding vide (leçon v0.1).
+
+[workspace]
+resolver = "2"
+members = ["crates/neuralos-snn"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+authors = ["Caramoussin"]
+repository = "https://gitea.com/Caramoussin/NeuralOs-v2"
+homepage = "https://gitea.com/Caramoussin/NeuralOs-v2"
+keywords = ["neural-network", "spiking", "snn", "no_std", "riscv"]
+categories = ["science", "embedded", "no-std"]
+
+# Profile release: optimisé pour la taille et la vitesse (cible embedded RISC-V)
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false
+strip = true
+
+# Profile dev: compilation rapide
+[profile.dev]
+opt-level = 0
+debug = true
