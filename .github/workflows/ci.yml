@@ -31,15 +31,15 @@ jobs:
             libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxcursor-dev
 
       - name: cargo check --workspace
-        run: cargo check --workspace --all-targets --locked
+        run: cargo check --workspace --all-targets
 
       # Default features only — fully offline (live arXiv/PubMed tests are #[ignore]).
       - name: cargo test --workspace
-        run: cargo test --workspace --locked
+        run: cargo test --workspace
 
       - name: cargo clippy --workspace
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       # The SNN core stays no_std (the embedded/RISC-V posture).
       - name: no_std gate (neuralos-snn)
-        run: cargo build --no-default-features -p neuralos-snn --locked
+        run: cargo build --no-default-features -p neuralos-snn
