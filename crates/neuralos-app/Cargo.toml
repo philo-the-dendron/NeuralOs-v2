@@ -1,0 +1,33 @@
+[package]
+name = "neuralos-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "NeuralOS research-summarization desktop app — Slint UI, candle/Flan-T5 summarize, arXiv/PubMed fetch"
+
+# App-specific metadata (do NOT inherit the SNN crate's no_std/riscv keywords).
+keywords = ["summarization", "arxiv", "research", "slint", "local-ai"]
+categories = ["science", "gui"]
+
+[lib]
+name = "neuralos_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "neuralos-app"
+path = "src/main.rs"
+
+[dependencies]
+# ureq: blocking HTTP over rustls. Minimal audit surface (cipherpunk stance).
+# Fetch runs on a worker thread, never the UI loop.
+ureq = { version = "2", default-features = false, features = ["tls"] }
+# quick-xml: streaming Atom XML reader, no unsafe, tiny. Never a DOM lib.
+quick-xml = "0.36"
+# slint: pure-Rust UI toolkit (GPLv3 option, AGPL-compatible). No webview black box.
+slint = "1.17"
+
+[build-dependencies]
+slint-build = "1.17"
