@@ -1,4 +1,4 @@
-import { Button, LineEdit, ListView, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Button, ComboBox, LineEdit, ListView, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 // A single result row, exposed to Rust as the generated `TitleRow` struct.
 export struct TitleRow {
@@ -15,6 +15,8 @@ export component App inherits Window {
 
     // Search (existing).
     in-out property <string> search-query;
+    // 0 = arXiv, 1 = PubMed. Read by Rust to pick the Fetch impl.
+    in-out property <int> source-index;
     in property <[TitleRow]> results;
     callback search-clicked();
 
@@ -32,8 +34,13 @@ export component App inherits Window {
         // Search bar.
         HorizontalBox {
             spacing: 8px;
+            ComboBox {
+                preferred-width: 130px;
+                model: ["arXiv", "PubMed"];
+                current-index <=> root.source-index;
+            }
             LineEdit {
-                placeholder-text: "Search arXiv (e.g. \"spiking neural network\")...";
+                placeholder-text: "Search (e.g. \"spiking neural network\")...";
                 text <=> root.search-query;
             }
             Button {

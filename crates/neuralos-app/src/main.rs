@@ -5,7 +5,7 @@
 //! feature) run their heavy work on a worker thread; results return to the UI
 //! thread via `slint::invoke_from_event_loop` so the event loop never blocks.
 
-use neuralos_app::{arxiv::ArxivFetcher, Fetch};
+use neuralos_app::{arxiv::ArxivFetcher, pubmed::PubmedFetcher, Fetch};
 use slint::{ModelRc, VecModel};
 
 #[cfg(feature = "qwen")]
@@ -33,10 +33,14 @@ fn main() -> Result<(), slint::PlatformError> {
     app.on_search_clicked(move || {
         let Some(app) = weak.upgrade() else { return };
         let query: String = app.get_search_query().to_string();
+        let source_index = app.get_source_index();
         let weak2 = app.as_weak();
         std::thread::spawn(move || {
-            // Worker thread: real arXiv fetch, blocking, off the UI loop.
-            let papers = ArxivFetcher::new().search(&query, 20).unwrap_or_default();
+            // Worker thread: pick the source by index, fetch off the UI loop.
+            let papers = match source_index {
+                1 => PubmedFetcher::new().search(&query, 20).unwrap_or_default(),
+                _ => ArxivFetcher::new().search(&query, 20).unwrap_or_default(),
+            };
             // Carry the abstract so a row click can feed the summarizer.
             let rows: Vec<(String, String, String)> = papers
                 .iter()

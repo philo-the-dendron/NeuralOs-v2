@@ -12,6 +12,7 @@
 pub mod arxiv;
 pub mod mock;
 pub mod parse;
+pub mod pubmed;
 
 // `QwenSummarizer` — candle-backed local summarizer. Heavy deps; gated so the
 // core lib + UI build light by default. Enabled via `--features qwen`.

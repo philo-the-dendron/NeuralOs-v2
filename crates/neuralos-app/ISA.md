@@ -3,9 +3,9 @@ task: "NeuralOS research-summarization desktop app (Slint + candle + Flan-T5)"
 slug: 20260806-154310_neuralos-app
 project: NeuralOs-v2
 phase: complete
-progress: 19/19
+progress: 24/24
 started: 2026-08-06T15:43:10Z
-updated: 2026-08-06T17:55:00Z
+updated: 2026-08-06T18:40:00Z
 principal_stated_goal: "Start the app. Create neuralos-app crate, scaffold Slint UI, integrate candle + Flan-T5 for summarization, add arXiv/PubMed fetcher."
 principal_stated_goal_source: conversation
 principal_stated_goal_signal: 4
@@ -174,12 +174,21 @@ until the summarize pipeline shapes the row.
 
 _ISCs deferred to Not yet specified._
 
-### F5 · PubMed source (deferred — ROADMAP 2.2 remainder)
+### F5 · PubMed source (ROADMAP 2.2 remainder) — done
 
-Why: a second `Fetch` impl proves the seam generalizes beyond arXiv. Cloned after
-arXiv + summarize prove the spine.
+Why: a second `Fetch` impl proves the seam generalizes beyond arXiv — same `Paper`,
+same trait, different source + transport (two-call `esearch`/`efetch` vs arXiv's
+single Atom query). Adding a source is now a clone, not an architecture change.
 
-_ISCs deferred to Not yet specified._
+- [x] ISC-20: A `PubmedFetcher` implements `Fetch` — `esearch.fcgi` (PMIDs) →
+  `efetch.fcgi` (articles), both XML via `quick-xml` (no new deps).
+- [x] ISC-21: A real captured PubMed efetch fixture parses to known fields (PMID
+  `42559667`, title, authors, abstract, abs_url, journal, year).
+- [x] ISC-22: `esearch_url` / `efetch_url` are byte-exact (unit tests).
+- [x] ISC-23: A `#[ignore]`d live test calls real PubMed for "spiking neural" and
+  asserts ≥1 Paper with a `https://pubmed.ncbi.nlm.nih.gov/…/` abs_url.
+- [x] ISC-24: The UI exposes a source selector (ComboBox arXiv/PubMed); `main.rs`
+  routes to the right `Fetch` impl on the worker thread by `source-index`.
 
 ## Not yet specified
 
@@ -355,6 +364,22 @@ _ISCs deferred to Not yet specified._
   Default (no-`qwen`) build shows "Summarize disabled — rebuild with --features qwen".
   Verified to render (screenshot, 8796 distinct colors) + `cargo check --features qwen`
   clean. The full `--features qwen` GUI run is the user's (LTO link cost, above).
+- 2026-08-06 18:40: PubMed = two-call flow (`esearch.fcgi` → PMIDs, then
+  `efetch.fcgi` → articles). Chose **XML** for esearch (not JSON) to reuse the
+  existing `quick-xml` parser and avoid a `serde_json` dep. The `Fetch` seam now
+  has 3 impls (arXiv, PubMed, Mock) — adding a source is a clone, not an
+  architecture change.
+- 2026-08-06 18:40: Source selector = **ComboBox** (arXiv/PubMed) bound to a
+  `source-index` int property; `main.rs` routes by index on the worker thread.
+  Scales as more `Fetch` impls land.
+- 2026-08-06 18:40: Workspace `[profile.release]` `lto = true` → `lto = "thin"`
+  (thinLTO): ~2–3× faster app-bin link, near-identical runtime perf. Fixes the
+  10+ min slint+candle full-LTO link that blocked the `--features qwen` run.
+- 2026-08-06 18:40: CI added (`.gitea/workflows/ci.yml`): `cargo check` +
+  `cargo test` (default features, offline — live arXiv/PubMed tests are
+  `#[ignore]`) + `cargo clippy -D warnings` + the `no_std` gate for neuralos-snn.
+  Gitea Actions enabled by the principal. The `qwen` feature stays out of CI
+  (candle compile cost); it's type-checked manually pre-commit.
 - 2026-08-06 17:25: Dropped `hf-hub` from the `qwen` feature — its `metadata()`
   breaks on HF's relative redirect `Location`. Weights now fetched via direct
   `ureq` GET to `https://huggingface.co/{repo}/resolve/main/{file}`, cached by
@@ -417,3 +442,8 @@ _ISCs deferred to Not yet specified._
 - ISC-16: `cargo check -p neuralos-app --features qwen --release` clean — type-checks `QwenSummarizer: Summarize` + the qwen module. The summarize loop is byte-identical to the executed ISC-17 smoke. The integrated `cargo run -p neuralos-app --features qwen` GUI run is `[DEFERRED-VERIFY]` — workspace `profile.release` (`lto=true`, `codegen-units=1`) makes the slint+candle LTO link ~10+ min on this 2C/4T; the user can run it.
 - ISC-18: the Qwen2.5 chat-template prompt is verified by ISC-17's accurate summary output.
 - ISC-19: Grep `(?i)openai|anthropic|api\.openai|api\.anthropic|generativelanguage` over `src` → no matches. The qwen path's only network is a weights download from `huggingface.co` (no inference API).
+- ISC-20: `cargo test -p neuralos-app --lib pubmed::tests::parse_real_fixture` passes; `PubmedFetcher: Fetch` compiles.
+- ISC-21: captured fixture asserts PMID `42559667`, title `NeuroSuite…`, non-empty authors/abstract, abs_url `https://pubmed.ncbi.nlm.nih.gov/42559667/`, journal + year.
+- ISC-22: `esearch_url_encoding` + `efetch_url_encoding` + `parse_esearch_ids_extracts_ids` pass.
+- ISC-23: `cargo test -- --ignored live_pubmed_search_returns_papers` → 1 passed in 0.48s.
+- ISC-24: `cargo run -p neuralos-app` launches with the ComboBox; `cargo clippy -p neuralos-app --all-targets -- -D warnings` clean; `cargo check --features qwen --release` clean (shared UI bindings compile under both feature sets).
