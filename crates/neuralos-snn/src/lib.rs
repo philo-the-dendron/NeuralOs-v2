@@ -4,13 +4,19 @@
 #![allow(clippy::missing_errors_doc)]
 #![doc = include_str!("../README.md")]
 
+pub mod lif_neuron;
+
+pub use lif_neuron::{
+    LIFNeuron, NeuronBuilder, NeuronType, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN, MAX_SPIKE_HISTORY,
+};
+
 /// Crate-level error type.
 ///
 /// Toutes les fonctions publiques retournent `Result<T>` via ce type.
 /// Pas de `unwrap()` / `expect()` en dehors des tests (leçon v0.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
-    /// Paramètre invalide (ex: constante de temps négative, capacité nulle).
+    /// Paramètre invalide (ex: constante de temps nulle, capacité nulle).
     InvalidParameter,
     /// Index hors bornes (ex: ID de neurone ≥ taille du réseau).
     IndexOutOfBounds,
@@ -31,12 +37,3 @@ impl core::fmt::Display for Error {
 
 /// Alias de Result pour toute la crate.
 pub type Result<T> = core::result::Result<T, Error>;
-
-// Phase 0 (prochaine session) ajoute:
-//   pub mod lif_neuron;
-//   pub mod synapse;
-//   pub mod stdp;
-//   pub mod topology;
-//
-// Pour l'instant, la crate scaffold compile et expose son error type.
-// Pas de module vide (leçon v0.1: "noms impressionnants, corps vides").

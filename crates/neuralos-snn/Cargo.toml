@@ -17,8 +17,10 @@ name = "neuralos_snn"
 default = ["std"]
 std = []
 
-# Pas de dependencies runtime pour le moment — la crate reste autonome.
-# thiserror / serde / heapless seront ajoutés quand le code réel en aura besoin.
+[dependencies]
+# heapless: compile-time-capacity Vec for spike history. no_std + alloc-free.
+# This is the ONLY runtime dep — keeps the audit surface minimal.
+heapless = "0.8"
 
 [dev-dependencies]
 # Property-based tests — Cardano-grade rigor (leçon v0.1: tout test doit être réel)

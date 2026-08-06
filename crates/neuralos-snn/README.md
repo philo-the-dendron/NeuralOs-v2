@@ -18,13 +18,13 @@
 - Pas de I/O réseau. Pas de persistence. Pas de UI.
 - Pas de drivers. Pas de "OS". La library est une library.
 - Pas de crypto. La crypto vit dans `neuralos-crypto` (à venir).
-- Pas de modèles LLM. Le ML "conventionnel" (BERT, DistilBERT) vit dans `neuralos-ml` (à venir).
+- Pas de modèles LLM. Le ML "conventionnel" (BERT, `DistilBERT`) vit dans `neuralos-ml` (à venir).
 
 ## Design constraints
 
 | Constraint | Pourquoi |
 |---|---|
-| `no_std` par défaut | Permet le déploiement bare-metal RISC-V (ESP32-C3, HiFive, QEMU) |
+| `no_std` par défaut | Permet le déploiement bare-metal RISC-V (ESP32-C3, `HiFive`, QEMU) |
 | `i16` fixed-point | Pas de FPU requis — tourne sur microcontrôleurs sans unité flottante |
 | Capacité fixe (pas d'alloc) | Prévisible en mémoire — critique pour embedded |
 | Une seule impl par concept | Leçon v0.1: 3 copies parallèles du SNN dans le repo original |
