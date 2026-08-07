@@ -50,7 +50,7 @@ Competitive landscape: [`docs/landscape/SUMMARY.md`](docs/landscape/SUMMARY.md).
 Architecture vision: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-## Principles (Cardano-grade rigor)
+## Principles 
 
 1. **Every line ships with a test or test vector.** No `Ok(())` with "// In a real implementation."
 2. **CI gating from day one.** `cargo check` must pass at the workspace level.
