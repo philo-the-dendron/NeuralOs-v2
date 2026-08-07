@@ -254,6 +254,10 @@ pub struct SpikingNeuralNetwork {
     seed: u32,
     /// Buffer of pending plasticity updates from the most recent step.
     plasticity_queue: Vec<PlasticityEntry>,
+    /// Whether STDP weight updates are applied each step. Default `true`
+    /// (preserves library behavior). The visualizer disables this for
+    /// sustained-firing mode and toggles it on to watch learning happen.
+    plasticity_enabled: bool,
 }
 
 impl SpikingNeuralNetwork {
@@ -301,6 +305,7 @@ impl SpikingNeuralNetwork {
             topology,
             seed: DEFAULT_SEED,
             plasticity_queue: Vec::with_capacity(estimated_synapses),
+            plasticity_enabled: true,
         })
     }
 
@@ -328,9 +333,14 @@ impl SpikingNeuralNetwork {
         let mut output_spikes: Vec<Spike> = Vec::new();
         let mut firing_neurons: Vec<u16> = Vec::new();
 
-        // Clear previous step's synaptic currents and plasticity queue.
+        // Clear previous step's synaptic currents and decay adaptation.
+        // Synaptic current is cleared (instantaneous-synapse model: only this
+        // step's spikes contribute). Adaptation MUST decay each step or it
+        // accumulates (+2/spike) without bound and silences the network — a
+        // bug that previously made every sustained run self-quench after ~3 s.
         for n in &mut self.neurons {
             n.clear_synaptic_current();
+            n.decay_synaptic_current(self.time_step_us);
         }
         self.plasticity_queue.clear();
 
@@ -376,7 +386,11 @@ impl SpikingNeuralNetwork {
         }
 
         // Phase 3: apply STDP plasticity for every active synapse (O(queue)).
-        self.update_plasticity(&firing_neurons);
+        // Gated so callers (e.g. the visualizer) can run in a sustained-firing
+        // mode with fixed weights, toggling learning on to observe it.
+        if self.plasticity_enabled {
+            self.update_plasticity(&firing_neurons);
+        }
 
         // Advance time and stats.
         self.current_time_us = self.current_time_us.saturating_add(self.time_step_us);
@@ -456,6 +470,19 @@ impl SpikingNeuralNetwork {
         self.synapse_matrix.add(pre_id, post_id, weight);
         self.synapses.push(synapse);
         Ok(())
+    }
+
+    /// Enable or disable STDP weight updates. When disabled, `step()` still
+    /// propagates spikes and advances time, but synapse weights stay fixed —
+    /// useful for sustained-firing visualization or as a control baseline.
+    pub fn set_plasticity_enabled(&mut self, enabled: bool) {
+        self.plasticity_enabled = enabled;
+    }
+
+    /// Whether STDP weight updates are currently applied each step.
+    #[must_use]
+    pub fn plasticity_enabled(&self) -> bool {
+        self.plasticity_enabled
     }
 
     /// Reset all neurons, synapses, stats, and time. Keeps topology + synapse wiring.
