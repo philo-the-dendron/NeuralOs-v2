@@ -8,6 +8,8 @@ pub mod lif_neuron;
 pub mod synapse;
 #[cfg(feature = "std")]
 pub mod network;
+#[cfg(feature = "simd")]
+pub mod simd;
 
 pub use lif_neuron::{
     LIFNeuron, NeuronBuilder, NeuronType, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN, MAX_SPIKE_HISTORY,

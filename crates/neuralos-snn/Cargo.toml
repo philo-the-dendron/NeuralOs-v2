@@ -17,6 +17,11 @@ name = "neuralos_snn"
 [features]
 default = ["std"]
 std = []
+# SIMD-accelerated batch LIF integration (AVX2, x86_64 only). Implies `std`
+# because runtime feature detection (`is_x86_feature_detected!`) is std-only.
+# A future `no_std` variant could select backends at compile time via
+# `#[cfg(target_feature)]` for embedded RISC-V.
+simd = ["std"]
 
 [dependencies]
 # heapless: compile-time-capacity Vec for spike history. no_std + alloc-free.
@@ -26,3 +31,7 @@ heapless = "0.8"
 [dev-dependencies]
 # Property-based tests — Cardano-grade rigor (leçon v0.1: tout test doit être réel)
 proptest = "1.5"
+
+[[example]]
+name = "bench_simd"
+required-features = ["simd"]
