@@ -8,12 +8,15 @@ export component App inherits Window {
 
     // Sim controls (Rust reads/writes these).
     in-out property <bool> running;
+    in-out property <bool> learning;
     in-out property <float> input-drive;  // μA, 0..=1000 (float for the Slider)
     in property <image> raster;
+    in property <image> weight-map;
     in property <string> stats-text;
     in property <string> header-text;
     callback run-clicked();
     callback step-clicked();
+    callback learn-clicked();
     callback drive-edited(float);
 
     VerticalBox {
@@ -27,6 +30,10 @@ export component App inherits Window {
             Button {
                 text: "⏭ Step";
                 clicked => { root.step-clicked(); }
+            }
+            Button {
+                text: root.learning ? "🧠 Learn: on" : "🧠 Learn: off";
+                clicked => { root.learn-clicked(); }
             }
             Text {
                 text: "Drive: " + root.input-drive + " μA";
@@ -48,15 +55,34 @@ export component App inherits Window {
             }
         }
 
-        // Raster pane. The SharedPixelBuffer (RASTER_COLS × N) is scaled to fit.
-        Rectangle {
-            background: #050508;
+        // Spike raster (left) + weight matrix (right): watch it fire AND learn.
+        HorizontalBox {
+            spacing: 6px;
             vertical-stretch: 1;
-            Image {
-                width: 100%;
-                height: 100%;
-                image-fit: contain;
-                source: root.raster;
+
+            // Spike raster. The SharedPixelBuffer (RASTER_COLS × N) is scaled to fit.
+            Rectangle {
+                background: #050508;
+                horizontal-stretch: 1;
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                    source: root.raster;
+                }
+            }
+
+            // Synaptic weight matrix (N × N). Excitatory = orange, inhibitory = cyan,
+            // brightness ∝ |weight|. STDP drift shows as live color shifts.
+            Rectangle {
+                background: #050508;
+                horizontal-stretch: 1;
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                    source: root.weight-map;
+                }
             }
         }
 
