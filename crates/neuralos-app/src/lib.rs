@@ -1,118 +1,168 @@
-//! Framework-agnostic core for the `NeuralOS` research-summarization app.
+//! Framework-agnostic SNN sim-runner core for the `NeuralOS` visualizer.
 //!
-//! Holds the data model ([`Paper`]), the fetch seam ([`Fetch`] trait), and the
-//! concrete source implementations (`arxiv`, `mock`). The Slint UI in `main.rs`
-//! depends on this lib; nothing here depends on the UI, so the view layer is
-//! replaceable without touching fetch, parse, or models.
+//! Holds a [`SpikingNeuralNetwork`] and a rolling spike raster (ring buffer).
+//! UI-agnostic: the Slint bin calls [`SimRunner::tick`] each frame and renders
+//! the raster bytes this returns. Pure compute — no Slint, no I/O.
+//!
+//! This is the keystone seam: `neuralos-app` finally runs `neuralos-snn` at
+//! runtime. The library is the floor; the app is its microscope.
 
 #![warn(missing_debug_implementations)]
 #![warn(clippy::all, clippy::pedantic)]
-#![allow(clippy::missing_errors_doc)]
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::module_name_repetitions,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss
+)]
 
-pub mod arxiv;
-pub mod mock;
-pub mod parse;
-pub mod pubmed;
+use neuralos_snn::{NetworkTopology, NeuronType, SpikingNeuralNetwork};
 
-// `QwenSummarizer` — candle-backed local summarizer. Heavy deps; gated so the
-// core lib + UI build light by default. Enabled via `--features qwen`.
-#[cfg(feature = "qwen")]
-pub mod qwen;
+/// Raster columns = visible timesteps. Newest spike column appears on the right.
+/// At ~60 ticks/s this shows ~3.3 s of recent activity.
+pub const RASTER_COLS: usize = 200;
 
-/// A single fetched paper hit, source-agnostic.
-///
-/// Fields mirror what the `arXiv` Atom feed actually exposes; other sources
-/// (`PubMed`) fill the same shape.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Paper {
-    /// Stable source id, e.g. `oai:arXiv.org:2306.14753` or the abs URL.
-    pub id: String,
-    /// Whitespace-collapsed title.
-    pub title: String,
-    /// Authors in feed order.
-    pub authors: Vec<String>,
-    /// Abstract / source summary text (raw, untruncated).
-    pub summary: String,
-    /// Human-readable landing page (`arXiv` abs).
-    pub abs_url: String,
-    /// PDF link when the source exposes one.
-    pub pdf_url: Option<String>,
-    /// Publication timestamp, ISO-8601 as the source emits it.
-    pub published: String,
-    /// Primary subject category, e.g. `cs.AI`.
-    pub primary_category: Option<String>,
+const BG: [u8; 4] = [0x12, 0x12, 0x1F, 0xFF]; // background (dark indigo)
+const E_SPIKE: [u8; 4] = [0xFF, 0x99, 0x33, 0xFF]; // excitatory (warm orange)
+const I_SPIKE: [u8; 4] = [0x33, 0xCC, 0xFF, 0xFF]; // inhibitory (cool cyan)
+
+/// SNN sim-runner + rolling spike raster. The visualizer's model.
+#[derive(Debug)]
+pub struct SimRunner {
+    net: SpikingNeuralNetwork,
+    /// Per-neuron spike color (E or I), precomputed once at construction.
+    neuron_color: Vec<[u8; 4]>,
+    /// Reused input-current buffer (one μA value per neuron), avoiding per-tick alloc.
+    inputs: Vec<i16>,
+    /// Ring buffer: `RASTER_COLS` columns × `rows` rows, RGBA bytes, row-major.
+    /// Column `head` is the oldest (next to be overwritten); `(head-1)` is newest.
+    ring: Vec<u8>,
+    head: usize,
+    rows: usize,
+    /// Display buffer (ring reordered to linear, newest-right). Reused each frame.
+    display: Vec<u8>,
 }
 
-/// Why a fetch failed. Kept small and non-leaky — no internal HTTP types escape.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FetchError {
-    /// Network or HTTP failure (transport, TLS, non-success status).
-    Network(String),
-    /// Response body could not be parsed as the expected feed format.
-    Parse(String),
-}
+impl SimRunner {
+    /// Build a balanced E/I (80/20) network of `neuron_count` neurons, wire its
+    /// topology, and init the raster to the background color.
+    ///
+    /// # Errors
+    /// Propagates [`neuralos_snn::Error`] if the network cannot be constructed
+    /// or the topology fails to build (e.g. `neuron_count == 0`).
+    pub fn new(neuron_count: u16, time_step_us: u32) -> neuralos_snn::Result<Self> {
+        let mut net = SpikingNeuralNetwork::new(neuron_count, time_step_us, NetworkTopology::default())?;
+        net.build_topology()?;
+        let rows = usize::from(neuron_count);
 
-impl core::fmt::Display for FetchError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Network(m) => write!(f, "fetch network error: {m}"),
-            Self::Parse(m) => write!(f, "fetch parse error: {m}"),
+        let neuron_color = net
+            .neurons()
+            .iter()
+            .map(|n| match n.neuron_type {
+                NeuronType::Excitatory => E_SPIKE,
+                NeuronType::Inhibitory => I_SPIKE,
+            })
+            .collect();
+
+        let cell_count = RASTER_COLS * rows;
+        let mut ring = vec![0u8; cell_count * 4];
+        for cell in ring.chunks_exact_mut(4) {
+            cell.copy_from_slice(&BG);
         }
+
+        Ok(Self {
+            net,
+            neuron_color,
+            inputs: vec![0; rows],
+            ring,
+            head: 0,
+            rows,
+            display: vec![0u8; cell_count * 4],
+        })
+    }
+
+    /// Advance the sim one step with a uniform input drive (μA). Writes the
+    /// resulting spike column into the raster ring at `head` and advances head.
+    ///
+    /// `step()` only errors on index/param violations that cannot occur in
+    /// steady-state stepping (correctly-sized inputs, valid indices); any such
+    /// error is swallowed as a no-spike frame rather than panicking the UI.
+    pub fn tick(&mut self, input_drive_ua: i16) {
+        for slot in &mut self.inputs {
+            *slot = input_drive_ua;
+        }
+        let spikes = self.net.step(&self.inputs).unwrap_or_default();
+
+        // Overwrite the oldest column with the new frame: background first,
+        // then light up any neurons that spiked this tick.
+        for r in 0..self.rows {
+            let off = (r * RASTER_COLS + self.head) * 4;
+            self.ring[off..off + 4].copy_from_slice(&BG);
+        }
+        for s in &spikes {
+            let r = usize::from(s.neuron_id);
+            if r < self.rows {
+                let off = (r * RASTER_COLS + self.head) * 4;
+                self.ring[off..off + 4].copy_from_slice(&self.neuron_color[r]);
+            }
+        }
+        self.head = (self.head + 1) % RASTER_COLS;
+    }
+
+    /// Reorder the ring into a linear display buffer (oldest left, newest right)
+    /// and return it as raw RGBA bytes with dims `(RASTER_COLS, rows)`.
+    /// Reuses the internal display buffer to avoid per-frame allocation.
+    #[must_use]
+    pub fn raster_display(&mut self) -> (usize, usize, &[u8]) {
+        let row_bytes = RASTER_COLS * 4;
+        let head_bytes = self.head * 4;
+        for r in 0..self.rows {
+            let off = r * row_bytes;
+            self.display[off..off + row_bytes].copy_from_slice(&self.ring[off..off + row_bytes]);
+            // ring row column order is [0..COLS]; display wants [head..COLS, 0..head]
+            // (oldest at head → newest at head-1), which is a left-rotation by `head`.
+            self.display[off..off + row_bytes].rotate_left(head_bytes);
+        }
+        (RASTER_COLS, self.rows, &self.display)
+    }
+
+    /// One-line human-readable stats string for the UI status bar.
+    #[must_use]
+    pub fn stats_text(&self) -> String {
+        let s = self.net.stats();
+        let sim_ms = f64::from(self.net.current_time_us()) / 1000.0;
+        format!(
+            "{:.1} Hz  ·  {} spikes  ·  {} plasticity events  ·  {:.0} ms sim  ·  {} neurons / {} synapses",
+            s.firing_rate_hz, s.total_spikes, s.plasticity_events, sim_ms,
+            self.net.neuron_count(), self.net.synapse_count(),
+        )
     }
 }
 
-impl std::error::Error for FetchError {}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// The swappable fetch seam. `arXiv`, `PubMed`, and the offline mock all implement it.
-///
-/// Implementations are blocking by contract — callers run them off the UI thread.
-pub trait Fetch: Send + Sync {
-    /// Search the source for `query`, returning at most `max_results` papers.
-    fn search(&self, query: &str, max_results: usize) -> Result<Vec<Paper>, FetchError>;
-}
-
-/// Project papers to the `(title, abs_url)` pairs the UI result list renders.
-///
-/// Named seam: the UI bin calls this, so the presentation mapping is testable
-/// without a display, against any `Fetch` impl (incl. the offline mock).
-#[must_use]
-pub fn present_titles(papers: &[Paper]) -> Vec<(String, String)> {
-    papers
-        .iter()
-        .map(|p| (p.title.clone(), p.abs_url.clone()))
-        .collect()
-}
-
-/// Why a summarize call failed. Non-leaky — no candle/tokenizer types escape.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SummarizeError {
-    /// Model load/init failure (missing weights, unsupported format, OOM).
-    Model(String),
-    /// Tokenizer failure (encode/decode, chat-template).
-    Tokenizer(String),
-    /// Inference/generation failure (forward pass, sampling).
-    Infer(String),
-}
-
-impl core::fmt::Display for SummarizeError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Model(m) => write!(f, "summarize model error: {m}"),
-            Self::Tokenizer(m) => write!(f, "summarize tokenizer error: {m}"),
-            Self::Infer(m) => write!(f, "summarize inference error: {m}"),
+    #[test]
+    fn runner_constructs_and_steps() {
+        let mut runner = SimRunner::new(80, 1000).expect("80 neurons valid");
+        let (w, h, _) = runner.raster_display();
+        assert_eq!(w, RASTER_COLS);
+        assert_eq!(h, 80);
+        // Strong drive over many ticks must produce some lit pixels.
+        for _ in 0..200 {
+            runner.tick(800);
         }
+        let (_, _, bytes) = runner.raster_display();
+        let lit = bytes.chunks_exact(4).any(|px| px != BG);
+        assert!(lit, "sustained strong drive should light some raster cells");
     }
-}
 
-impl std::error::Error for SummarizeError {}
-
-/// The swappable summarize seam — mirrors [`Fetch`]. The input is the raw text
-/// to condense (caller picks abstract vs. full text); the output is the summary.
-///
-/// Implementations are blocking by contract — callers run them off the UI
-/// thread, exactly as `Fetch`. First impl: `MockSummarizer` (offline); the
-/// candle-backed `QwenSummarizer` (Qwen2.5-1.5B-Instruct int4) drops in here.
-pub trait Summarize: Send + Sync {
-    /// Condense `text` into a summary.
-    fn summarize(&self, text: &str) -> Result<String, SummarizeError>;
+    #[test]
+    fn display_is_raster_dims() {
+        let mut runner = SimRunner::new(64, 1000).unwrap();
+        let (w, h, bytes) = runner.raster_display();
+        assert_eq!(w * h * 4, bytes.len());
+    }
 }

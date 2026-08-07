@@ -6,10 +6,10 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "NeuralOS research-summarization desktop app — Slint UI, candle/Flan-T5 summarize, arXiv/PubMed fetch"
+description = "NeuralOS SNN visualizer — a live microscope onto the spiking neural network"
 
-# App-specific metadata (do NOT inherit the SNN crate's no_std/riscv keywords).
-keywords = ["summarization", "arxiv", "research", "slint", "local-ai"]
+# App-specific metadata.
+keywords = ["spiking-neural-network", "visualization", "slint", "local"]
 categories = ["science", "gui"]
 
 [lib]
@@ -20,38 +20,12 @@ path = "src/lib.rs"
 name = "neuralos-app"
 path = "src/main.rs"
 
-[features]
-# `qwen` gates the candle-backed local summarizer (heavy deps). Default off so
-# the core lib (fetch + Summarize trait + mock) + Slint UI stay light and fast.
-default = []
-qwen = [
-    "dep:candle-core",
-    "dep:candle-transformers",
-    "dep:tokenizers",
-    "dep:anyhow",
-]
-
 [dependencies]
-# ureq: blocking HTTP over rustls. Minimal audit surface (cipherpunk stance).
-# Fetch runs on a worker thread, never the UI loop.
-ureq = { version = "2", default-features = false, features = ["tls"] }
-# quick-xml: streaming Atom XML reader, no unsafe, tiny. Never a DOM lib.
-quick-xml = "0.36"
-# slint: pure-Rust UI toolkit (GPLv3 option, AGPL-compatible). No webview black box.
+# The keystone: neuralos-app is now a visualizer ON TOP of the SNN library.
+# This single dependency is what makes "the library connects all" literally true.
+neuralos-snn = { path = "../neuralos-snn", features = ["std"] }
+# slint: pure-Rust UI toolkit (GPLv3 option, AGPL-compatible). No webview.
 slint = "1.17"
-# Local summarizer backend (optional; enabled by `--features qwen`).
-candle-core = { version = "0.11", optional = true }
-candle-transformers = { version = "0.11", optional = true }
-# Model weights are fetched from the HF Hub via plain ureq (the app already
-# depends on it). hf-hub 0.3's metadata() chokes on HF's relative redirect
-# Location, so we build the resolve URLs ourselves and let ureq follow redirects.
-# Pure-rust regex backend (no onig/esaxx C deps).
-tokenizers = { version = "0.23", optional = true, default-features = false, features = ["fancy-regex"] }
-anyhow = { version = "1", optional = true }
 
 [build-dependencies]
 slint-build = "1.17"
-
-[[example]]
-name = "summarize_smoke"
-required-features = ["qwen"]

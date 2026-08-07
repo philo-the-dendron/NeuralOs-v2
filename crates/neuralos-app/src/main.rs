@@ -1,180 +1,125 @@
-//! NeuralOS desktop app — Slint UI entry point.
+//! NeuralOS SNN visualizer — Slint entry point.
 //!
-//! Thin view layer over the framework-agnostic core in `neuralos_app`. Both
-//! search (arXiv) and summarize (Qwen2.5-1.5B-Instruct int4, behind the `qwen`
-//! feature) run their heavy work on a worker thread; results return to the UI
-//! thread via `slint::invoke_from_event_loop` so the event loop never blocks.
+//! A worker thread owns the [`SimRunner`] (which owns the `SpikingNeuralNetwork`)
+//! and ticks it at ~60 fps, posting each raster frame + stats line back to the UI
+//! thread via `slint::invoke_from_event_loop`. The UI never blocks; shared state
+//! (running, input-drive, step) crosses the boundary via atomics.
+//!
+//! This is the keystone wiring: `neuralos-app` now runs `neuralos-snn` at runtime.
 
-use neuralos_app::{arxiv::ArxivFetcher, pubmed::PubmedFetcher, Fetch};
-use slint::{ModelRc, VecModel};
-
-#[cfg(feature = "qwen")]
-use neuralos_app::qwen::{QwenConfig, QwenSummarizer};
-#[cfg(feature = "qwen")]
-use neuralos_app::Summarize;
-#[cfg(feature = "qwen")]
-use std::sync::{Arc, Mutex};
+use neuralos_app::SimRunner;
+use slint::{Image, SharedPixelBuffer};
+use std::sync::atomic::{AtomicBool, AtomicI16, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 slint::include_modules!();
 
-/// Lazily-initialized shared summarizer (None until first summarize click).
-/// Persists across clicks so the ~5 s model load happens once per session.
-#[cfg(feature = "qwen")]
-type SharedSummarizer = Arc<Mutex<Option<QwenSummarizer>>>;
+/// Shared control state between the UI thread (writer) and the worker (reader).
+#[derive(Default)]
+struct Controls {
+    running: AtomicBool,
+    input_drive_ua: AtomicI16,
+    step_once: AtomicBool,
+}
 
 fn main() -> Result<(), slint::PlatformError> {
+    const NEURON_COUNT: u16 = 128;
+    const TIME_STEP_US: u32 = 1000; // 1 ms sim per tick
+    const FRAME_INTERVAL: Duration = Duration::from_millis(16); // ~60 fps cap
+
     let app = App::new()?;
 
-    #[cfg(feature = "qwen")]
-    let summarizer: SharedSummarizer = Arc::new(Mutex::new(None));
+    // --- Initial UI state ---
+    let runner_init = SimRunner::new(NEURON_COUNT, TIME_STEP_US)
+        .expect("balanced 128-neuron network must construct");
+    app.set_header_text(format!("Balanced E/I · {} neurons", NEURON_COUNT).into());
+    app.set_stats_text("Running…".into());
+    app.set_input_drive(300.0); // a gentle baseline drive so activity is visible immediately
+    app.set_running(true); // alive on open — the point of a microscope is to see the thing
 
-    // --- Search -------------------------------------------------------------
-    let weak = app.as_weak();
-    app.on_search_clicked(move || {
-        let Some(app) = weak.upgrade() else { return };
-        let query: String = app.get_search_query().to_string();
-        let source_index = app.get_source_index();
-        let weak2 = app.as_weak();
-        std::thread::spawn(move || {
-            // Worker thread: pick the source by index, fetch off the UI loop.
-            let papers = match source_index {
-                1 => PubmedFetcher::new().search(&query, 20).unwrap_or_default(),
-                _ => ArxivFetcher::new().search(&query, 20).unwrap_or_default(),
-            };
-            // Carry the abstract so a row click can feed the summarizer.
-            let rows: Vec<(String, String, String)> = papers
-                .iter()
-                .map(|p| (p.title.clone(), p.abs_url.clone(), p.summary.clone()))
-                .collect();
-
-            let _ = slint::invoke_from_event_loop(move || {
-                let Some(app) = weak2.upgrade() else { return };
-                let slint_rows: Vec<TitleRow> = rows
-                    .into_iter()
-                    .map(|(title, abs_url, abstract_text)| TitleRow {
-                        title: title.into(),
-                        abs_url: abs_url.into(),
-                        abstract_text: abstract_text.into(),
-                    })
-                    .collect();
-                let model = std::rc::Rc::new(VecModel::from(slint_rows));
-                app.set_results(ModelRc::new(model));
-            });
-        });
+    // --- Shared controls ---
+    let controls = Arc::new(Controls {
+        running: AtomicBool::new(true),
+        input_drive_ua: AtomicI16::new(300),
+        step_once: AtomicBool::new(false),
     });
-
-    // --- Summarize ----------------------------------------------------------
-    #[cfg(feature = "qwen")]
     {
         let weak = app.as_weak();
-        let sm = summarizer.clone();
-        app.on_summarize_clicked(move || {
-            let Some(app) = weak.upgrade() else { return };
-            let abstract_text: String = app.get_selected_abstract().to_string();
-            if abstract_text.trim().is_empty() {
-                app.set_status_text("Select a paper first — click a title in the list.".into());
-                return;
+        let controls = controls.clone();
+        app.on_run_clicked(move || {
+            let now_running = !controls.running.load(Ordering::Relaxed);
+            controls.running.store(now_running, Ordering::Relaxed);
+            if let Some(app) = weak.upgrade() {
+                app.set_running(now_running);
+                app.set_stats_text(if now_running { "Running…".into() } else { "Paused.".into() });
             }
-            // Honest pre-status: covers model load (first run) + the ~80 s generation.
-            app.set_status_text(
-                "Loading model (first run downloads ~1 GB) + summarizing (~80 s)…".into(),
-            );
+        });
+    }
 
-            let weak2 = app.as_weak();
-            let sm = sm.clone();
-            std::thread::spawn(move || {
-                // Lazy init: download + load on first click, reuse after.
-                let init_err: Option<String> = match sm.lock() {
-                    Ok(mut guard) => {
-                        if guard.is_none() {
-                            match QwenSummarizer::new(QwenConfig::default()) {
-                                Ok(s) => {
-                                    *guard = Some(s);
-                                    None
-                                }
-                                Err(e) => Some(format!("model load failed: {e}")),
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                    Err(poison) => {
-                        // Recover the guard rather than crashing on a poisoned mutex.
-                        let mut guard = poison.into_inner();
-                        if guard.is_none() {
-                            match QwenSummarizer::new(QwenConfig::default()) {
-                                Ok(s) => {
-                                    *guard = Some(s);
-                                    None
-                                }
-                                Err(e) => Some(format!("model load failed: {e}")),
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                };
+    // --- Step (single tick while paused) ---
+    {
+        let weak = app.as_weak();
+        let controls = controls.clone();
+        app.on_step_clicked(move || {
+            // Pause if currently running, then do one tick.
+            controls.running.store(false, Ordering::Relaxed);
+            controls.step_once.store(true, Ordering::Relaxed);
+            if let Some(app) = weak.upgrade() {
+                app.set_running(false);
+            }
+        });
+    }
 
-                if let Some(err) = init_err {
-                    let weak3 = weak2.clone();
-                    let _ = slint::invoke_from_event_loop(move || {
-                        if let Some(app) = weak3.upgrade() {
-                            app.set_status_text(err.into());
-                        }
-                    });
-                    return;
-                }
+    // --- Input-drive slider (live write to shared state) ---
+    {
+        let controls = controls.clone();
+        app.on_drive_edited(move |v| {
+            controls.input_drive_ua.store(v as i16, Ordering::Relaxed);
+        });
+    }
 
-                // Summarize (greedy/deterministic).
-                let result: Result<String, String> = match sm.lock() {
-                    Ok(guard) => match &*guard {
-                        Some(s) => s.summarize(&abstract_text).map_err(|e| e.to_string()),
-                        None => Err("model not loaded".to_string()),
-                    },
-                    Err(poison) => {
-                        let guard = poison.into_inner();
-                        match &*guard {
-                            Some(s) => s.summarize(&abstract_text).map_err(|e| e.to_string()),
-                            None => Err("model not loaded".to_string()),
-                        }
-                    }
-                };
+    // --- Worker thread: owns the sim, posts frames to the UI ---
+    let app_weak = app.as_weak();
+    std::thread::spawn(move || {
+        let mut runner = runner_init;
+        loop {
+            let app_weak = app_weak.clone();
+            // Exit when the window closes (weak becomes un-upgradable).
+            if app_weak.upgrade().is_none() {
+                break;
+            }
+
+            let should_step = controls.running.load(Ordering::Relaxed)
+                || controls.step_once.swap(false, Ordering::Relaxed);
+
+            if should_step {
+                let drive = controls.input_drive_ua.load(Ordering::Relaxed);
+                runner.tick(drive);
+                let stats = runner.stats_text();
+                let (w, h, bytes) = runner.raster_display();
+                let frame = bytes.to_vec();
 
                 let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(app) = weak2.upgrade() {
-                        match result {
-                            Ok(summary) => {
-                                app.set_summary_text(summary.into());
-                                app.set_status_text("Summary ready.".into());
-                            }
-                            Err(e) => {
-                                app.set_status_text(("summarize failed: ".to_string() + &e).into());
-                            }
-                        }
-                    }
+                    let Some(app) = app_weak.upgrade() else { return };
+                    // Build a SharedPixelBuffer from the raw RGBA bytes and push
+                    // it into the Slint Image property.
+                    let mut buf = SharedPixelBuffer::<slint::Rgba8Pixel>::new(w as u32, h as u32);
+                    buf.make_mut_bytes().copy_from_slice(&frame);
+                    app.set_raster(Image::from_rgba8(buf));
+                    app.set_stats_text(stats.into());
                 });
-            });
-        });
-    }
-
-    #[cfg(not(feature = "qwen"))]
-    {
-        let weak = app.as_weak();
-        app.on_summarize_clicked(move || {
-            if let Some(app) = weak.upgrade() {
-                app.set_status_text(
-                    "Summarize disabled — rebuild with --features qwen to enable local AI.".into(),
-                );
             }
-        });
-    }
 
-    // Smoke hook (test-only, env-gated): quit the event loop after N ms so
-    // headless CI can verify the UI launches and exits cleanly.
+            std::thread::sleep(FRAME_INTERVAL);
+        }
+    });
+
+    // --- Headless smoke hook: quit after N ms so CI can verify launch + clean exit ---
     if let Ok(ms) = std::env::var("NEURALOS_SMOKE_MS") {
         if let Ok(ms) = ms.parse::<u64>() {
             std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(ms));
+                std::thread::sleep(Duration::from_millis(ms));
                 let _ = slint::quit_event_loop();
             });
         }

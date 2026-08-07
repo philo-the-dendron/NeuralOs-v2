@@ -1,110 +1,70 @@
-import { Button, ComboBox, LineEdit, ListView, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
-
-// A single result row, exposed to Rust as the generated `TitleRow` struct.
-export struct TitleRow {
-    title: string,
-    abs-url: string,
-    abstract-text: string,
-}
+import { Button, Slider, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 export component App inherits Window {
-    title: "NeuralOS";
-    preferred-width: 1000px;
-    preferred-height: 720px;
-    background: white;
+    title: "NeuralOS — SNN Visualizer";
+    preferred-width: 900px;
+    preferred-height: 640px;
+    background: #0E0E1A;
 
-    // Search (existing).
-    in-out property <string> search-query;
-    // 0 = arXiv, 1 = PubMed. Read by Rust to pick the Fetch impl.
-    in-out property <int> source-index;
-    in property <[TitleRow]> results;
-    callback search-clicked();
-
-    // Summarize (new).
-    // Set by clicking a result row; read by Rust when Summarize is clicked.
-    in-out property <string> selected-abstract;
-    // Filled by Rust (worker thread) with the generated summary.
-    in property <string> summary-text;
-    // Status line ("Loading model…", "Summarizing…", "Summary ready.").
-    // in-out: Rust sets it during summarize; row-click sets "Selected: …".
-    in-out property <string> status-text;
-    callback summarize-clicked();
+    // Sim controls (Rust reads/writes these).
+    in-out property <bool> running;
+    in-out property <float> input-drive;  // μA, 0..=1000 (float for the Slider)
+    in property <image> raster;
+    in property <string> stats-text;
+    in property <string> header-text;
+    callback run-clicked();
+    callback step-clicked();
+    callback drive-edited(float);
 
     VerticalBox {
-        // Search bar.
+        // Top control bar.
         HorizontalBox {
-            spacing: 8px;
-            ComboBox {
-                preferred-width: 130px;
-                model: ["arXiv", "PubMed"];
-                current-index <=> root.source-index;
-            }
-            LineEdit {
-                placeholder-text: "Search (e.g. \"spiking neural network\")...";
-                text <=> root.search-query;
+            spacing: 10px;
+            Button {
+                text: root.running ? "⏸ Pause" : "▶ Run";
+                clicked => { root.run-clicked(); }
             }
             Button {
-                text: "Search";
-                clicked => { root.search-clicked(); }
+                text: "⏭ Step";
+                clicked => { root.step-clicked(); }
+            }
+            Text {
+                text: "Drive: " + root.input-drive + " μA";
+                color: #CCCCCC;
+                vertical-alignment: center;
+            }
+            Slider {
+                minimum: 0;
+                maximum: 1000;
+                value <=> root.input-drive;
+                width: 220px;
+                changed => { root.drive-edited(self.value); }
+            }
+            Text {
+                text: root.header-text;
+                color: #888888;
+                vertical-alignment: center;
+                horizontal-alignment: right;
             }
         }
 
-        // Main split: results list | summary pane.
-        HorizontalBox {
-            spacing: 12px;
-
-            // Left: results.
-            VerticalBox {
-                preferred-width: 500px;
-                ListView {
-                    for row[i] in root.results : Rectangle {
-                        height: 64px;
-                        background: white;
-                        // Click-to-select: capture this row's abstract for summarization.
-                        TouchArea {
-                            width: parent.width;
-                            height: parent.height;
-                            clicked => {
-                                root.selected-abstract = row.abstract-text;
-                                root.status-text = "Selected: " + row.title;
-                            }
-                        }
-                        HorizontalBox {
-                            spacing: 8px;
-                            Text {
-                                text: row.title;
-                                wrap: word-wrap;
-                                vertical-alignment: center;
-                                overflow: elide;
-                                color: black;
-                            }
-                        }
-                    }
-                }
+        // Raster pane. The SharedPixelBuffer (RASTER_COLS × N) is scaled to fit.
+        Rectangle {
+            background: #050508;
+            vertical-stretch: 1;
+            Image {
+                width: 100%;
+                height: 100%;
+                image-fit: contain;
+                source: root.raster;
             }
+        }
 
-            // Right: summary pane.
-            VerticalBox {
-                preferred-width: 460px;
-                spacing: 8px;
-                Button {
-                    text: "Summarize selected";
-                    clicked => { root.summarize-clicked(); }
-                }
-                Text {
-                    text: root.status-text;
-                    color: #666666;
-                }
-                ScrollView {
-                    VerticalBox {
-                        Text {
-                            text: root.summary-text;
-                            wrap: word-wrap;
-                            color: black;
-                        }
-                    }
-                }
-            }
+        // Status bar.
+        Text {
+            text: root.stats-text;
+            color: #AAAAAA;
+            font-size: 12px;
         }
     }
 }

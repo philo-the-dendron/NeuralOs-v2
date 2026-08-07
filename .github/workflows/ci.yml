@@ -33,7 +33,8 @@ jobs:
       - name: cargo check --workspace
         run: cargo check --workspace --all-targets
 
-      # Default features only — fully offline (live arXiv/PubMed tests are #[ignore]).
+      # Default features only — fully offline. The workspace test suite is the
+      # neuralos-snn property tests + the neuralos-app SimRunner tests; no network.
       - name: cargo test --workspace
         run: cargo test --workspace
 
