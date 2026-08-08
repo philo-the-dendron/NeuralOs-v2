@@ -1,182 +1,157 @@
 # NeuralOS v2 — Roadmap
 
-> Source of truth for what's planned, what's locked, what's done.
-> Updated 2026-08-05. All stack picks verified by StandardResearch (see `RESEARCH_FINDINGS.md`).
+> Execution order for the active repo.
+> `docs/VISION.md` is the north star; this document is the shipping sequence.
 
-## Priority order (from the principal's head)
+*Updated 2026-08-08 to match the active workspace state and the current visualizer-first framing.*
+
+## Priority order
 
 | # | Component | Status |
 |---|---|---|
-| **1** | `neuralos-snn` — `no_std` SNN library | Phase 0–1 done; ALPHA shipped (crates.io `v0.1.0-alpha.1`, 59 tests) |
-| **2** | Research-summarization app (Slint + candle + Flan-T5) | Phase 2.1 + 2.2(arXiv) done this slice; Slint shell + live arXiv fetch wired |
-| 3 | Debian distro (custom Live ISO via `live-build`) | Not started |
-| 4 | Microkernel RISC-V (QEMU first, then ESP32-C3) | Not started |
+| **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine of the repo. Core library, tests, topology/plasticity work, and `no_std` discipline come first. |
+| **2** | `neuralos-app` — Slint visualizer / lab bench | Active visible artifact. Runs the library live and makes spikes / weights / learning legible. |
+| **3** | Ternary bridge — Stage 1 | Planned research direction, gated by substrate health. Starts with ternary SNN only, not full runtime ambition. |
+| 4 | RISC-V deployment proof | Important proof of the `no_std` claim: QEMU first, real silicon after. |
+| 5 | Distro / crypto / broader sovereignty stack | Still relevant to the overall ethos, but no longer the center of gravity of this repo slice. |
 
-Ottawa RVO meetup (Aug 19, 2026) is a **parallel demo track**, not the main driver.
+## Current validated state
 
-## Stack picks (locked, research-verified)
+The workspace currently validates the following successfully:
 
-| Layer | Pick | Why |
-|---|---|---|
-| SNN library | BUILD from v0.1 audit | ecosystem gap verified ([HIGH]) |
-| Crypto | RustCrypto (`chacha20poly1305` + `x25519-dalek` `fiat` backend) | audited, cipherpunk-correct, saves 2-3 sessions vs from-scratch |
-| Embedded target | `esp-rs` + ESP32-C3 RISC-V; QEMU RISC-V for free dev | proven; no ML framework fits → SNN is differentiator |
-| Desktop GUI | **Slint** (GPLv3 option) | pure Rust, no webview black box, AGPL-compatible, stable 1.x |
-| ML inference | **candle + Flan-T5-base** via `quantized-t5` example | seq2seq native, ~1GB, 30-50 tok/s on CPU |
-| Ternary | Standard TWN `{-1,0,+1}` + own format spec; track Prism ML `Q1_0/Q2_0_g128` | direction validated by Bonsai/BitNet |
-| Distro | Debian Testing + `live-build` + `config/packages.chroot/` | canonical, minimum effort |
+```bash
+cargo test -p neuralos-snn
+cargo check --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+```
 
-## Phases
+These checks describe the current repo state more accurately than the older phase notes from the summarizer era.
 
-### Phase 0 — Library scaffold + LIF neuron ✅ DONE (commit `71bf09e`)
+## The active phases
 
-- Workspace scaffold, single member `neuralos-snn`, AGPL-3.0
-- LIF neuron ported from `v0.1/libneuralos/src/core/neural_processing/lif_neuron.rs`
-- Both audit-flagged bugs fixed (time ownership, noise seed)
-- 17 tests passing (13 unit + 4 property)
-- `no_std` verified, clippy clean under `-D warnings`
+### Phase 1 — Substrate hardening
 
-### Phase 1 — Complete the SNN library (in progress)
+Goal: make `neuralos-snn` the strongest artifact in the workspace.
 
-| Sub-phase | Source in v0.1 | Est. effort |
-|---|---|---|
-| 1.1 Synapse + STDP rule | `libneuralos/src/core/spiking_neural_network/synapse.rs` (378 LOC, audit Gem #3) | 1 session |
-| 1.2 Network + 4 topologies | `libneuralos/src/core/neural_processing/network.rs` (996 LOC, audit Gem #4) | 1-2 sessions |
-| 1.3 STDP plasticity | `libneuralos/src/core/neural_processing/stdp_plasticity.rs` (699 LOC, audit Gem #2) | 1 session |
-| 1.4 Sparse synapse matrix (CSR) | inline in network.rs | (in 1.2) |
-| 1.5 CLI demo (`neuralos-snn-demo`) | new | 1 session |
+Current shape of the substrate:
 
-**Phase 1 total: ~5 sessions.** Pattern: copy from v0.1 → clean port → fix audit bugs → tests → commit.
+- `no_std`-by-default library
+- i16 fixed-point hot path
+- LIF neurons
+- STDP rule
+- network orchestration
+- 4 topology builders
+- CSR sparse synapse matrix
+- optional AVX2 SIMD path
 
-### Phase 1 extension (optional, post-RVO) — Lock-free + SIMD from backup
+Near-term work inside this phase:
 
-| Piece | Source in v0.1 backup | Notes |
-|---|---|---|
-| Concurrent LIF | `libneuralos_before_bridge_removal/src/core/lock_free_neural_processing.rs` (596 LOC) | AtomicF32 + CAS spike-gen |
-| Thread-pool workers | `libneuralos_before_bridge_removal/src/core/lock_free_neural_network.rs` (710 LOC) | MPMC spike buffer |
-| AVX2 SIMD kernel | `libneuralos_before_bridge_removal/src/core/simd_vectorization.rs` (989 LOC) | 101 AVX2 intrinsics, revectorize for RISC-V later |
-
-### Phase 2 — Research-summarization app
-
-Stack: Slint (UI) + candle (ML) + Flan-T5-base + arXiv/PubMed fetchers + SQLite.
-
-| Sub-phase | Est. effort |
+| Work item | Why it matters |
 |---|---|
-| 2.1 Slint hello-world + project scaffold | 1 session |
-| 2.2 arXiv/PubMed fetcher + parser | 1 session |
-| 2.3 candle Flan-T5 integration + summarize pipeline | 1-2 sessions |
-| 2.4 UI: source list, search, summary view | 2-3 sessions |
-| 2.5 SQLite persistence for saved summaries | 1 session |
+| NIR import/export | Interop with adjacent SNN ecosystems; easiest high-value bridge outward |
+| Lock-free ports from v0.1 archive | Throughput and future concurrency experiments |
+| SIMD follow-up / hardening | Keep the performance path honest and test-backed |
+| Additional regression/property tests | Protect invariants around plasticity, propagation, and topology behavior |
+| `no_std` discipline checks | Preserve the embedded / RISC-V posture |
 
-**Phase 2 total: ~6-8 sessions.**
+### Phase 2 — Lab bench / visualizer
 
-### Phase 3 — Debian "Prime AI" distro
+Goal: make the substrate visible, debuggable, and showable.
 
-| Sub-phase | Est. effort |
+The app is now the live SNN visualizer, not the old research summarizer. Its role is to make the library legible.
+
+Current visualizer responsibilities:
+
+- spike raster
+- synaptic weight heatmap
+- STDP learning toggle
+- sustained-firing mode for visible activity
+- worker-thread simulation + Slint UI thread bridge
+
+Near-term work inside this phase:
+
+| Work item | Why it matters |
 |---|---|
-| 3.1 `.deb` package for the app | 1 session |
-| 3.2 `live-build` recipe + `config/packages.chroot/` | 1 session |
-| 3.3 Theming (NeuralOS Prime session/wallpaper) | 1 session |
-| 3.4 Meta-package `neuralos-prime` for stock Debian | 1 session |
+| UI/UX refinement for controls and stats | Better debugging and demonstration value |
+| More observability (rates, activity summaries, weight drift) | Makes learning dynamics easier to understand |
+| Smoke validation / render verification workflow | Keeps the visualizer trustworthy as a demo artifact |
+| Stability around threading and shutdown behavior | Protects the hardest-won lesson in the app layer |
 
-**Phase 3 total: ~3-4 sessions.**
+### Phase 3 — Ternary bridge, Stage 1 only
 
-### Phase 4 — Ternary quantization
+Goal: test the smallest meaningful research gate without overcommitting.
 
-| Sub-phase | Est. effort |
-|---|---|
-| 4.1 Trit weight type + encoding | 1 session |
-| 4.2 Ternary STDP rule | 1 session |
-| 4.3 Weight format spec doc + reference impl | 1 session |
-| 4.4 Prism ML Q1_0/Q2_0_g128 interop study (read their fork) | 1 session |
+This phase is only the first stage from `docs/VISION.md`:
 
-**Phase 4 total: ~3-4 sessions.**
+- introduce a `Trit`-style weight type `{-1, 0, +1}` plus scale
+- adapt the SNN to that representation
+- verify it still spikes and learns comparably enough to be worth continuing
 
-### Phase 5 — Crypto layer
+Gate question:
 
-| Sub-phase | Est. effort |
-|---|---|
-| 5.1 `neuralos-crypto` crate: pin RustCrypto, vendor-read, write RFC vector tests | 1 session |
-| 5.2 `HardwareBoundKey`-style AEAD wrapper (ChaCha20-Poly1305) | 1 session |
-| 5.3 X25519 key exchange wrapper | 1 session |
+> Does a ternary SNN remain mechanically useful enough to justify the rest of the bridge?
 
-**Phase 5 total: ~2-3 sessions.** (Saved 2-3 sessions by using RustCrypto vs from-scratch.)
+If yes, later bridge stages earn the right to exist. If not, stop here with a still-useful substrate.
 
-### Phase 6 — RISC-V bare-metal target
+### Phase 4 — RISC-V deployment proof
 
-| Sub-phase | Est. effort |
-|---|---|
-| 6.1 QEMU RISC-V `riscv64gc` boot + `no_std` runtime | 1-2 sessions |
-| 6.2 Run `neuralos-snn` on QEMU RISC-V | 1 session |
-| 6.3 ESP32-C3 (when board arrives): esp-rs + esp-idf scaffold | 1 session |
-| 6.4 Sensor → SNN → motor loop on real hardware | 2-3 sessions |
+Goal: make the `no_std` claim concrete.
 
-**Phase 6 total: ~5-7 sessions + hardware availability.**
+Order of attack:
 
-## 14-day RVO short-circuit (Aug 19, 2026)
+1. QEMU `riscv64gc`
+2. run `neuralos-snn` in that environment
+3. real silicon when budget/hardware permits
 
-The RVO meetup is a forcing function for an early demo, not the main sequence. Three scope options:
+Deliverables for this phase:
 
-| Scope | What ships Aug 19 | Risk |
-|---|---|---|
-| **Safe (recommended)** | Phase 1 complete + CLI demo running ternary SNN on QEMU RISC-V, prints spike rates. Hallway-track demoable. | Low — all proven components |
-| **Ambitious** | Safe + owned crypto wrapper (Phase 5.1-5.2) + ternary quantization (Phase 4.1-4.3) + Prism ML format awareness. Live demo on stage. | Medium — 14 days is tight |
-| **Cheapest** | Phase 0 + Phase 1.1 only + property tests + summary doc. Conversation piece only. | Very low |
+- a reproducible QEMU path
+- successful `neuralos-snn` execution in a RISC-V setting
+- documentation showing what is truly `no_std`-portable vs host-only
 
-Default if principal doesn't pick: **Safe**.
+### Phase 5 — Bridge stages 2+
 
-## Engineering principles (Cardano-grade rigor)
+These are explicitly gated by the success of Phase 3.
 
-1. **Every line ships with a test or test vector.** No `Ok(())` with "// In a real implementation."
-2. **CI gating day 1.** `cargo check` workspace-level must pass before any code lands.
-3. **One source of truth.** No parallel copies (leçon v0.1).
-4. **Structure earns its existence.** Add a crate only when it has real code — no premature scaffolding.
-5. **Honest names.** If a function is called `init_mmu`, it inits the MMU. No theater.
-6. **`no_std` by default** for the core library — discipline + enables embedded RISC-V.
-7. **No cloud deps.** Local AI only. Never an OpenAI/Anthropic API call.
-8. **Every claim cites a verified source.** Per LifeOS constitution.
-9. **Don't reinvent wheels.** Use RustCrypto/candle/esp-rs/live-build — open, auditable stacks. "Own my software" = read+pin+understand, not rewrite worse.
+Potential later work:
 
-## Decision authority (who picks what)
+- ternary format bridge
+- shared `no_std` ternary kernel
+- tiny hybrid SNN/LLM proof
+- only then, possibly, a larger ternary runtime effort
 
-| Decision type | Authority |
-|---|---|
-| Architecture, stack, phases | Principal (with DA recommendation) |
-| Specific function design, tests, code style | DA (Cardano-grade bar) |
-| Pushes to remote, new repos, destructive ops | Principal (explicit OK each time, except `~/.claude` trusted repo) |
-| Phase ordering changes | Principal |
-| Bug-fix decisions during a port | DA (with regression test) |
+This is research territory and should stay honestly labeled as such.
 
-## Open questions (resolved as of 2026-08-05)
+## What is no longer the center of gravity
 
-- ~~Ottawa RVO event~~ — RESOLVED: RVO meetup Aug 19, 2026
-- ~~Huawei ternary~~ — ACCEPTED from principal's direct knowledge; track Prism ML publicly
-- ~~App ML model~~ — Flan-T5-base (candle `quantized-t5` example)
-- ~~Tauri frontend~~ — Slint (pure Rust, no webview)
-- ~~Crypto approach~~ — RustCrypto (audited, not from-scratch theater)
-- ~~Repo mechanics~~ — One repo `NeuralOS` (v0.1 archive), one repo `NeuralOs-v2` (fresh start)
-- ~~Backups~~ — Filesystem `NeuralOS-backup-*` ×3 + git tag `v0.1-broken-baseline` (eternal)
+The following areas still matter, but they are no longer the active core of the repo roadmap:
 
-## What's done so far
+- Debian distro work
+- crypto wrapper work
+- broader “sovereignty stack” seasoning
+- old summarizer-app plans
 
-| Date | What | Commit |
-|---|---|---|
-| 2026-08-05 | v0.1 archived (LESSONS_LEARNED + tag `v0.1-broken-baseline`) | `aeae4bd` on `NeuralOs/architectural-rescue` |
-| 2026-08-05 | v2 repo created on Gitea Caramoussin | `NeuralOs-v2` |
-| 2026-08-05 | v2 scaffold (workspace + crate skeleton + docs) | `f738036` |
-| 2026-08-05 | StandardResearch findings (4 corrections, 5 validations) | `9ef30ec` |
-| 2026-08-05 | Follow-up research (Bonsai, Slint, Flan-T5) | `c87fcc1` |
-| 2026-08-05 | **Phase 0: LIF neuron ported + tested** | `71bf09e` |
-| 2026-08-05 | Phase 1 complete: Synapse+STDP, Network+4 topologies, CLI demo | `bef06a9` |
-| 2026-08-05 | Release `v0.1.0-alpha.1` — crates.io publish (59 tests, no_std verified) | `1f7f32f` |
-| 2026-08-06 | Toolchain pinned to `1.92.0` in `rust-toolchain.toml` (slint 1.17 MSRV) | (this session) |
-| 2026-08-06 | **Phase 2.1 + 2.2(arXiv): `neuralos-app` workspace member — Slint shell + framework-agnostic core + live arXiv fetch + Atom parse** | (uncommitted) |
+They can return later, but they should not displace the substrate + visualizer + gated bridge sequence.
 
-## Immediate next
+## Relation to v0.1 and prior roadmap language
 
-**Phase 2.3 — candle + Flan-T5 summarize pipeline.** Define the `Summarize` trait
-(mirrors `Fetch`), wire candle's `quantized-t5` example, resolve the model-acquisition
-fog (download-on-first-run from HuggingFace vs. point-at-path) — see
-`crates/neuralos-app/ISA.md` `## Not yet specified`. ~1–2 sessions.
+The archived v0.1 repo remains useful as:
 
-Confirm and I proceed.
+- a mine for tested ports
+- a source of audit findings
+- a reminder of what not to reintroduce
+
+This roadmap intentionally drops the old summarizer-first execution order. The current repo and `docs/VISION.md` make the real structure clear:
+
+1. substrate
+2. lab bench
+3. gated ternary research
+
+## Practical next moves
+
+If working from this roadmap today, the best near-term sequence is:
+
+1. continue hardening `neuralos-snn`
+2. improve the visualizer as the lab bench over that library
+3. only then begin ternary Stage 1 experiments
+4. prove the `no_std` claim on QEMU RISC-V
