@@ -68,7 +68,7 @@ real artifacts already shipped, not a dead-end:
 
 | Stage | What | Standalone value (if you stop here) | The gate |
 |---|---|---|---|
-| **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES (802 flips, non-collapsed) → Stage 1.5c selectivity YES (SI 0.985 vs i16 1.000 under structured input). Bridge reopened (see below)** |
+| **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES → Stage 1.5c selectivity YES → Stage 1.5d full pairwise STDP YES (the missing LTP half added + a CSR sync bug fixed; selectivity re-confirmed SI 1.000 vs i16 1.000 under structured input, rule now bidirectional). Bridge reopened (see below)** |
 | **2. Format bridge** | ternary format spec; BitNet-compatible **export**, Prism `Q1_0` **import** | NeuralOS speaks the lingua franca of both fields | can we round-trip a ternary tensor? |
 | **3. Shared kernel** | one `no_std` ternary matmul; a tiny hybrid net (SNN layer + dense-LLM-style layer) | a reusable Rust ternary kernel + a showable hybrid demo | does the union compose — compute something coherent? |
 | **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research |
@@ -194,13 +194,15 @@ intra synapses retained +γ). Stage 2 (format bridge) is strongly motivated.
 
 **Two honest findings about the rule (documented, not worked around):**
 
-1. **The STDP rule is depression-only in this implementation.**
-   `update_plasticity` computes `dt = pre_time − post_time`, always ≥ +1 (co-fires
+1. **The STDP rule was depression-only at the time of 1.5c — RESOLVED in 1.5d.**
+   `update_plasticity` computed `dt = pre_time − post_time`, always ≥ +1 (co-fires
    tie-break to `dt = +1` → LTD; non-co-fires use post's `last_spike ≤ pre_time` →
-   `dt ≥ 0` → LTD). LTP (`dt < 0`) never fires — verified empirically (0 of 1069
-   weights increased). So 1.5c selectivity is *differential depression*
+   `dt ≥ 0` → LTD). LTP (`dt < 0`) never fired — verified empirically (0 of 1069
+   weights increased). So 1.5c selectivity was *differential depression*
    (correlated pairs depress more), not Hebbian potentiation. A valid selectivity
-   test; a biphasic STDP rule is a separate future improvement.
+   test, and the diagnosis triggered the 1.5d fix: the missing post-firing LTP
+   half is now implemented (see Stage 1.5d below), and the selectivity YES
+   survives — in fact strengthens to SI 1.000 — on the full biphasic rule.
 
 2. **CSR unsorted-insertion bug (fixed).** Designing this experiment exposed a
    latent defect: `SparseSynapseMatrix`'s incremental `row_ptrs` only grouped
@@ -218,6 +220,73 @@ intra synapses retained +γ). Stage 2 (format bridge) is strongly motivated.
 (the new canary — asserts both the i16 control discriminates AND ternary
 preserves the differential with nonzero flips; replaces nothing, joins the
 1.5b canary as the bridge's living selectivity tripwire).
+
+### Stage 1.5d — RUN 2026-08-08, result: YES (substrate corrected; selectivity re-confirmed)
+
+1.5c's YES came with a precise caveat: the STDP orchestration was *structurally
+LTD-only* (the pre-firing path set `dt ≥ 0` always, so the LTP branch of
+`calculate_weight_change` was unreachable). That made 1.5c's selectivity a
+differential-depression result, not a Hebbian one — a valid falsifier, but on a
+half-rule. Before Stage 2, the missing LTP half was added and the gate re-run.
+
+**Two substrate fixes:**
+
+1. **Full pairwise STDP (the missing LTP half).** `update_plasticity` now runs
+   two disjoint passes per step. The existing **LTD pass** (pre-firing events,
+   post-before-pre, `dt ≥ 0`) is unchanged — including the a9a2679 same-step
+   tie-break to `dt = +1`. A new **LTP pass** iterates each firing postsynaptic
+   neuron's *incoming* synapses (via a new reverse CSR,
+   `SparseSynapseMatrix::incoming`) and pairs the post spike with a presynaptic
+   partner that fired earlier in a previous step (`dt = pre.last_spike − post_time < 0` → LTP). The passes are disjoint per synapse per step: a same-step
+   co-fire is handled by LTD and explicitly skipped by LTP (`pre didn't fire this
+   step` guard), so the a9a2679 invariant holds and there is no double-counting.
+
+2. **`set_weight` inverse-permutation fix (a latent bd5b098 bug, separate from
+   the CSR-insertion bug 1.5c already fixed).** The counting-sort `finalize()`
+   reorders the `weights[]` array by `pre_id`, but `set_weight(syn_idx)` indexed
+   `weights[syn_idx]` directly — so after `finalize`, plasticity deltas were
+   written to the *wrong* CSR slots, desynchronizing the transmission weights
+   from `synapses[].weight` (316 of ~1069 slots mismatched after 50 steps, empirically). The fix routes `set_weight` through an inverse permutation
+   (`weight_index_of`) built in `finalize`, keeping the write O(1) and correct.
+   1.5c's qualitative YES survived this because the external drive dominated and
+   the ternary regime reads `synapses[].weight` (correct), not the CSR, for its
+   flip decisions — but propagation ran on corrupted weights, so the fix is
+   necessary for honest dynamics and for LTP deltas to actually reach neurons.
+
+**Re-run on the corrected substrate** (`examples/ternary_selectivity.rs`):
+
+- **Bidirectionality confirmed.** Under sustained drive, the i16 rule now moves
+  weights in both directions: **306 up / 390 down / 373 unchanged** (through
+  1.5c `up` was 0 — depression-only). The structural diagnosis is resolved.
+- **i16 control: PASS (SI = 1.000).** Intra E→E mean → 0.00, inter → 80.00 —
+  identical to 1.5c. The input's structure is genuinely learnable.
+- **Ternary stochastic: YES (SI = 1.000, up from 1.5c's 0.985).** Intra → 0.00
+  (100% of synapses flipped +γ→0), inter → 125.00 (100% at +γ), 2059 bucket
+  flips, spiking 34.36 Hz/neuron (1.00× fixed-weight reference, non-collapsed).
+  The 0.8% stochastic-noise gap of 1.5c is gone.
+
+**Gate verdict: YES — strengthened.** Full pairwise STDP works (LTP and LTD both
+reachable in orchestration, verified by tests), the i16 control discriminates,
+and ternary-stochastic still discriminates with sane spiking — now at parity
+with the i16 SI rather than 0.015 below it. The 1.5c selectivity YES was **not**
+a half-STDP artifact; it survives the full biphasic rule. The 1.5b "degenerate
+LTD-driven collapse" caveat is also resolved: under uniform drive the stochastic
+distribution is now biphasic ({+γ:271, 0:613, −γ:185} with 3587 flips), not a
+one-directional +γ→0 collapse.
+
+**Honest scope note.** Under *this* synchronous-drive regime, the intra-group
+selectivity signal is still carried by the LTD branch (correlated pairs co-fire →
+same-step tie-break → depression, an anti-Hebbian decorrelation), not by Hebbian
+LTP: the same-step tie-break biases coincidences to LTD, and the gapped schedule
+places inter-group pairs outside the STDP window in *both* directions. LTP is
+active across the network (306 of 1069 weights increase) but exercises mainly the
+non-selective classes (inhibitory, E→I) and within-group temporal sequences. A
+regime that drives clean pre-before-post *sequences* rather than synchronous
+co-firing would exercise LTP-driven (Hebbian) selectivity more directly — that is
+a different experiment, out of scope for this substrate-correction session.
+
+**What ships:** the post-firing LTP pass + reverse CSR (`SparseSynapseMatrix::incoming` / `IncomingIter`), the `weight_index_of` inverse-permutation fix,
+and six regression tests pinning both halves — `ltp_post_firing_strengthens_synapse_when_pre_fired_earlier` (focused LTP proof), `ltp_pass_does_not_double_count_same_step_cofire` (a9a2679 preserved under full STDP), `ltd_pre_after_post_still_depresses_under_full_stdp` (LTD half intact), `full_stdp_is_bidirectional_in_orchestration` (orchestration-level up>0 ∧ down>0), `csr_weight_index_of_keeps_slots_synced_in_multi_synapse_net` (the inverse-perm fix + reverse-CSR consistency), and `reverse_csr_incoming_lists_correct_edges_after_finalize`. The 1.5b and 1.5c canaries both still pass unchanged.
 
 **The destination — a pure-Rust ternary-LLM runtime.** Stages 3 and 4 are
 where the bridge earns its ambition. Stage 3 proves the union mechanically: a
@@ -256,9 +325,10 @@ library is alive, and the thing you show a researcher or a collaborator.
 ## Realistic near-term path
 
 1. **Finish the substrate:** NIR import/export, lock-free + SIMD ports,
-   ternary Stage 1 + 1.5b + 1.5c (✓ done — ternary SNN spikes 1.00× baseline,
-   learns via stochastic bucket-flips, and discriminates by correlation under
-   structured input (SI 0.985 vs i16 1.000); bridge open to Stage 2).
+   ternary Stage 1 + 1.5b + 1.5c + 1.5d (✓ done — ternary SNN spikes 1.00× baseline,
+   learns via stochastic bucket-flips over a *full pairwise* STDP rule (LTP + LTD
+   both reachable), and discriminates by correlation under structured input
+   (SI 1.000 vs i16 1.000); bridge open to Stage 2).
 2. **Deploy on QEMU RISC-V (`riscv64gc`)** — prove the `no_std` sovereignty
    claim with a real artifact; then ESP32-C3 silicon when budget allows.
 3. **Position publicly as Lava's spiritual successor**; cite the

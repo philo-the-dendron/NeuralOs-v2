@@ -1,22 +1,31 @@
 //! Stage 1.5c — ternary STDP selectivity under structured (correlated) input.
 //!
-//! Stage 1.5b proved the stochastic-flip MECHANISM works (802 flips, non-
+//! Stage 1.5b proved the stochastic-flip MECHANISM works (nonzero flips, non-
 //! collapsed) but under *uniform synchronous* drive — a degenerate one-
-//! directional collapse (every excitatory synapse → 0). That was movement,
-//! not learning. The open question this example answers: does ternary STDP
-//! DISCRIMINATE under structured input (selective weaken by correlation), or
-//! does it always collapse regardless of structure? This gates whether the
-//! Stage 2 format bridge is worth building.
+//! directional collapse. That was movement, not learning. The open question
+//! this example answers: does ternary STDP DISCRIMINATE under structured input
+//! (selectively weaken by correlation), or does it always collapse regardless
+//! of structure? This gates whether the Stage 2 format bridge is worth building.
 //!
-//! # Result: YES (ternary discriminates, comparable to i16)
+//! # Result: YES (ternary discriminates, at parity with i16)
 //!
 //! Under correlated group-structured input, i16 E→E synapses split cleanly:
 //! intra-group (correlated) pairs depress to 0, inter-group (uncorrelated)
-//! pairs stay at their initial value (Selectivity Index ≈ 1.0). Ternary-
-//! stochastic reproduces that differential almost exactly (SI ≈ 0.985): ~99%
-//! of intra synapses stochastically flip +γ→0 while ~100% of inter synapses
-//! stay at +γ, and spiking stays non-collapsed. Ternary learns selectively,
-//! not just moves.
+//! pairs stay at their initial value (Selectivity Index = 1.0). Ternary-
+//! stochastic reproduces that differential at parity (SI = 1.0): 100% of intra
+//! synapses stochastically flip +γ→0 while 100% of inter synapses stay at +γ,
+//! and spiking stays non-collapsed. Ternary learns selectively, not just moves.
+//!
+//! # Substrate note (Stage 1.5d)
+//!
+//! This experiment was re-run after Stage 1.5d corrected the substrate to a
+//! *full pairwise* STDP rule (the missing post-firing LTP half was added; see
+//! `network::update_plasticity`'s two disjoint passes). The earlier 1.5c run
+//! reported SI = 0.985 on a structurally LTD-only rule; on the full biphasic
+//! rule the gap closes to SI = 1.000 (the 0.8% stochastic-noise residual is
+//! gone, with more plasticity events landing every intra synapse). The i16
+//! control is unchanged (SI = 1.000 in both runs). The selectivity YES is not a
+//! half-STDP artifact — it survives the full rule.
 //!
 //! # Setup
 //!
@@ -25,28 +34,28 @@
 //! silent gap precedes the next group (round-robin). Intra-group pairs are
 //! co-active throughout their window (high-rate correlated firing → frequent
 //! same-step co-fires); inter-group pairs are never co-active AND adjacent
-//! windows are gap-separated (> the STDP window), so inter LTD ≈ 0. The same
+//! windows are gap-separated (> the STDP window), so inter LTD/LTP ≈ 0. The same
 //! deterministic schedule is replayed across regimes. An init cycle (STDP off)
 //! runs first to defeat the `last_spike_time_us = 0` ("never fired") artifact.
 //!
-//! # Two honest findings about the rule (documented in situ, not worked around)
+//! # Honest scope of the selectivity signal
 //!
-//! 1. **The STDP rule is depression-only in this implementation.**
-//!    `update_plasticity` computes `dt = pre_time − post_time`, which is always
-//!    ≥ +1 (same-step co-fires break the tie to `dt = +1` → LTD; non-co-fires
-//!    use post's `last_spike_time_us ≤ pre_time` → `dt ≥ 0` → LTD). The LTP
-//!    branch (`dt < 0`) never fires. We verify this empirically (the count of
-//!    weights that *increased* is ~0). Selectivity therefore manifests as
-//!    DIFFERENTIAL DEPRESSION: correlated (intra) pairs co-fire (dt ≈ 0 →
-//!    maximal LTD) and depress more than uncorrelated (inter) pairs (dt ≫
-//!    window → ~zero LTD). That is still a valid, falsifiable selectivity test
-//!    — does ternary preserve the correlation-structured differential?
+//! Under *this* synchronous-drive regime the intra-group discrimination is
+//! carried by the LTD branch (correlated co-fire → same-step tie-break →
+//! depression = anti-Hebbian decorrelation), not by Hebbian LTP: the same-step
+//! tie-break biases coincidences to LTD, and the gap places inter pairs outside
+//! the window in both directions. The full rule is genuinely biphasic (LTP fires
+//! across the network — the example's rule-direction check shows nonzero `up`),
+//! but the *selective* signal on E→E is LTD-carried. A pre-before-post sequence
+//! regime would exercise LTP-driven selectivity directly; that is a different
+//! experiment, out of scope for this diagnostic.
 //!
-//! 2. **Balanced inhibition is required for group selectivity.** With
-//!    `I_INH = 0`, recurrent E→E spreads activity to every group synchronously
-//!    and the input structure is destroyed; a tonic inhibitory drive is needed
-//!    so only the actively-driven group fires. This is reported below as a
-//!    drive-selectivity check (own-active rate vs own-idle rate).
+//! # Balanced inhibition
+//!
+//! With `I_INH = 0`, recurrent E→E spreads activity to every group synchronously
+//! and the input structure is destroyed; a tonic inhibitory drive is needed so
+//! only the actively-driven group fires. This is reported below as a
+//! drive-selectivity check (own-active rate vs own-idle rate).
 //!
 //! # The gate (falsifier)
 //!

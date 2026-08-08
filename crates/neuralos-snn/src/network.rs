@@ -27,6 +27,15 @@
 //! - **Plasticity synapse-index bug fixed.** v0.1 indexed `self.synapses[post_id]`,
 //!   using the postsynaptic neuron ID as a synapse vector index. That accesses the
 //!   wrong synapse (or panics). v2 tracks `synapse_index` in the plasticity queue.
+//! - **Full pairwise STDP (Stage 1.5d).** Through Stage 1.5c `update_plasticity`
+//!   visited only pre-firing events, so `dt ≥ 0` always and the LTP branch
+//!   (`dt < 0`) was unreachable — the rule was structurally LTD-only. v2 now runs
+//!   a second, disjoint post-firing LTP pass via a reverse CSR.
+//! - **CSR `set_weight` inverse-permutation fix (Stage 1.5d).** The counting-sort
+//!   `finalize()` reorders `weights[]` by `pre_id`, so the prior `set_weight(syn_idx)`
+//!   (which indexed `weights[syn_idx]` directly) wrote deltas to the wrong slots,
+//!   desynchronizing transmission weights from `synapses[].weight`. v2 routes the
+//!   write through an inverse permutation built in `finalize()`.
 
 #![allow(clippy::module_name_repetitions)]
 #![allow(
@@ -135,34 +144,55 @@ impl NetworkStats {
 
 /// Compressed Sparse Row (CSR) synapse storage — O(1) per-presynaptic iteration.
 ///
-/// Four parallel arrays (the standard CSR layout plus a stable synapse index):
-/// - `weights[i]`: weight of synapse i
-/// - `col_indices[i]`: postsynaptic neuron ID of synapse i
-/// - `synapse_indices[i]`: index of the same synapse in `SpikingNeuralNetwork::synapses`
-/// - `row_ptrs[n]`: start index into the parallel arrays for presynaptic neuron n
-///   (length = `neuron_count` + 1; `row_ptrs`[`neuron_count`] = total synapse count)
+/// Forward direction: row key = presynaptic neuron. [`connections`]`(pre_id)`
+/// iterates that neuron's outgoing edges.
+/// Reverse direction: row key = postsynaptic neuron. [`incoming`]`(post_id)`
+/// iterates that neuron's incoming edges (used by the post-firing LTP half of
+/// pairwise STDP).
+///
+/// Forward parallel arrays (sorted by `pre_id` after [`finalize`]):
+/// - `weights[k]`: weight of the edge at sorted position `k`
+/// - `col_indices[k]`: postsynaptic neuron ID of that edge
+/// - `synapse_indices[k]`: index of that edge in `SpikingNeuralNetwork::synapses`
+/// - `row_ptrs[n]`: start index into the arrays for presynaptic neuron `n`
+///   (length `neuron_count` + 1; last entry = total edge count)
+///
+/// Reverse parallel arrays (sorted by `post_id` after [`finalize`]):
+/// - `rv_pre_ids[k]`: presynaptic neuron ID of the edge at reverse-sorted `k`
+/// - `rv_syn_indices[k]`: that edge's index in `SpikingNeuralNetwork::synapses`
+/// - `rv_row_ptrs[n]`: start index for postsynaptic neuron `n`
+///
+/// `weight_index_of[synapse_index]` is the **inverse permutation** of
+/// `synapse_indices`: given a synapse index, it returns the forward-sorted
+/// position holding that synapse's weight. [`set_weight`] routes through it so a
+/// plasticity update hits the correct CSR slot even after [`finalize`] reorders
+/// the arrays (without it, `set_weight(syn_idx)` would write `weights[syn_idx]`,
+/// which after the counting sort holds a *different* edge's weight).
 ///
 /// **CSR correctness requires [`finalize`].** [`add`] appends edges in insertion
 /// order and bumps `row_ptrs` incrementally — which only yields correct
 /// [`connections`] slices when edges happen to be added in non-decreasing `pre_id`
 /// order. `build_topology` inserts in arbitrary order, so it MUST call
 /// [`finalize`] after all `add`s. [`finalize`] does a counting-sort CSR build
-/// (O(edges + neurons), stable) that reorders the parallel arrays by `pre_id` and
-/// rebuilds `row_ptrs` authoritatively. Calling [`connections`] before
+/// (O(edges + neurons), stable) that reorders the forward arrays by `pre_id`,
+/// builds the reverse arrays by `post_id`, and inverts the synapse-index
+/// permutation into `weight_index_of`. Calling [`connections`] before
 /// [`finalize`] on unsorted input returns slices with the right *count* but the
 /// wrong *members* — a silent correctness bug (was the prior state: propagation
 /// injected current into the wrong targets and STDP updated the wrong synapses).
 ///
 /// [`finalize`]: SparseSynapseMatrix::finalize
 /// [`connections`]: SparseSynapseMatrix::connections
+/// [`incoming`]: SparseSynapseMatrix::incoming
 /// [`add`]: SparseSynapseMatrix::add
+/// [`set_weight`]: SparseSynapseMatrix::set_weight
 #[derive(Debug, Clone)]
 pub struct SparseSynapseMatrix {
     weights: Vec<i16>,
     col_indices: Vec<u16>,
     synapse_indices: Vec<usize>,
-    /// Presynaptic neuron ID of each edge (parallel to `weights`). Kept so
-    /// [`finalize`] can reorder by `pre_id` without re-deriving it.
+    /// Presynaptic neuron ID of each edge (insertion order; input to
+    /// [`finalize`]'s counting sort).
     ///
     /// [`finalize`]: SparseSynapseMatrix::finalize
     pre_ids: Vec<u16>,
@@ -172,6 +202,22 @@ pub struct SparseSynapseMatrix {
     ///
     /// [`finalize`]: SparseSynapseMatrix::finalize
     row_ptrs: Vec<u32>,
+    /// Inverse permutation: `weight_index_of[synapse_index]` = forward-sorted
+    /// position of that synapse's weight slot. Identity before [`finalize`]
+    /// (insertion order); rebuilt as the inverse of `synapse_indices` by
+    /// [`finalize`]. Lets [`set_weight`] stay O(1) and correct post-sort.
+    ///
+    /// [`finalize`]: SparseSynapseMatrix::finalize
+    /// [`set_weight`]: SparseSynapseMatrix::set_weight
+    weight_index_of: Vec<usize>,
+    /// Reverse CSR (by postsynaptic neuron). Built alongside the forward sort
+    /// in [`finalize`]. Empty until then; [`incoming`] returns nothing.
+    ///
+    /// [`finalize`]: SparseSynapseMatrix::finalize
+    /// [`incoming`]: SparseSynapseMatrix::incoming
+    rv_row_ptrs: Vec<u32>,
+    rv_pre_ids: Vec<u16>,
+    rv_syn_indices: Vec<usize>,
     /// Total neuron count (sets `row_ptrs` length).
     neuron_count: u16,
 }
@@ -186,6 +232,10 @@ impl SparseSynapseMatrix {
             synapse_indices: Vec::with_capacity(estimated_synapses),
             pre_ids: Vec::with_capacity(estimated_synapses),
             row_ptrs: vec![0; neuron_count as usize + 1],
+            weight_index_of: Vec::with_capacity(estimated_synapses),
+            rv_row_ptrs: Vec::new(),
+            rv_pre_ids: Vec::with_capacity(estimated_synapses),
+            rv_syn_indices: Vec::with_capacity(estimated_synapses),
             neuron_count,
         }
     }
@@ -208,6 +258,9 @@ impl SparseSynapseMatrix {
         self.col_indices.push(post_id);
         self.synapse_indices.push(synapse_index);
         self.pre_ids.push(pre_id);
+        // Pre-finalize inverse permutation is identity: insertion order means
+        // synapse i lives at weights[i]. finalize() overwrites it post-sort.
+        self.weight_index_of.push(synapse_index);
         // Incremental row_ptrs: bump every row after pre_id by 1. This is only
         // authoritative for sorted insertion; finalize() overwrites it for the
         // general case.
@@ -220,13 +273,29 @@ impl SparseSynapseMatrix {
     /// `pre_id`. O(edges + neurons). **Must be called after all [`add`]s and
     /// before any [`connections`] read whenever edges were added out of
     /// `pre_id` order** (the default for `build_topology`). Reorders the four
-    /// parallel arrays so each presynaptic neuron's outgoing edges are
-    /// contiguous, and rebuilds `row_ptrs` from real per-neuron out-degrees.
+    /// forward parallel arrays so each presynaptic neuron's outgoing edges are
+    /// contiguous, rebuilds `row_ptrs` from real per-neuron out-degrees,
+    /// builds the inverse permutation `weight_index_of` (so [`set_weight`]
+    /// stays correct post-sort), and builds the reverse CSR (by `post_id`) so
+    /// [`incoming`] works.
     ///
     /// [`add`]: Self::add
     /// [`connections`]: Self::connections
+    /// [`incoming`]: Self::incoming
+    /// [`set_weight`]: Self::set_weight
     pub fn finalize(&mut self) {
         let n = self.neuron_count as usize;
+        let m = self.weights.len();
+
+        // At entry, weights/col_indices/synapse_indices/pre_ids are all in
+        // insertion order and mutually aligned. Capture the post + syn copies
+        // now (before the forward scatter reassigns col_indices/synapse_indices)
+        // so the reverse CSR can be counting-sorted by post_id from the same
+        // insertion-order source.
+        let ins_post: Vec<u16> = self.col_indices.clone();
+        let ins_syn: Vec<usize> = self.synapse_indices.clone();
+
+        // ----- Forward sort by pre_id -----
         // Count out-degree per presynaptic neuron.
         let mut degree = vec![0u32; n];
         for &pre in &self.pre_ids {
@@ -238,7 +307,6 @@ impl SparseSynapseMatrix {
             self.row_ptrs[k + 1] = self.row_ptrs[k] + deg;
         }
         // Stable scatter into sorted order.
-        let m = self.weights.len();
         let mut new_weights = vec![0i16; m];
         let mut new_col = vec![0u16; m];
         let mut new_syn = vec![0usize; m];
@@ -253,6 +321,52 @@ impl SparseSynapseMatrix {
         self.weights = new_weights;
         self.col_indices = new_col;
         self.synapse_indices = new_syn;
+
+        // ----- Inverse permutation: weight_index_of[syn_idx] = sorted position -----
+        // After the scatter, synapse_indices[pos] holds the synapse index living
+        // at sorted position pos. Invert it so set_weight(syn_idx) lands on the
+        // right slot. Without this, set_weight(syn_idx) would write weights[syn_idx]
+        // — which after the sort holds a *different* edge's weight (the bd5b098
+        // latent bug: plasticity deltas were written to the wrong CSR slots,
+        // corrupting propagation weights).
+        let mut inv = vec![0usize; m];
+        for (pos, &syn_idx) in self.synapse_indices.iter().enumerate() {
+            if syn_idx < m {
+                inv[syn_idx] = pos;
+            }
+        }
+        self.weight_index_of = inv;
+
+        // ----- Reverse CSR by post_id (for the LTP post-firing path) -----
+        // Stable counting-sort the same edges by postsynaptic neuron, carrying
+        // pre_id (still insertion-order in self.pre_ids) and synapse index
+        // (ins_syn, captured above). ins_post is the sort key.
+        let mut post_degree = vec![0u32; n];
+        for &post in &ins_post {
+            let p = post as usize;
+            if p < n {
+                post_degree[p] += 1;
+            }
+        }
+        let mut rv_row_ptrs = vec![0u32; n + 1];
+        for (k, &deg) in post_degree.iter().enumerate() {
+            rv_row_ptrs[k + 1] = rv_row_ptrs[k] + deg;
+        }
+        let mut rv_pre_ids = vec![0u16; m];
+        let mut rv_syn_indices = vec![0usize; m];
+        let mut rcursor = rv_row_ptrs.clone();
+        for i in 0..m {
+            let post = ins_post[i] as usize;
+            if post < n {
+                let pos = rcursor[post] as usize;
+                rv_pre_ids[pos] = self.pre_ids[i];
+                rv_syn_indices[pos] = ins_syn[i];
+                rcursor[post] += 1;
+            }
+        }
+        self.rv_row_ptrs = rv_row_ptrs;
+        self.rv_pre_ids = rv_pre_ids;
+        self.rv_syn_indices = rv_syn_indices;
     }
 
     /// Iterate synapses from `pre_id`. Returns `(post_id, weight, synapse_index)` tuples.
@@ -270,10 +384,40 @@ impl SparseSynapseMatrix {
         }
     }
 
-    /// Update the stored weight for a synapse index.
+    /// Iterate **incoming** synapses to `post_id` (reverse CSR). Returns
+    /// `(pre_id, synapse_index)` tuples. O(1) setup, O(in-degree) iteration.
+    /// Empty until [`finalize`] is called.
+    ///
+    /// [`finalize`]: Self::finalize
+    #[must_use]
+    pub fn incoming(&self, post_id: u16) -> IncomingIter<'_> {
+        if self.rv_row_ptrs.is_empty() {
+            return IncomingIter {
+                pre_ids: &[],
+                syn_indices: &[],
+                pos: 0,
+            };
+        }
+        debug_assert!(post_id < self.neuron_count);
+        let start = self.rv_row_ptrs[post_id as usize] as usize;
+        let end = self.rv_row_ptrs[post_id as usize + 1] as usize;
+        IncomingIter {
+            pre_ids: &self.rv_pre_ids[start..end],
+            syn_indices: &self.rv_syn_indices[start..end],
+            pos: 0,
+        }
+    }
+
+    /// Update the stored weight for a synapse index. Routes through
+    /// `weight_index_of` (the inverse permutation) so the write lands on the
+    /// correct forward-sorted slot even after [`finalize`] reordered the arrays.
+    ///
+    /// [`finalize`]: Self::finalize
     pub fn set_weight(&mut self, synapse_index: usize, weight: i16) {
-        if let Some(slot) = self.weights.get_mut(synapse_index) {
-            *slot = weight;
+        if let Some(&pos) = self.weight_index_of.get(synapse_index) {
+            if let Some(slot) = self.weights.get_mut(pos) {
+                *slot = weight;
+            }
         }
     }
 
@@ -285,6 +429,10 @@ impl SparseSynapseMatrix {
         self.col_indices.clear();
         self.synapse_indices.clear();
         self.pre_ids.clear();
+        self.weight_index_of.clear();
+        self.rv_row_ptrs.clear();
+        self.rv_pre_ids.clear();
+        self.rv_syn_indices.clear();
         self.row_ptrs.iter_mut().for_each(|p| *p = 0);
     }
 
@@ -320,6 +468,28 @@ impl Iterator for SynapseIter<'_> {
                 self.weights[self.pos],
                 self.synapse_indices[self.pos],
             );
+            self.pos += 1;
+            Some(item)
+        } else {
+            None
+        }
+    }
+}
+
+/// Iterator over a single postsynaptic neuron's incoming synapses (reverse CSR).
+#[derive(Debug, Clone)]
+pub struct IncomingIter<'a> {
+    pre_ids: &'a [u16],
+    syn_indices: &'a [usize],
+    pos: usize,
+}
+
+impl Iterator for IncomingIter<'_> {
+    type Item = (u16, usize); // (pre_id, synapse_index)
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos < self.pre_ids.len() {
+            let item = (self.pre_ids[self.pos], self.syn_indices[self.pos]);
             self.pos += 1;
             Some(item)
         } else {
@@ -516,7 +686,7 @@ impl SpikingNeuralNetwork {
             }
         }
 
-        // Phase 3: apply STDP plasticity for every active synapse (O(queue)).
+        // Phase 3: apply pairwise STDP plasticity (LTD + LTP passes).
         // Gated so callers (e.g. the visualizer) can run in a sustained-firing
         // mode with fixed weights, toggling learning on to observe it.
         if self.plasticity_enabled {
@@ -531,41 +701,118 @@ impl SpikingNeuralNetwork {
         Ok(output_spikes)
     }
 
-    /// Apply STDP to every queued (pre, post, `synapse_idx`, `pre_time`) entry.
+    /// Apply pairwise STDP for this step — both halves of the rule.
+    ///
+    /// **LTD pass (pre-firing, post-before-pre):** for every queued presynaptic
+    /// spike, pair it with the postsynaptic neuron's most recent spike. If post
+    /// fired this step too, the a9a2679 same-step tie-break yields `dt = +1` →
+    /// LTD (the documented bias toward depression on coincidence); otherwise
+    /// `dt = pre_time − post.last_spike ≥ 0` → LTD branch. This is the
+    /// historically-existing path; left intact.
+    ///
+    /// **LTP pass (post-firing, pre-before-post):** for every postsynaptic
+    /// neuron that fired this step, pair it with each incoming synapse's
+    /// presynaptic partner. When that presynaptic neuron fired *earlier* (a
+    /// previous step, within the STDP window) but *not this step*, `dt =
+    /// pre.last_spike − post_time < 0` → LTP. This is the half that was missing
+    /// through Stage 1.5c — the prior substrate was structurally LTD-only
+    /// (`update_plasticity` only visited pre-firing events, so `dt ≥ 0` always
+    /// and the LTP branch of `calculate_weight_change` was unreachable). It is
+    /// now reachable via the reverse CSR ([`SparseSynapseMatrix::incoming`]).
+    ///
+    /// **No double-counting.** The two passes are disjoint per synapse per step:
+    /// a synapse whose pre and post both fire this step is handled by the LTD
+    /// pass (tie-break) and explicitly skipped by the LTP pass's `pre didn't
+    /// fire this step` guard — preserving the a9a2679 same-step invariant.
     ///
     /// # Bug fix vs v0.1
     ///
     /// v0.1 used `dt_ltd = -1000` hardcoded for the LTD branch (post not firing
     /// this step), which is LTP sign. v2 computes dt from actual pre/post spike
-    /// timing: if post fired this step → dt ≈ 0 (LTP at the limit); otherwise
-    /// look up post's `last_spike_time_us` from its `LIFNeuron` and compute real dt.
+    /// timing. And through Stage 1.5c v2 only computed the LTD half (pre-firing
+    /// events); the LTP half is added here.
+    ///
+    /// [`SparseSynapseMatrix::incoming`]: SparseSynapseMatrix::incoming
     fn update_plasticity(&mut self, firing_neurons: &[u16]) {
-        if self.plasticity_queue.is_empty() {
+        if self.plasticity_queue.is_empty() && firing_neurons.is_empty() {
             return;
         }
-        // Snapshot firing set for post lookup.
-        let post_fired_this_step = |id: u16| firing_neurons.contains(&id);
+        let fired_this_step = |id: u16| firing_neurons.contains(&id);
 
-        for &(_pre_id, post_id, syn_idx, pre_time) in &self.plasticity_queue.clone() {
+        // ----- LTD pass: pre-firing events (post-before-pre) -----
+        // dt ≥ 0 by construction (pre fires this step; post's reference spike is
+        // ≤ pre_time), so only the LTD branch of the rule fires here.
+        if !self.plasticity_queue.is_empty() {
+            for &(_pre_id, post_id, syn_idx, pre_time) in &self.plasticity_queue.clone() {
+                let Some(synapse) = self.synapses.get_mut(syn_idx) else {
+                    continue;
+                };
+                let post_time = if fired_this_step(post_id) {
+                    // Post fired this step → near-simultaneous → small positive
+                    // dt → LTD. Use 1μs to break the tie toward LTD (treat pre
+                    // as just after post). (a9a2679 same-step fix.)
+                    pre_time.saturating_sub(1)
+                } else {
+                    // Post didn't fire this step — use its last actual spike.
+                    // If post never fired, last_spike_time_us = 0, giving a
+                    // large positive dt → LTD with decayed magnitude (~0 outside
+                    // the window once the sim has run a while).
+                    self.neurons
+                        .get(post_id as usize)
+                        .map_or(0, |n| n.last_spike_time_us)
+                };
+                // dt = pre_time - post_time. Positive (pre after post) → LTD.
+                let dt_us: i32 = (pre_time as i64 - post_time as i64)
+                    .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+                let delta = self.plasticity_rule.calculate_weight_change(dt_us);
+                synapse.update_weight(delta);
+                debug_assert!(syn_idx < self.synapse_matrix.len());
+                self.synapse_matrix.set_weight(syn_idx, synapse.weight);
+                self.stats.plasticity_events += 1;
+            }
+        }
+
+        // ----- LTP pass: post-firing events (pre-before-post) -----
+        // For each firing post, pair with each incoming presynaptic spike that
+        // happened strictly earlier (a previous step, within the window). The
+        // guard `!fired_this_step(pre_id)` keeps this disjoint from the LTD pass
+        // (same-step co-fire is LTD-only, preserving a9a2679) and prevents
+        // double-counting. `last_spike_time_us > 0` excludes neurons that never
+        // fired (their time-0 sentinel would otherwise fake a recent pre spike
+        // and spuriously potentiate silent partners early in the run).
+        let post_time = self.current_time_us;
+        // Collect work items first: incoming() borrows synapse_matrix
+        // immutably, but applying the delta mutates synapses + synapse_matrix.
+        let mut ltp_work: Vec<(usize, i32)> = Vec::new();
+        for &post_id in firing_neurons {
+            for (pre_id, syn_idx) in self.synapse_matrix.incoming(post_id) {
+                if fired_this_step(pre_id) {
+                    continue; // same-step co-fire handled by LTD pass.
+                }
+                let Some(pre_n) = self.neurons.get(pre_id as usize) else {
+                    continue;
+                };
+                let pre_time = pre_n.last_spike_time_us;
+                if pre_time == 0 {
+                    continue; // pre never fired — no real pre-before-post pair.
+                }
+                // dt = pre_time - post_time < 0 (pre fired earlier) → LTP branch.
+                let dt_us: i32 = (pre_time as i64 - post_time as i64)
+                    .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+                if dt_us >= 0 {
+                    continue; // defensive: only the LTP (dt<0) branch belongs here.
+                }
+                ltp_work.push((syn_idx, dt_us));
+            }
+        }
+        for (syn_idx, dt_us) in ltp_work {
             let Some(synapse) = self.synapses.get_mut(syn_idx) else {
                 continue;
             };
-            let post_time = if post_fired_this_step(post_id) {
-                // Post fired this step → near-simultaneous → small positive dt → LTD.
-                // Use 1μs to break the tie toward LTD (treat pre as just after post).
-                pre_time.saturating_sub(1)
-            } else {
-                // Post didn't fire this step — use its last actual spike time.
-                // If post never fired, last_spike_time_us = 0, giving a large
-                // positive dt → LTD with decayed magnitude. Reasonable default.
-                self.neurons
-                    .get(post_id as usize)
-                    .map_or(0, |n| n.last_spike_time_us)
-            };
-            // dt = pre_time - post_time. Positive (pre after post) → LTD.
-            let dt_us: i32 =
-                (pre_time as i64 - post_time as i64).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
             let delta = self.plasticity_rule.calculate_weight_change(dt_us);
+            if delta == 0 {
+                continue; // outside the window — no event to count.
+            }
             synapse.update_weight(delta);
             debug_assert!(syn_idx < self.synapse_matrix.len());
             self.synapse_matrix.set_weight(syn_idx, synapse.weight);
@@ -1588,6 +1835,233 @@ mod tests {
             csr_edge.1, synapse_weight,
             "CSR transmission weight must mirror synapse weight after STDP"
         );
+    }
+
+    // ----- Full pairwise STDP (LTP + LTD) regression suite -----
+    //
+    // Through Stage 1.5c the substrate was structurally LTD-only:
+    // `update_plasticity` visited only pre-firing events, so `dt ≥ 0` always and
+    // the LTP branch (`dt < 0`) was unreachable. The post-firing LTP path added
+    // in this change makes the rule genuinely bidirectional. These tests pin
+    // both halves and the invariants that keep them from interfering.
+
+    #[test]
+    fn ltp_post_firing_strengthens_synapse_when_pre_fired_earlier() {
+        // The focused proof that LTP is now reachable in orchestration: a
+        // postsynaptic spike paired with a recent presynaptic spike (pre-before-
+        // post, dt < 0) potentiates the synapse. This was impossible before the
+        // post-firing LTP pass existed.
+        let mut net = SpikingNeuralNetwork::new(
+            2,
+            1000,
+            NetworkTopology::Balanced {
+                excitatory_ratio: 0.5,
+            },
+        )
+        .expect("valid");
+        net.neurons[0].noise_amplitude_ua = 0;
+        net.neurons[1].noise_amplitude_ua = 0;
+        net.add_synapse(0, 1, 100).expect("synapse");
+        // finalize() builds the reverse CSR so incoming(post) resolves the
+        // pre→post edge for the LTP pass.
+        net.synapse_matrix.finalize();
+        assert_eq!(
+            net.synapse_matrix.incoming(1).count(),
+            1,
+            "reverse CSR must list the one incoming edge to post 1"
+        );
+
+        let start_weight = net.synapses[0].weight;
+        // Pre fired 3 ms ago; post fires "now" at current_time_us = 10_000.
+        net.neurons[0].last_spike_time_us = 7_000;
+        net.current_time_us = 10_000;
+        // Only the post fired this step; plasticity_queue stays empty (no pre
+        // spike this step) so the LTD pass is inert — only LTP can fire.
+        net.update_plasticity(&[1]);
+
+        assert!(
+            net.synapses[0].weight > start_weight,
+            "pre-before-post (dt = 7000−10000 = −3000μs) must potentiate: was {start_weight}, now {}",
+            net.synapses[0].weight
+        );
+        // And the CSR slot must mirror the strengthened synapse (inverse-perm fix).
+        let csr_w = net
+            .synapse_matrix
+            .connections(0)
+            .next()
+            .expect("csr edge")
+            .1;
+        assert_eq!(
+            csr_w, net.synapses[0].weight,
+            "CSR weight must mirror potentiated synapse weight"
+        );
+    }
+
+    #[test]
+    fn ltp_pass_does_not_double_count_same_step_cofire() {
+        // a9a2679 invariant under full STDP: when pre and post both fire in the
+        // same step, the LTD pass applies its +1μs tie-break (→ LTD) and the LTP
+        // pass must SKIP the edge (pre fired this step) — it must not cancel the
+        // depression. Net effect on a same-step co-fire is still depression.
+        let mut net = SpikingNeuralNetwork::new(
+            2,
+            1000,
+            NetworkTopology::Balanced {
+                excitatory_ratio: 0.5,
+            },
+        )
+        .expect("valid");
+        net.neurons[0].noise_amplitude_ua = 0;
+        net.neurons[1].noise_amplitude_ua = 0;
+        net.add_synapse(0, 1, 100).expect("synapse");
+        net.synapse_matrix.finalize();
+
+        let start_weight = net.synapses[0].weight;
+        net.neurons[0].last_spike_time_us = 1_000;
+        net.neurons[1].last_spike_time_us = 1_000;
+        net.current_time_us = 1_000;
+        // Both fire this step; queue the pre-firing event as step() would.
+        net.plasticity_queue.push((0, 1, 0, 1_000));
+        net.update_plasticity(&[0, 1]);
+
+        assert!(
+            net.synapses[0].weight < start_weight,
+            "same-step co-fire must still depress under full STDP: was {start_weight}, now {}",
+            net.synapses[0].weight
+        );
+    }
+
+    #[test]
+    fn ltd_pre_after_post_still_depresses_under_full_stdp() {
+        // LTD half still works under the now-bidirectional rule: pre fires this
+        // step, post fired earlier → dt > 0 → depression. The LTP pass must not
+        // fire here (post did not fire this step), so the net is pure LTD.
+        let mut net = SpikingNeuralNetwork::new(
+            2,
+            1000,
+            NetworkTopology::Balanced {
+                excitatory_ratio: 0.5,
+            },
+        )
+        .expect("valid");
+        net.neurons[0].noise_amplitude_ua = 0;
+        net.neurons[1].noise_amplitude_ua = 0;
+        net.add_synapse(0, 1, 100).expect("synapse");
+        net.synapse_matrix.finalize();
+
+        let start_weight = net.synapses[0].weight;
+        // Post fired 3 ms ago; pre fires now.
+        net.neurons[1].last_spike_time_us = 7_000;
+        net.current_time_us = 10_000;
+        net.plasticity_queue.push((0, 1, 0, 10_000));
+        // Only pre fired this step.
+        net.update_plasticity(&[0]);
+
+        assert!(
+            net.synapses[0].weight < start_weight,
+            "post-before-pre (dt = +3000μs) must depress under full STDP: was {start_weight}, now {}",
+            net.synapses[0].weight
+        );
+    }
+
+    #[test]
+    fn full_stdp_is_bidirectional_in_orchestration() {
+        // Orchestration-level proof that both branches are reachable in a real
+        // (non-hand-primed) run. Under sustained drive, recurrent timing jitter
+        // produces both pre-after-post (LTD) and pre-before-post (LTP) pairs, so
+        // some weights must increase AND some decrease. Through 1.5c `up` was
+        // always 0 (depression-only); this pins that the substrate no longer is.
+        let mut net =
+            SpikingNeuralNetwork::new(64, 1000, NetworkTopology::default()).expect("valid");
+        net.build_topology().expect("build");
+        let init: Vec<i16> = net.synapses().iter().map(|s| s.weight).collect();
+        net.set_plasticity_enabled(true);
+        let inputs = vec![600_i16; 64];
+        for _ in 0..400 {
+            let _ = net.step(&inputs).expect("step");
+        }
+        let (mut up, mut down) = (0u32, 0u32);
+        for (s, &w0) in net.synapses().iter().zip(init.iter()) {
+            if s.weight > w0 {
+                up += 1;
+            } else if s.weight < w0 {
+                down += 1;
+            }
+        }
+        assert!(up > 0, "LTP must be reachable: got 0 weights increased");
+        assert!(down > 0, "LTD must still fire: got 0 weights decreased");
+    }
+
+    #[test]
+    fn csr_weight_index_of_keeps_slots_synced_in_multi_synapse_net() {
+        // Regression for the bd5b098 latent bug: finalize()'s counting sort
+        // reorders `weights` by pre_id, so the old `set_weight(syn_idx)` (which
+        // indexed weights[syn_idx] directly) wrote deltas to the WRONG slots —
+        // desynchronizing the CSR transmission weights from `synapses[].weight`.
+        // The inverse-permutation `weight_index_of` routes each write to the
+        // correct sorted position. This runs a real balanced net (finalize
+        // reorders heavily) and asserts every CSR slot matches its synapse.
+        let mut net =
+            SpikingNeuralNetwork::new(64, 1000, NetworkTopology::default()).expect("valid");
+        net.build_topology().expect("build");
+        net.set_plasticity_enabled(true);
+        let inputs = vec![600_i16; 64];
+        for _ in 0..50 {
+            let _ = net.step(&inputs).expect("step");
+        }
+        let mut mismatches = 0u32;
+        for pre in 0..net.neuron_count() {
+            for (_post, csr_w, syn_idx) in net.synapse_matrix.connections(pre) {
+                if csr_w != net.synapses[syn_idx].weight {
+                    mismatches += 1;
+                }
+            }
+        }
+        assert_eq!(
+            mismatches, 0,
+            "every CSR forward slot must mirror its synapse weight after plasticity"
+        );
+        // Reverse CSR consistency: every incoming entry must name a synapse whose
+        // post_neuron_id matches the queried post (pins the reverse counting sort).
+        let mut rv_mismatches = 0u32;
+        for post in 0..net.neuron_count() {
+            for (pre, syn_idx) in net.synapse_matrix.incoming(post) {
+                let s = &net.synapses[syn_idx];
+                if s.pre_neuron_id != pre || s.post_neuron_id != post {
+                    rv_mismatches += 1;
+                }
+            }
+        }
+        assert_eq!(
+            rv_mismatches, 0,
+            "every reverse-CSR edge must match its synapse's (pre, post)"
+        );
+    }
+
+    #[test]
+    fn reverse_csr_incoming_lists_correct_edges_after_finalize() {
+        // Focused unit test for the reverse CSR: incoming(post) must return
+        // exactly the edges whose post_neuron_id == post, in a net where
+        // build_topology inserts in arbitrary order.
+        let mut net =
+            SpikingNeuralNetwork::new(48, 1000, NetworkTopology::default()).expect("valid");
+        net.build_topology().expect("build");
+        let mut by_post: Vec<Vec<(u16, usize)>> = (0..net.neuron_count())
+            .map(|_| Vec::new())
+            .collect();
+        for (syn_idx, s) in net.synapses().iter().enumerate() {
+            by_post[s.post_neuron_id as usize].push((s.pre_neuron_id, syn_idx));
+        }
+        for post in 0..net.neuron_count() {
+            let mut got: Vec<(u16, usize)> = net.synapse_matrix.incoming(post).collect();
+            got.sort_unstable();
+            let mut want = by_post[post as usize].clone();
+            want.sort_unstable();
+            assert_eq!(
+                got, want,
+                "incoming({post}) must return post's actual incoming edges"
+            );
+        }
     }
 
     // ----- Property tests (Cardano-grade rigor) -----
