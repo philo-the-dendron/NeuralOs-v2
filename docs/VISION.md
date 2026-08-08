@@ -109,18 +109,37 @@ artifacts, and `network::tests::ternary_gate_stage1_learning_is_frozen` pins
 the negative result as a canary (if it ever flips nonzero, the regime changed
 and the gate can be reopened).
 
-**What would reopen it — NOT started, future Stage 1.5 hypotheses:**
+**Literature check (2026-08-08).** The NO above is consistent with the field,
+not anomalous. The literature is unanimous that ternary/binary networks do
+*not* learn under deterministic per-step re-projection of small gradients —
+that is a known-dead regime. Real ternary/binary training (TWN, Li 2016
+`1605.04711`; the BitNet lineage `2504.12285` et al.) keeps latent
+full-precision weights and re-quantizes on a schedule, never per-step. So
+Stage 1 rules out *one regime* (the strictest possible), not ternary SNN
+learning itself. The original NO stands as a ruled-out baseline — do not
+re-test deterministic per-step re-projection.
 
-- **Latent-weight accumulation** (let STDP deltas build in i16, re-quantize on
-  a schedule rather than every step — true BitNet training dynamics; this is
-  the deferred shadow-accumulator, scoped out of Stage 1 precisely so the
-  minimal gate stayed honest).
-- A **ternary-native STDP rule** whose deltas are sized to γ.
-- **Per-synapse-type γ** instead of per-tensor (smaller boundaries).
+**Stage 1.5 reopen paths — literature-backed, NOT started.** Four mechanisms
+exist; two fit our constraints (`no_std`, local STDP, i16, online — no global
+backprop):
 
-Each is a deeper research choice that Stage 1 was deliberately scoped to
-avoid. The honest minimal gate returned a clean NO; that is the outcome the
-gate exists to permit — it stops the bridge from becoming a sunk-cost spiral.
+| Mechanism | Fits local STDP? | Precedent (verified 2026-08-08) |
+|---|---|---|
+| **1.5a — Latent i16 accumulation + periodic re-quantize** (STDP deltas build in i16; re-quantize every N steps, not every step) | yes | TWN `1605.04711`, BitNet `2504.12285`, Rathi-Panda-Roy `1710.04734` (STDP + "quantize at regular intervals during training") |
+| **1.5b — Stochastic bucket-flips** (each STDP event does a Bernoulli draw to flip the ternary bucket, rate ∝ STDP signal; bypasses the boundary problem; uses our existing LFSR, no shadow state) | yes — hardware-native | Wu-Saxena `1801.02797`, Mohan `2103.01271`, Camuñas-Mesa `2209.06068`, ReStoCNet `1902.04161` |
+| Surrogate gradient / STE | no — needs global backprop | Eshraghian `2202.07221` |
+| Multi-step quantized STDP rule | needs rule redesign | Liu `2306.07712` |
+
+**Recommendation.** **Try 1.5b first.** It preserves the strongest claim (the
+stored weight is genuinely ternary — no latent state, which Stage 1 was scoped
+to avoid), fits the stack exactly (LFSR already present, integer-only, local,
+biologically plausible), and directly dissolves the failure mode the gate
+found (boundary-crossing becomes a Bernoulli draw, not a magnitude problem).
+**1.5a is the safe fallback** — canonical and well-trodden, but reintroduces
+the latent state. Either is its own clean gate run; neither is started. A
+clean NO from *both* would be a real verdict on ternary SNN learning under
+local STDP — a stronger negative than Stage 1's, and still a valid stop that
+prevents the bridge from becoming a sunk-cost spiral.
 
 **The destination — a pure-Rust ternary-LLM runtime.** Stages 3 and 4 are
 where the bridge earns its ambition. Stage 3 proves the union mechanically: a
