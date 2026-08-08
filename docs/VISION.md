@@ -68,7 +68,7 @@ real artifacts already shipped, not a dead-end:
 
 | Stage | What | Standalone value (if you stop here) | The gate |
 |---|---|---|---|
-| **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES → Stage 1.5c selectivity YES → Stage 1.5d full pairwise STDP YES (the missing LTP half added + a CSR sync bug fixed; selectivity re-confirmed SI 1.000 vs i16 1.000 under structured input, rule now bidirectional). Bridge reopened (see below)** |
+| **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES (bridge reopened) → Stage 1.5c structured selectivity YES → Stage 1.5d full pairwise STDP YES (missing LTP half added + CSR sync bug fixed; selectivity re-confirmed at SI 1.000 vs i16 1.000 under structured input, rule now bidirectional). Stage 2 is now firmly earned on the corrected substrate (see below).** |
 | **2. Format bridge** | ternary format spec; BitNet-compatible **export**, Prism `Q1_0` **import** | NeuralOS speaks the lingua franca of both fields | can we round-trip a ternary tensor? |
 | **3. Shared kernel** | one `no_std` ternary matmul; a tiny hybrid net (SNN layer + dense-LLM-style layer) | a reusable Rust ternary kernel + a showable hybrid demo | does the union compose — compute something coherent? |
 | **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research |
@@ -151,8 +151,9 @@ net, γ = 125, STDP on, 300 ms. Three regimes compared:
 even with ~75% of excitatory synapses weakened to 0.
 
 **Gate verdict: YES.** Nontrivial bucket movement (802 vs 0) AND spiking
-non-collapsed (1.00×). The bridge is reopened. Stage 2 (format bridge) is
-earned.
+non-collapsed (1.00×). The bridge is reopened. Stage 2 becomes
+**conditionally motivated**, pending the structured-input selectivity test and
+any substrate-level correctness issues discovered downstream.
 
 **What ships:** `trit::stochastic_ternary_flip` (pure `no_std` Bernoulli
 flip, LFSR-driven, integer-only), `SpikingNeuralNetwork::stochastic_ternary_step`
@@ -190,7 +191,10 @@ essential control.
 **Gate verdict: YES.** Ternary reproduces the i16 differential almost exactly
 under structured input — it learns selectively, not just moves. The slight gap
 (0.985 vs 1.000) is the stochastic flip mechanism's inherent noise (0.8% of
-intra synapses retained +γ). Stage 2 (format bridge) is strongly motivated.
+intra synapses retained +γ). This established structured ternary selectivity,
+but the later Stage 1.5d rerun was still required after discovering that the
+substrate was structurally LTD-only and missing the post-firing LTP half.
+Stage 2 (format bridge) is strongly motivated.
 
 **Two honest findings about the rule (documented, not worked around):**
 

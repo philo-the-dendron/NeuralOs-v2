@@ -40,10 +40,10 @@ const W_CAP: u32 = 200;
 fn weight_color(w: i16) -> [u8; 4] {
     let w = i32::from(w);
     let mag = w.unsigned_abs().min(W_CAP); // 0..=200
-    // (r, g, b) base for the sign; brightness scales by mag/W_CAP.
+                                           // (r, g, b) base for the sign; brightness scales by mag/W_CAP.
     let (base_r, base_g, base_b) = match w.cmp(&0) {
         core::cmp::Ordering::Greater => (0xFF_u32, 0x99_u32, 0x33_u32), // orange
-        core::cmp::Ordering::Less => (0x33_u32, 0xCC_u32, 0xFF_u32), // cyan
+        core::cmp::Ordering::Less => (0x33_u32, 0xCC_u32, 0xFF_u32),    // cyan
         core::cmp::Ordering::Equal => return WM_BG,
     };
     [
@@ -85,7 +85,8 @@ impl SimRunner {
     /// Propagates [`neuralos_snn::Error`] if the network cannot be constructed
     /// or the topology fails to build (e.g. `neuron_count == 0`).
     pub fn new(neuron_count: u16, time_step_us: u32) -> neuralos_snn::Result<Self> {
-        let mut net = SpikingNeuralNetwork::new(neuron_count, time_step_us, NetworkTopology::default())?;
+        let mut net =
+            SpikingNeuralNetwork::new(neuron_count, time_step_us, NetworkTopology::default())?;
         net.build_topology()?;
         let rows = usize::from(neuron_count);
 
@@ -239,12 +240,19 @@ impl SimRunner {
             (mean, changed as f64 * 100.0 / syns.len() as f64)
         };
 
-        format!(
+        let stats = format!(
             "{:.1} Hz  ·  {} spikes  ·  {} plasticity events  ·  {:.0} ms sim  ·  \
              mean w {:.0}  ·  {:.0}% synapses changed  ·  {} neurons / {} synapses",
-            s.firing_rate_hz, s.total_spikes, s.plasticity_events, sim_ms,
-            mean_w, pct_changed, self.net.neuron_count(), self.net.synapse_count(),
-        )
+            s.firing_rate_hz,
+            s.total_spikes,
+            s.plasticity_events,
+            sim_ms,
+            mean_w,
+            pct_changed,
+            self.net.neuron_count(),
+            self.net.synapse_count(),
+        );
+        stats
     }
 }
 

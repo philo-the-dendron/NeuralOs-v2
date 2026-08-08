@@ -84,7 +84,7 @@ const OFF_GAP: u32 = 40;
 const I_ACTIVE: i16 = 600; // sustained drive to the one active group
 const I_IDLE: i16 = 0; // excitatory neurons otherwise
 const I_INH: i16 = 600; // tonic inhibitory drive — without it recurrent E→E
-// spreads activity to every group synchronously and destroys the structure.
+                        // spreads activity to every group synchronously and destroys the structure.
 /// Init phase = one full rotation cycle, STDP OFF. Defeats the
 /// `last_spike_time_us = 0` ("never fired") artifact.
 const INIT_STEPS: usize = ((ACTIVE_ON + OFF_GAP) * GROUPS as u32) as usize; // one cycle
@@ -331,9 +331,7 @@ fn main() {
         "network : balanced E/I, {NEURONS} neurons ({exc} E / {} I), dt={DT_US}μs",
         NEURONS - exc
     );
-    println!(
-        "input   : {GROUPS} groups over excitatory neurons; gapped rotating drive"
-    );
+    println!("input   : {GROUPS} groups over excitatory neurons; gapped rotating drive");
     println!(
         "          active {ACTIVE_ON} ms then {OFF_GAP} ms silent gap (cycle {cycle} ms), I_ACTIVE={I_ACTIVE}μA, I_IDLE={I_IDLE}μA, I_INH={I_INH}μA; {STEPS} steps",
         cycle = (ACTIVE_ON + OFF_GAP) * u32::from(GROUPS)
@@ -371,8 +369,18 @@ fn main() {
     let learn_log = &active_log[INIT_STEPS..];
     let (ra, ri) = drive_selectivity(&spikes, learn_log, exc);
 
-    let i16_intra = mean_f64(&ee.intra.iter().map(|&i| i16_w[i] as f64).collect::<Vec<_>>());
-    let i16_inter = mean_f64(&ee.inter.iter().map(|&i| i16_w[i] as f64).collect::<Vec<_>>());
+    let i16_intra = mean_f64(
+        &ee.intra
+            .iter()
+            .map(|&i| i16_w[i] as f64)
+            .collect::<Vec<_>>(),
+    );
+    let i16_inter = mean_f64(
+        &ee.inter
+            .iter()
+            .map(|&i| i16_w[i] as f64)
+            .collect::<Vec<_>>(),
+    );
     let i16_si = selectivity_index(i16_intra, i16_inter);
 
     println!("--- Input structure (empirical, from i16 run) ---");
@@ -380,7 +388,11 @@ fn main() {
         "  co-fire rate       : intra={:.4}   inter={:.4}   ratio {:.1}×",
         co_intra,
         co_inter,
-        if co_inter > 0.0 { co_intra / co_inter } else { f64::INFINITY }
+        if co_inter > 0.0 {
+            co_intra / co_inter
+        } else {
+            f64::INFINITY
+        }
     );
     println!(
         "  drive selectivity  : own-active Rₐ={:.1} Hz   own-idle Rᵢ={:.1} Hz   ratio {:.1}×",
@@ -389,7 +401,10 @@ fn main() {
         if ri > 0.0 { ra / ri } else { f64::INFINITY }
     );
     println!();
-    println!("--- Rule-direction check (i16, all {} synapses) ---", init_w.len());
+    println!(
+        "--- Rule-direction check (i16, all {} synapses) ---",
+        init_w.len()
+    );
     println!("  weights up / down / unchanged : {up} / {down} / {same}  (depression-only if up≈0)");
     println!();
     println!("--- Essential CONTROL: i16 baseline selectivity (E→E) ---");
@@ -414,8 +429,18 @@ fn main() {
     println!();
 
     let (tern_w, gamma, tern_rate, tern_spikes, flips) = run_ternary(&inputs);
-    let tern_intra = mean_f64(&ee.intra.iter().map(|&i| tern_w[i] as f64).collect::<Vec<_>>());
-    let tern_inter = mean_f64(&ee.inter.iter().map(|&i| tern_w[i] as f64).collect::<Vec<_>>());
+    let tern_intra = mean_f64(
+        &ee.intra
+            .iter()
+            .map(|&i| tern_w[i] as f64)
+            .collect::<Vec<_>>(),
+    );
+    let tern_inter = mean_f64(
+        &ee.inter
+            .iter()
+            .map(|&i| tern_w[i] as f64)
+            .collect::<Vec<_>>(),
+    );
     let tern_si = selectivity_index(tern_intra, tern_inter);
     let frac_plus = |idxs: &[usize]| -> f64 {
         if idxs.is_empty() {
@@ -444,8 +469,16 @@ fn main() {
     println!("  bucket flips : {flips}");
     println!();
 
-    let tern_ratio = if ref_rate > 0.0 { tern_rate / ref_rate } else { 0.0 };
-    let i16_ratio = if ref_rate > 0.0 { i16_rate / ref_rate } else { 0.0 };
+    let tern_ratio = if ref_rate > 0.0 {
+        tern_rate / ref_rate
+    } else {
+        0.0
+    };
+    let i16_ratio = if ref_rate > 0.0 {
+        i16_rate / ref_rate
+    } else {
+        0.0
+    };
     println!("--- Spiking sanity (non-collapse vs fixed-weight reference) ---");
     println!("  reference (fixed) : {:.2} Hz/neuron", ref_rate);
     println!(
@@ -475,23 +508,25 @@ fn main() {
     );
     println!();
 
-    let gate = if !control_ok {
-        "NO (INVALID) — i16 control failed to discriminate; input lacks learnable structure".to_string()
+    let gate: String;
+    if !control_ok {
+        gate = "NO (INVALID) — i16 control failed to discriminate; input lacks learnable structure"
+            .to_string();
     } else if tern_selective && spiking_ok {
-        format!(
+        gate = format!(
             "YES — ternary discriminates by correlation (SI={:.3} vs i16 SI={:.3}) and stays non-collapsed",
             tern_si, i16_si
-        )
+        );
     } else if control_ok && !tern_selective {
-        format!(
+        gate = format!(
             "NO — ternary collapses uniformly (SI={:.3}) despite i16 discriminating (SI={:.3}); too coarse to learn selectively",
             tern_si, i16_si
-        )
+        );
     } else {
-        format!(
+        gate = format!(
             "MARGINAL — ternary SI={:.3} vs i16 SI={:.3}, spiking {:.2}× ref; partial/weak discrimination",
             tern_si, i16_si, tern_ratio
-        )
-    };
+        );
+    }
     println!("GATE: {gate}");
 }
