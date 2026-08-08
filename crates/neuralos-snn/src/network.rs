@@ -132,15 +132,17 @@ impl NetworkStats {
 
 /// Compressed Sparse Row (CSR) synapse storage — O(1) per-presynaptic iteration.
 ///
-/// Three parallel arrays (the standard CSR layout):
+/// Four parallel arrays (the standard CSR layout plus a stable synapse index):
 /// - `weights[i]`: weight of synapse i
 /// - `col_indices[i]`: postsynaptic neuron ID of synapse i
-/// - `row_ptrs[n]`: start index into `weights/col_indices` for presynaptic neuron n
+/// - `synapse_indices[i]`: index of the same synapse in `SpikingNeuralNetwork::synapses`
+/// - `row_ptrs[n]`: start index into the parallel arrays for presynaptic neuron n
 ///   (length = `neuron_count` + 1; `row_ptrs`[`neuron_count`] = total synapse count)
 #[derive(Debug, Clone)]
 pub struct SparseSynapseMatrix {
     weights: Vec<i16>,
     col_indices: Vec<u16>,
+    synapse_indices: Vec<usize>,
     /// Length = `neuron_count` + 1. Built incrementally, finalized by [`finalize`].
     row_ptrs: Vec<u32>,
     /// Total neuron count (sets `row_ptrs` length).
@@ -149,10 +151,12 @@ pub struct SparseSynapseMatrix {
 
 impl SparseSynapseMatrix {
     /// New empty CSR matrix sized for `neuron_count` presynaptic neurons.
-    #[must_use] pub fn new(neuron_count: u16, estimated_synapses: usize) -> Self {
+    #[must_use]
+    pub fn new(neuron_count: u16, estimated_synapses: usize) -> Self {
         Self {
             weights: Vec::with_capacity(estimated_synapses),
             col_indices: Vec::with_capacity(estimated_synapses),
+            synapse_indices: Vec::with_capacity(estimated_synapses),
             row_ptrs: vec![0; neuron_count as usize + 1],
             neuron_count,
         }
@@ -160,7 +164,7 @@ impl SparseSynapseMatrix {
 
     /// Append a synapse. Must be called in (`pre_id`, `post_id`) order — or call
     /// [`finalize`] to recompute row pointers from scratch after bulk insertion.
-    pub fn add(&mut self, pre_id: u16, post_id: u16, weight: i16) {
+    pub fn add(&mut self, pre_id: u16, post_id: u16, weight: i16, synapse_index: usize) {
         debug_assert!(
             pre_id < self.neuron_count,
             "pre_id {pre_id} ≥ neuron_count {}",
@@ -168,6 +172,7 @@ impl SparseSynapseMatrix {
         );
         self.weights.push(weight);
         self.col_indices.push(post_id);
+        self.synapse_indices.push(synapse_index);
         // Incremental row_ptrs: bump every row after pre_id by 1.
         for row in (pre_id as usize + 1)..self.row_ptrs.len() {
             self.row_ptrs[row] += 1;
@@ -181,16 +186,25 @@ impl SparseSynapseMatrix {
         // No-op: add() maintains row_ptrs incrementally.
     }
 
-    /// Iterate synapses from `pre_id`. Returns `(post_id, weight)` pairs.
+    /// Iterate synapses from `pre_id`. Returns `(post_id, weight, synapse_index)` tuples.
     /// O(1) setup, O(out-degree) iteration.
-    #[must_use] pub fn connections(&self, pre_id: u16) -> SynapseIter<'_> {
+    #[must_use]
+    pub fn connections(&self, pre_id: u16) -> SynapseIter<'_> {
         debug_assert!(pre_id < self.neuron_count);
         let start = self.row_ptrs[pre_id as usize] as usize;
         let end = self.row_ptrs[pre_id as usize + 1] as usize;
         SynapseIter {
             weights: &self.weights[start..end],
             col_indices: &self.col_indices[start..end],
+            synapse_indices: &self.synapse_indices[start..end],
             pos: 0,
+        }
+    }
+
+    /// Update the stored weight for a synapse index.
+    pub fn set_weight(&mut self, synapse_index: usize, weight: i16) {
+        if let Some(slot) = self.weights.get_mut(synapse_index) {
+            *slot = weight;
         }
     }
 
@@ -212,15 +226,20 @@ impl SparseSynapseMatrix {
 pub struct SynapseIter<'a> {
     weights: &'a [i16],
     col_indices: &'a [u16],
+    synapse_indices: &'a [usize],
     pos: usize,
 }
 
 impl Iterator for SynapseIter<'_> {
-    type Item = (u16, i16); // (post_id, weight)
+    type Item = (u16, i16, usize); // (post_id, weight, synapse_index)
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos < self.weights.len() {
-            let item = (self.col_indices[self.pos], self.weights[self.pos]);
+            let item = (
+                self.col_indices[self.pos],
+                self.weights[self.pos],
+                self.synapse_indices[self.pos],
+            );
             self.pos += 1;
             Some(item)
         } else {
@@ -230,6 +249,10 @@ impl Iterator for SynapseIter<'_> {
 }
 
 /// Plasticity queue entry: `(pre_neuron_id, post_neuron_id, synapse_index, pre_spike_time_us)`.
+///
+/// `synapse_index` is the shared stable index into both `self.synapses` and the
+/// corresponding CSR weight slot, so plasticity can update the same synapse the
+/// propagation pass just used.
 /// Drained by [`SpikingNeuralNetwork::update_plasticity`].
 type PlasticityEntry = (u16, u16, usize, u32);
 
@@ -240,9 +263,14 @@ type PlasticityEntry = (u16, u16, usize, u32);
 /// [`step`](Self::step) advances the simulation by `time_step_us` microseconds.
 pub struct SpikingNeuralNetwork {
     neurons: Vec<LIFNeuron>,
-    /// Parallel to synapse insertion order. Indexed via plasticity queue.
+    /// Parallel to CSR insertion order. Indexed via the plasticity queue and the
+    /// stable indices carried inside `synapse_matrix`.
     synapses: Vec<Synapse>,
     /// CSR storage for fast per-presynaptic iteration during transmission.
+    ///
+    /// Invariant: `synapse_matrix.synapse_indices[k]` identifies the same logical
+    /// synapse as `synapses[synapse_matrix.synapse_indices[k]]`, and the weight in
+    /// the corresponding CSR slot is kept in sync after every STDP update.
     synapse_matrix: SparseSynapseMatrix,
     time_step_us: u32,
     current_time_us: u32,
@@ -268,11 +296,7 @@ impl SpikingNeuralNetwork {
     /// # Errors
     ///
     /// Returns [`Error::InvalidParameter`] if `neuron_count == 0` or `time_step_us == 0`.
-    pub fn new(
-        neuron_count: u16,
-        time_step_us: u32,
-        topology: NetworkTopology,
-    ) -> Result<Self> {
+    pub fn new(neuron_count: u16, time_step_us: u32, topology: NetworkTopology) -> Result<Self> {
         if neuron_count == 0 {
             return Err(Error::InvalidParameter);
         }
@@ -367,19 +391,11 @@ impl SpikingNeuralNetwork {
         // For each firing neuron, iterate its outgoing CSR slice and inject
         // current into each postsynaptic partner. Queue plasticity updates.
         for &pre_id in &firing_neurons {
-            for (post_id, weight) in self.synapse_matrix.connections(pre_id) {
+            for (post_id, weight, syn_idx) in self.synapse_matrix.connections(pre_id) {
                 if let Some(post_n) = self.neurons.get_mut(post_id as usize) {
                     // Scale weight down to keep currents in a reasonable μA range.
                     post_n.add_synaptic_current(weight / 10);
                 }
-                // Find synapse index for the plasticity queue.
-                // Linear scan — for the network sizes we run, this is fine.
-                // (A reverse index from (pre, post) → synapse_idx would speed this up.)
-                let syn_idx = self
-                    .synapses
-                    .iter()
-                    .position(|s| s.pre_neuron_id == pre_id && s.post_neuron_id == post_id)
-                    .unwrap_or(0);
                 self.plasticity_queue
                     .push((pre_id, post_id, syn_idx, self.current_time_us));
             }
@@ -421,8 +437,8 @@ impl SpikingNeuralNetwork {
             };
             let post_time = if post_fired_this_step(post_id) {
                 // Post fired this step → near-simultaneous → small positive dt → LTD.
-                // Use 1μs to break the tie toward LTD (post fired just after pre).
-                pre_time.saturating_add(1)
+                // Use 1μs to break the tie toward LTD (treat pre as just after post).
+                pre_time.saturating_sub(1)
             } else {
                 // Post didn't fire this step — use its last actual spike time.
                 // If post never fired, last_spike_time_us = 0, giving a large
@@ -432,9 +448,12 @@ impl SpikingNeuralNetwork {
                     .map_or(0, |n| n.last_spike_time_us)
             };
             // dt = pre_time - post_time. Positive (pre after post) → LTD.
-            let dt_us: i32 = (pre_time as i64 - post_time as i64).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+            let dt_us: i32 =
+                (pre_time as i64 - post_time as i64).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
             let delta = self.plasticity_rule.calculate_weight_change(dt_us);
             synapse.update_weight(delta);
+            debug_assert!(syn_idx < self.synapse_matrix.len());
+            self.synapse_matrix.set_weight(syn_idx, synapse.weight);
             self.stats.plasticity_events += 1;
         }
     }
@@ -456,8 +475,7 @@ impl SpikingNeuralNetwork {
         }
         let time_sec = self.current_time_us as f64 / 1_000_000.0;
         if time_sec > 0.0 {
-            self.stats.firing_rate_hz =
-                self.stats.total_spikes as f64 / (time_sec * n as f64);
+            self.stats.firing_rate_hz = self.stats.total_spikes as f64 / (time_sec * n as f64);
         }
     }
 
@@ -467,7 +485,10 @@ impl SpikingNeuralNetwork {
             return Err(Error::IndexOutOfBounds);
         }
         let synapse = Synapse::new(pre_id, post_id, weight)?;
-        self.synapse_matrix.add(pre_id, post_id, weight);
+        let synapse_index = self.synapses.len();
+        debug_assert_eq!(synapse_index, self.synapse_matrix.len());
+        self.synapse_matrix
+            .add(pre_id, post_id, weight, synapse_index);
         self.synapses.push(synapse);
         Ok(())
     }
@@ -538,7 +559,8 @@ impl SpikingNeuralNetwork {
     }
 
     /// Read-only access to spike history (most recent first; back = oldest).
-    #[must_use] pub fn spike_history(&self) -> &VecDeque<Spike> {
+    #[must_use]
+    pub fn spike_history(&self) -> &VecDeque<Spike> {
         &self.spike_history
     }
 
@@ -727,9 +749,9 @@ fn estimate_synapses(neuron_count: u16, topology: &NetworkTopology) -> usize {
             ((neuron_count as usize).saturating_mul(neuron_count as usize - 1) as f64
                 * *connectivity) as usize
         }
-        NetworkTopology::SmallWorld { local_connections, .. } => {
-            neuron_count as usize * (*local_connections as usize) * 2
-        }
+        NetworkTopology::SmallWorld {
+            local_connections, ..
+        } => neuron_count as usize * (*local_connections as usize) * 2,
         NetworkTopology::Feedforward { layers } => layers
             .windows(2)
             .map(|w| w[0] as usize * w[1] as usize / 2)
@@ -772,22 +794,28 @@ mod tests {
 
     #[test]
     fn topology_default_is_balanced_80_20() {
-        let net = SpikingNeuralNetwork::new(100, 1000, NetworkTopology::default())
-            .expect("valid");
+        let net = SpikingNeuralNetwork::new(100, 1000, NetworkTopology::default()).expect("valid");
         let excitatory = net
             .neurons
             .iter()
             .filter(|n| n.neuron_type == NeuronType::Excitatory)
             .count();
-        assert_eq!(excitatory, 80, "default topology should give 80% excitatory");
+        assert_eq!(
+            excitatory, 80,
+            "default topology should give 80% excitatory"
+        );
     }
 
     #[test]
     fn random_topology_produces_synapses() {
-        let mut net = SpikingNeuralNetwork::new(50, 1000, NetworkTopology::Random { connectivity: 0.2 })
-            .expect("valid");
+        let mut net =
+            SpikingNeuralNetwork::new(50, 1000, NetworkTopology::Random { connectivity: 0.2 })
+                .expect("valid");
         net.build_topology().expect("build");
-        assert!(net.synapse_count() > 0, "random topology must produce synapses");
+        assert!(
+            net.synapse_count() > 0,
+            "random topology must produce synapses"
+        );
     }
 
     #[test]
@@ -795,7 +823,10 @@ mod tests {
         let mut net = SpikingNeuralNetwork::new(
             50,
             1000,
-            NetworkTopology::SmallWorld { local_connections: 4, rewiring_prob: 0.1 },
+            NetworkTopology::SmallWorld {
+                local_connections: 4,
+                rewiring_prob: 0.1,
+            },
         )
         .expect("valid");
         net.build_topology().expect("build");
@@ -807,7 +838,9 @@ mod tests {
         let mut net = SpikingNeuralNetwork::new(
             30,
             1000,
-            NetworkTopology::Feedforward { layers: &[10, 15, 5] },
+            NetworkTopology::Feedforward {
+                layers: &[10, 15, 5],
+            },
         )
         .expect("valid");
         net.build_topology().expect("build");
@@ -819,7 +852,9 @@ mod tests {
         let mut net = SpikingNeuralNetwork::new(
             50,
             1000,
-            NetworkTopology::Balanced { excitatory_ratio: 0.8 },
+            NetworkTopology::Balanced {
+                excitatory_ratio: 0.8,
+            },
         )
         .expect("valid");
         net.build_topology().expect("build");
@@ -831,7 +866,9 @@ mod tests {
         let mut net = SpikingNeuralNetwork::new(
             30,
             1000,
-            NetworkTopology::Feedforward { layers: &[10, 15, 10] }, // sums to 35, not 30
+            NetworkTopology::Feedforward {
+                layers: &[10, 15, 10],
+            }, // sums to 35, not 30
         )
         .expect("valid net init");
         let err = net.build_topology();
@@ -843,7 +880,9 @@ mod tests {
         let mut net = SpikingNeuralNetwork::new(
             10,
             1000,
-            NetworkTopology::Balanced { excitatory_ratio: 1.0 },
+            NetworkTopology::Balanced {
+                excitatory_ratio: 1.0,
+            },
         )
         .expect("valid net init");
         let err = net.build_topology();
@@ -852,8 +891,8 @@ mod tests {
 
     #[test]
     fn step_advances_time_by_time_step() {
-        let mut net = SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default())
-            .expect("valid");
+        let mut net =
+            SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default()).expect("valid");
         net.build_topology().expect("build");
         let inputs = vec![0; 10];
         let _ = net.step(&inputs).expect("step");
@@ -864,8 +903,8 @@ mod tests {
 
     #[test]
     fn step_with_strong_input_produces_spikes() {
-        let mut net = SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default())
-            .expect("valid");
+        let mut net =
+            SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default()).expect("valid");
         net.build_topology().expect("build");
         let inputs = vec![1000; 10]; // Strong input to all
         let mut total_spikes = 0u32;
@@ -873,13 +912,16 @@ mod tests {
             let spikes = net.step(&inputs).expect("step");
             total_spikes += spikes.len() as u32;
         }
-        assert!(total_spikes > 0, "strong input over 50 steps must produce spikes");
+        assert!(
+            total_spikes > 0,
+            "strong input over 50 steps must produce spikes"
+        );
     }
 
     #[test]
     fn reset_clears_time_and_spikes() {
-        let mut net = SpikingNeuralNetwork::new(20, 1000, NetworkTopology::default())
-            .expect("valid");
+        let mut net =
+            SpikingNeuralNetwork::new(20, 1000, NetworkTopology::default()).expect("valid");
         net.build_topology().expect("build");
         let inputs = vec![1000; 20];
         for _ in 0..5 {
@@ -895,8 +937,8 @@ mod tests {
 
     #[test]
     fn add_synapse_rejects_out_of_bounds() {
-        let mut net = SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default())
-            .expect("valid");
+        let mut net =
+            SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default()).expect("valid");
         let err = net.add_synapse(0, 100, 50);
         assert!(err.is_err());
         let err = net.add_synapse(100, 0, 50);
@@ -905,8 +947,8 @@ mod tests {
 
     #[test]
     fn add_synapse_rejects_self_connection() {
-        let mut net = SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default())
-            .expect("valid");
+        let mut net =
+            SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default()).expect("valid");
         let err = net.add_synapse(3, 3, 100);
         assert!(err.is_err());
     }
@@ -914,14 +956,14 @@ mod tests {
     #[test]
     fn sparse_matrix_iter_returns_added_synapses() {
         let mut m = SparseSynapseMatrix::new(5, 4);
-        m.add(0, 1, 100);
-        m.add(0, 2, 200);
-        m.add(2, 3, -150);
-        let row0: Vec<(u16, i16)> = m.connections(0).collect();
-        assert_eq!(row0, vec![(1, 100), (2, 200)]);
-        let row2: Vec<(u16, i16)> = m.connections(2).collect();
-        assert_eq!(row2, vec![(3, -150)]);
-        let row1: Vec<(u16, i16)> = m.connections(1).collect();
+        m.add(0, 1, 100, 0);
+        m.add(0, 2, 200, 1);
+        m.add(2, 3, -150, 2);
+        let row0: Vec<(u16, i16, usize)> = m.connections(0).collect();
+        assert_eq!(row0, vec![(1, 100, 0), (2, 200, 1)]);
+        let row2: Vec<(u16, i16, usize)> = m.connections(2).collect();
+        assert_eq!(row2, vec![(3, -150, 2)]);
+        let row1: Vec<(u16, i16, usize)> = m.connections(1).collect();
         assert!(row1.is_empty());
         assert_eq!(m.len(), 3);
     }
@@ -931,6 +973,93 @@ mod tests {
         let a = advance_lfsr(0xDEAD_BEEF);
         let b = advance_lfsr(0xDEAD_BEEF);
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn same_step_cofire_biases_toward_ltd() {
+        let mut net = SpikingNeuralNetwork::new(
+            2,
+            1000,
+            NetworkTopology::Balanced {
+                excitatory_ratio: 0.5,
+            },
+        )
+        .expect("valid");
+        net.neurons[0].noise_amplitude_ua = 0;
+        net.neurons[1].noise_amplitude_ua = 0;
+        net.add_synapse(0, 1, 100).expect("synapse");
+
+        net.neurons[0].last_spike_time_us = 1_000;
+        net.neurons[1].last_spike_time_us = 1_000;
+        net.plasticity_queue.push((0, 1, 0, 1_000));
+        net.update_plasticity(&[0, 1]);
+
+        assert!(
+            net.synapses[0].weight < 100,
+            "same-step tie should depress weight"
+        );
+    }
+
+    #[test]
+    fn plasticity_updated_weight_affects_future_propagation() {
+        let mut net = SpikingNeuralNetwork::new(
+            2,
+            1000,
+            NetworkTopology::Balanced {
+                excitatory_ratio: 0.5,
+            },
+        )
+        .expect("valid");
+        net.neurons[0].noise_amplitude_ua = 0;
+        net.neurons[1].noise_amplitude_ua = 0;
+        net.add_synapse(0, 1, 100).expect("synapse");
+
+        net.neurons[0].last_spike_time_us = 1_000;
+        net.neurons[1].last_spike_time_us = 1_000;
+        net.plasticity_queue.push((0, 1, 0, 1_000));
+        net.update_plasticity(&[0, 1]);
+        let updated_weight = net.synapses[0].weight;
+        assert_ne!(updated_weight, 100, "plasticity should change weight");
+
+        net.neurons[1].clear_synaptic_current();
+        for (post_id, weight, _) in net.synapse_matrix.connections(0) {
+            if post_id == 1 {
+                net.neurons[1].add_synaptic_current(weight / 10);
+            }
+        }
+        assert_eq!(
+            net.neurons[1].synaptic_current_ua,
+            updated_weight / 10,
+            "propagation must use the updated synapse weight"
+        );
+    }
+
+    #[test]
+    fn csr_weight_stays_in_sync_with_synapse_after_plasticity() {
+        let mut net = SpikingNeuralNetwork::new(
+            2,
+            1000,
+            NetworkTopology::Balanced {
+                excitatory_ratio: 0.5,
+            },
+        )
+        .expect("valid");
+        net.neurons[0].noise_amplitude_ua = 0;
+        net.neurons[1].noise_amplitude_ua = 0;
+        net.add_synapse(0, 1, 100).expect("synapse");
+
+        let _ = net.step(&[1000, 1000]).expect("plasticity step");
+        let synapse_weight = net.synapses[0].weight;
+        let csr_edge = net
+            .synapse_matrix
+            .connections(0)
+            .next()
+            .expect("csr edge must exist");
+        assert_eq!(csr_edge.2, 0, "first inserted synapse should keep index 0");
+        assert_eq!(
+            csr_edge.1, synapse_weight,
+            "CSR transmission weight must mirror synapse weight after STDP"
+        );
     }
 
     // ----- Property tests (Cardano-grade rigor) -----
@@ -997,7 +1126,7 @@ mod tests {
                 let pre = (i as u16) % n;
                 let post = ((i as u16) + 1) % n;
                 let post = if post == pre { (post + 1) % n } else { post };
-                m.add(pre, post, 100);
+                m.add(pre, post, 100, i);
             }
             let total: usize = (0..n).map(|i| m.connections(i).count()).sum();
             prop_assert_eq!(total, syn_count);
@@ -1011,12 +1140,13 @@ mod tests {
     fn topology_strategy() -> impl Strategy<Value = NetworkTopology> {
         prop_oneof![
             (0.01f64..=0.99).prop_map(|c| NetworkTopology::Random { connectivity: c }),
-            (1u8..=10u8, 0.0f64..=1.0)
-                .prop_map(|(lc, rp)| NetworkTopology::SmallWorld {
-                    local_connections: lc,
-                    rewiring_prob: rp,
-                }),
-            (0.5f64..=0.95).prop_map(|er| NetworkTopology::Balanced { excitatory_ratio: er }),
+            (1u8..=10u8, 0.0f64..=1.0).prop_map(|(lc, rp)| NetworkTopology::SmallWorld {
+                local_connections: lc,
+                rewiring_prob: rp,
+            }),
+            (0.5f64..=0.95).prop_map(|er| NetworkTopology::Balanced {
+                excitatory_ratio: er
+            }),
         ]
     }
 }
