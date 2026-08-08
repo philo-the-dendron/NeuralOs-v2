@@ -68,7 +68,7 @@ real artifacts already shipped, not a dead-end:
 
 | Stage | What | Standalone value (if you stop here) | The gate |
 |---|---|---|---|
-| **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES (802 flips, non-collapsed). Bridge reopened (see below)** |
+| **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES (802 flips, non-collapsed) → Stage 1.5c selectivity YES (SI 0.985 vs i16 1.000 under structured input). Bridge reopened (see below)** |
 | **2. Format bridge** | ternary format spec; BitNet-compatible **export**, Prism `Q1_0` **import** | NeuralOS speaks the lingua franca of both fields | can we round-trip a ternary tensor? |
 | **3. Shared kernel** | one `no_std` ternary matmul; a tiny hybrid net (SNN layer + dense-LLM-style layer) | a reusable Rust ternary kernel + a showable hybrid demo | does the union compose — compute something coherent? |
 | **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research |
@@ -165,8 +165,59 @@ canary as the bridge's living tripwire).
 (synchronous drive → all neurons fire together → post-before-pre → LTD).
 This proves the stochastic mechanism *works* (nonzero movement, non-collapsed)
 but not yet that it *learns something useful* (e.g., discriminates patterns).
-That is Stage 2+'s concern, not this gate's. The 1.5a latent-accumulation
+That is Stage 1.5c's concern, answered below. The 1.5a latent-accumulation
 fallback remains unstarted as insurance.
+
+### Stage 1.5c — RUN 2026-08-08, result: YES (ternary discriminates by correlation)
+
+The test 1.5b couldn't address: does ternary STDP *discriminate* under structured
+input, or always collapse regardless of structure? Ran in
+`examples/ternary_selectivity.rs`. Excitatory neurons split into 4 groups; one
+group driven at a time (sustained 600 μA) on a gapped round-robin schedule
+(60 ms active, 40 ms silent gap — the gap defeats spurious boundary LTD between
+adjacent groups). Intra-group pairs co-fire (correlated); inter-group pairs never
+do (dt ≫ STDP window). An init cycle (STDP off) defeats the
+`last_spike_time_us = 0` ("never fired") artifact. The i16 baseline is the
+essential control.
+
+- **i16 control: PASS (SI = 1.000).** Intra-group E→E mean → 0.00 (co-fire
+  LTD), inter-group mean → 80.00 (unchanged). All 373 inter synapses stayed at
+  their initial value; the input's structure is genuinely learnable.
+- **Ternary stochastic: YES (SI = 0.985).** Intra mean → 0.95 (99.2% of
+  synapses flipped +γ→0), inter mean → 125.00 (100% at +γ), 431 bucket flips,
+  spiking 34.36 Hz/neuron (non-collapsed, 1.00× fixed-weight reference).
+
+**Gate verdict: YES.** Ternary reproduces the i16 differential almost exactly
+under structured input — it learns selectively, not just moves. The slight gap
+(0.985 vs 1.000) is the stochastic flip mechanism's inherent noise (0.8% of
+intra synapses retained +γ). Stage 2 (format bridge) is strongly motivated.
+
+**Two honest findings about the rule (documented, not worked around):**
+
+1. **The STDP rule is depression-only in this implementation.**
+   `update_plasticity` computes `dt = pre_time − post_time`, always ≥ +1 (co-fires
+   tie-break to `dt = +1` → LTD; non-co-fires use post's `last_spike ≤ pre_time` →
+   `dt ≥ 0` → LTD). LTP (`dt < 0`) never fires — verified empirically (0 of 1069
+   weights increased). So 1.5c selectivity is *differential depression*
+   (correlated pairs depress more), not Hebbian potentiation. A valid selectivity
+   test; a biphasic STDP rule is a separate future improvement.
+
+2. **CSR unsorted-insertion bug (fixed).** Designing this experiment exposed a
+   latent defect: `SparseSynapseMatrix`'s incremental `row_ptrs` only grouped
+   edges correctly for *sorted* insertion, but `build_balanced` inserts in
+   arbitrary presynaptic order — so `connections(pre)` returned slices with the
+   right *count* but the wrong *members*, corrupting propagation targeting and
+   STDP synapse selection. `finalize()` is now a real counting-sort CSR build and
+   `build_topology` calls it; two regression tests pin the invariant. (1.5b's
+   qualitative YES — nonzero flips vs Stage 1's 0 — is unaffected: the mechanism
+   still moves weights; the bug scrambled *which* synapses, not *whether* they
+   moved. Both canaries still pass.)
+
+**What ships:** `examples/ternary_selectivity.rs` (the diagnostic), the CSR fix
++ regression tests, and `network::tests::ternary_gate_stage1_5c_selectivity_under_structured_input`
+(the new canary — asserts both the i16 control discriminates AND ternary
+preserves the differential with nonzero flips; replaces nothing, joins the
+1.5b canary as the bridge's living selectivity tripwire).
 
 **The destination — a pure-Rust ternary-LLM runtime.** Stages 3 and 4 are
 where the bridge earns its ambition. Stage 3 proves the union mechanically: a
@@ -205,8 +256,9 @@ library is alive, and the thing you show a researcher or a collaborator.
 ## Realistic near-term path
 
 1. **Finish the substrate:** NIR import/export, lock-free + SIMD ports,
-   ternary Stage 1 + 1.5b (✓ done — ternary SNN spikes 1.00× baseline and
-   learns via stochastic bucket-flips; bridge open to Stage 2).
+   ternary Stage 1 + 1.5b + 1.5c (✓ done — ternary SNN spikes 1.00× baseline,
+   learns via stochastic bucket-flips, and discriminates by correlation under
+   structured input (SI 0.985 vs i16 1.000); bridge open to Stage 2).
 2. **Deploy on QEMU RISC-V (`riscv64gc`)** — prove the `no_std` sovereignty
    claim with a real artifact; then ESP32-C3 silicon when budget allows.
 3. **Position publicly as Lava's spiritual successor**; cite the

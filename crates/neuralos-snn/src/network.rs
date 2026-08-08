@@ -141,12 +141,36 @@ impl NetworkStats {
 /// - `synapse_indices[i]`: index of the same synapse in `SpikingNeuralNetwork::synapses`
 /// - `row_ptrs[n]`: start index into the parallel arrays for presynaptic neuron n
 ///   (length = `neuron_count` + 1; `row_ptrs`[`neuron_count`] = total synapse count)
+///
+/// **CSR correctness requires [`finalize`].** [`add`] appends edges in insertion
+/// order and bumps `row_ptrs` incrementally — which only yields correct
+/// [`connections`] slices when edges happen to be added in non-decreasing `pre_id`
+/// order. `build_topology` inserts in arbitrary order, so it MUST call
+/// [`finalize`] after all `add`s. [`finalize`] does a counting-sort CSR build
+/// (O(edges + neurons), stable) that reorders the parallel arrays by `pre_id` and
+/// rebuilds `row_ptrs` authoritatively. Calling [`connections`] before
+/// [`finalize`] on unsorted input returns slices with the right *count* but the
+/// wrong *members* — a silent correctness bug (was the prior state: propagation
+/// injected current into the wrong targets and STDP updated the wrong synapses).
+///
+/// [`finalize`]: SparseSynapseMatrix::finalize
+/// [`connections`]: SparseSynapseMatrix::connections
+/// [`add`]: SparseSynapseMatrix::add
 #[derive(Debug, Clone)]
 pub struct SparseSynapseMatrix {
     weights: Vec<i16>,
     col_indices: Vec<u16>,
     synapse_indices: Vec<usize>,
-    /// Length = `neuron_count` + 1. Maintained incrementally by [`add`].
+    /// Presynaptic neuron ID of each edge (parallel to `weights`). Kept so
+    /// [`finalize`] can reorder by `pre_id` without re-deriving it.
+    ///
+    /// [`finalize`]: SparseSynapseMatrix::finalize
+    pre_ids: Vec<u16>,
+    /// Length = `neuron_count` + 1. Authoritative only after [`finalize`];
+    /// between `add`s it is a best-effort incremental estimate (correct only
+    /// for sorted insertion).
+    ///
+    /// [`finalize`]: SparseSynapseMatrix::finalize
     row_ptrs: Vec<u32>,
     /// Total neuron count (sets `row_ptrs` length).
     neuron_count: u16,
@@ -160,13 +184,20 @@ impl SparseSynapseMatrix {
             weights: Vec::with_capacity(estimated_synapses),
             col_indices: Vec::with_capacity(estimated_synapses),
             synapse_indices: Vec::with_capacity(estimated_synapses),
+            pre_ids: Vec::with_capacity(estimated_synapses),
             row_ptrs: vec![0; neuron_count as usize + 1],
             neuron_count,
         }
     }
 
-    /// Append a synapse. `row_ptrs` is updated incrementally, so insertion
-    /// order is unconstrained — no finalization pass is required.
+    /// Append a synapse. Edges are stored in insertion order; `row_ptrs` is
+    /// bumped incrementally as a best-effort estimate (correct only when edges
+    /// are added in non-decreasing `pre_id` order). For arbitrary insertion
+    /// order — including `build_balanced` — call [`finalize`] before reading
+    /// [`connections`], or the slices will hold the wrong edges.
+    ///
+    /// [`finalize`]: Self::finalize
+    /// [`connections`]: Self::connections
     pub fn add(&mut self, pre_id: u16, post_id: u16, weight: i16, synapse_index: usize) {
         debug_assert!(
             pre_id < self.neuron_count,
@@ -176,16 +207,53 @@ impl SparseSynapseMatrix {
         self.weights.push(weight);
         self.col_indices.push(post_id);
         self.synapse_indices.push(synapse_index);
-        // Incremental row_ptrs: bump every row after pre_id by 1.
+        self.pre_ids.push(pre_id);
+        // Incremental row_ptrs: bump every row after pre_id by 1. This is only
+        // authoritative for sorted insertion; finalize() overwrites it for the
+        // general case.
         for row in (pre_id as usize + 1)..self.row_ptrs.len() {
             self.row_ptrs[row] += 1;
         }
     }
 
-    /// No-op. `row_ptrs` is maintained incrementally by [`add`], so no
-    /// finalization pass is needed. Kept for API parity with v0.1; it may host
-    /// a real recompute pass later if unordered/batched insertion support is added.
-    pub fn finalize(&mut self) {}
+    /// Build the CSR layout authoritatively via a stable counting sort by
+    /// `pre_id`. O(edges + neurons). **Must be called after all [`add`]s and
+    /// before any [`connections`] read whenever edges were added out of
+    /// `pre_id` order** (the default for `build_topology`). Reorders the four
+    /// parallel arrays so each presynaptic neuron's outgoing edges are
+    /// contiguous, and rebuilds `row_ptrs` from real per-neuron out-degrees.
+    ///
+    /// [`add`]: Self::add
+    /// [`connections`]: Self::connections
+    pub fn finalize(&mut self) {
+        let n = self.neuron_count as usize;
+        // Count out-degree per presynaptic neuron.
+        let mut degree = vec![0u32; n];
+        for &pre in &self.pre_ids {
+            degree[pre as usize] += 1;
+        }
+        // Prefix sum → row_ptrs (length n+1, last entry = total edges).
+        self.row_ptrs = vec![0; n + 1];
+        for (k, &deg) in degree.iter().enumerate() {
+            self.row_ptrs[k + 1] = self.row_ptrs[k] + deg;
+        }
+        // Stable scatter into sorted order.
+        let m = self.weights.len();
+        let mut new_weights = vec![0i16; m];
+        let mut new_col = vec![0u16; m];
+        let mut new_syn = vec![0usize; m];
+        let mut cursor = self.row_ptrs.clone();
+        for (i, &pre) in self.pre_ids.iter().enumerate() {
+            let pos = cursor[pre as usize] as usize;
+            new_weights[pos] = self.weights[i];
+            new_col[pos] = self.col_indices[i];
+            new_syn[pos] = self.synapse_indices[i];
+            cursor[pre as usize] += 1;
+        }
+        self.weights = new_weights;
+        self.col_indices = new_col;
+        self.synapse_indices = new_syn;
+    }
 
     /// Iterate synapses from `pre_id`. Returns `(post_id, weight, synapse_index)` tuples.
     /// O(1) setup, O(out-degree) iteration.
@@ -216,6 +284,7 @@ impl SparseSynapseMatrix {
         self.weights.clear();
         self.col_indices.clear();
         self.synapse_indices.clear();
+        self.pre_ids.clear();
         self.row_ptrs.iter_mut().for_each(|p| *p = 0);
     }
 
@@ -387,6 +456,12 @@ impl SpikingNeuralNetwork {
                 self.build_balanced(excitatory_ratio)?;
             }
         }
+        // Authoritative CSR build: the topology builders add edges in arbitrary
+        // pre_id order, so the incremental row_ptrs is wrong until this counting
+        // sort reorders the parallel arrays by presynaptic neuron. Without it,
+        // connections(pre) returns slices with the right count but the wrong
+        // edges — corrupting both propagation and STDP targeting.
+        self.synapse_matrix.finalize();
         self.stats.total_synapses = self.synapses.len() as u32;
         Ok(())
     }
@@ -1118,6 +1193,55 @@ mod tests {
     }
 
     #[test]
+    fn csr_finalize_recovers_correct_members_for_unsorted_insertion() {
+        // Regression: add() in arbitrary pre_id order used to make connections(pre)
+        // return slices with the right COUNT but the wrong MEMBERS (the incremental
+        // row_ptrs only works for sorted insertion). finalize() counting-sorts by
+        // pre_id so connections returns each neuron's actual outgoing edges.
+        let mut m = SparseSynapseMatrix::new(5, 4);
+        m.add(0, 1, 100, 0);
+        m.add(2, 3, 200, 1);
+        m.add(0, 4, 150, 2); // unsorted: pre=0 reappears after pre=2
+        m.finalize();
+        let mut row0: Vec<(u16, i16, usize)> = m.connections(0).collect();
+        row0.sort_by_key(|t| t.0);
+        assert_eq!(
+            row0, vec![(1, 100, 0), (4, 150, 2)],
+            "connections(0) must return only pre=0's edges"
+        );
+        let row2: Vec<(u16, i16, usize)> = m.connections(2).collect();
+        assert_eq!(row2, vec![(3, 200, 1)], "connections(2) must return pre=2's edge only");
+        // Empty rows stay empty.
+        assert_eq!(m.connections(1).count(), 0);
+        assert_eq!(m.connections(3).count(), 0);
+        assert_eq!(m.connections(4).count(), 0);
+        // Total conserved.
+        let total: usize = (0..5).map(|i| m.connections(i).count()).sum();
+        assert_eq!(total, 3);
+    }
+
+    #[test]
+    fn csr_connections_pre_id_consistent_after_build() {
+        // Network-level regression for the unsorted-insertion CSR bug. After
+        // build_topology (which now finalizes), connections(pre) must return
+        // only synapses whose presynaptic neuron IS `pre`. The old incremental
+        // row_ptrs violated this for build_balanced's arbitrary insertion order
+        // — corrupting propagation targeting and STDP synapse selection.
+        let mut net =
+            SpikingNeuralNetwork::new(64, 1000, NetworkTopology::default()).expect("valid");
+        net.build_topology().expect("build");
+        for pre in 0..net.neuron_count() {
+            for (_post, _w, syn_idx) in net.synapse_matrix.connections(pre) {
+                assert_eq!(
+                    net.synapses[syn_idx].pre_neuron_id, pre,
+                    "CSR returned a synapse under connections({pre}) whose presynaptic neuron is {} — finalize() must group by pre_id",
+                    net.synapses[syn_idx].pre_neuron_id
+                );
+            }
+        }
+    }
+
+    #[test]
     fn lfsr_is_deterministic_same_seed() {
         let a = advance_lfsr(0xDEAD_BEEF);
         let b = advance_lfsr(0xDEAD_BEEF);
@@ -1251,6 +1375,131 @@ mod tests {
         assert!(
             flips > 0,
             "Stage 1.5b: stochastic flips must produce nonzero bucket movement; got 0"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn ternary_gate_stage1_5c_selectivity_under_structured_input() {
+        // Stage 1.5c CANARY — ternary STDP discriminates by correlation.
+        //
+        // 1.5b proved the stochastic-flip mechanism moves weights (802 flips)
+        // but under *uniform synchronous* drive — a degenerate one-directional
+        // collapse. This canary runs the real test: under *structured* input
+        // (correlated groups, gapped rotation) where the i16 baseline
+        // discriminates (intra-group E→E depress via co-fire LTD, inter-group
+        // don't), ternary-stochastic must PRESERVE that differential (intra
+        // mean < inter mean) with nonzero flips and non-collapsed spiking.
+        // Gates whether the Stage 2 format bridge is worth building.
+        // See examples/ternary_selectivity.rs for the full diagnostic.
+        let neurons: u16 = 128;
+        let exc = (f64::from(neurons) * 0.8) as u16;
+        let groups: u16 = 4;
+        let active_on = 60u32;
+        let off_gap = 40u32;
+        let slot_len = active_on + off_gap;
+        let init_steps = (slot_len * u32::from(groups)) as usize;
+        let learn_steps = 600usize;
+        let total = init_steps + learn_steps;
+        let i_active = 600_i16;
+        let i_idle = 0_i16;
+        let i_inh = 600_i16;
+        let group_of = |nid: u16| -> u16 {
+            let g = (u32::from(nid) * u32::from(groups) / u32::from(exc)) as u16;
+            g.min(groups - 1)
+        };
+        // Gapped rotating drive: one group active per slot, silent gap between.
+        let mut inputs: Vec<Vec<i16>> = Vec::with_capacity(total);
+        for step in 0..total {
+            let within = (step as u32) % (slot_len * u32::from(groups));
+            let slot = within / slot_len;
+            let within_slot = within % slot_len;
+            let active_group =
+                if slot < u32::from(groups) && within_slot < active_on { slot as u16 } else { groups };
+            let mut inp = vec![i_inh; neurons as usize];
+            for n in 0..exc {
+                inp[n as usize] = if group_of(n) == active_group { i_active } else { i_idle };
+            }
+            inputs.push(inp);
+        }
+        let classify = |net: &SpikingNeuralNetwork| -> (Vec<usize>, Vec<usize>) {
+            let mut intra = Vec::new();
+            let mut inter = Vec::new();
+            for (i, s) in net.synapses().iter().enumerate() {
+                if s.pre_neuron_id < exc && s.post_neuron_id < exc {
+                    if group_of(s.pre_neuron_id) == group_of(s.post_neuron_id) {
+                        intra.push(i);
+                    } else {
+                        inter.push(i);
+                    }
+                }
+            }
+            (intra, inter)
+        };
+        let mean = |w: &[i16], idx: &[usize]| -> f64 {
+            if idx.is_empty() {
+                0.0
+            } else {
+                idx.iter().map(|&i| f64::from(w[i])).sum::<f64>() / idx.len() as f64
+            }
+        };
+
+        // (1) i16 baseline control — MUST discriminate.
+        let mut net =
+            SpikingNeuralNetwork::new(neurons, 1000, NetworkTopology::default()).expect("valid");
+        net.build_topology().expect("build");
+        let (intra, inter) = classify(&net);
+        net.set_plasticity_enabled(false);
+        for inp in &inputs[..init_steps] {
+            let _ = net.step(inp).expect("init");
+        }
+        net.set_plasticity_enabled(true);
+        for inp in &inputs[init_steps..] {
+            let _ = net.step(inp).expect("learn");
+        }
+        let i16_w: Vec<i16> = net.synapses().iter().map(|s| s.weight).collect();
+        let i16_intra = mean(&i16_w, &intra);
+        let i16_inter = mean(&i16_w, &inter);
+        assert!(
+            i16_inter - i16_intra > 20.0,
+            "i16 control must discriminate by >20: inter={i16_inter:.2} intra={i16_intra:.2}"
+        );
+
+        // (2) Ternary stochastic — must preserve the differential + flip.
+        let mut tnet =
+            SpikingNeuralNetwork::new(neurons, 1000, NetworkTopology::default()).expect("valid");
+        tnet.build_topology().expect("build");
+        let (tintra, tinter) = classify(&tnet);
+        tnet.set_plasticity_enabled(false);
+        for inp in &inputs[..init_steps] {
+            let _ = tnet.step(inp).expect("init");
+        }
+        let gamma = tnet.ternarize_weights();
+        let mut prev: Vec<Trit> = tnet
+            .synapses()
+            .iter()
+            .map(|s| Trit::from_weight(s.weight, gamma))
+            .collect();
+        tnet.set_plasticity_enabled(true);
+        let mut flips = 0u64;
+        for inp in &inputs[init_steps..] {
+            let _ = tnet.step(inp).expect("learn");
+            tnet.stochastic_ternary_step(gamma);
+            for (i, s) in tnet.synapses().iter().enumerate() {
+                let cur = Trit::from_weight(s.weight, gamma);
+                if cur != prev[i] {
+                    flips += 1;
+                    prev[i] = cur;
+                }
+            }
+        }
+        let tern_w: Vec<i16> = tnet.synapses().iter().map(|s| s.weight).collect();
+        let tern_intra = mean(&tern_w, &tintra);
+        let tern_inter = mean(&tern_w, &tinter);
+        assert!(flips > 0, "ternary must produce bucket flips; got 0");
+        assert!(
+            tern_inter - tern_intra > f64::from(gamma) / 2.0,
+            "ternary must discriminate by >γ/2: inter={tern_inter:.2} intra={tern_intra:.2} γ={gamma}"
         );
     }
 
