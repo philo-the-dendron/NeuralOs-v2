@@ -538,6 +538,59 @@ impl SpikingNeuralNetwork {
         self.plasticity_enabled
     }
 
+    /// One-shot BitNet-Round ternarization of all synapse weights: `γ = mean|w|`,
+    /// each weight snapped to the nearest of `{-γ, 0, +γ}`. Syncs the CSR
+    /// transmission weights. Returns `γ` (or `0` if there are no synapses).
+    ///
+    /// This is a *one-shot* quantizer for the ternary-bridge Stage 1 gate — it
+    /// does **not** install an ongoing ternary mode. Keeping weights on-grid
+    /// during a live STDP run is the caller's job: call [`reproject_ternary`]
+    /// after each [`step`](Self::step).
+    ///
+    /// [`reproject_ternary`]: Self::reproject_ternary
+    #[must_use]
+    pub fn ternarize_weights(&mut self) -> i16 {
+        // Collect into a temp so the immutable γ scan borrow ends before the
+        // mutable snap pass (borrow-checker hygiene; one-shot op, alloc is fine).
+        let weights: Vec<i16> = self.synapses.iter().map(|s| s.weight).collect();
+        let gamma = crate::trit::tensor_scale(&weights);
+        if gamma == 0 {
+            return 0;
+        }
+        for (idx, s) in self.synapses.iter_mut().enumerate() {
+            s.weight = crate::trit::project_to_ternary(s.weight, gamma);
+            self.synapse_matrix.set_weight(idx, s.weight);
+        }
+        gamma
+    }
+
+    /// Re-project every synapse weight onto `{-gamma, 0, +gamma}` (nearest of
+    /// three) and sync the CSR. Returns the count of weights whose *stored i16
+    /// value* changed this call (i.e. STDP had pushed them off-grid).
+    ///
+    /// Note: this counts i16 snaps, not ternary *bucket* transitions — a snap
+    /// from `+130` back to `+125` is a nonzero return but NOT a bucket flip.
+    /// Callers running the Stage 1 gate should track bucket flips separately
+    /// (classify with [`Trit::from_weight`] before/after) for the learning
+    /// signal; that's the metric that determines the gate verdict.
+    ///
+    /// [`Trit::from_weight`]: crate::trit::Trit::from_weight
+    pub fn reproject_ternary(&mut self, gamma: i16) -> u32 {
+        if gamma == 0 {
+            return 0;
+        }
+        let mut snapped = 0u32;
+        for (idx, s) in self.synapses.iter_mut().enumerate() {
+            let new_w = crate::trit::project_to_ternary(s.weight, gamma);
+            if new_w != s.weight {
+                snapped += 1;
+            }
+            s.weight = new_w;
+            self.synapse_matrix.set_weight(idx, s.weight);
+        }
+        snapped
+    }
+
     /// Reset all neurons, synapses, stats, and time. Keeps topology + synapse wiring.
     pub fn reset(&mut self) {
         for n in &mut self.neurons {
@@ -804,6 +857,7 @@ fn estimate_synapses(neuron_count: u16, topology: &NetworkTopology) -> usize {
 mod tests {
     #![allow(clippy::shadow_unrelated)]
     use super::*;
+    use crate::trit::Trit;
     use proptest::prelude::*;
 
     // ----- Unit tests -----
@@ -1057,6 +1111,45 @@ mod tests {
         // Random topology's count is formula-determined (connectivity ×
         // total_possible), so it is also stable across rebuilds.
         assert_eq!(count_second, count_first);
+    }
+
+    #[test]
+    fn ternary_gate_stage1_learning_is_frozen() {
+        // Stage 1 gate CANARY — pins the negative result. Under honest per-step
+        // re-projection with BitNet-Round γ = mean|w|, the ternary SNN does NOT
+        // learn: STDP deltas (max ±5) are ~12× smaller than the bucket boundary
+        // γ/2 (≈62 for the balanced 128-net), so no weight ever crosses a ternary
+        // threshold. If this test ever FAILS (flips > 0), the regime changed —
+        // investigate before reopening the ternary bridge (see docs/VISION.md).
+        let mut net =
+            SpikingNeuralNetwork::new(128, 1000, NetworkTopology::default()).expect("valid");
+        net.build_topology().expect("build");
+        let gamma = net.ternarize_weights();
+        assert!(gamma > 0, "balanced net must produce a nonzero γ");
+
+        let mut prev: Vec<Trit> = net
+            .synapses()
+            .iter()
+            .map(|s| Trit::from_weight(s.weight, gamma))
+            .collect();
+        net.set_plasticity_enabled(true);
+        let inputs = vec![600_i16; 128];
+        let mut flips = 0u64;
+        for _ in 0..200 {
+            let _ = net.step(&inputs).expect("step");
+            net.reproject_ternary(gamma);
+            for (i, s) in net.synapses().iter().enumerate() {
+                let cur = Trit::from_weight(s.weight, gamma);
+                if cur != prev[i] {
+                    flips += 1;
+                    prev[i] = cur;
+                }
+            }
+        }
+        assert_eq!(
+            flips, 0,
+            "Stage 1 gate: ternary learning must be frozen under per-step re-projection; got {flips} flips"
+        );
     }
 
     #[test]

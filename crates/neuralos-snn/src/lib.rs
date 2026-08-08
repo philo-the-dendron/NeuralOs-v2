@@ -6,6 +6,7 @@
 
 pub mod lif_neuron;
 pub mod synapse;
+pub mod trit;
 #[cfg(feature = "std")]
 pub mod network;
 #[cfg(feature = "simd")]
@@ -15,6 +16,7 @@ pub use lif_neuron::{
     LIFNeuron, NeuronBuilder, NeuronType, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN, MAX_SPIKE_HISTORY,
 };
 pub use synapse::{STDPRule, Synapse, SynapseBuilder, SynapseType};
+pub use trit::{project_to_ternary, tensor_scale, ternarize, Trit};
 #[cfg(feature = "std")]
 pub use network::{
     NetworkStats, NetworkTopology, SparseSynapseMatrix, SpikingNeuralNetwork, Spike,

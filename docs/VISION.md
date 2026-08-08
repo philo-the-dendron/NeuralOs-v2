@@ -68,7 +68,7 @@ real artifacts already shipped, not a dead-end:
 
 | Stage | What | Standalone value (if you stop here) | The gate |
 |---|---|---|---|
-| **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? |
+| **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **⚠ RUN 2026-08-08: spiking YES, learning NO → bridge paused (see below)** |
 | **2. Format bridge** | ternary format spec; BitNet-compatible **export**, Prism `Q1_0` **import** | NeuralOS speaks the lingua franca of both fields | can we round-trip a ternary tensor? |
 | **3. Shared kernel** | one `no_std` ternary matmul; a tiny hybrid net (SNN layer + dense-LLM-style layer) | a reusable Rust ternary kernel + a showable hybrid demo | does the union compose — compute something coherent? |
 | **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research |
@@ -80,6 +80,47 @@ Prism `Q1_0` import** — because BitNet gives a *mechanical* bridge (real
 weights flow between SNN and LLM), whereas standard TWN would be conceptual
 only (shared alphabet, incompatible encoding, isolated from the models
 actually shipping).
+
+### Stage 1 — RUN 2026-08-08, result: NO on learning (bridge paused)
+
+The minimal gate ran (`crates/neuralos-snn/examples/ternary_gate.rs`): balanced
+128-neuron net, BitNet-Round γ = mean|w| = 125, per-step re-projection onto
+`{-γ, 0, +γ}`, STDP on, 300 ms sim per phase. The result split clean:
+
+- **Spiking: YES.** Ternary fires **1.00× the i16 baseline** (86.15 Hz/neuron,
+  identical 3308 spikes). The ±γ weights propagate ~12.5 μA/spike, comparable
+  to the baseline {8, 15, 20, 12}; the ternary representation does **not**
+  collapse dynamics.
+- **Learning: NO — frozen.** Over 28 199 plasticity events, the ternary net
+  produced **0 bucket flips** (final state frozen at {−γ=258, 0=0, +γ=811}).
+  The i16 baseline, under identical conditions, drifts all 1069 weights with
+  mean |Δw| = 92.
+
+**Diagnosis — precise, not fundamental.** STDP deltas top out at ±5
+(a₊=50, lr=100, SCALE=1000), while the ternary bucket boundary sits at
+γ/2 ≈ 62 — a ~12× gap. No single-step delta can cross the boundary, so
+per-step re-projection snaps every weight back to its starting bucket. The
+ternary *representation* is sound; the *learning rule × quantizer* pair is
+the bottleneck.
+
+**Per the gate rule, the bridge STOPS here.** Stage 2 (format bridge) is not
+earned. The `Trit` type + ternarizer ship anyway — they are real, tested
+artifacts, and `network::tests::ternary_gate_stage1_learning_is_frozen` pins
+the negative result as a canary (if it ever flips nonzero, the regime changed
+and the gate can be reopened).
+
+**What would reopen it — NOT started, future Stage 1.5 hypotheses:**
+
+- **Latent-weight accumulation** (let STDP deltas build in i16, re-quantize on
+  a schedule rather than every step — true BitNet training dynamics; this is
+  the deferred shadow-accumulator, scoped out of Stage 1 precisely so the
+  minimal gate stayed honest).
+- A **ternary-native STDP rule** whose deltas are sized to γ.
+- **Per-synapse-type γ** instead of per-tensor (smaller boundaries).
+
+Each is a deeper research choice that Stage 1 was deliberately scoped to
+avoid. The honest minimal gate returned a clean NO; that is the outcome the
+gate exists to permit — it stops the bridge from becoming a sunk-cost spiral.
 
 **The destination — a pure-Rust ternary-LLM runtime.** Stages 3 and 4 are
 where the bridge earns its ambition. Stage 3 proves the union mechanically: a
