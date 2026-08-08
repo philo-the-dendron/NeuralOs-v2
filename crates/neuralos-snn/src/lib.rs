@@ -22,16 +22,17 @@ pub use network::{
 
 /// Crate-level error type.
 ///
-/// Toutes les fonctions publiques retournent `Result<T>` via ce type.
-/// Pas de `unwrap()` / `expect()` en dehors des tests (leçon v0.1).
+/// Fallible public functions return `Result<T>` via this type; infallible
+/// accessors return plain values. No `unwrap()` / `expect()` outside tests
+/// (v0.1 lesson).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
-    /// Paramètre invalide (ex: constante de temps nulle, capacité nulle).
+    /// Invalid parameter (e.g. zero time constant, zero neuron count).
     InvalidParameter,
-    /// Index hors bornes (ex: ID de neurone ≥ taille du réseau).
+    /// Index out of bounds (e.g. neuron id ≥ network size).
     IndexOutOfBounds,
-    /// Entrée d'historique de spike manquante (ex: pas de spike pré-synaptique
-    /// enregistré dans la fenêtre STDP).
+    /// Missing spike-history entry (e.g. no presynaptic spike recorded inside
+    /// the STDP window).
     SpikeHistoryMissing,
 }
 
@@ -48,5 +49,5 @@ impl core::fmt::Display for Error {
 #[cfg(feature = "std")]
 impl std::error::Error for Error {}
 
-/// Alias de Result pour toute la crate.
+/// Crate-wide `Result` alias.
 pub type Result<T> = core::result::Result<T, Error>;

@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 62d8cea7c9393acfb0df3fd4ea9388fb5106ac375ce8fed119fdd7c111c28598 # shrinks to n = 5, topology = SmallWorld { local_connections: 5, rewiring_prob: 0.0 }
+cc e8e9d92dc692828a85e6622bb4ade0f62f5c45736e91d8b39f72412618292ce1 # shrinks to n = 5, topology = Random { connectivity: 0.01 }

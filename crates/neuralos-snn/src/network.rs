@@ -143,7 +143,7 @@ pub struct SparseSynapseMatrix {
     weights: Vec<i16>,
     col_indices: Vec<u16>,
     synapse_indices: Vec<usize>,
-    /// Length = `neuron_count` + 1. Built incrementally, finalized by [`finalize`].
+    /// Length = `neuron_count` + 1. Maintained incrementally by [`add`].
     row_ptrs: Vec<u32>,
     /// Total neuron count (sets `row_ptrs` length).
     neuron_count: u16,
@@ -162,8 +162,8 @@ impl SparseSynapseMatrix {
         }
     }
 
-    /// Append a synapse. Must be called in (`pre_id`, `post_id`) order — or call
-    /// [`finalize`] to recompute row pointers from scratch after bulk insertion.
+    /// Append a synapse. `row_ptrs` is updated incrementally, so insertion
+    /// order is unconstrained — no finalization pass is required.
     pub fn add(&mut self, pre_id: u16, post_id: u16, weight: i16, synapse_index: usize) {
         debug_assert!(
             pre_id < self.neuron_count,
@@ -179,12 +179,10 @@ impl SparseSynapseMatrix {
         }
     }
 
-    /// Recompute `row_ptrs` from scratch. Currently a no-op — the incremental
-    /// [`add`] keeps `row_ptrs` in sync. Kept for API parity with v0.1 and future
-    /// unordered-insert support.
-    pub fn finalize(&mut self) {
-        // No-op: add() maintains row_ptrs incrementally.
-    }
+    /// No-op. `row_ptrs` is maintained incrementally by [`add`], so no
+    /// finalization pass is needed. Kept for API parity with v0.1; it may host
+    /// a real recompute pass later if unordered/batched insertion support is added.
+    pub fn finalize(&mut self) {}
 
     /// Iterate synapses from `pre_id`. Returns `(post_id, weight, synapse_index)` tuples.
     /// O(1) setup, O(out-degree) iteration.
@@ -206,6 +204,16 @@ impl SparseSynapseMatrix {
         if let Some(slot) = self.weights.get_mut(synapse_index) {
             *slot = weight;
         }
+    }
+
+    /// Drop all stored edges, keeping the neuron-count sizing and capacity.
+    /// Used by [`SpikingNeuralNetwork::build_topology`] to make rebuilds
+    /// idempotent.
+    pub fn clear(&mut self) {
+        self.weights.clear();
+        self.col_indices.clear();
+        self.synapse_indices.clear();
+        self.row_ptrs.iter_mut().for_each(|p| *p = 0);
     }
 
     /// Total synapse count.
@@ -304,9 +312,25 @@ impl SpikingNeuralNetwork {
             return Err(Error::InvalidParameter);
         }
 
+        // Neuron-type assignment honors the topology's ratio when `Balanced`
+        // parameterizes it; otherwise the biological 80/20 default. Keeping
+        // this in sync with `build_balanced`'s E/I partition is what upholds
+        // the module-doc sign invariant (E → positive outgoing weight,
+        // I → negative). Previously this was hardcoded to 0.8, so a Balanced
+        // topology with a different ratio silently mismatched the wiring
+        // partition and broke the invariant.
+        let excitatory_ratio = match topology {
+            NetworkTopology::Balanced { excitatory_ratio } => excitatory_ratio.clamp(0.0, 1.0),
+            _ => DEFAULT_EXCITATORY_RATIO,
+        };
+        // Same truncation as `build_balanced`'s `exc_count` — the partition
+        // must be bit-identical or the sign invariant breaks at non-integer
+        // `n * ratio` boundaries.
+        let exc_count = (neuron_count as f64 * excitatory_ratio) as u16;
+
         let mut neurons = Vec::with_capacity(neuron_count as usize);
         for id in 0..neuron_count {
-            let nt = if (id as f64) < neuron_count as f64 * DEFAULT_EXCITATORY_RATIO {
+            let nt = if id < exc_count {
                 NeuronType::Excitatory
             } else {
                 NeuronType::Inhibitory
@@ -334,8 +358,16 @@ impl SpikingNeuralNetwork {
     }
 
     /// Build the configured topology. Must be called before [`step`].
+    ///
+    /// Idempotent: a second call clears any existing synapses, CSR state, and
+    /// pending plasticity entries before rebuilding, so repeated calls produce
+    /// a single topology rather than accumulating. Runtime spike counters are
+    /// preserved (use [`reset`](Self::reset) to clear those too).
     /// Resets `stats.total_synapses` to the resulting synapse count.
     pub fn build_topology(&mut self) -> Result<()> {
+        self.synapses.clear();
+        self.synapse_matrix.clear();
+        self.plasticity_queue.clear();
         match self.topology {
             NetworkTopology::Random { connectivity } => self.build_random(connectivity)?,
             NetworkTopology::SmallWorld {
@@ -597,40 +629,43 @@ impl SpikingNeuralNetwork {
         Ok(())
     }
 
-    /// Watts-Strogatz small-world: ring lattice + probabilistic rewiring.
+    /// Watts-Strogatz small-world: ring lattice with probabilistic **rewiring**.
+    ///
+    /// For each directed local edge `(i, i+offset)`, with probability
+    /// `rewiring_prob` the target is replaced by a uniformly random node `≠ i`;
+    /// otherwise the local edge is kept. This is true Watts-Strogatz rewiring
+    /// (keep-or-replace), not shortcut augmentation — total edge count is
+    /// conserved at `~n × local_connections` (minus any wrap-around self-skips).
     fn build_small_world(&mut self, local_connections: u8, rewiring_prob: f64) -> Result<()> {
         let n = self.neurons.len() as u16;
         if n < 2 {
             return Ok(());
         }
+        let p = rewiring_prob.clamp(0.0, 1.0);
         let mut rng = self.seed;
-        // Ring lattice: each neuron connects to `local_connections` neighbors.
-        // Bug fix vs v0.1: when `local_connections >= n`, the modulo wraps to
-        // self-connections (e.g., n=5, offset=5 → target = (i+5)%5 = i). Skip them.
         for i in 0..n {
             for offset in 1..=local_connections as u16 {
-                let target = (i + offset) % n;
-                if target == i {
-                    continue; // Skip self-connection from wrap-around.
+                let local_target = (i + offset) % n;
+                // Bug fix vs v0.1: when `local_connections >= n`, the modulo
+                // wraps to self-connections (e.g., n=5, offset=5 → target = i). Skip them.
+                if local_target == i {
+                    continue;
                 }
-                let weight = typed_weight(self.neurons[i as usize].neuron_type, 0);
-                self.add_synapse(i, target, weight)?;
-            }
-        }
-        // Rewiring: with probability rewiring_prob, replace a local connection
-        // with a random one.
-        for i in 0..n {
-            for _ in 0..local_connections {
                 rng = advance_lfsr(rng);
                 let roll = (rng & 0xFFFF) as f64 / 65_536.0;
-                if roll < rewiring_prob.clamp(0.0, 1.0) {
+                let target = if roll < p {
+                    // Rewire: pick a uniformly random target ≠ i.
                     rng = advance_lfsr(rng);
-                    let new_target = (rng % n as u32) as u16;
-                    if new_target != i {
-                        let weight = typed_weight(self.neurons[i as usize].neuron_type, 0);
-                        self.add_synapse(i, new_target, weight)?;
+                    let mut new_target = (rng % n as u32) as u16;
+                    if new_target == i {
+                        new_target = (i + 1) % n;
                     }
-                }
+                    new_target
+                } else {
+                    local_target
+                };
+                let weight = typed_weight(self.neurons[i as usize].neuron_type, 0);
+                self.add_synapse(i, target, weight)?;
             }
         }
         self.seed = rng;
@@ -750,8 +785,9 @@ fn estimate_synapses(neuron_count: u16, topology: &NetworkTopology) -> usize {
                 * *connectivity) as usize
         }
         NetworkTopology::SmallWorld {
-            local_connections, ..
-        } => neuron_count as usize * (*local_connections as usize) * 2,
+            local_connections,
+            ..
+        } => neuron_count as usize * (*local_connections as usize),
         NetworkTopology::Feedforward { layers } => layers
             .windows(2)
             .map(|w| w[0] as usize * w[1] as usize / 2)
@@ -976,6 +1012,54 @@ mod tests {
     }
 
     #[test]
+    fn smallworld_rewiring_conserves_edge_count() {
+        // True Watts-Strogatz rewiring keeps-or-replaces each local edge; it
+        // never augments. With `local_connections` well below `n` (no wrap-around
+        // self-skip), the count must equal exactly `n × local_connections`.
+        let mut net = SpikingNeuralNetwork::new(
+            50,
+            1000,
+            NetworkTopology::SmallWorld {
+                local_connections: 4,
+                rewiring_prob: 0.3,
+            },
+        )
+        .expect("valid");
+        net.build_topology().expect("build");
+        assert_eq!(
+            net.synapse_count(),
+            50 * 4,
+            "rewiring must conserve edge count (keep-or-replace, not augment)"
+        );
+    }
+
+    #[test]
+    fn build_topology_is_idempotent_no_accumulation() {
+        // Regression for the silent-accumulation footgun: a second build must
+        // REPLACE the topology, not stack on top of the first.
+        let mut net = SpikingNeuralNetwork::new(
+            50,
+            1000,
+            NetworkTopology::Random { connectivity: 0.3 },
+        )
+        .expect("valid");
+        net.build_topology().expect("first build");
+        let count_first = net.synapse_count();
+        assert!(count_first > 0, "first build must produce synapses");
+
+        net.build_topology().expect("second build");
+        let count_second = net.synapse_count();
+        assert_ne!(
+            count_second,
+            2 * count_first,
+            "second build must not double the synapse count"
+        );
+        // Random topology's count is formula-determined (connectivity ×
+        // total_possible), so it is also stable across rebuilds.
+        assert_eq!(count_second, count_first);
+    }
+
+    #[test]
     fn same_step_cofire_biases_toward_ltd() {
         let mut net = SpikingNeuralNetwork::new(
             2,
@@ -1102,6 +1186,36 @@ mod tests {
                     s.pre_neuron_id, s.post_neuron_id,
                     "self-connection created"
                 );
+            }
+        }
+
+        /// Presynaptic-type sign invariant (module-doc claim): excitatory
+        /// presynaptic → strictly positive weight; inhibitory → strictly negative.
+        /// Pins the contract every topology builder relies on via `typed_weight`.
+        #[test]
+        fn prop_topology_weights_respect_presynaptic_type(
+            n in 5u16..=30,
+            topology in topology_strategy(),
+        ) {
+            let mut net = SpikingNeuralNetwork::new(n, 1000, topology)?;
+            net.build_topology()?;
+            // The sign invariant holds vacuously when a sparse topology wires
+            // nothing (e.g. tiny n × tiny connectivity); proptest still explores
+            // plenty of non-empty cases across the strategy range.
+            for s in &net.synapses {
+                let pre_type = net.neurons[s.pre_neuron_id as usize].neuron_type;
+                match pre_type {
+                    NeuronType::Excitatory => prop_assert!(
+                        s.weight > 0,
+                        "excitatory presynaptic must yield positive weight, got {}",
+                        s.weight
+                    ),
+                    NeuronType::Inhibitory => prop_assert!(
+                        s.weight < 0,
+                        "inhibitory presynaptic must yield negative weight, got {}",
+                        s.weight
+                    ),
+                }
             }
         }
 
