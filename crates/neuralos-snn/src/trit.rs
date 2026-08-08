@@ -13,6 +13,14 @@
 //! methods `ternarize_weights` / `reproject_ternary` apply it; the
 //! `ternary_gate` example runs the falsifier and prints the verdict evidence.
 //!
+//! Stage 1.5b adds [`stochastic_ternary_flip`]: a pure, `no_std` Bernoulli
+//! bucket-flip driven by the STDP residual. Under deterministic per-step
+//! re-projection (Stage 1), STDP deltas max ±5 cannot cross the γ/2 ≈ 62
+//! bucket boundary → 0 flips. The stochastic rule dissolves that boundary:
+//! crossing becomes a probabilistic event whose rate reflects STDP evidence,
+//! not a magnitude contest. Literature: Wu-Saxena 1801.02797, Mohan 2103.01271,
+//! Camuñas-Mesa 2209.06068, `ReStoCNet` 1902.04161.
+//!
 //! # Stored representation
 //!
 //! The library's synapse weight stays `i16`. A ternary weight is simply an
@@ -126,6 +134,68 @@ pub fn ternarize(weights: &mut [i16]) -> i16 {
     scale
 }
 
+/// Base rate for stochastic ternary bucket-flips (Stage 1.5b).
+///
+/// `P(flip) = |residual| × STOCHASTIC_FLIP_RATE / 65536`. The residual is the
+/// off-grid push from one step's STDP delta (max ±5 under the default rule),
+/// so this constant converts STDP evidence strength into a Bernoulli rate.
+/// At 3000: δ=1 → P≈4.6%, δ=3 → P≈13.7%, δ=5 → P≈22.9%.
+///
+/// Tunable — raise for more aggressive learning, lower for stability. The
+/// Stage 1.5b gate tunes this against the flip-rate / spiking-stability tradeoff.
+pub const STOCHASTIC_FLIP_RATE: u32 = 3000;
+
+/// Stochastic ternary bucket-flip (Stage 1.5b).
+///
+/// Given a current on-grid ternary weight, the per-tensor scale `γ`, the STDP
+/// residual (the off-grid push from this step's plasticity — sign = direction,
+/// magnitude = evidence strength), and a uniform random `draw ∈ [0, 65535]`:
+///
+/// - With probability `|residual| × `[`STOCHASTIC_FLIP_RATE`]` / 65536`, flip
+///   the weight one bucket toward the residual's sign (LTP → +γ, LTD → −γ),
+///   saturating at the extreme bucket.
+/// - Otherwise, snap back to the current bucket (identity for an on-grid input).
+///
+/// Returns a value in `{-γ, 0, +γ}`. The caller should additionally clamp to
+/// the synapse's `[min_weight, max_weight]` — e.g. excitatory synapses
+/// (`min_weight = 0`) cannot go negative, so a LTD flip from the zero bucket
+/// is a no-op after clamping.
+///
+/// # No latent state
+///
+/// The stored weight is **genuinely ternary** at all times. Unlike the
+/// deferred 1.5a path (latent i16 accumulation + periodic re-quantize), there
+/// is no shadow weight — the Bernoulli draw replaces the boundary crossing,
+/// not the representation.
+///
+/// # Integer-only
+///
+/// No float in the hot path. The probability is realized as a fixed-point
+/// threshold compared against a 16-bit LFSR draw.
+#[must_use]
+pub fn stochastic_ternary_flip(
+    current_weight: i16,
+    gamma: i16,
+    residual: i16,
+    draw: u16,
+) -> i16 {
+    if gamma <= 0 || residual == 0 {
+        return project_to_ternary(current_weight, gamma);
+    }
+    let threshold = u32::from(residual.unsigned_abs())
+        .saturating_mul(STOCHASTIC_FLIP_RATE)
+        .min(0xFFFF) as u16;
+    if draw >= threshold {
+        return project_to_ternary(current_weight, gamma);
+    }
+    // Flip one bucket toward sign(residual), saturating at the extreme.
+    if residual > 0 {
+        current_weight.saturating_add(gamma).min(gamma)
+    } else {
+        current_weight.saturating_sub(gamma).max(-gamma)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::shadow_unrelated)]
@@ -236,6 +306,81 @@ mod tests {
         assert_eq!(tensor_scale(&[10, 14]), 12);
     }
 
+    // ----- Stochastic ternary flip (Stage 1.5b) -----
+
+    #[test]
+    fn stochastic_flip_zero_residual_is_no_op() {
+        let g = 125_i16;
+        for &w in &[g, 0, -g] {
+            assert_eq!(stochastic_ternary_flip(w, g, 0, 0), w);
+            assert_eq!(stochastic_ternary_flip(w, g, 0, 65535), w);
+        }
+    }
+
+    #[test]
+    fn stochastic_flip_zero_gamma_is_no_op() {
+        assert_eq!(stochastic_ternary_flip(100, 0, 5, 0), 0);
+        assert_eq!(stochastic_ternary_flip(100, -1, 5, 0), 0);
+    }
+
+    #[test]
+    fn stochastic_flip_draw_zero_always_flips() {
+        // draw = 0 is below any nonzero threshold → always flips.
+        let g = 125_i16;
+        assert_eq!(stochastic_ternary_flip(-g, g, 1, 0), 0);   // -γ → 0 (LTP)
+        assert_eq!(stochastic_ternary_flip(0, g, 1, 0), g);     // 0 → +γ (LTP)
+        assert_eq!(stochastic_ternary_flip(g, g, 1, 0), g);     // +γ → +γ (saturate)
+        assert_eq!(stochastic_ternary_flip(g, g, -1, 0), 0);    // +γ → 0 (LTD)
+        assert_eq!(stochastic_ternary_flip(0, g, -1, 0), -g);   // 0 → -γ (LTD)
+        assert_eq!(stochastic_ternary_flip(-g, g, -1, 0), -g);  // -γ → -γ (saturate)
+    }
+
+    #[test]
+    fn stochastic_flip_draw_max_never_flips() {
+        // draw = 65535 ≥ any threshold (max threshold = 5×3000 = 15000 < 65535).
+        let g = 125_i16;
+        for &w in &[g, 0, -g] {
+            assert_eq!(stochastic_ternary_flip(w, g, 5, 65535), w);
+            assert_eq!(stochastic_ternary_flip(w, g, -5, 65535), w);
+        }
+    }
+
+    #[test]
+    fn stochastic_flip_sign_correctness() {
+        let g = 125_i16;
+        // LTP (residual > 0): target ≥ current bucket.
+        assert!(stochastic_ternary_flip(0, g, 3, 0) >= 0);
+        assert_eq!(stochastic_ternary_flip(0, g, 3, 0), g);
+        // LTD (residual < 0): target ≤ current bucket.
+        assert!(stochastic_ternary_flip(0, g, -3, 0) <= 0);
+        assert_eq!(stochastic_ternary_flip(0, g, -3, 0), -g);
+    }
+
+    #[test]
+    fn stochastic_flip_saturates_at_extremes() {
+        let g = 125_i16;
+        // +γ with LTP → stays +γ.
+        assert_eq!(stochastic_ternary_flip(g, g, 5, 0), g);
+        // -γ with LTD → stays -γ.
+        assert_eq!(stochastic_ternary_flip(-g, g, -5, 0), -g);
+    }
+
+    #[test]
+    fn stochastic_flip_output_always_on_grid() {
+        let g = 125_i16;
+        for &w in &[g, 0, -g] {
+            for &res in &[0_i16, 1, 3, 5, -1, -3, -5] {
+                for &draw in &[0_u16, 1, 100, 1000, 10000, 50000, 65535] {
+                    let result = stochastic_ternary_flip(w, g, res, draw);
+                    assert!(
+                        result == g || result == 0 || result == -g,
+                        "off-grid result {result} for w={w}, res={res}, draw={draw}"
+                    );
+                }
+            }
+        }
+    }
+
     // ----- Property tests -----
 
     proptest! {
@@ -295,6 +440,67 @@ mod tests {
             let max_abs = weights.iter().map(|w| w.abs()).max().unwrap_or(0);
             prop_assert!(g >= 0);
             prop_assert!(g <= max_abs, "γ {g} exceeds max|w| {max_abs}");
+        }
+
+        /// Stochastic flip output is always in {-γ, 0, +γ}.
+        #[test]
+        fn prop_stochastic_flip_output_on_grid(
+            bucket in prop_oneof![Just(-1_i16), Just(0), Just(1)],
+            gamma in 1_i16..=2000,
+            residual in -5i16..=5,
+            draw in 0u16..=65535,
+        ) {
+            let w = bucket * gamma;
+            let result = stochastic_ternary_flip(w, gamma, residual, draw);
+            prop_assert!(
+                result == gamma || result == 0 || result == -gamma,
+                "off-grid: {result}, γ={gamma}"
+            );
+        }
+
+        /// Stochastic flip sign-correctness: LTP (residual > 0) never moves
+        /// toward -γ; LTD (residual < 0) never moves toward +γ.
+        #[test]
+        fn prop_stochastic_flip_sign_correct(
+            bucket in prop_oneof![Just(-1_i16), Just(0), Just(1)],
+            gamma in 1_i16..=2000,
+            residual_abs in 1i16..=5,
+            draw in 0u16..=65535,
+        ) {
+            let w = bucket * gamma;
+            // LTP direction.
+            let ltp = stochastic_ternary_flip(w, gamma, residual_abs, draw);
+            prop_assert!(ltp >= w, "LTP must not decrease weight: {ltp} < {w}");
+            // LTD direction.
+            let ltd = stochastic_ternary_flip(w, gamma, -residual_abs, draw);
+            prop_assert!(ltd <= w, "LTD must not increase weight: {ltd} > {w}");
+        }
+
+        /// Zero residual is always a no-op (identity projection).
+        #[test]
+        fn prop_stochastic_flip_zero_residual_noop(
+            bucket in prop_oneof![Just(-1_i16), Just(0), Just(1)],
+            gamma in 1_i16..=2000,
+            draw in 0u16..=65535,
+        ) {
+            let w = bucket * gamma;
+            prop_assert_eq!(stochastic_ternary_flip(w, gamma, 0, draw), w);
+        }
+
+        /// P(flip) is in [0, 1): the threshold never exceeds 65535, so draw=max
+        /// never flips, and draw=0 always flips (for nonzero residual).
+        #[test]
+        fn prop_stochastic_flip_p_range(
+            gamma in 1_i16..=2000,
+            residual_abs in 1i16..=5,
+        ) {
+            // draw=max → never flips (threshold ≤ 5×3000 = 15000 < 65535).
+            for &w in &[gamma, 0, -gamma] {
+                prop_assert_eq!(
+                    stochastic_ternary_flip(w, gamma, residual_abs, 65535),
+                    w
+                );
+            }
         }
     }
 }

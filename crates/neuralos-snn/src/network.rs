@@ -54,6 +54,9 @@ const DEFAULT_EXCITATORY_WEIGHT: i16 = 100;
 const DEFAULT_INHIBITORY_WEIGHT: i16 = -150;
 /// Default LFSR seed (deterministic across runs).
 const DEFAULT_SEED: u32 = 0x1234_5678;
+/// LFSR seed for stochastic ternary flips (Stage 1.5b). Independent of the
+/// topology seed so plasticity randomness doesn't correlate with wiring.
+const TERNARY_FLIP_SEED: u32 = 0xA5A5_5A5A;
 /// LFSR Galois tap for 16-bit maximal-length (period `65_535`).
 const LFSR_TAP: u32 = 0xB400;
 
@@ -294,6 +297,10 @@ pub struct SpikingNeuralNetwork {
     /// (preserves library behavior). The visualizer disables this for
     /// sustained-firing mode and toggles it on to watch learning happen.
     plasticity_enabled: bool,
+    /// LFSR state for stochastic ternary bucket-flips (Stage 1.5b). Advanced
+    /// once per active synapse in [`stochastic_ternary_step`]. Independent of
+    /// `seed` (topology) so plasticity randomness decorrelates from wiring.
+    ternary_flip_lfsr: u32,
 }
 
 impl SpikingNeuralNetwork {
@@ -354,6 +361,7 @@ impl SpikingNeuralNetwork {
             seed: DEFAULT_SEED,
             plasticity_queue: Vec::with_capacity(estimated_synapses),
             plasticity_enabled: true,
+            ternary_flip_lfsr: TERNARY_FLIP_SEED,
         })
     }
 
@@ -591,6 +599,56 @@ impl SpikingNeuralNetwork {
         snapped
     }
 
+    /// Stochastic ternary bucket-flip step (Stage 1.5b).
+    ///
+    /// For every synapse, the STDP delta applied during [`step`](Self::step)
+    /// pushed the weight slightly off-grid (the weight was on-grid before the
+    /// step). This method:
+    ///
+    /// 1. Measures the off-grid residual (= this step's STDP delta, since
+    ///    `weight − project(weight) = delta` for small deltas relative to γ/2).
+    /// 2. Draws a Bernoulli trial with `P(flip) ∝ |residual|` via the network's
+    ///    independent LFSR.
+    /// 3. On success, flips the ternary bucket one step toward the delta's sign
+    ///    (LTP → +γ, LTD → −γ), saturating at the extreme bucket and respecting
+    ///    each synapse's `[min_weight, max_weight]` bounds.
+    /// 4. Snaps all weights back onto `{-γ, 0, +γ}` regardless.
+    ///
+    /// The stored weight is **genuinely ternary** at all times — no latent or
+    /// shadow state. Call after each `step()` in the Stage 1.5b regime, the
+    /// same way [`reproject_ternary`] is called in the Stage 1 (deterministic)
+    /// regime.
+    ///
+    /// Returns the number of ternary bucket transitions (flips) this call.
+    ///
+    /// [`reproject_ternary`]: Self::reproject_ternary
+    pub fn stochastic_ternary_step(&mut self, gamma: i16) -> u32 {
+        if gamma == 0 {
+            return 0;
+        }
+        let mut flips = 0u32;
+        let mut lfsr = self.ternary_flip_lfsr;
+        for (idx, s) in self.synapses.iter_mut().enumerate() {
+            let projected = crate::trit::project_to_ternary(s.weight, gamma);
+            let residual = s.weight - projected;
+            if residual == 0 {
+                continue; // No STDP event this step (or delta was zero).
+            }
+            lfsr = advance_lfsr(lfsr);
+            let draw = (lfsr & 0xFFFF) as u16;
+            let target =
+                crate::trit::stochastic_ternary_flip(s.weight, gamma, residual, draw);
+            let clamped = target.clamp(s.min_weight, s.max_weight);
+            if clamped != projected {
+                flips += 1;
+            }
+            s.weight = clamped;
+            self.synapse_matrix.set_weight(idx, s.weight);
+        }
+        self.ternary_flip_lfsr = lfsr;
+        flips
+    }
+
     /// Reset all neurons, synapses, stats, and time. Keeps topology + synapse wiring.
     pub fn reset(&mut self) {
         for n in &mut self.neurons {
@@ -604,6 +662,7 @@ impl SpikingNeuralNetwork {
         self.stats.plasticity_events = 0;
         self.spike_history.clear();
         self.plasticity_queue.clear();
+        self.ternary_flip_lfsr = TERNARY_FLIP_SEED;
     }
 
     /// Read-only access to the synapse collection (for analysis / visualization).
@@ -1114,13 +1173,14 @@ mod tests {
     }
 
     #[test]
-    fn ternary_gate_stage1_learning_is_frozen() {
-        // Stage 1 gate CANARY — pins the negative result. Under honest per-step
-        // re-projection with BitNet-Round γ = mean|w|, the ternary SNN does NOT
-        // learn: STDP deltas (max ±5) are ~12× smaller than the bucket boundary
-        // γ/2 (≈62 for the balanced 128-net), so no weight ever crosses a ternary
-        // threshold. If this test ever FAILS (flips > 0), the regime changed —
-        // investigate before reopening the ternary bridge (see docs/VISION.md).
+    fn ternary_gate_stage1_deterministic_is_frozen() {
+        // Stage 1 DETERMINISTIC baseline — pins the ruled-out negative result.
+        // Under per-step re-projection with BitNet-Round γ = mean|w|, STDP
+        // deltas (max ±5) are ~12× smaller than the bucket boundary γ/2 (≈62),
+        // so no weight ever crosses a ternary threshold → 0 flips. This is the
+        // known-dead regime the field identified; Stage 1.5b (stochastic flips)
+        // is the reopen path. See docs/VISION.md "Stage 1" + "Stage 1.5 reopen
+        // paths."
         let mut net =
             SpikingNeuralNetwork::new(128, 1000, NetworkTopology::default()).expect("valid");
         net.build_topology().expect("build");
@@ -1148,7 +1208,49 @@ mod tests {
         }
         assert_eq!(
             flips, 0,
-            "Stage 1 gate: ternary learning must be frozen under per-step re-projection; got {flips} flips"
+            "Stage 1 deterministic: ternary learning must be frozen under per-step re-projection; got {flips} flips"
+        );
+    }
+
+    #[test]
+    fn ternary_gate_stage1_5b_stochastic_unfreezes_learning() {
+        // Stage 1.5b CANARY — stochastic bucket-flips reopen ternary learning.
+        // Under deterministic re-projection (Stage 1), STDP deltas can't cross
+        // the γ/2 boundary → 0 flips. The stochastic rule dissolves that: each
+        // STDP event does a Bernoulli(∝|δ|) draw to flip one bucket in the
+        // delta's direction. The stored weight stays genuinely ternary — no
+        // latent/shadow state.
+        //
+        // This test asserts nonzero bucket movement over a balanced 128-net run
+        // — the signal that the regime changed from Stage 1's frozen baseline.
+        let mut net =
+            SpikingNeuralNetwork::new(128, 1000, NetworkTopology::default()).expect("valid");
+        net.build_topology().expect("build");
+        let gamma = net.ternarize_weights();
+        assert!(gamma > 0, "balanced net must produce a nonzero γ");
+
+        let mut prev: Vec<Trit> = net
+            .synapses()
+            .iter()
+            .map(|s| Trit::from_weight(s.weight, gamma))
+            .collect();
+        net.set_plasticity_enabled(true);
+        let inputs = vec![600_i16; 128];
+        let mut flips = 0u64;
+        for _ in 0..200 {
+            let _ = net.step(&inputs).expect("step");
+            net.stochastic_ternary_step(gamma);
+            for (i, s) in net.synapses().iter().enumerate() {
+                let cur = Trit::from_weight(s.weight, gamma);
+                if cur != prev[i] {
+                    flips += 1;
+                    prev[i] = cur;
+                }
+            }
+        }
+        assert!(
+            flips > 0,
+            "Stage 1.5b: stochastic flips must produce nonzero bucket movement; got 0"
         );
     }
 

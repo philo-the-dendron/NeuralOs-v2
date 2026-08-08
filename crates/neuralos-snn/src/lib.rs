@@ -16,7 +16,7 @@ pub use lif_neuron::{
     LIFNeuron, NeuronBuilder, NeuronType, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN, MAX_SPIKE_HISTORY,
 };
 pub use synapse::{STDPRule, Synapse, SynapseBuilder, SynapseType};
-pub use trit::{project_to_ternary, tensor_scale, ternarize, Trit};
+pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternarize, Trit};
 #[cfg(feature = "std")]
 pub use network::{
     NetworkStats, NetworkTopology, SparseSynapseMatrix, SpikingNeuralNetwork, Spike,

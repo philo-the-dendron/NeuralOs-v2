@@ -3,7 +3,7 @@
 > The open `no_std` spiking-neural substrate for RISC-V edge silicon —
 > and the lab bench to watch it think.
 
-*Status: living document. Updated 2026-08-07. Grounded in the 2026-08-05/06
+*Status: living document. Updated 2026-08-08. Grounded in the 2026-08-05/06
 landscape + research findings (`docs/landscape/SUMMARY.md`,
 `docs/RESEARCH_FINDINGS.md`).*
 
@@ -68,7 +68,7 @@ real artifacts already shipped, not a dead-end:
 
 | Stage | What | Standalone value (if you stop here) | The gate |
 |---|---|---|---|
-| **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **⚠ RUN 2026-08-08: spiking YES, learning NO → bridge paused (see below)** |
+| **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES (802 flips, non-collapsed). Bridge reopened (see below)** |
 | **2. Format bridge** | ternary format spec; BitNet-compatible **export**, Prism `Q1_0` **import** | NeuralOS speaks the lingua franca of both fields | can we round-trip a ternary tensor? |
 | **3. Shared kernel** | one `no_std` ternary matmul; a tiny hybrid net (SNN layer + dense-LLM-style layer) | a reusable Rust ternary kernel + a showable hybrid demo | does the union compose — compute something coherent? |
 | **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research |
@@ -81,7 +81,7 @@ weights flow between SNN and LLM), whereas standard TWN would be conceptual
 only (shared alphabet, incompatible encoding, isolated from the models
 actually shipping).
 
-### Stage 1 — RUN 2026-08-08, result: NO on learning (bridge paused)
+### Stage 1 — RUN 2026-08-08, result: NO on learning (deterministic regime)
 
 The minimal gate ran (`crates/neuralos-snn/examples/ternary_gate.rs`): balanced
 128-neuron net, BitNet-Round γ = mean|w| = 125, per-step re-projection onto
@@ -103,11 +103,12 @@ per-step re-projection snaps every weight back to its starting bucket. The
 ternary *representation* is sound; the *learning rule × quantizer* pair is
 the bottleneck.
 
-**Per the gate rule, the bridge STOPS here.** Stage 2 (format bridge) is not
-earned. The `Trit` type + ternarizer ship anyway — they are real, tested
-artifacts, and `network::tests::ternary_gate_stage1_learning_is_frozen` pins
-the negative result as a canary (if it ever flips nonzero, the regime changed
-and the gate can be reopened).
+**Per the gate rule, the bridge paused here under the deterministic regime.**
+Stage 2 (format bridge) was not earned until Stage 1.5b (below) reopened
+learning. The `Trit` type + ternarizer ship anyway — they are real, tested
+artifacts. `network::tests::ternary_gate_stage1_deterministic_is_frozen`
+pins the negative result as a canary: deterministic per-step re-projection
+is a ruled-out baseline, kept in history.
 
 **Literature check (2026-08-08).** The NO above is consistent with the field,
 not anomalous. The literature is unanimous that ternary/binary networks do
@@ -119,27 +120,53 @@ Stage 1 rules out *one regime* (the strictest possible), not ternary SNN
 learning itself. The original NO stands as a ruled-out baseline — do not
 re-test deterministic per-step re-projection.
 
-**Stage 1.5 reopen paths — literature-backed, NOT started.** Four mechanisms
-exist; two fit our constraints (`no_std`, local STDP, i16, online — no global
-backprop):
+**Stage 1.5 reopen paths — literature-backed.** Four mechanisms exist; two
+fit our constraints (`no_std`, local STDP, i16, online — no global backprop):
 
-| Mechanism | Fits local STDP? | Precedent (verified 2026-08-08) |
+| Mechanism | Fits local STDP? | Status / Precedent (verified 2026-08-08) |
 |---|---|---|
-| **1.5a — Latent i16 accumulation + periodic re-quantize** (STDP deltas build in i16; re-quantize every N steps, not every step) | yes | TWN `1605.04711`, BitNet `2504.12285`, Rathi-Panda-Roy `1710.04734` (STDP + "quantize at regular intervals during training") |
-| **1.5b — Stochastic bucket-flips** (each STDP event does a Bernoulli draw to flip the ternary bucket, rate ∝ STDP signal; bypasses the boundary problem; uses our existing LFSR, no shadow state) | yes — hardware-native | Wu-Saxena `1801.02797`, Mohan `2103.01271`, Camuñas-Mesa `2209.06068`, ReStoCNet `1902.04161` |
-| Surrogate gradient / STE | no — needs global backprop | Eshraghian `2202.07221` |
-| Multi-step quantized STDP rule | needs rule redesign | Liu `2306.07712` |
+| **1.5a — Latent i16 accumulation + periodic re-quantize** (STDP deltas build in i16; re-quantize every N steps, not every step) | yes | NOT started. TWN `1605.04711`, BitNet `2504.12285`, Rathi-Panda-Roy `1710.04734`. Safe fallback if 1.5b's YES doesn't hold under harder tests. |
+| **1.5b — Stochastic bucket-flips** (each STDP event does a Bernoulli draw to flip the ternary bucket, rate ∝ STDP signal; bypasses the boundary problem; uses our existing LFSR, no shadow state) | yes — hardware-native | **✓ DONE — YES (see below).** Wu-Saxena `1801.02797`, Mohan `2103.01271`, Camuñas-Mesa `2209.06068`, `ReStoCNet` `1902.04161` |
+| Surrogate gradient / STE | no — needs global backprop | N/A. Eshraghian `2202.07221` |
+| Multi-step quantized STDP rule | needs rule redesign | N/A. Liu `2306.07712` |
 
-**Recommendation.** **Try 1.5b first.** It preserves the strongest claim (the
-stored weight is genuinely ternary — no latent state, which Stage 1 was scoped
-to avoid), fits the stack exactly (LFSR already present, integer-only, local,
-biologically plausible), and directly dissolves the failure mode the gate
-found (boundary-crossing becomes a Bernoulli draw, not a magnitude problem).
-**1.5a is the safe fallback** — canonical and well-trodden, but reintroduces
-the latent state. Either is its own clean gate run; neither is started. A
-clean NO from *both* would be a real verdict on ternary SNN learning under
-local STDP — a stronger negative than Stage 1's, and still a valid stop that
-prevents the bridge from becoming a sunk-cost spiral.
+### Stage 1.5b — RUN 2026-08-08, result: YES (bridge reopened)
+
+The stochastic bucket-flip rule ran in the extended gate
+(`crates/neuralos-snn/examples/ternary_gate.rs`): same balanced 128-neuron
+net, γ = 125, STDP on, 300 ms. Three regimes compared:
+
+- **(i) i16 baseline** — free drift: all 1069 weights move, mean |Δw| = 92.
+- **(ii) Ternary + deterministic re-projection (Stage 1)** — **0 flips**
+  (frozen, the ruled-out baseline).
+- **(iii) Ternary + stochastic flips (1.5b)** — **802 bucket flips** over
+  28 199 plasticity events (0.028 flips/event). Final distribution shifted
+  from {−γ=258, 0=0, +γ=811} to {−γ=258, 0=802, +γ=9} — the synchronous
+  drive produces predominantly LTD, weakening excitatory synapses (+γ → 0)
+  while inhibitory (−γ) saturates at its min. A biologically plausible
+  desynchronizing signal.
+
+**Spiking under stochastic learning: 1.00× baseline** (86.15 Hz/neuron,
+3308 spikes) — non-collapsed. The external drive (600 μA) sustains firing
+even with ~75% of excitatory synapses weakened to 0.
+
+**Gate verdict: YES.** Nontrivial bucket movement (802 vs 0) AND spiking
+non-collapsed (1.00×). The bridge is reopened. Stage 2 (format bridge) is
+earned.
+
+**What ships:** `trit::stochastic_ternary_flip` (pure `no_std` Bernoulli
+flip, LFSR-driven, integer-only), `SpikingNeuralNetwork::stochastic_ternary_step`
+(the per-step plasticity path), property tests (P-range, sign-correctness,
+ternary-output invariant), and `ternary_gate_stage1_5b_stochastic_unfreezes_learning`
+(the new canary — asserts nonzero flips; replaces Stage 1's frozen
+canary as the bridge's living tripwire).
+
+**Caveat — honest scope.** The 802 flips are predominantly LTD-driven
+(synchronous drive → all neurons fire together → post-before-pre → LTD).
+This proves the stochastic mechanism *works* (nonzero movement, non-collapsed)
+but not yet that it *learns something useful* (e.g., discriminates patterns).
+That is Stage 2+'s concern, not this gate's. The 1.5a latent-accumulation
+fallback remains unstarted as insurance.
 
 **The destination — a pure-Rust ternary-LLM runtime.** Stages 3 and 4 are
 where the bridge earns its ambition. Stage 3 proves the union mechanically: a
@@ -178,7 +205,8 @@ library is alive, and the thing you show a researcher or a collaborator.
 ## Realistic near-term path
 
 1. **Finish the substrate:** NIR import/export, lock-free + SIMD ports,
-   ternary Stage 1 (the minimal gate — does a ternary SNN still function?).
+   ternary Stage 1 + 1.5b (✓ done — ternary SNN spikes 1.00× baseline and
+   learns via stochastic bucket-flips; bridge open to Stage 2).
 2. **Deploy on QEMU RISC-V (`riscv64gc`)** — prove the `no_std` sovereignty
    claim with a real artifact; then ESP32-C3 silicon when budget allows.
 3. **Position publicly as Lava's spiritual successor**; cite the
