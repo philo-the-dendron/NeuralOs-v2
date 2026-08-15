@@ -437,9 +437,28 @@ costly. Fog for sessions 2+: Q1_0 compute path (decode+existing kernel vs
 fused binary kernel), f32-from-scratch vs candle-for-ops, tokenizer (Qwen
 BPE from embedded data), and the gate's measurable bar.
 
+**Session 2 — first real compute through real weights.** Shipped
+`rt::{q1_0, norm}`: a per-block **`q1_0_matvec`** (sign-bit partial sums ×
+per-block γ in the milli domain, property-tested against a decode
+reference), embedding materialization (`q1_0_row_to_milli`), and an
+**integer RMSNorm** (exact Newton `isqrt`, milli-domain, f32 norm weights
+converted at the load edge via `f32_bits_to_milli`).
+`examples/bonsai_forward.rs` runs the first-layer slice on the real
+model: token id → 2048-dim embedding (±γ per block) → `blk.0.attn_norm`
+RMSNorm → Q/K/V projections through `q1_0_matvec` on the real q1_0
+tensors — all integer, `FORWARD: OK` across four tokens (Q absmax
+~80–90k milli, all stages bounded and nonzero).
+
+**Session-2 decisions (ISA):** Q1_0 compute path = per-block decode-matvec
+now; fused/LUT kernel deferred until profiling shows need (fog №1
+resolved). The f32-vs-candle activation question narrowed: this session's
+entire path is integer. Model facts pinned for sessions 3+: qwen3, 28
+blocks, 16 Q / 8 KV heads (GQA), head_dim 128, FFN 6144, rms eps 1e-6,
+gpt2 tokenizer.
+
 **Remaining sessions (honest slice):** Q1_0 matvec + first-layer
-execution → full Qwen3 forward pass → tokenizer + generation = the Stage 4
-gate.
+execution (**✓ session 2**) → attention + full Qwen3 forward pass →
+tokenizer + generation = the Stage 4 gate.
 
 ### 3. The lab bench (visible)
 

@@ -3,9 +3,9 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 23/23
+progress: 29/29
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-15T19:55:00Z
+updated: 2026-08-15T21:15:00Z
 principal_stated_goal: "ok so we are ready for step 3 ?" → "go" — Stage 3 (shared kernel + hybrid gate), locked choices: A·classification demo, A·absmax i16 activations
 ---
 
@@ -83,6 +83,33 @@ proven by `examples/ternary_format_gate.rs` round-tripping a ternary tensor
 bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
+
+(ISC-1..10: Stage 2, ISC-11..17: Stage 3, ISC-18..23: Stage 4 session 1 — all closed, see Verification.)
+
+- [x] ISC-24: `neuralos-rt` ships `q1_0_matvec`: row-major Q1_0 blocks ×
+  i16 activations → i32, per-block fp16 γ applied in the milli domain
+  (`partial × γ_milli / 1000`, i64 intermediate, saturating i32 out —
+  bounds documented), `n % 128 == 0` enforced. Falsifier: property test
+  vs a decode_q1_0 + scalar-product reference disagrees on any case.
+- [x] ISC-25: `q1_0_row_to_milli` materializes one embedding row (2048
+  values, ±γ per element, per-block scales) from the real file; sane =
+  nonzero variance, |values| ≤ fp16-max-milli. Falsifier: real-row test
+  fails bounds or is all-zero.
+- [x] ISC-26: integer RMSNorm (`rms_norm_milli`): pure-integer isqrt +
+  `y = x·w/rms` in milli with a documented integer eps floor; property:
+  isqrt exactness (r² ≤ n < (r+1)²); unit: known vectors + scale-up
+  behavior. Falsifier: any test failure.
+- [x] ISC-27: `examples/bonsai_forward.rs` executes the real first-layer
+  slice — token ids → embedding rows → blk.0.attn_norm RMSNorm →
+  q/k/v projections through q1_0_matvec on real q1_0 tensors — printing
+  per-stage stats (mean/absmax/nonzero) and exiting 0 only if every
+  stage's output is nonzero and finite-bounded. Falsifier: example
+  exits nonzero or prints an all-zero/degenerate stage.
+- [x] ISC-28: CI gates green workspace-wide with the additions.
+  Falsifier: any of the four commands failing.
+- [x] ISC-29: docs truth: VISION session-2 note (compute path decision +
+  first-layer numbers), ROADMAP line, TERNARY_FORMAT untouched unless
+  constants changed. Falsifier: docs absent/contradicting output.
 
 (ISC-1..10: Stage 2 — closed 2026-08-15. ISC-11..17: Stage 3 — closed
 2026-08-15. Both see Verification.)
@@ -237,11 +264,8 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Not yet specified
 
-(Stage-4 fog — sessions 2+, in scope, not yet claims:)
+(Stage-4 fog — sessions 3+, in scope, not yet claims:)
 
-- fog: Q1_0 compute path — decode-to-i16 + existing ternary matvec (slow,
-  correct) vs a fused binary-sign kernel (fast, new); decide on measured
-  need when a layer executes.
 - fog: activation math surface — f32 from scratch (sovereignty-max) vs
   pulling candle-core for ops while keeping Q1_0 ours; revisit when the
   first attention layer is written (bitnet.cpp keeps float activations —
@@ -253,6 +277,15 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   before the generation session.
 
 ## Test Strategy
+
+| isc | type | check | threshold | tool | anchors_to |
+|---|---|---|---|---|---|
+| ISC-24 | property | matvec vs decode-reference on synthetic blocks | 100% | cargo test | rt::q1_0::tests::prop_matvec_matches_reference |
+| ISC-25 | integration | real embedding row: nonzero variance, bounded | pass | cargo test (ignored-offline) + example run | rt tests + bonsai_forward |
+| ISC-26 | unit+property | isqrt exactness; norm known vectors | 100% | cargo test | rt::norm::tests |
+| ISC-27 | gate | example prints stats all-nonzero, exit 0 | yes | cargo run --example | examples/bonsai_forward.rs |
+| ISC-28 | build | 4 CI gates | 0 failures | cargo | CI commands |
+| ISC-29 | doc | VISION/ROADMAP updated to match | 2/2 docs | grep | docs/ |
 
 | isc | type | check | threshold | tool | anchors_to |
 |---|---|---|---|---|---|
@@ -287,6 +320,19 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-10 | unit | decoded tensor ↔ Trit::to_weight round-trip stays on-grid | exact | cargo test | bridge::tests::decoded_trits_feed_trit_substrate |
 
 ## Decisions
+
+- 2026-08-15 (session 2) · **Fog №1 resolved: Q1_0 compute path = per-block
+  decode-matvec now** (`q1_0_matvec`: sign-bit partial sums × per-block
+  γ_milli). The fused/LUT kernel (bitnet.cpp-style) is deferred until
+  profiling shows need — correctness first, measured speedups after.
+- 2026-08-15 (session 2) · f32 *weights* (norm tensors) convert to the
+  milli domain at load (`f32_bits_to_milli`, pure integer from bits) — the
+  f32-vs-candle *activation surface* fog stays open but narrows: this
+  session's entire compute path is integer (milli + i16 activations).
+- 2026-08-15 (session 2) · Model facts pinned from the real file: qwen3,
+  28 blocks, emb 2048, 16 Q heads / 8 KV heads (GQA), head_dim 128,
+  rms eps 1e-6, tokenizer gpt2 (BPE). Recorded for sessions 3+ (attention,
+  MoE-less FFN 6144, generation).
 
 - 2026-08-15 · **From-scratch, no candle (session-1 posture).** The Q1_0
   path is already ours (Stage 2 codecs + Stage 3 kernel); candle supports
@@ -454,3 +500,35 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   signs +65/−63
 - ISC-23: check/test/clippy green workspace-wide this session (see run
   output); no_std gate re-run at commit time
+
+- 2026-08-15 · Session 2 closed: ISC-24..29 on evidence. Fog №1 (Q1_0
+  compute path) graduated to a Decision + shipped code. Remaining fog is
+  sessions 3+: f32 surface, tokenizer (gpt2 confirmed), gate bar.
+
+## Learning
+
+- conjectured: hand-computed RMSNorm expectations ([848, 1131]) matched
+  the implementation.
+  refuted by: the code produced [849, 1132] — I'd computed rms from the
+  unrounded mean; the code rounds mean(x²) first.
+  learned: third session in a row where hand-derived expected values were
+  wrong while the implementation was right — the pattern is now
+  structural: derive expected values FROM the documented algorithm steps,
+  or don't hand-derive at all (property-test against an independent
+  reference instead).
+  criterion now: hand-vectors only for bit layouts (Stage 2's strength);
+  numeric tests prefer reference-implementation comparisons (matvec test
+  already does this — the pattern to copy).
+
+## Verification (Stage 4, session 2)
+
+- ISC-24: rt::q1_0::tests::{matvec_matches_reference_single_block,
+  matvec_matches_reference_multi_block_multi_row, rejects_bad_sizes}
+- ISC-25: rt::q1_0::tests::row_to_milli_matches_decode + bonsai_forward
+  emb stage (2048/2048 nonzero, absmax 8–35 milli)
+- ISC-26: rt::norm::tests (f32 known vectors, isqrt exactness 0..10k +
+  perfect squares at scale, norm unit/uniform/zero/scale-invariance)
+- ISC-27: bonsai_forward on the real file → all stages sane,
+  `FORWARD: OK`, exit 0
+- ISC-28: 4 CI gates green workspace-wide (153 tests total)
+- ISC-29: VISION session-2 section + ROADMAP sessions 1–2 line
