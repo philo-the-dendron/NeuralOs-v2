@@ -5,6 +5,7 @@
 #![doc = include_str!("../README.md")]
 
 pub mod bridge;
+pub mod kernel;
 pub mod lif_neuron;
 pub mod synapse;
 pub mod trit;
@@ -15,12 +16,15 @@ pub mod simd;
 
 pub use bridge::{
     decode_i2_s, decode_q1_0, decode_q2_0, encode_i2_s, half_to_f32_bits, half_to_milli,
-    BridgeError,
+    repack_i2s_to_kernel, wire_gamma_to_substrate, BridgeError,
+};
+pub use kernel::{
+    absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit, Q15_MAX, TRITS_PER_BYTE,
 };
 pub use lif_neuron::{
     LIFNeuron, NeuronBuilder, NeuronType, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN, MAX_SPIKE_HISTORY,
 };
-pub use synapse::{STDPRule, Synapse, SynapseBuilder, SynapseType};
+pub use synapse::{STDPRule, Synapse, SynapseBuilder, SynapseType, SCALE};
 pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternarize, Trit};
 #[cfg(feature = "std")]
 pub use network::{

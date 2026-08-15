@@ -384,6 +384,67 @@ pub fn half_to_milli(h: u16) -> i32 {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Stage 3: wire γ → substrate domain, and wire → compute repacking
+// ---------------------------------------------------------------------------
+
+/// Stage-3 scale policy (resolves the Stage-2 fog item): map an imported
+/// wire-format γ — in the milli fixed-point view of [`half_to_milli`] —
+/// into the i16 substrate weight domain.
+///
+/// `substrate_γ = round(milli × `[`crate::synapse::SCALE`]` / 1000)`,
+/// saturating at [`i16::MIN`] / [`i16::MAX`]. With `SCALE = 1000` this is
+/// numerically the identity; the function exists so the milli↔SCALE
+/// coupling has exactly one home (and one pinning test,
+/// `scale_constant_is_pinned`) instead of a scattered magic 1000. If SCALE
+/// ever changes, this is the single line that adjusts.
+///
+/// Negative inputs are nonsense for a scale but saturate rather than panic
+/// — documented, tested, never silent.
+#[must_use]
+pub fn wire_gamma_to_substrate(gamma_milli: i32) -> i16 {
+    let scaled = (i64::from(gamma_milli) * i64::from(crate::synapse::SCALE)
+        + if gamma_milli >= 0 { 500 } else { -500 })
+        / 1000; // round-half-away-from-zero
+    scaled.clamp(i64::from(i16::MIN), i64::from(i16::MAX)) as i16
+}
+
+/// Repack a `BitNet` `i2_s` **wire** stream into the kernel's **compute**
+/// packing — element-by-element bit surgery, no intermediate trit buffer
+/// (Stage 3's zero-alloc seam between the two formats).
+///
+/// `i2_s` is the wire layout (transposed 4-lane); the kernel wants
+/// sequential 2-bit codes (4 trits per byte, LSB-first lanes — element `i`
+/// at byte `i/4`, shift `2·(i%4)`). Both use the code table
+/// `{0,1,2} = {−1,0,+1}`.
+///
+/// `n` is the tensor length (must be `n % 128 == 0` — the wire side's
+/// rule); `out` needs `n/4` bytes. The 32-byte `i2_s` tail (scale) is not
+/// copied — read it with [`decode_i2_s`] or from the `n/4` offset directly.
+///
+/// # Errors
+///
+/// [`BridgeError::BadLength`] if `n % 128 != 0`; [`BridgeError::TooShort`]
+/// if either buffer is undersized; [`BridgeError::UnsupportedCode`] on a
+/// code-3 lane.
+pub fn repack_i2s_to_kernel(i2s: &[u8], n: usize, out: &mut [u8]) -> Result<(), BridgeError> {
+    if !n.is_multiple_of(I2_S_BLOCK) {
+        return Err(BridgeError::BadLength);
+    }
+    if i2s.len() < i2_s_encoded_len(n) || out.len() < n / 4 {
+        return Err(BridgeError::TooShort);
+    }
+    out[..n / 4].fill(0);
+    for i in 0..n {
+        let code = (i2s[i2_s_byte_index(i)] >> i2_s_lane_shift(i)) & 0x03;
+        if code == 3 {
+            return Err(BridgeError::UnsupportedCode);
+        }
+        out[i / 4] |= code << (2 * (i % 4));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::shadow_unrelated)]
@@ -661,6 +722,113 @@ mod tests {
                 prop_assert!(f.is_nan());
             } else {
                 prop_assert_eq!(f.to_bits(), reference.to_bits());
+            }
+        }
+    }
+
+    // ----- Stage 3: γ policy + wire→compute repack -----
+
+    #[test]
+    fn wire_gamma_known_vectors() {
+        // With SCALE = 1000 the milli view maps through unchanged…
+        assert_eq!(wire_gamma_to_substrate(24), 24); // γ = 0.024
+        assert_eq!(wire_gamma_to_substrate(0), 0);
+        assert_eq!(wire_gamma_to_substrate(125), 125); // Stage-1.5 gate γ
+        // …and saturates at the i16 rails.
+        assert_eq!(wire_gamma_to_substrate(65_504_000), i16::MAX); // fp16 max finite
+        assert_eq!(wire_gamma_to_substrate(-40_000), i16::MIN);
+        assert_eq!(wire_gamma_to_substrate(-40_000_000), i16::MIN);
+        // Negative nonsense passes through (small magnitudes) — documented.
+        assert_eq!(wire_gamma_to_substrate(-5), -5);
+    }
+
+    #[test]
+    fn scale_constant_is_pinned() {
+        // The milli↔SCALE coupling: milli = ×1000 and SCALE = 1000 must
+        // stay in lockstep or wire_gamma_to_substrate stops being the
+        // identity. This test is the tripwire.
+        assert_eq!(crate::synapse::SCALE, 1000);
+    }
+
+    #[test]
+    fn repack_known_vector() {
+        // Pattern [+1,−1,0,+1, 0,0,+1,−1] (codes 2,0,1,2, 1,1,2,0) ×16 = 128.
+        let pat = [
+            Trit::One,
+            Trit::MinusOne,
+            Trit::Zero,
+            Trit::One,
+            Trit::Zero,
+            Trit::Zero,
+            Trit::One,
+            Trit::MinusOne,
+        ];
+        let trits: Vec<Trit> = (0..I2_S_BLOCK).map(|i| pat[i % 8]).collect();
+        let mut wire = [0_u8; 64];
+        encode_i2_s(&trits, 0x4000_0000, &mut wire).expect("encode");
+
+        let mut kernel = [0_u8; 32];
+        repack_i2s_to_kernel(&wire, I2_S_BLOCK, &mut kernel).expect("repack");
+
+        // Sequential unpack must reproduce the trits in order.
+        for (i, &t) in trits.iter().enumerate() {
+            let code = (kernel[i / 4] >> (2 * (i % 4))) & 0x03;
+            let got = code_to_trit(code).expect("no code 3 in encode output");
+            assert_eq!(got, t, "element {i} wrong after repack");
+        }
+    }
+
+    #[test]
+    fn repack_rejects_bad_input() {
+        let mut out = [0_u8; 32];
+        // n not a multiple of 128 (the wire side's rule).
+        assert_eq!(
+            repack_i2s_to_kernel(&[0; 64], 64, &mut out),
+            Err(BridgeError::BadLength)
+        );
+        // Wire buffer too short for n = 128.
+        assert_eq!(
+            repack_i2s_to_kernel(&[0; 12], 128, &mut out),
+            Err(BridgeError::TooShort)
+        );
+        // Out buffer too short.
+        let mut tiny = [0_u8; 4];
+        assert_eq!(
+            repack_i2s_to_kernel(&[0; 64], 128, &mut tiny),
+            Err(BridgeError::TooShort)
+        );
+        // Code 3 anywhere in the live lanes.
+        let evil = [0xFF_u8; 64];
+        let mut sink = [0_u8; 32];
+        assert_eq!(
+            repack_i2s_to_kernel(&evil, 128, &mut sink),
+            Err(BridgeError::UnsupportedCode)
+        );
+    }
+
+    proptest! {
+        /// encode → repack → sequential-unpack reproduces the original
+        /// trits bit-exactly for any 128-aligned tensor.
+        #[test]
+        fn prop_repack_round_trip(
+            blocks in 1_usize..=3,
+            seed in any::<u32>(),
+        ) {
+            let n = blocks * I2_S_BLOCK;
+            let mut x = seed | 1;
+            let trits: Vec<Trit> = (0..n)
+                .map(|_| {
+                    x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+                    match x % 3 { 0 => Trit::MinusOne, 1 => Trit::Zero, _ => Trit::One }
+                })
+                .collect();
+            let mut wire = vec![0_u8; i2_s_encoded_len(n)];
+            encode_i2_s(&trits, 0, &mut wire).unwrap();
+            let mut kernel = vec![0_u8; n / 4];
+            repack_i2s_to_kernel(&wire, n, &mut kernel).unwrap();
+            for (i, &t) in trits.iter().enumerate() {
+                let code = (kernel[i / 4] >> (2 * (i % 4))) & 0x03;
+                prop_assert_eq!(code_to_trit(code).unwrap(), t, "element {}", i);
             }
         }
     }

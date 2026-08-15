@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
-progress: 10/10
+progress: 17/17
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-15T14:10:00Z
-principal_stated_goal: "ok lets do this — start Stage 2 (format bridge), the step the Stage 1.5 gates earned"
+updated: 2026-08-15T15:45:00Z
+principal_stated_goal: "ok so we are ready for step 3 ?" → "go" — Stage 3 (shared kernel + hybrid gate), locked choices: A·classification demo, A·absmax i16 activations
 ---
 
 ## Problem
@@ -84,6 +84,43 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
+(ISC-1..10: Stage 2 format bridge — all closed 2026-08-15, see Verification.)
+
+- [x] ISC-11: `kernel` module ships the shared `no_std` ternary primitive:
+  `pack_trits` (sequential 2-bit, 4 trits/byte), `ternary_matvec`
+  (packed row-major weights × i16 activations → i32, |acc| ≤ n·32767
+  documented), and `absmax_normalize_q15` (per-vector integer absmax into
+  Q15, the BitNet activation-quant analog) — all buffer-based, zero-alloc.
+  Falsifier: module absent, or property test vs an unpacked scalar
+  reference finds a disagreement.
+- [x] ISC-12: `bridge::repack_i2s_to_kernel` converts wire (`i2_s`
+  transposed) → compute (sequential) packing bit-exactly without an
+  intermediate trit buffer; rejects n%128≠0, code 3, short buffers.
+  Falsifier: encode→repack→unpack-sequential round-trip property test
+  fails, or an error-path test fails.
+- [x] ISC-13: fog №1 resolved: `bridge::wire_gamma_to_substrate(milli)`
+  maps an imported fp16 γ (milli view) into the i16 substrate domain via
+  `synapse::SCALE` (now `pub`), one saturating formula, coupling pinned by
+  a test asserting `SCALE == 1000`. Falsifier: function absent, saturation
+  untested, or SCALE still private.
+- [x] ISC-14: `examples/ternary_hybrid_gate.rs` runs the Stage-3 gate: one
+  balanced 128-neuron ternary SNN (STDP off, fixed γ), 4-group gapped
+  round-robin drive (1.5c constants), per-trial spike counts → Q15 absmax
+  activations → a 4×128 dense layer whose weights ENTER as `i2_s` wire
+  bytes and compute via the same `ternary_matvec` kernel → 4/4 groups
+  classified (chance 25%), margins printed. Falsifier: any group
+  misclassified, or `cargo run --example ternary_hybrid_gate` exits
+  nonzero printing NO.
+- [x] ISC-15: the dense layer's weights reach the kernel ONLY through the
+  wire path (encode_i2_s → repack_i2s_to_kernel) — the composition is the
+  claim. Falsifier: the example hands raw trits to pack_trits directly.
+- [x] ISC-16: discipline gates green with the new module: workspace tests,
+  clippy -D warnings, no_std build. Falsifier: any CI command failing.
+- [x] ISC-17: docs tell the truth: VISION.md gains a Stage 3 result section
+  (kernel, gate verdict, honest "constructed not trained" scope) and the
+  stages-table row; ROADMAP Phase 3 reflects Stage 3. Falsifier: grep
+  finds the sections absent or contradicting the gate output.
+
 - [x] ISC-1: `docs/TERNARY_FORMAT.md` specifies, bit-level, the four
   byte layouts (Trit-native, `i2_s`, `q1_0`, `q2_0`), the code→trit tables,
   the scale conventions (γ=mean|w| vs max|w|), length/alignment rules, and
@@ -138,6 +175,18 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Anti-claims
 
+(Stage-2 anti-claims stand. Stage-3 additions:)
+- Anti: no `f32`/`f64` type, literal, or cast in `kernel.rs` outside
+  `#[cfg(test)]`.
+- Anti: no heap allocation in any `kernel`/`bridge` public function —
+  buffer-based signatures only (grep `Vec<\|vec!` in non-test kernel/bridge
+  code = zero).
+- Anti: no training claim — the dense layer is constructed (+1 on group,
+  −1 on other E, 0 on inhibitory), stated in the example header and
+  VISION section; composition is the gate, learning was Stage 1.5's.
+- Anti: no change to `lif_neuron`/`synapse` hot-path math (SCALE visibility
+  change is additive only).
+
 - Anti: no `f32`/`f64` type, literal, field, or cast in
   `crates/neuralos-snn/src/bridge.rs` outside `#[cfg(test)]` (the widening
   helper's *name* contains `f32` because it produces f32 *bits* — integers).
@@ -153,6 +202,16 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 | isc | type | check | threshold | tool | anchors_to |
 |---|---|---|---|---|---|
+| ISC-11 | unit+property | matvec vs scalar reference; absmax known+props | 100% exact | cargo test | kernel::tests (prop_matvec_matches_scalar et al.) |
+| ISC-12 | unit+property | encode→repack→sequential-unpack round trip | 100% exact | cargo test | bridge::tests::prop_repack_round_trip |
+| ISC-13 | unit | known milli→substrate vectors + saturation + SCALE==1000 | exact | cargo test | bridge::tests::wire_gamma_known_vectors |
+| ISC-14 | gate | example prints 4/4 + YES, exit 0 | yes | cargo run --example | examples/ternary_hybrid_gate.rs |
+| ISC-15 | code-inspect | example's dense path goes through encode_i2_s + repack | present | grep | example source |
+| ISC-16 | build | tests+clippy+no_std green | 0 failures | cargo | CI commands |
+| ISC-17 | doc | VISION/ROADMAP Stage-3 sections present, match gate | 2/2 docs | grep | docs/VISION.md, docs/ROADMAP.md |
+
+| isc | type | check | threshold | tool | anchors_to |
+|---|---|---|---|---|---|
 | ISC-1 | doc | spec file exists; worked examples byte-equal their unit-test vectors | 4/4 formats | Read + grep | docs/TERNARY_FORMAT.md |
 | ISC-2 | unit | known-vector encode matches hand-computed bytes | exact | cargo test | bridge::tests::i2_s_known_vector |
 | ISC-3 | property | encode→decode round-trip trit+scale equality | 100% cases | cargo test (proptest) | bridge::tests::prop_i2_s_round_trip |
@@ -165,6 +224,21 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-10 | unit | decoded tensor ↔ Trit::to_weight round-trip stays on-grid | exact | cargo test | bridge::tests::decoded_trits_feed_trit_substrate |
 
 ## Decisions
+
+- 2026-08-15 · Stage-3 shape ratified by principal: A·classification gate
+  (which group fired — proven 1.5c input paradigm, unambiguous 25%-chance
+  metric) + A·absmax Q15 activations (BitNet-style per-vector integer
+  normalization; bounded by construction). The toy-sequence and raw-count
+  alternatives were explained and declined.
+- 2026-08-15 · Both Stage-2 fog items graduate here: γ-conversion policy →
+  ISC-13; Trit-native packing role → decided as *compute format* under the
+  kernel (sequential 2-bit), with `i2_s` remaining the *wire* format
+  (ISC-11/12) — repack is the seam between them.
+- 2026-08-15 · Dense-layer weights are constructed, not trained (risk named
+  pre-run, principal accepted): Stage 3's claim is composition (wire →
+  kernel → coherent output), not dense-layer learning.
+- 2026-08-15 · `synapse::SCALE` becomes `pub` — the γ policy needs it, and
+  the coupling gets one home + a pinning test instead of a magic 1000.
 
 - 2026-08-15 · Layouts pinned verbatim from reference sources:
   `block_q1_0` = fp16 `d` (γ=mean\|w\|) + 16 sign bytes per 128 weights;
@@ -239,3 +313,40 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 - ISC-9: VISION.md "Stage 2 — RUN 2026-08-15, result: YES" section +
   ROADMAP.md "Stage 2 (format bridge) — PASSED 2026-08-15"
 - ISC-10: `bridge::tests::decoded_trits_feed_trit_substrate`
+
+- 2026-08-15 · Stage 3 closed: all seven claims on evidence. Dense-layer
+  logits came out perfectly symmetric (±486824 etc.) because non-driven
+  counts are exactly 0 — the 1.5c containment is total with fixed ternary
+  weights, making the margin story cleaner than estimated.
+
+## Learning
+
+- conjectured: writing the example in one pass after the module would
+  compile near-clean (the module had just compiled clean).
+  refuted by: 6 compile errors in the example — a bogus import name, an
+  i16→u32 From that doesn't exist, a u16−u32 mix, a leftover garbage
+  arithmetic line, and proptest's macro not supporting inline format
+  captures.
+  learned: examples are new crates — type-conversion friction that the
+  lib's internal conventions absorb does not carry over; and proptest
+  macros expand format strings through concat, breaking `{var}` captures.
+  criterion now: example-first mental compile check on types across crate
+  boundaries; positional format args (`"row {}", r`) in all proptest
+  assertions.
+
+## Verification (Stage 3)
+
+- ISC-11: kernel::tests (pack/matvec/absmax known vectors +
+  prop_matvec_matches_scalar_reference, prop_absmax_bounds_and_attainment,
+  prop_pack_unpack_round_trip) — 129 total green
+- ISC-12: bridge::tests::{repack_known_vector, repack_rejects_bad_input,
+  prop_repack_round_trip}
+- ISC-13: bridge::tests::{wire_gamma_known_vectors, scale_constant_is_pinned}
+- ISC-14: `cargo run -p neuralos-snn --example ternary_hybrid_gate` this
+  session → 4/4 OK, `STAGE 3 GATE: YES`, exit 0
+- ISC-15: example source — dense path is encode_i2_s →
+  repack_i2s_to_kernel (grep: 4 refs, no pack_trits shortcut)
+- ISC-16: clippy -D warnings clean · 129 tests pass · --no-default-features
+  builds (all run this session)
+- ISC-17: VISION.md "Stage 3 — RUN 2026-08-15, result: YES" + stages-table
+  row + near-term path; ROADMAP.md "Stage 3 (shared kernel) — PASSED"

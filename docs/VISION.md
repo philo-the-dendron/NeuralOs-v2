@@ -70,7 +70,7 @@ real artifacts already shipped, not a dead-end:
 |---|---|---|---|
 | **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES (bridge reopened) → Stage 1.5c structured selectivity YES → Stage 1.5d full pairwise STDP YES (missing LTP half added + CSR sync bug fixed; selectivity re-confirmed at SI 1.000 vs i16 1.000 under structured input, rule now bidirectional). Stage 2 is now firmly earned on the corrected substrate (see below).** |
 | **2. Format bridge** | ternary format spec; BitNet-compatible **export**, Prism `Q1_0` **import** | NeuralOS speaks the lingua franca of both fields | can we round-trip a ternary tensor? **✓ YES (2026-08-15, see below): `i2_s` round-trip bit-exact, `q1_0`/`q2_0` import exact, `docs/TERNARY_FORMAT.md` is the spec.** |
-| **3. Shared kernel** | one `no_std` ternary matmul; a tiny hybrid net (SNN layer + dense-LLM-style layer) | a reusable Rust ternary kernel + a showable hybrid demo | does the union compose — compute something coherent? |
+| **3. Shared kernel** | one `no_std` ternary matmul; a tiny hybrid net (SNN layer + dense-LLM-style layer) | a reusable Rust ternary kernel + a showable hybrid demo | does the union compose — compute something coherent? **✓ YES (2026-08-15, see below): 4/4 classification through one kernel, weights arriving as `i2_s` wire bytes.** |
 | **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research |
 
 **Format decision — deferred.** Stage 1 uses plain `{-1,0,+1}` + scale (zero
@@ -363,7 +363,56 @@ research bet, explicitly gated on Stage 3's proof that the union composes. We
 don't start it until the gate earns it; we don't pretend it's smaller than it
 is.
 
+### Stage 3 — RUN 2026-08-15, result: YES (the shared kernel composes)
+
+The gate question: *does the union compose — compute something coherent?*
+Answered by `examples/ternary_hybrid_gate.rs`: a ternary SNN layer and a
+dense LLM-style layer, both computing through **one** `no_std` ternary
+matmul kernel, classify which of 4 neuron groups was driven — **4/4
+correct** (chance 25%), margins ~10⁶, driven-group spiking 4–5
+spikes/neuron vs 0.00 elsewhere (the 1.5c tonic-inhibition containment
+holds with fixed ternary weights, STDP off).
+
+**The composition pipeline (the claim itself):**
+
+1. **SNN layer** — balanced 128-neuron net, `ternarize_weights` at γ=125,
+   plasticity off: a pure transducer (drive → spike counts).
+2. **Activation quant** — per-trial spike counts → Q15 i16 via integer
+   per-vector absmax (`kernel::absmax_normalize_q15`) — the integer analog
+   of BitNet's per-token activation normalization.
+3. **Dense layer enters as wire bytes** — its 4×128 ternary weights are
+   `encode_i2_s`-ed (Stage 2's BitNet wire format) and reach the kernel
+   only through `bridge::repack_i2s_to_kernel` (wire transposed → compute
+   sequential, element-wise bit surgery, zero intermediate buffer). The
+   classifier never touches the kernel through a shortcut.
+4. **One kernel** — `kernel::ternary_matvec`: sequential 2-bit packed
+   trits × Q15 activations → i32, `|acc| ≤ n·32767` documented,
+   property-tested against an unpacked scalar reference.
+
+**Two formats, two roles (the Stage-2 fog items, resolved):**
+
+- **Wire format** = BitNet `i2_s` — what crosses systems (Stage 2's codec).
+- **Compute format** = sequential 2-bit packing — what the hot loop wants.
+  `repack_i2s_to_kernel` is the seam between them.
+- The imported-γ policy: `bridge::wire_gamma_to_substrate(milli)` maps a
+  wire fp16 γ into the i16 substrate through `synapse::SCALE` (now `pub`,
+  coupling pinned by test) — one saturating formula, one home.
+
+**Honest scope:** the dense weights are **constructed, not trained**
+(+1 on the target group, −1 on other E neurons, 0 on inhibitory — all
+three codes exercised). Stage 3's claim is composition, not dense-layer
+learning; SNN-side learning closed at 1.5d. A trained dense layer (e.g.,
+STDP-style updates on the classifier) is future work, honestly labeled.
+
+**What ships:** `kernel` module (`pack_trits` / `unpack_trit` /
+`ternary_matvec` / `absmax_normalize_q15` — all buffer-based, zero-alloc,
+integer-only, `no_std`), `bridge::{repack_i2s_to_kernel,
+wire_gamma_to_substrate}`, `pub synapse::SCALE`, 14 new tests (known
+vectors, error paths, property round-trips vs scalar reference), and the
+gate example. Discipline gates green.
+
 ### 3. The lab bench (visible)
+
 
 The Slint visualizer — a live microscope onto the substrate (spike raster +
 synaptic weight heatmap + STDP learning toggle). Not a product; the proof the
@@ -391,7 +440,11 @@ library is alive, and the thing you show a researcher or a collaborator.
    both reachable), and discriminates by correlation under structured input
    (SI 1.000 vs i16 1.000); bridge open to Stage 2)
    + Stage 2 format bridge (✓ done 2026-08-15 — `i2_s` round-trip bit-exact,
-   `q1_0`/`q2_0` import exact; `docs/TERNARY_FORMAT.md` is the spec; gate YES).
+   `q1_0`/`q2_0` import exact; `docs/TERNARY_FORMAT.md` is the spec; gate YES)
+   + Stage 3 shared kernel (✓ done 2026-08-15 — one `no_std` ternary matmul
+   serves SNN + dense layers in a 4/4 hybrid gate; wire→compute repack seam;
+   gate YES). **Stage 4 (pure-Rust ternary-LLM runtime) is now the earned,
+   explicitly multi-session research step.**
 2. **Deploy on QEMU RISC-V (`riscv64gc`)** — prove the `no_std` sovereignty
    claim with a real artifact; then ESP32-C3 silicon when budget allows.
 3. **Position publicly as Lava's spiritual successor**; cite the

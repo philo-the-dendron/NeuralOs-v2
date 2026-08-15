@@ -98,13 +98,27 @@ Goal: test the smallest meaningful research gates without overcommitting.
   fp16 scale plumbing; `no_std`, zero-alloc
 - `examples/ternary_format_gate.rs` — the gate: **YES**
 
+**Stage 3 (shared kernel) — PASSED 2026-08-15:**
+
+- `neuralos_snn::kernel` — the shared `no_std` ternary matmul: sequential
+  2-bit packed trits × Q15 absmax-normalized i16 activations → i32
+  (integer BitNet-analog), zero-alloc, property-tested vs a scalar reference
+- `bridge::repack_i2s_to_kernel` — the wire (`i2_s`) → compute (sequential)
+  seam; `bridge::wire_gamma_to_substrate` — the imported-γ policy (fog №1);
+  `synapse::SCALE` now `pub` with a pinning test
+- `examples/ternary_hybrid_gate.rs` — the gate: SNN layer + dense layer
+  through ONE kernel, dense weights arriving as `i2_s` wire bytes → **4/4
+  classification, YES** (dense weights constructed, not trained —
+  composition was the claim)
+
 Gate question for the phase:
 
 > Does a ternary SNN remain mechanically useful enough to justify the rest
-> of the bridge? **Answer so far: YES, twice.**
+> of the bridge? **Answer: YES, three times (Stage 1 gate, Stage 2 format
+> gate, Stage 3 kernel gate).**
 
-Stage 3 (shared `no_std` ternary kernel) is the next earned step; Stage 4
-(Rust ternary-LLM runtime) stays gated on Stage 3's proof.
+Stage 4 (full Rust ternary-LLM runtime on Bonsai `Q1_0`) is now the earned
+step — explicitly gated, multi-session research territory.
 
 ### Phase 4 — RISC-V deployment proof
 

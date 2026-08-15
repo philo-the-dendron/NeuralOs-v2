@@ -46,7 +46,11 @@ const TAU_TRACE_US: u32 = 20_000; // 20 ms
 /// Conductance floor — below this, snap to zero (avoid noisy tiny values).
 const CONDUCTANCE_FLOOR: i16 = 10;
 /// Fixed-point scale: 1000 = 1.0.
-const SCALE: i32 = 1000;
+///
+/// Public since Stage 3: `bridge::wire_gamma_to_substrate` maps imported
+/// wire-format scales into the substrate through exactly this constant —
+/// the coupling has one home and a pinning test, not a magic 1000.
+pub const SCALE: i32 = 1000;
 
 /// Synapse type — biological neurotransmitter classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
