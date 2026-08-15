@@ -321,6 +321,15 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-15 (principal directive) · **crates.io republish deferred to
+  stage completion.** `neuralos-snn` stays `0.1.0-alpha.1` on crates.io
+  until Stage 4 closes (gate YES/NO recorded); then one deliberate
+  `alpha.2` (or `0.1.0`) bump ships `bridge` + `kernel` + `pub SCALE`
+  (+ any later API) together — one republish at a stable point, not one
+  per session. Pre-publish checklist at that time: workspace version
+  bump, CHANGELOG-worthy commit summary, `cargo publish -p neuralos-snn
+  --dry-run`, then publish.
+
 - 2026-08-15 (session 2) · **Fog №1 resolved: Q1_0 compute path = per-block
   decode-matvec now** (`q1_0_matvec`: sign-bit partial sums × per-block
   γ_milli). The fused/LUT kernel (bitnet.cpp-style) is deferred until
