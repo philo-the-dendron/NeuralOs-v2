@@ -1,0 +1,12 @@
+[package]
+name = "neuralos-rt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "NeuralOS ternary-LLM runtime — loads Bonsai-style Q1_0 GGUF models in pure Rust (Stage 4 of the ternary bridge)."
+
+[dependencies]
+neuralos-snn = { path = "../neuralos-snn" }
+
+[package.metadata.docs.rs]
+all-features = true

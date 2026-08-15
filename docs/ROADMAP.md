@@ -120,6 +120,13 @@ Gate question for the phase:
 Stage 4 (full Rust ternary-LLM runtime on Bonsai `Q1_0`) is now the earned
 step — explicitly gated, multi-session research territory.
 
+**Stage 4 — OPENED (branch `stage4-ternary-runtime`; session 1 shipped
+2026-08-15):** `crates/neuralos-rt` GGUF container parser (layout pinned
+from the Prism fork's source; `q1_0`=41/`q2_0`=42) reading the real
+`Bonsai-1.7B-Q1_0.gguf` clean — 310 tensors, all `q1_0` byte-exact vs
+dims, first real block decoded through the Stage-2 codec. Remaining:
+Q1_0 matvec → full Qwen3 forward → tokenizer + generation (the gate).
+
 ### Phase 4 — RISC-V deployment proof
 
 Goal: make the `no_std` claim concrete.

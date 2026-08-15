@@ -20,3 +20,6 @@ Thumbs.db
 
 # Editor
 *.sublime-*
+
+# Stage-4 model weights — downloaded, never committed
+models/

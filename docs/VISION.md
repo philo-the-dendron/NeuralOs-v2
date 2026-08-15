@@ -71,7 +71,7 @@ real artifacts already shipped, not a dead-end:
 | **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES (bridge reopened) → Stage 1.5c structured selectivity YES → Stage 1.5d full pairwise STDP YES (missing LTP half added + CSR sync bug fixed; selectivity re-confirmed at SI 1.000 vs i16 1.000 under structured input, rule now bidirectional). Stage 2 is now firmly earned on the corrected substrate (see below).** |
 | **2. Format bridge** | ternary format spec; BitNet-compatible **export**, Prism `Q1_0` **import** | NeuralOS speaks the lingua franca of both fields | can we round-trip a ternary tensor? **✓ YES (2026-08-15, see below): `i2_s` round-trip bit-exact, `q1_0`/`q2_0` import exact, `docs/TERNARY_FORMAT.md` is the spec.** |
 | **3. Shared kernel** | one `no_std` ternary matmul; a tiny hybrid net (SNN layer + dense-LLM-style layer) | a reusable Rust ternary kernel + a showable hybrid demo | does the union compose — compute something coherent? **✓ YES (2026-08-15, see below): 4/4 classification through one kernel, weights arriving as `i2_s` wire bytes.** |
-| **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research |
+| **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research **— OPENED 2026-08-15, session 1 done (see below); gate pending** |
 
 **Format decision — deferred.** Stage 1 uses plain `{-1,0,+1}` + scale (zero
 wire-format lock-in while we don't yet know the ternary regime works for our
@@ -411,7 +411,38 @@ wire_gamma_to_substrate}`, `pub synapse::SCALE`, 14 new tests (known
 vectors, error paths, property round-trips vs scalar reference), and the
 gate example. Discipline gates green.
 
+### Stage 4 — OPENED 2026-08-15 (multi-session; session 1 shipped)
+
+The destination run: a pure-Rust runtime that loads and runs Bonsai `Q1_0`
+models the way `bitnet.cpp` does in C++. Work lives on
+`stage4-ternary-runtime` (pushed to both remotes); `main` receives only
+honest, green-gated milestones.
+
+**Session 1 — the container is real.** The first session shipped
+`crates/neuralos-rt`: a buffer-based GGUF parser whose layout is pinned
+verbatim from the Prism fork's own `gguf.h`/`gguf.cpp` (v3 container, 13
+value types, flat arrays only, pow2 alignment default 32) plus the fork's
+tensor-type numbers (`GGML_TYPE_Q1_0 = 41`, `GGML_TYPE_Q2_0 = 42`). The
+real `Bonsai-1.7B-Q1_0.gguf` (248 MB, from HF `prism-ml/Bonsai-1.7B-gguf`,
+gitignored) parses clean: **310 tensors (197 `q1_0` + 113 `f32`), qwen3
+architecture, all data slices in-bounds, every `q1_0` tensor byte-exact
+vs its dims** — and `token_embd.weight`'s first real block decodes through
+the Stage-2 codec (fp16 scale 0x26f0 ≈ 27 milli, signs +65/−63 — genuine
+embedding data, not zeros). `examples/bonsai_probe.rs` is the falsifier
+run.
+
+**Session-1 decisions (ISA):** from-scratch, no candle — the Q1_0 path is
+already ours; revisit trigger recorded if the f32 op surface proves too
+costly. Fog for sessions 2+: Q1_0 compute path (decode+existing kernel vs
+fused binary kernel), f32-from-scratch vs candle-for-ops, tokenizer (Qwen
+BPE from embedded data), and the gate's measurable bar.
+
+**Remaining sessions (honest slice):** Q1_0 matvec + first-layer
+execution → full Qwen3 forward pass → tokenizer + generation = the Stage 4
+gate.
+
 ### 3. The lab bench (visible)
+
 
 
 The Slint visualizer — a live microscope onto the substrate (spike raster +

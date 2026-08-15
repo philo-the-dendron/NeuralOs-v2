@@ -2,10 +2,10 @@
 task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
-phase: complete
-progress: 17/17
+phase: climbing
+progress: 23/23
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-15T15:45:00Z
+updated: 2026-08-15T19:55:00Z
 principal_stated_goal: "ok so we are ready for step 3 ?" → "go" — Stage 3 (shared kernel + hybrid gate), locked choices: A·classification demo, A·absmax i16 activations
 ---
 
@@ -83,6 +83,43 @@ proven by `examples/ternary_format_gate.rs` round-tripping a ternary tensor
 bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
+
+(ISC-1..10: Stage 2 — closed 2026-08-15. ISC-11..17: Stage 3 — closed
+2026-08-15. Both see Verification.)
+
+- [x] ISC-18: work happens on `stage4-ternary-runtime`, pushed to both
+  remotes (Gitea canonical + GitHub mirror); `main` stays always-green —
+  branch merges only at honest milestones with all four CI gates green.
+  Falsifier: branch absent/unpushed, or a red-gates merge to main.
+- [x] ISC-19: container + type research pinned from the fork's own source
+  this session: GGUF layout (magic/version/n_tensors/n_kv, 13 KV value
+  types with string=8/array=9, tensor-info order, pow2 alignment default
+  32) from `PrismML-Eng/llama.cpp` `gguf.h`+`gguf.cpp`; `GGML_TYPE_Q1_0
+  = 41`, `GGML_TYPE_Q2_0 = 42` from its `ggml/include/ggml.h`; recorded
+  in ISA Decisions + `docs/TERNARY_FORMAT.md`.
+  Falsifier: constants contradict the fetched source (re-fetch diff).
+- [x] ISC-20: new workspace member `crates/neuralos-rt` with a
+  buffer-based `gguf` module: `GgufFile::parse(&[u8])` returning version,
+  KV pairs (all 13 types, arrays flat-only like the reference), tensor
+  infos (name, dims, type, offset), alignment, and validated
+  `tensor_data(name)` slicing. Reference-faithful validation: magic,
+  version ∈ {2,3}, duplicate names, n_dims ≤ 4, pow2 alignment, offsets
+  within buffer.
+  Falsifier: synthetic-vector tests fail, or any error path untested.
+- [x] ISC-21: the parser reads the real `Bonsai-1.7B-Q1_0.gguf` (248 MB,
+  HF `prism-ml/Bonsai-1.7B-gguf`): 310 tensors parse, `general.architecture`
+  is qwen3, all 310 data slices fall inside the file, and every Q1_0
+  tensor's byte size equals `rows × (cols/128) × 18` computed from its
+  dims.
+  Falsifier: `bonsai_probe` example fails any of these on the real file.
+- [x] ISC-22: the Stage-2 codec meets real model bytes: `decode_q1_0`
+  decodes the first block of `token_embd.weight` from the real file and
+  the fp16 scale lands in a sane milli range (order 1–100 milli).
+  Falsifier: decode errors, or scale milli outside [1, 100].
+- [x] ISC-23: CI gates green with the new crate: check/test/clippy/
+  no_std (snn) — the rt crate is std by design (file IO at the edges,
+  parse core on byte slices).
+  Falsifier: any CI command failing.
 
 (ISC-1..10: Stage 2 format bridge — all closed 2026-08-15, see Verification.)
 
@@ -198,7 +235,33 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 - Anti: no GGUF file parsing in this stage (grep `gguf` in src = doc
   comments only).
 
+## Not yet specified
+
+(Stage-4 fog — sessions 2+, in scope, not yet claims:)
+
+- fog: Q1_0 compute path — decode-to-i16 + existing ternary matvec (slow,
+  correct) vs a fused binary-sign kernel (fast, new); decide on measured
+  need when a layer executes.
+- fog: activation math surface — f32 from scratch (sovereignty-max) vs
+  pulling candle-core for ops while keeping Q1_0 ours; revisit when the
+  first attention layer is written (bitnet.cpp keeps float activations —
+  precedent supports f32).
+- fog: tokenizer — Qwen BPE from the GGUF's embedded tokenizer data;
+  scope when generation needs it.
+- fog: Stage-4 gate definition — "coherent completion from the real 1.7B
+  model" needs a measurable bar (fixed prompts + expected-token checks)
+  before the generation session.
+
 ## Test Strategy
+
+| isc | type | check | threshold | tool | anchors_to |
+|---|---|---|---|---|---|
+| ISC-18 | git | branch exists on both remotes, main untouched | present | git ls-remote | remotes |
+| ISC-19 | source-pin | constants match fetched fork headers | exact | diff vs /tmp fetches | ISA Decisions |
+| ISC-20 | unit | synthetic GGUF round-trip + error paths | 100% | cargo test | rt::gguf::tests |
+| ISC-21 | integration | real-file probe: 310 tensors, sizes, bounds | 100% | cargo run --example bonsai_probe | examples/bonsai_probe.rs |
+| ISC-22 | integration | real-file q1_0 block decode, scale sane | milli ∈ [1,100] | cargo run --example bonsai_probe | same |
+| ISC-23 | build | 4 CI gates green | 0 failures | cargo | CI commands |
 
 | isc | type | check | threshold | tool | anchors_to |
 |---|---|---|---|---|---|
@@ -224,6 +287,26 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-10 | unit | decoded tensor ↔ Trit::to_weight round-trip stays on-grid | exact | cargo test | bridge::tests::decoded_trits_feed_trit_substrate |
 
 ## Decisions
+
+- 2026-08-15 · **From-scratch, no candle (session-1 posture).** The Q1_0
+  path is already ours (Stage 2 codecs + Stage 3 kernel); candle supports
+  neither Q1_0 nor the fork's type numbers, and its loaders are coupled to
+  its own model structs. Revisit trigger (fog): if the f32 op surface
+  (attention/RoPE/norm) proves too costly from scratch, pull candle-core
+  for ops only — decision recorded here, not silently.
+- 2026-08-15 · Pinned from fork source: GGUF container per fork `gguf.h` +
+  `gguf.cpp` reader (v3 file, v1 rejected, alignment pow2 default 32,
+  arrays flat-only — nested arrays are a reader error in the reference
+  too); `GGML_TYPE_Q1_0 = 41`, `GGML_TYPE_Q2_0 = 42` (fork's
+  `ggml/include/ggml.h`, past TQ1_0=34). Real-file cross-check: header
+  hexdump matches (GGUF v3, 310 tensors, 32 KV).
+- 2026-08-15 · `neuralos-rt` is std (file IO at the edges); parse core
+  operates on caller-provided byte slices (no_std-friendly later if the
+  edge story demands). Model weights live in gitignored `models/` — never
+  committed.
+- 2026-08-15 · Branch protocol (principal-ratified previous turn):
+  `stage4-ternary-runtime` pushed to both remotes; merges to main only at
+  honest milestones with green gates; no force-push to Gitea.
 
 - 2026-08-15 · Stage-3 shape ratified by principal: A·classification gate
   (which group fired — proven 1.5c input paradigm, unambiguous 25%-chance
@@ -350,3 +433,24 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   builds (all run this session)
 - ISC-17: VISION.md "Stage 3 — RUN 2026-08-15, result: YES" + stages-table
   row + near-term path; ROADMAP.md "Stage 3 (shared kernel) — PASSED"
+
+- 2026-08-15 · Session 1 closed: ISC-18..23 all on evidence. This ISA
+  remains OPEN as the Stage-4 carrier (fog = sessions 2+); `phase` stays
+  `climbing` between sessions by design — resume reads this artifact.
+
+## Verification (Stage 4, session 1)
+
+- ISC-18: branch `stage4-ternary-runtime` created + pushed (see push
+  output below)
+- ISC-19: constants pinned from fork `ggml/include/ggml.h` (Q1_0=41,
+  Q2_0=42) + `gguf.h`/`gguf.cpp` reader; recorded in Decisions +
+  docs/TERNARY_FORMAT.md §GGUF container
+- ISC-20: rt::gguf::tests — 11 passing (synthetic round-trip, alignment,
+  magic/version/dup/dims/pow2/count/nested-array error paths,
+  truncated-tail contract)
+- ISC-21: bonsai_probe on the real 248 MB file — 310 tensors in-bounds,
+  197 q1_0 byte-exact vs dims, architecture qwen3
+- ISC-22: token_embd first block — scale 0x26f0 = 27 milli ∈ [1,100],
+  signs +65/−63
+- ISC-23: check/test/clippy green workspace-wide this session (see run
+  output); no_std gate re-run at commit time

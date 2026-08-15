@@ -140,6 +140,28 @@ The fork's C source defines `QK2_0 = 64` — **group size 64** (2.25 bpw per
 weight including the fp16 scale). The C code is authoritative; the "g128"
 label was the model-card name, not the layout.
 
+## GGUF container + type numbers (Stage 4, pinned 2026-08-15)
+
+Inside a GGUF file (the llama.cpp container — layout pinned from the
+fork's `gguf.h` + `gguf.cpp` reader), the fork's tensor types carry these
+discriminants (from its `ggml/include/ggml.h`):
+
+| Type | Value | Block |
+|---|---|---|
+| `f32` | 0 | — |
+| `f16` | 1 | — |
+| `q8_0` | 8 | 32 w / 34 B |
+| `tq1_0` | 34 | stock ternary |
+| **`q1_0`** | **41** | 128 w / 18 B |
+| **`q2_0`** | **42** | 64 w / 18 B |
+
+Container facts verified against the real `Bonsai-1.7B-Q1_0.gguf`: GGUF
+v3, tensor infos after the KV section, data section aligned to
+`general.alignment` (32, pow2), tensor `offset` relative to the data
+section, no per-tensor byte size stored (consumers must compute it from
+dims + type — what `neuralos-rt`'s probe does). Parser:
+`crates/neuralos-rt/src/gguf.rs`.
+
 ## The `no_std` / RISC-V posture
 
 All codecs are buffer-based (caller-provided slices), zero-alloc,

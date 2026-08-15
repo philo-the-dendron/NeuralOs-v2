@@ -1,0 +1,26 @@
+//! NeuralOS ternary-LLM runtime — Stage 4 of the ternary bridge.
+//!
+//! The goal (see `docs/VISION.md`): load and run Bonsai-style `Q1_0`
+//! ternary models in pure Rust — the Rust answer to `bitnet.cpp`,
+//! sovereignty-grade local AI sharing the SNN's arithmetic natively
+//! ([`neuralos_snn::bridge`] owns the block codecs; this crate owns the
+//! container and, in later sessions, the model execution).
+//!
+//! # Session 1 scope (this crate today)
+//!
+//! - [`gguf`]: a buffer-based GGUF container parser — header, metadata
+//!   key-values (all 13 value types), tensor infos, validated data-slice
+//!   access. Layout pinned verbatim from the Prism fork's `gguf.h` +
+//!   `gguf.cpp` reader (GGUF v3; see the module docs).
+//! - `examples/bonsai_probe.rs`: parse a real Bonsai GGUF, verify tensor
+//!   geometry, and decode a real `q1_0` block through the Stage-2 codec.
+//!
+//! # Posture
+//!
+//! `std` crate (file IO lives at the edges — examples and, later, the
+//! loader); the parse core operates on caller-provided byte slices with no
+//! I/O of its own, so a `no_std` edge story remains open. No `unsafe`.
+
+pub mod gguf;
+
+pub use gguf::{GgufError, GgufFile, MetadataValue, TensorInfo, GGML_TYPE_Q1_0, GGML_TYPE_Q2_0};
