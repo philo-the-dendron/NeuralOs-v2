@@ -4,6 +4,7 @@
 #![allow(clippy::missing_errors_doc)]
 #![doc = include_str!("../README.md")]
 
+pub mod bridge;
 pub mod lif_neuron;
 pub mod synapse;
 pub mod trit;
@@ -12,6 +13,10 @@ pub mod network;
 #[cfg(feature = "simd")]
 pub mod simd;
 
+pub use bridge::{
+    decode_i2_s, decode_q1_0, decode_q2_0, encode_i2_s, half_to_f32_bits, half_to_milli,
+    BridgeError,
+};
 pub use lif_neuron::{
     LIFNeuron, NeuronBuilder, NeuronType, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN, MAX_SPIKE_HISTORY,
 };

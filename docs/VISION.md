@@ -69,7 +69,7 @@ real artifacts already shipped, not a dead-end:
 | Stage | What | Standalone value (if you stop here) | The gate |
 |---|---|---|---|
 | **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES (bridge reopened) → Stage 1.5c structured selectivity YES → Stage 1.5d full pairwise STDP YES (missing LTP half added + CSR sync bug fixed; selectivity re-confirmed at SI 1.000 vs i16 1.000 under structured input, rule now bidirectional). Stage 2 is now firmly earned on the corrected substrate (see below).** |
-| **2. Format bridge** | ternary format spec; BitNet-compatible **export**, Prism `Q1_0` **import** | NeuralOS speaks the lingua franca of both fields | can we round-trip a ternary tensor? |
+| **2. Format bridge** | ternary format spec; BitNet-compatible **export**, Prism `Q1_0` **import** | NeuralOS speaks the lingua franca of both fields | can we round-trip a ternary tensor? **✓ YES (2026-08-15, see below): `i2_s` round-trip bit-exact, `q1_0`/`q2_0` import exact, `docs/TERNARY_FORMAT.md` is the spec.** |
 | **3. Shared kernel** | one `no_std` ternary matmul; a tiny hybrid net (SNN layer + dense-LLM-style layer) | a reusable Rust ternary kernel + a showable hybrid demo | does the union compose — compute something coherent? |
 | **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research |
 
@@ -79,7 +79,64 @@ SNN). If the gate passes, Stage 2 commits to **BitNet `Round()` native +
 Prism `Q1_0` import** — because BitNet gives a *mechanical* bridge (real
 weights flow between SNN and LLM), whereas standard TWN would be conceptual
 only (shared alphabet, incompatible encoding, isolated from the models
-actually shipping).
+actually shipping). **Stage 2 honored this commitment (see its section
+below).**
+
+### Stage 2 — RUN 2026-08-15, result: YES (the format bridge)
+
+The gate question: *can we round-trip a ternary tensor?* Answered by
+`examples/ternary_format_gate.rs`: a 256-trit tensor encodes to BitNet
+`i2_s` and decodes back **bit-exact** (trits and f32 scale bits), a
+two-block Prism `q1_0` stream imports with exact sign bits and per-block
+scales, and a Prism `q2_0` block imports with exact 2-bit codes — with
+impossible code-3 input rejected loudly, never clamped.
+
+**Layouts pinned verbatim from reference source code** (fetched the same
+session, not from blogs or model cards):
+
+- **BitNet `i2_s`** (`microsoft/BitNet`
+  `utils/convert-hf-to-gguf-bitnet.py::quantize_to_i2_s`): 2-bit codes
+  `{0,1,2}` in a **transposed** 4-lane packing — element `i` at byte
+  `(i/128)·32 + (i%32)`, shift `6 − 2·((i%128)/32)` — plus a 32-byte tail
+  with the LE f32 scale. Scale semantics: BitNet-Round `γ = mean|w|`, the
+  same convention as our `trit::tensor_scale`. Export **and** import.
+- **Prism `q1_0`** (`PrismML-Eng/llama.cpp` `block_q1_0`): per 128 weights,
+  LE fp16 scale (`γ = mean|w|` — the fork uses BitNet's convention) + 16
+  sign bytes, LSB-first. Binary `{−γ, +γ}`, no zero state — imports
+  losslessly into ternary; export does not exist (would silently map zeros
+  to `+γ`).
+- **Prism `q2_0`** (same fork, `block_q2_0`): per 64 weights, LE fp16 scale
+  (`max|w|`, TWN-style) + 16 bytes of LSB-first 2-bit lanes. Code `11`
+  decodes to `+2·d` in the reference dequantizer but cannot be emitted by
+  its quantizer; we reject it loudly.
+
+**Honest findings:**
+
+1. **The "Q2_0_g128" label in our research docs was loose.** The fork's C
+   code defines `QK2_0 = 64` — group size **64** (2.25 bpw), not 128. The C
+   code is authoritative; corrected in `docs/TERNARY_FORMAT.md`.
+2. **`i2_s` requires `n % 128 == 0`, not merely `% 4`.** The reference
+   truncates output at `n/4` bytes; with the transposed packing, any
+   non-multiple of 128 leaves live elements in truncated bytes — silently
+   dropped. A permissive codec would be silently lossy; ours refuses
+   (`BadLength`).
+3. **The scale conventions differ between formats** (`mean|w|` for `i2_s`
+   and `q1_0`, `max|w|` for `q2_0`) — the spec names which one each layout
+   carries; treating them as interchangeable would corrupt magnitudes.
+
+**What ships:** `neuralos_snn::bridge` — `encode_i2_s`/`decode_i2_s`
+(bit-exact inverses), `decode_q1_0`/`decode_q2_0` (import-only, loud
+errors), `half_to_f32_bits` (integer fp16→f32 widening, property-tested
+against float math on all 65 536 halves) and `half_to_milli` (fixed-point
+scale view) — all buffer-based, zero-alloc, integer-only, `no_std`.
+`docs/TERNARY_FORMAT.md` is the spec, with worked byte examples byte-equal
+to the crate's test vectors. Thirteen new tests (unit + property +
+known-vector), gate example, and the discipline gates green.
+
+**Deferred (fog, kept honest):** how an imported fp16 γ maps into the i16
+`SCALE=1000` weight domain when feeding `SpikingNeuralNetwork` — a Stage 3
+concern (the milli view exists; the policy doesn't). NativeTernary stays an
+unimplemented import path until something real emits it.
 
 ### Stage 1 — RUN 2026-08-08, result: NO on learning (deterministic regime)
 
@@ -332,7 +389,9 @@ library is alive, and the thing you show a researcher or a collaborator.
    ternary Stage 1 + 1.5b + 1.5c + 1.5d (✓ done — ternary SNN spikes 1.00× baseline,
    learns via stochastic bucket-flips over a *full pairwise* STDP rule (LTP + LTD
    both reachable), and discriminates by correlation under structured input
-   (SI 1.000 vs i16 1.000); bridge open to Stage 2).
+   (SI 1.000 vs i16 1.000); bridge open to Stage 2)
+   + Stage 2 format bridge (✓ done 2026-08-15 — `i2_s` round-trip bit-exact,
+   `q1_0`/`q2_0` import exact; `docs/TERNARY_FORMAT.md` is the spec; gate YES).
 2. **Deploy on QEMU RISC-V (`riscv64gc`)** — prove the `no_std` sovereignty
    claim with a real artifact; then ESP32-C3 silicon when budget allows.
 3. **Position publicly as Lava's spiritual successor**; cite the

@@ -77,21 +77,34 @@ Near-term work inside this phase:
 | Smoke validation / render verification workflow | Keeps the visualizer trustworthy as a demo artifact |
 | Stability around threading and shutdown behavior | Protects the hardest-won lesson in the app layer |
 
-### Phase 3 — Ternary bridge, Stage 1 only
+### Phase 3 — Ternary bridge, Stage 1 → 2 (both gated, both passed)
 
-Goal: test the smallest meaningful research gate without overcommitting.
+Goal: test the smallest meaningful research gates without overcommitting.
 
-This phase is only the first stage from `docs/VISION.md`:
+**Stage 1 (ternary SNN) — PASSED** after the 1.5b/1.5c/1.5d reopen cycle:
 
-- introduce a `Trit`-style weight type `{-1, 0, +1}` plus scale
-- adapt the SNN to that representation
-- verify it still spikes and learns comparably enough to be worth continuing
+- `Trit`-style weight type `{-1, 0, +1}` plus scale — shipped
+- SNN adapted to that representation — spikes 1.00× baseline, learns via
+  stochastic bucket-flips over full pairwise STDP, discriminates by
+  correlation (SI 1.000 = i16 parity)
+- deterministic per-step re-projection ruled out (Stage 1's honest NO)
 
-Gate question:
+**Stage 2 (format bridge) — PASSED 2026-08-15:**
 
-> Does a ternary SNN remain mechanically useful enough to justify the rest of the bridge?
+- `docs/TERNARY_FORMAT.md` — the wire-format spec, layouts pinned verbatim
+  from microsoft/BitNet and PrismML-Eng/llama.cpp source
+- `neuralos_snn::bridge` — `i2_s` encode/decode (bit-exact round-trip),
+  `q1_0`/`q2_0` import (loud errors, no silent clamping), integer-only
+  fp16 scale plumbing; `no_std`, zero-alloc
+- `examples/ternary_format_gate.rs` — the gate: **YES**
 
-If yes, later bridge stages earn the right to exist. If not, stop here with a still-useful substrate.
+Gate question for the phase:
+
+> Does a ternary SNN remain mechanically useful enough to justify the rest
+> of the bridge? **Answer so far: YES, twice.**
+
+Stage 3 (shared `no_std` ternary kernel) is the next earned step; Stage 4
+(Rust ternary-LLM runtime) stays gated on Stage 3's proof.
 
 ### Phase 4 — RISC-V deployment proof
 

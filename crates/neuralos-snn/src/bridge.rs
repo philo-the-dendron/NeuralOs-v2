@@ -1,0 +1,683 @@
+//! Stage 2 of the ternary bridge: the **format bridge** (see `docs/VISION.md`
+//! and `docs/TERNARY_FORMAT.md`).
+//!
+//! `NeuralOS` speaks the byte layouts of the two ternary ecosystems that
+//! actually ship models:
+//!
+//! - **`BitNet` `i2_s`** (microsoft/BitNet, `utils/convert-hf-to-gguf-bitnet.py`
+//!   `quantize_to_i2_s`): export **and** import. 2-bit codes `{0,1,2}` =
+//!   `{−1, 0, +1}` packed 4-per-byte in a *transposed* layout (see
+//!   [`encode_i2_s`]), plus a 32-byte tail whose first 4 bytes are the LE
+//!   f32 scale. Scale semantics: BitNet-Round `γ = mean|w|` — the same
+//!   convention as [`crate::trit::tensor_scale`].
+//! - **Prism `q1_0`** (PrismML-Eng/llama.cpp `ggml-common.h` `block_q1_0`):
+//!   import only. 18 bytes per 128 weights: LE fp16 scale (`γ = mean|w|`) +
+//!   16 sign bytes (set bit → `+γ`). Binary `{−γ, +γ}` — no zero state; it
+//!   embeds losslessly into ternary, so no information is lost on import.
+//!   Export does not exist: ternary → binary would silently turn zeros into
+//!   `+γ`.
+//! - **Prism `q2_0`** (same fork, `block_q2_0`): import only. 18 bytes per 64
+//!   weights: LE fp16 scale (`max|w|`) + 16 bytes of LSB-first 2-bit lanes,
+//!   `00`=−1 `01`=0 `10`=+1. Code `11` (`+2·d`) cannot be produced by the
+//!   reference quantizer and is rejected loudly here.
+//!
+//! # Integer-only, `no_std`, zero-alloc
+//!
+//! No float types anywhere: fp16/fp32 scales travel as raw bits ([`u16`] /
+//! [`u32`]). [`half_to_f32_bits`] widens fp16→fp32 bit-exactly with pure
+//! integer arithmetic; [`half_to_milli`] gives the fixed-point numeric view
+//! (`round(v × 1000)`, saturating). All codecs are buffer-based — the caller
+//! provides the output slice — so the module works on a bare `no_std` target
+//! with no allocator. That is the RISC-V posture: decode Bonsai weights on
+//! the edge device itself.
+//!
+//! # Length rules (honesty over permissiveness)
+//!
+//! - `i2_s` requires `n % 128 == 0`: the reference's transposed packing
+//!   truncates output at `n/4` bytes, which silently drops elements whenever
+//!   `n % 128 != 0`. A permissive codec would be silently lossy; this one
+//!   refuses.
+//! - `q1_0` requires `n % 128 == 0` (the C reference asserts the same).
+//! - `q2_0` requires `n % 64 == 0` (ditto).
+
+#![allow(clippy::module_name_repetitions)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss
+)]
+
+use crate::trit::Trit;
+
+/// The `i2_s` tail size in bytes: 4 bytes of LE f32 scale bits, then 28
+/// zero bytes (the reference aligns each row to 32).
+pub const I2_S_TAIL_BYTES: usize = 32;
+
+/// `i2_s` block size in values (transposed packing operates on 4 lanes of
+/// 32 elements).
+pub const I2_S_BLOCK: usize = 128;
+
+/// `q1_0` block size in values (one fp16 scale + 16 sign bytes).
+pub const Q1_0_BLOCK: usize = 128;
+
+/// `q2_0` block size in values (one fp16 scale + 16 bytes of 2-bit codes).
+pub const Q2_0_BLOCK: usize = 64;
+
+/// Errors from the format codecs. Loud by design — no decode path clamps,
+/// pads, or guesses. A short buffer, a wrong length, or an impossible code
+/// is an [`Err`], never best-effort output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BridgeError {
+    /// The trit slice length is not a multiple of the format's block size
+    /// (`i2_s`/`q1_0`: 128, `q2_0`: 64).
+    BadLength,
+    /// The byte buffer is shorter than the layout requires.
+    TooShort,
+    /// A 2-bit code the reference quantizer can never produce (`3`) was
+    /// found in the input — the data is malformed or not this format.
+    UnsupportedCode,
+}
+
+impl core::fmt::Display for BridgeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::BadLength => {
+                write!(f, "tensor length is not a multiple of the block size")
+            }
+            Self::TooShort => write!(f, "byte buffer shorter than the layout requires"),
+            Self::UnsupportedCode => {
+                write!(f, "2-bit code 3 found (reference quantizer cannot emit it)")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for BridgeError {}
+
+// ---------------------------------------------------------------------------
+// Code <-> Trit tables (shared 2-bit encoding: 00=-1, 01=0, 10=+1)
+// ---------------------------------------------------------------------------
+
+const fn trit_to_code(t: Trit) -> u8 {
+    match t {
+        Trit::MinusOne => 0,
+        Trit::Zero => 1,
+        Trit::One => 2,
+    }
+}
+
+const fn code_to_trit(code: u8) -> Result<Trit, BridgeError> {
+    match code {
+        0 => Ok(Trit::MinusOne),
+        1 => Ok(Trit::Zero),
+        2 => Ok(Trit::One),
+        _ => Err(BridgeError::UnsupportedCode),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BitNet i2_s — encode + decode
+// ---------------------------------------------------------------------------
+
+/// Encoded byte length of an `i2_s` tensor with `n` trits: `n/4` packed
+/// bytes plus the 32-byte scale tail. `n` must be a multiple of 128.
+#[must_use]
+pub const fn i2_s_encoded_len(n: usize) -> usize {
+    n / 4 + I2_S_TAIL_BYTES
+}
+
+/// The `i2_s` byte index holding element `i`'s code.
+///
+/// The reference packs 128 values into 32 bytes *transposed*: element `i`
+/// lives at byte `(i/128)*32 + (i%32)` in lane `(i%128)/32`, counting from
+/// the top bits. This is `numpy.reshape(n, 4, 32)` with lane 0 shifted `<<6`.
+#[must_use]
+pub const fn i2_s_byte_index(i: usize) -> usize {
+    (i / I2_S_BLOCK) * 32 + (i % 32)
+}
+
+/// The 2-bit shift (within the byte) of element `i`'s lane: lane 0 → bits
+/// 7-6, lane 1 → bits 5-4, lane 2 → bits 3-2, lane 3 → bits 1-0.
+#[must_use]
+pub const fn i2_s_lane_shift(i: usize) -> u32 {
+    6 - 2 * (((i % I2_S_BLOCK) / 32) as u32)
+}
+
+/// Encode a ternary tensor into the `BitNet` `i2_s` byte layout.
+///
+/// `scale_bits` is the raw f32 bit pattern of the scale (BitNet-Round
+/// `γ = mean|w|`; callers on the i16 substrate can derive it from
+/// [`crate::trit::tensor_scale`]). Layout: `n/4` packed code bytes in the
+/// transposed 4-lane packing, then 32 tail bytes — the first 4 the LE f32
+/// scale bits, the rest zero, matching the reference.
+///
+/// Requires `trits.len() % 128 == 0` and `out.len() >= i2_s_encoded_len(n)`.
+/// Returns the number of bytes written.
+///
+/// # Errors
+///
+/// [`BridgeError::BadLength`] if `n % 128 != 0`; [`BridgeError::TooShort`] if
+/// `out` cannot hold the encoding.
+pub fn encode_i2_s(trits: &[Trit], scale_bits: u32, out: &mut [u8]) -> Result<usize, BridgeError> {
+    let n = trits.len();
+    if !n.is_multiple_of(I2_S_BLOCK) {
+        return Err(BridgeError::BadLength);
+    }
+    let written = i2_s_encoded_len(n);
+    if out.len() < written {
+        return Err(BridgeError::TooShort);
+    }
+    out[..written].fill(0);
+    for (i, t) in trits.iter().enumerate() {
+        out[i2_s_byte_index(i)] |= trit_to_code(*t) << i2_s_lane_shift(i);
+    }
+    out[n / 4..n / 4 + 4].copy_from_slice(&scale_bits.to_le_bytes());
+    Ok(written)
+}
+
+/// Decode a `BitNet` `i2_s` byte stream back into ternary values.
+///
+/// `trits.len()` is the tensor length `n` (must be `n % 128 == 0`);
+/// `bytes.len()` must be at least [`i2_s_encoded_len`]. Returns the raw f32
+/// scale bits from the tail — the exact inverse of [`encode_i2_s`].
+///
+/// # Errors
+///
+/// [`BridgeError::BadLength`] / [`BridgeError::TooShort`] on bad sizes;
+/// [`BridgeError::UnsupportedCode`] if any 2-bit lane holds code 3 (the
+/// reference encoder never emits it).
+pub fn decode_i2_s(bytes: &[u8], trits: &mut [Trit]) -> Result<u32, BridgeError> {
+    let n = trits.len();
+    if !n.is_multiple_of(I2_S_BLOCK) {
+        return Err(BridgeError::BadLength);
+    }
+    if bytes.len() < i2_s_encoded_len(n) {
+        return Err(BridgeError::TooShort);
+    }
+    for (i, slot) in trits.iter_mut().enumerate() {
+        let byte = bytes[i2_s_byte_index(i)];
+        let code = (byte >> i2_s_lane_shift(i)) & 0x03;
+        *slot = code_to_trit(code)?;
+    }
+    let mut scale = [0u8; 4];
+    scale.copy_from_slice(&bytes[n / 4..n / 4 + 4]);
+    Ok(u32::from_le_bytes(scale))
+}
+
+// ---------------------------------------------------------------------------
+// Prism q1_0 — decode (import only)
+// ---------------------------------------------------------------------------
+
+/// Encoded byte length of a `q1_0` tensor with `n` weights: 18 bytes per
+/// 128-weight block (2-byte LE fp16 scale + 16 sign bytes).
+#[must_use]
+pub const fn q1_0_encoded_len(n: usize) -> usize {
+    (n / Q1_0_BLOCK) * 18
+}
+
+/// Decode a Prism `q1_0` tensor: per 128-weight block, a LE fp16 scale
+/// (`γ = mean|w|`) followed by 16 sign bytes — element `j`'s sign is bit
+/// `j%8` of byte `j/8` (LSB-first); set → `+γ`, clear → `−γ`.
+///
+/// The format is binary, so every decoded trit is [`Trit::One`] or
+/// [`Trit::MinusOne`] — no zeros exist in `q1_0`. Returns the fp16 scale
+/// bits of the first block (see `docs/TERNARY_FORMAT.md` for the
+/// multi-block scale caveat: Prism stores one scale *per block*; this
+/// decode returns per-block scales through `scale_bits_out` when provided,
+/// and the first block's scale for the one-block case).
+///
+/// Requires `trits.len() % 128 == 0` and `bytes.len() >= q1_0_encoded_len(n)`.
+///
+/// # Errors
+///
+/// [`BridgeError::BadLength`] / [`BridgeError::TooShort`] on bad sizes.
+pub fn decode_q1_0(bytes: &[u8], trits: &mut [Trit], scale_bits_out: &mut [u16]) -> Result<(), BridgeError> {
+    let n = trits.len();
+    if !n.is_multiple_of(Q1_0_BLOCK) {
+        return Err(BridgeError::BadLength);
+    }
+    let blocks = n / Q1_0_BLOCK;
+    if bytes.len() < q1_0_encoded_len(n) {
+        return Err(BridgeError::TooShort);
+    }
+    if scale_bits_out.len() < blocks {
+        return Err(BridgeError::TooShort);
+    }
+    for b in 0..blocks {
+        let base = b * 18;
+        scale_bits_out[b] = u16::from_le_bytes([bytes[base], bytes[base + 1]]);
+        for j in 0..Q1_0_BLOCK {
+            let sign = (bytes[base + 2 + j / 8] >> (j % 8)) & 1;
+            trits[b * Q1_0_BLOCK + j] = if sign == 1 { Trit::One } else { Trit::MinusOne };
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Prism q2_0 — decode (import only)
+// ---------------------------------------------------------------------------
+
+/// Encoded byte length of a `q2_0` tensor with `n` weights: 18 bytes per
+/// 64-weight block (2-byte LE fp16 scale + 16 bytes of 2-bit codes).
+#[must_use]
+pub const fn q2_0_encoded_len(n: usize) -> usize {
+    (n / Q2_0_BLOCK) * 18
+}
+
+/// Decode a Prism `q2_0` tensor: per 64-weight block, a LE fp16 scale
+/// (`max|w|`) followed by 16 bytes of LSB-first 2-bit lanes — element `j`'s
+/// code is bits `2*(j%4)..2*(j%4)+1` of byte `j/4`, with `00`=−1, `01`=0,
+/// `10`=+1.
+///
+/// Code `11` decodes to `+2·d` in the reference dequantizer but *cannot be
+/// emitted* by the reference quantizer (with `d = max|w|`, `round(w/d)` never
+/// leaves `[-1, 1]`). This decoder rejects it loudly rather than inventing a
+/// mapping the reference never produced.
+///
+/// Requires `trits.len() % 64 == 0`. Scale bits per block are written to
+/// `scale_bits_out` (needs `n/64` entries).
+///
+/// # Errors
+///
+/// [`BridgeError::BadLength`] / [`BridgeError::TooShort`] on bad sizes;
+/// [`BridgeError::UnsupportedCode`] on code 3.
+pub fn decode_q2_0(bytes: &[u8], trits: &mut [Trit], scale_bits_out: &mut [u16]) -> Result<(), BridgeError> {
+    let n = trits.len();
+    if !n.is_multiple_of(Q2_0_BLOCK) {
+        return Err(BridgeError::BadLength);
+    }
+    let blocks = n / Q2_0_BLOCK;
+    if bytes.len() < q2_0_encoded_len(n) {
+        return Err(BridgeError::TooShort);
+    }
+    if scale_bits_out.len() < blocks {
+        return Err(BridgeError::TooShort);
+    }
+    for b in 0..blocks {
+        let base = b * 18;
+        scale_bits_out[b] = u16::from_le_bytes([bytes[base], bytes[base + 1]]);
+        for j in 0..Q2_0_BLOCK {
+            let code = (bytes[base + 2 + j / 4] >> (2 * (j % 4))) & 0x03;
+            trits[b * Q2_0_BLOCK + j] = code_to_trit(code)?;
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Integer-only scale plumbing (fp16 / fp32 as raw bits)
+// ---------------------------------------------------------------------------
+
+/// Widen an IEEE-754 binary16 bit pattern to binary32, bit-exactly, with
+/// pure integer arithmetic (no float hardware needed — the RISC-V
+/// FPU-less story).
+///
+/// Normals: `E32 = e - 15 + 127`, mantissa shifted up 13 bits. Subnormals
+/// are normalized against the fp16 exponent floor `2^-14`. Zeros, infinities
+/// and NaNs map to their exact fp32 counterparts (NaN is canonicalized to
+/// the quiet payload the mantissa implies).
+#[must_use]
+pub const fn half_to_f32_bits(h: u16) -> u32 {
+    let sign = ((h >> 15) as u32) << 31;
+    let exp = ((h >> 10) & 0x1F) as u32;
+    let mant = (h & 0x03FF) as u32;
+    if exp == 0 {
+        if mant == 0 {
+            return sign; // ±0
+        }
+        // Subnormal fp16: value = mant × 2^-24. Normalize: find the leading
+        // one at bit k (0-indexed), then E = k - 24, fp32 exp field = E + 127
+        // = k + 103, and the remaining mantissa bits shift into place.
+        let mut k = 0_u32;
+        let m = mant;
+        while (m >> k) > 1 {
+            k += 1;
+        }
+        // k = index of the leading set bit. Exponent field = k + 127 - 24.
+        let e32 = k + 103;
+        let m32 = (mant ^ (1 << k)) << (23 - k);
+        return sign | (e32 << 23) | m32;
+    }
+    if exp == 0x1F {
+        // Inf / NaN: exponent all ones carries over; mantissa (incl. the
+        // quiet bit if set) shifts up 13.
+        return sign | (0xFF_u32 << 23) | (mant << 13);
+    }
+    sign | ((exp + 112) << 23) | (mant << 13)
+}
+
+/// Fixed-point numeric view of an fp16 scale: `round(value × 1000)` as
+/// [`i32`], computed entirely in integers from the bit pattern.
+///
+/// Documented special handling (tested, not silent): ±infinity saturates to
+/// [`i32::MAX`] / [`i32::MIN`]; NaN maps to 0; every finite fp16 fits without
+/// saturation (max finite 65504 → `65_504_000` < 2^31). Values below 0.0005
+/// round to 0 — the milli grid's honest floor.
+#[must_use]
+pub fn half_to_milli(h: u16) -> i32 {
+    let bits = half_to_f32_bits(h);
+    let negative = (bits >> 31) == 1;
+    let exp = ((bits >> 23) & 0xFF) as i32;
+    if exp == 0 {
+        return 0; // ±0 (fp16-origin values can never be f32-subnormal)
+    }
+    let mant = (bits & 0x007F_FFFF) | (0x0080_0000); // implicit leading 1 (finite only)
+    if exp == 0xFF {
+        if bits.trailing_zeros() >= 23 {
+            // ±inf: documented saturation, by sign.
+            return if negative { i32::MIN } else { i32::MAX };
+        }
+        return 0; // NaN — documented mapping
+    }
+    // value = mant × 2^(exp-127-23); milli = value × 1000, rounded.
+    // For fp16-derived values exp ≤ 142, so the shift below is always right
+    // (≥ 8); mant×1000 ≤ 2^24×1000 < 2^34 — no i64 overflow.
+    let shift = 127 + 23 - exp; // ≥ 8 for anything fp16-origin
+    let scaled = i64::from(mant) * 1000;
+    let milli = (scaled + (1_i64 << (shift - 1))) >> shift;
+    if negative {
+        (-milli) as i32
+    } else {
+        milli as i32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::shadow_unrelated)]
+    use super::*;
+    use proptest::prelude::*;
+
+    // ----- i2_s known vector (derived by hand from the reference script) -----
+
+    #[test]
+    fn i2_s_known_vector() {
+        // Pattern of 8 codes {2,0,1,2,1,1,0,2} (= {+1,-1,0,+1,0,0,-1,+1}),
+        // repeated to 128 elements. Transposed packing: byte j of the block
+        // holds elements j (lane<<6), j+32 (lane<<4), j+64 (lane<<2), j+96
+        // (lane<<0). Since the pattern has period 8 and 32 % 8 == 0, all four
+        // lanes of byte j share the same code → bytes 0..7 = AA 00 55 AA 55
+        // 55 00 AA, repeated 4× across the 32-byte block.
+        let pat = [
+            Trit::One,
+            Trit::MinusOne,
+            Trit::Zero,
+            Trit::One,
+            Trit::Zero,
+            Trit::Zero,
+            Trit::MinusOne,
+            Trit::One,
+        ];
+        let trits: Vec<Trit> = (0..I2_S_BLOCK).map(|i| pat[i % 8]).collect();
+        let scale_bits: u32 = 0x4000_0000; // f32 2.0
+        let mut buf = [0xFF_u8; 128]; // pre-poisoned: encode must fully own its bytes
+        let written = encode_i2_s(&trits, scale_bits, &mut buf).expect("encode");
+        assert_eq!(written, 32 + I2_S_TAIL_BYTES);
+
+        let mut expected = [0_u8; 64];
+        expected[..32].copy_from_slice(&[0xAA, 0x00, 0x55, 0xAA, 0x55, 0x55, 0x00, 0xAA].repeat(4));
+        expected[32..36].copy_from_slice(&scale_bits.to_le_bytes());
+        assert_eq!(&buf[..written], &expected, "i2_s bytes must match reference layout");
+
+        // Round-trip through the decoder.
+        let mut back = [Trit::Zero; I2_S_BLOCK];
+        let got_scale = decode_i2_s(&buf, &mut back).expect("decode");
+        assert_eq!(got_scale, scale_bits);
+        assert_eq!(&back, &trits[..]);
+    }
+
+    #[test]
+    fn i2_s_rejects_bad_lengths() {
+        let trits = [Trit::One; 8]; // not a multiple of 128
+        let mut out = [0u8; 64];
+        assert_eq!(
+            encode_i2_s(&trits, 0, &mut out),
+            Err(BridgeError::BadLength)
+        );
+        let mut back = [Trit::Zero; 8];
+        assert_eq!(
+            decode_i2_s(&[0; 64], &mut back),
+            Err(BridgeError::BadLength)
+        );
+    }
+
+    #[test]
+    fn i2_s_rejects_short_buffers() {
+        let trits = [Trit::One; I2_S_BLOCK];
+        let mut out = [0u8; 10]; // needs 64
+        assert_eq!(
+            encode_i2_s(&trits, 0, &mut out),
+            Err(BridgeError::TooShort)
+        );
+        let mut back = [Trit::Zero; I2_S_BLOCK];
+        assert_eq!(
+            decode_i2_s(&[0; 12], &mut back),
+            Err(BridgeError::TooShort)
+        );
+    }
+
+    #[test]
+    fn i2_s_rejects_code_three() {
+        // One full-size buffer, every code lane = 3 (0xFF everywhere).
+        let mut back = [Trit::Zero; I2_S_BLOCK];
+        assert_eq!(
+            decode_i2_s(&[0xFF; 64], &mut back),
+            Err(BridgeError::UnsupportedCode)
+        );
+    }
+
+    // ----- i2_s property: round-trip -----
+
+    proptest! {
+        #[test]
+        fn prop_i2_s_round_trip(
+            blocks in 1_usize..=4,
+            seed in any::<u32>(),
+            scale_bits in any::<u32>(),
+        ) {
+            // xorshift32 trit generator — deterministic from seed.
+            let n = blocks * I2_S_BLOCK;
+            let mut x = seed | 1;
+            let trits: Vec<Trit> = (0..n)
+                .map(|_| {
+                    x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+                    match x % 3 { 0 => Trit::MinusOne, 1 => Trit::Zero, _ => Trit::One }
+                })
+                .collect();
+            let mut buf = vec![0_u8; i2_s_encoded_len(n) + 8];
+            let written = encode_i2_s(&trits, scale_bits, &mut buf).unwrap();
+            prop_assert_eq!(written, i2_s_encoded_len(n));
+            let mut back = vec![Trit::Zero; n];
+            let got = decode_i2_s(&buf[..written], &mut back).unwrap();
+            prop_assert_eq!(got, scale_bits);
+            prop_assert_eq!(&back, &trits[..]);
+        }
+    }
+
+    // ----- q1_0 known vector -----
+
+    #[test]
+    fn q1_0_known_vector() {
+        // 16 sign bytes of 0xB5 = 0b1011_0101 → LSB-first bits
+        // 1,0,1,0,1,1,0,1 → elements [+1,−1,+1,−1,+1,+1,−1,+1], repeated 16×.
+        let pat = [
+            Trit::One,
+            Trit::MinusOne,
+            Trit::One,
+            Trit::MinusOne,
+            Trit::One,
+            Trit::One,
+            Trit::MinusOne,
+            Trit::One,
+        ];
+        let mut bytes = Vec::with_capacity(18);
+        bytes.extend_from_slice(&0x3C00_u16.to_le_bytes()); // fp16 1.0
+        bytes.extend(std::iter::repeat_n(0xB5_u8, 16));
+        let mut trits = [Trit::Zero; Q1_0_BLOCK];
+        let mut scales = [0_u16; 1];
+        decode_q1_0(&bytes, &mut trits, &mut scales).expect("decode");
+        assert_eq!(scales[0], 0x3C00);
+        let expected: Vec<Trit> = (0..Q1_0_BLOCK).map(|i| pat[i % 8]).collect();
+        assert_eq!(&trits, &expected[..], "q1_0 sign bits must map LSB-first");
+    }
+
+    #[test]
+    fn q1_0_rejects_bad_input() {
+        let mut trits = [Trit::Zero; Q1_0_BLOCK];
+        let mut scales = [0u16; 1];
+        // Length not a multiple of 128.
+        let mut short_trits = [Trit::Zero; 64];
+        assert_eq!(
+            decode_q1_0(&[0; 18], &mut short_trits, &mut scales),
+            Err(BridgeError::BadLength)
+        );
+        // Byte buffer one byte short.
+        assert_eq!(
+            decode_q1_0(&[0; 17], &mut trits, &mut scales),
+            Err(BridgeError::TooShort)
+        );
+        // Scale output buffer too small.
+        let mut no_scales = [0u16; 0];
+        assert_eq!(
+            decode_q1_0(&[0; 18], &mut trits, &mut no_scales),
+            Err(BridgeError::TooShort)
+        );
+    }
+
+    // ----- q2_0 known vector -----
+
+    #[test]
+    fn q2_0_known_vector() {
+        // All 16 code bytes 0xA4 = 0b10_10_01_00 → lanes (LSB first)
+        // 00,01,10,10 → elements [−1,0,+1,+1] repeated 16×. Scale fp16 4.0
+        // = 0x4400.
+        let pat = [Trit::MinusOne, Trit::Zero, Trit::One, Trit::One];
+        let mut bytes = Vec::with_capacity(18);
+        bytes.extend_from_slice(&0x4400_u16.to_le_bytes());
+        bytes.extend(std::iter::repeat_n(0xA4_u8, 16));
+        let mut trits = [Trit::Zero; Q2_0_BLOCK];
+        let mut scales = [0u16; 1];
+        decode_q2_0(&bytes, &mut trits, &mut scales).expect("decode");
+        assert_eq!(scales[0], 0x4400);
+        let expected: Vec<Trit> = (0..Q2_0_BLOCK).map(|i| pat[i % 4]).collect();
+        assert_eq!(&trits, &expected[..]);
+    }
+
+    #[test]
+    fn q2_0_code3_rejected() {
+        // First element's lane = code 3 (0b11) — loud error.
+        let mut bytes = vec![0_u8; 18];
+        bytes[0..2].copy_from_slice(&0x4400_u16.to_le_bytes());
+        bytes[2] = 0x03;
+        let mut trits = [Trit::Zero; Q2_0_BLOCK];
+        let mut scales = [0u16; 1];
+        assert_eq!(
+            decode_q2_0(&bytes, &mut trits, &mut scales),
+            Err(BridgeError::UnsupportedCode)
+        );
+    }
+
+    #[test]
+    fn q2_0_rejects_bad_input() {
+        let mut trits = [Trit::Zero; Q2_0_BLOCK];
+        let mut scales = [0u16; 1];
+        let mut odd = [Trit::Zero; 65];
+        assert_eq!(
+            decode_q2_0(&[0; 18], &mut odd, &mut scales),
+            Err(BridgeError::BadLength)
+        );
+        assert_eq!(
+            decode_q2_0(&[0; 17], &mut trits, &mut scales),
+            Err(BridgeError::TooShort)
+        );
+    }
+
+    // ----- fp16 scale plumbing -----
+
+    #[test]
+    fn half_known_vectors() {
+        // (fp16 bits, exact f32 bits, milli)
+        let cases: &[(u16, u32, i32)] = &[
+            (0x0000, 0x0000_0000, 0),          // +0
+            (0x8000, 0x8000_0000, 0),          // −0
+            (0x3C00, 0x3F80_0000, 1000),       // 1.0
+            (0x3800, 0x3F00_0000, 500),        // 0.5
+            (0xC000, 0xC000_0000, -2000),      // −2.0
+            (0x4400, 0x4080_0000, 4000),       // 4.0
+            (0x7BFF, 0x477F_E000, 65_504_000), // max finite 65504
+            (0x03FF, 0x387F_C000, 0),          // max subnormal 6.09756e-5 → milli 0
+            (0x0400, 0x3880_0000, 0),          // min normal 6.10352e-5 → milli 0
+            (0x7C00, 0x7F80_0000, i32::MAX),   // +inf saturates
+            (0xFC00, 0xFF80_0000, i32::MIN),   // −inf saturates
+            (0x7E00, 0x7FC0_0000, 0),          // NaN → 0 (documented)
+        ];
+        for &(h, f32_bits, milli) in cases {
+            assert_eq!(half_to_f32_bits(h), f32_bits, "f32 bits for fp16 {h:#06x}");
+            assert_eq!(half_to_milli(h), milli, "milli for fp16 {h:#06x}");
+        }
+    }
+
+    // ----- Consumer seam: decoded trits feed the Trit substrate -----
+
+    #[test]
+    fn decoded_trits_feed_trit_substrate() {
+        // Import a q1_0 tensor, materialize i16 weights at γ=125 via the
+        // existing Trit API, classify back — must stay exactly on-grid.
+        let mut bytes = Vec::with_capacity(18);
+        bytes.extend_from_slice(&0x3C00_u16.to_le_bytes());
+        bytes.extend(std::iter::repeat_n(0xB5_u8, 16));
+        let mut trits = [Trit::Zero; Q1_0_BLOCK];
+        let mut scales = [0u16; 1];
+        decode_q1_0(&bytes, &mut trits, &mut scales).expect("decode");
+
+        let gamma = 125_i16;
+        for t in trits {
+            let w = t.to_weight(gamma);
+            assert!(
+                w == gamma || w == 0 || w == -gamma,
+                "imported trit produced off-grid weight {w}"
+            );
+            assert_eq!(Trit::from_weight(w, gamma), t, "classification must round-trip");
+        }
+    }
+
+    // ----- fp16 widening property: against an integer reference -----
+
+    proptest! {
+        /// half_to_f32_bits matches a slow reference built from the f32 of
+        /// the same value via bit assembly (kept integer-side; std-only).
+        #[cfg(feature = "std")]
+        #[test]
+        fn prop_half_widening_matches_f32_reference(h in any::<u16>()) {
+            let f = f32::from_bits(half_to_f32_bits(h));
+            let reference = half_to_f32_via_f32(h);
+            // NaN payloads are implementation-defined on conversion; ours
+            // preserves the fp16 payload verbatim (IEEE-sanctioned), the
+            // float-math reference collapses to the canonical quiet NaN.
+            // Equality is bit-exact everywhere else.
+            if reference.is_nan() {
+                prop_assert!(f.is_nan());
+            } else {
+                prop_assert_eq!(f.to_bits(), reference.to_bits());
+            }
+        }
+    }
+
+    #[cfg(feature = "std")]
+    fn half_to_f32_via_f32(h: u16) -> f32 {
+        // Reference via float math (std only, test only): decode fp16 fields
+        // and rebuild the value, then let f32 round — exact for all fp16.
+        let sign = if (h >> 15) & 1 == 1 { -1.0_f32 } else { 1.0 };
+        let exp = i32::from((h >> 10) & 0x1F);
+        let mant = f32::from(h & 0x03FF);
+        if exp == 0 {
+            sign * mant * (2.0_f32).powi(-24)
+        } else if exp == 0x1F {
+            if mant == 0.0 { sign * f32::INFINITY } else { f32::NAN }
+        } else {
+            sign * (1.0 + mant / 1024.0) * (2.0_f32).powi(exp - 15)
+        }
+    }
+}
