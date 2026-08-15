@@ -456,9 +456,29 @@ entire path is integer. Model facts pinned for sessions 3+: qwen3, 28
 blocks, 16 Q / 8 KV heads (GQA), head_dim 128, FFN 6144, rms eps 1e-6,
 gpt2 tokenizer.
 
-**Remaining sessions (honest slice):** Q1_0 matvec + first-layer
-execution (**✓ session 2**) → attention + full Qwen3 forward pass →
-tokenizer + generation = the Stage 4 gate.
+**Session 3 — the full forward pass.** Shipped `rt::{math, model}` and
+`examples/bonsai_full.rs`: the complete 28-block Qwen3 forward on the
+real model — per-block QKV (session-2 matvec), per-head q/k RMSNorm, YaRN
+RoPE (pinned verbatim from the fork's `ops.cpp`: ramp + corr_dim + mscale,
+factor 4 / base 1e6 / orig 8192), GQA 16Q/8KV attention with an
+**integer softmax** (Q12 exp2-table, max-subtract, exact-sum), SiLU-gated
+FFN, final RMSNorm, and tied-embedding logits over the full 151 669
+vocab. **`FULL: OK`** — 4 tokens × 28 blocks in 14.2 s (release, 2-core),
+residual stream healthy at every block (nonzero, off the rails), logits
+in 0.8 s, top-5 ids = the digit tokens (structured, not collapsed; real
+coherence judgment waits for the tokenizer, session 4). The entire
+compute path is integer (milli/Q12); f64 appears only at the load edge
+(norm weights, rope/exp2 tables — the pinned doctrine).
+
+**Session-3 catches (honest):** the f64-reference doctrine paid twice —
+it caught a real bug in the integer sigmoid rounding (an extra +Q12 in
+the numerator) and a ×1000 unit slip in a *reference* test (the
+implementation was right; the reference was wrong — recorded as the
+inverse of the session-2 failure mode).
+
+**Remaining sessions (honest slice):** attention + full forward
+(**✓ session 3**) → tokenizer + generation = the Stage 4 gate
+(measurable bar: fixed prompts, expected-token checks).
 
 ### 3. The lab bench (visible)
 

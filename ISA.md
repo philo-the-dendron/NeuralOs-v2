@@ -3,9 +3,9 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 29/29
+progress: 36/36
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-15T21:15:00Z
+updated: 2026-08-15T22:40:00Z
 principal_stated_goal: "ok so we are ready for step 3 ?" → "go" — Stage 3 (shared kernel + hybrid gate), locked choices: A·classification demo, A·absmax i16 activations
 ---
 
@@ -83,6 +83,45 @@ proven by `examples/ternary_format_gate.rs` round-tripping a ternary tensor
 bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
+
+(ISC-1..10: Stage 2, 11..17: Stage 3, 18..23: Stage 4 s1, 24..29: Stage 4 s2 — closed, see Verification.)
+
+- [x] ISC-30: `rt::math` ships the integer softmax machinery — a 1024-entry
+  Q12 `2^frac` table, `exp_q12(x_milli)` via max-subtract + exp2
+  decomposition, `softmax_q12(logits_milli) -> probs Q12` summing to 4096
+  exactly (remainder-corrected). Falsifier: f64-reference property test
+  (max prob deviation > 3/4096) or sum ≠ 4096.
+- [x] ISC-31: `rt::math::silu_milli` (integer, via the same exp table):
+  zero at zero, sign-correct, matches an f64 reference within a
+  documented tolerance. Falsifier: any test failure.
+- [x] ISC-32: `rt::math::RopeTables` — YaRN per the fork's `ops.cpp`
+  (`ramp = 1−clamp((i0/2−low)/(high−low))`, `theta = interp·(1−r) +
+  extrap·r`, `mscale·(1+0.1·ln(1/freq_scale))`, corr_dims via the
+  fork's `corr_dim` formula, beta_fast=32/beta_slow=1, base 1e6, factor
+  4, orig_ctx 8192); cos/sin in milli computed at the load edge (std
+  f64, integer after). `apply_rope` rotates half-split pairs. Falsifier:
+  angle-0 identity, norm preservation ±tolerance, f64-reference rotation
+  on random vectors.
+- [x] ISC-33: `rt::q1_0::matvec_scaled` — the unit-chaining wrapper
+  (absmax-normalize to i16 → `q1_0_matvec` → rescale by amax/32767)
+  returning true milli-domain outputs. Falsifier: reference test vs an
+  f64 dequant path disagrees beyond rounding tolerance.
+- [x] ISC-34: `rt::model::Qwen3` loads config + tensors from the real
+  file (incl. tied-output detection: no `output.weight` → logits =
+  h·emb^T) and runs `forward(tokens) -> hidden` through ALL 28 blocks:
+  per block attn_norm → QKV → per-head q/k RMSNorm → YaRN RoPE → GQA
+  scores/√128 → integer softmax → context → out proj → residual →
+  ffn_norm → gate/up → SiLU → down → residual. Falsifier: unit tests
+  on attention internals (single-head vs f64 reference) fail.
+- [x] ISC-35: `examples/bonsai_full.rs` (release) runs a 4-token prompt
+  through the real model: per-block health gates (hidden nonzero,
+  bounded, no i32 rails), final `output_norm` RMSNorm, last-position
+  logits over the tied embedding, top-5 token ids printed, wall time
+  reported, exit 0 only if all gates pass. Falsifier: any block
+  degenerate, exit nonzero, or absurd runtime (>5 min release).
+- [x] ISC-36: CI gates green workspace-wide; docs truth (VISION
+  session-3 note with numbers, ROADMAP line).
+  Falsifier: any CI command failing or docs absent/contradicting.
 
 (ISC-1..10: Stage 2, ISC-11..17: Stage 3, ISC-18..23: Stage 4 session 1 — all closed, see Verification.)
 
@@ -280,6 +319,16 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 | isc | type | check | threshold | tool | anchors_to |
 |---|---|---|---|---|---|
+| ISC-30 | property | softmax vs f64 ref; exact Q12 sum | ≤3/4096 dev; sum=4096 | cargo test | rt::math::tests |
+| ISC-31 | unit+property | silu vs f64 ref, zero, sign | tol documented | cargo test | rt::math::tests |
+| ISC-32 | unit+property | rope identity/norm/f64-rotation | tol documented | cargo test | rt::math::tests |
+| ISC-33 | unit | matvec_scaled vs f64 dequant ref | rounding tol | cargo test | rt::q1_0::tests |
+| ISC-34 | unit | attention internals vs f64 ref | tol | cargo test | rt::model::tests |
+| ISC-35 | gate | bonsai_full on real file, release | all gates, exit 0 | cargo run --release --example | examples/bonsai_full.rs |
+| ISC-36 | build+doc | 4 CI gates + docs | 0 fail | cargo + grep | CI + docs/ |
+
+| isc | type | check | threshold | tool | anchors_to |
+|---|---|---|---|---|---|
 | ISC-24 | property | matvec vs decode-reference on synthetic blocks | 100% | cargo test | rt::q1_0::tests::prop_matvec_matches_reference |
 | ISC-25 | integration | real embedding row: nonzero variance, bounded | pass | cargo test (ignored-offline) + example run | rt tests + bonsai_forward |
 | ISC-26 | unit+property | isqrt exactness; norm known vectors | 100% | cargo test | rt::norm::tests |
@@ -320,6 +369,24 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-10 | unit | decoded tensor ↔ Trit::to_weight round-trip stays on-grid | exact | cargo test | bridge::tests::decoded_trits_feed_trit_substrate |
 
 ## Decisions
+
+- 2026-08-15 (s3) · YaRN pinned verbatim from the fork's `ggml-cpu/ops.cpp`
+  (`rope_yarn` + `rope_yarn_ramp` + `ggml_rope_yarn_corr_dims` in
+  `ggml.c`): factor 4 → freq_scale 0.25, mscale_total = 1·(1+0.1·ln 4),
+  beta_fast 32 / beta_slow 1, base 1e6, orig_ctx 8192. cos/sin tables at
+  the load edge (std f64 constants — same doctrine as f32 norm weights:
+  compute-path stays integer).
+- 2026-08-15 (s3) · Integer softmax = Q12 exp2 table (1024 entries, load
+  edge) + max-subtract + `2^(int+frac)` decomposition, clamp below 2^-12
+  to 0. SiLU shares the table. probs sum to 4096 exactly (last element
+  carries the remainder).
+- 2026-08-15 (s3) · Scale chain: activations live in milli (i32);
+  matvec input = absmax-normalized i16, output rescaled by amax/32767
+  (`matvec_scaled`); attention score scale 1/√128 as 88.3883‰ in i64;
+  softmax logits in milli; GQA 16Q/8KV head_map h→h/2.
+- 2026-08-15 (s3) · Logits = tied embedding (no output.weight in file —
+  verified): logits[t] = h·emb_t over 151669 rows; top-5 ids only
+  (tokenizer = session 4).
 
 - 2026-08-15 (principal directive) · **crates.io republish deferred to
   stage completion.** `neuralos-snn` stays `0.1.0-alpha.1` on crates.io
@@ -541,3 +608,43 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   `FORWARD: OK`, exit 0
 - ISC-28: 4 CI gates green workspace-wide (153 tests total)
 - ISC-29: VISION session-2 section + ROADMAP sessions 1–2 line
+
+- 2026-08-15 · Session 3 closed: ISC-30..36 on evidence. Merged to main
+  as milestone 2 after green gates.
+
+## Learning
+
+- conjectured: the integer sigmoid's rounding term was
+  `(e·Q12 + Q12 + e/2)/(Q12+e)`.
+  refuted by: the f64-reference silu test (off by ~20% at x=−5.9) — the
+  correct round-half-away numerator is `(e·Q12 + (Q12+e)/2)`.
+  learned: rounding-helper formulas need the same reference-testing as
+  the math itself; "round to nearest" written three ways in one file is
+  two too many.
+  criterion now: one shared round-half-away helper per module, tested
+  once against f64, used everywhere (model.rs still has inline sites —
+  session-4 cleanup candidate).
+- conjectured (session-2 learning inverted): when integer and reference
+  disagree, the integer side is wrong.
+  refuted by: the attention-pipeline ×1000 mismatch — the REFERENCE
+  double-divided by 1000; the integer code was right.
+  learned: the f64 reference is also code and also wrong sometimes;
+  disagreements get settled by deriving units from first principles on
+  paper, not by assuming which side is guilty.
+  criterion now: on int-vs-ref mismatch, write the unit chain (milli² →
+  milli → Q12) explicitly before touching either side.
+
+## Verification (Stage 4, session 3)
+
+- ISC-30: rt::math::tests::{exp2_table_basics, softmax_matches_f64_and_sums_exact,
+  softmax_underflow_guard_puts_mass_somewhere}
+- ISC-31: rt::math::tests::silu_matches_f64 (−6..6 milli-range sweep)
+- ISC-32: rt::math::tests::{rope_position_zero_is_identity,
+  rope_preserves_norm_approximately, rope_matches_f64_reference}
+- ISC-33: rt::q1_0::tests::{matvec_scaled_matches_f64_dequant_reference,
+  matvec_scaled_zero_input_is_zero}
+- ISC-34: rt::model::tests::attention_pipeline_matches_f64_reference
+- ISC-35: bonsai_full release run — FULL: OK, 4 tok/28 blocks 14.2 s,
+  logits 0.8 s, top-5 printed, exit 0
+- ISC-36: 4 CI gates green (163 tests total); VISION session-3 section +
+  ROADMAP s1–s3 line

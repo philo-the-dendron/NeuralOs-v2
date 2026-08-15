@@ -132,6 +132,57 @@ pub fn q1_0_matvec(
     Ok(())
 }
 
+/// The unit-chaining wrapper (session 3): milli activations in, milli
+/// results out.
+///
+/// `q1_0_matvec` eats i16 activations (absmax-normalized Q15) and returns
+/// raw partial-sum units; this wrapper normalizes `x_milli` → i16, runs
+/// the matvec, and rescales by `amax/32767`, so
+/// `out[j] ≈ Σᵢ w_real[j,i] · x_real[i] × 1000` — true milli units that
+/// chain directly into norms, residuals, and the next matvec.
+///
+/// # Errors
+///
+/// Same as [`q1_0_matvec`] (bad length / short buffers).
+pub fn matvec_scaled(
+    data: &[u8],
+    x_milli: &[i32],
+    rows: usize,
+    out: &mut [i32],
+) -> Result<(), Q10Error> {
+    let n = x_milli.len();
+    if !n.is_multiple_of(Q1_0_BLOCK) {
+        return Err(Q10Error::BadLength);
+    }
+    let amax = x_milli.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0);
+    let mut acts = vec![0_i16; n]; // load-edge-sized scratch (std crate)
+    if amax == 0 {
+        out[..rows].fill(0);
+        return Ok(());
+    }
+    for (v, slot) in x_milli.iter().zip(acts.iter_mut()) {
+        let num = i64::from(*v) * 32_767;
+        let den = i64::from(amax);
+        let q = if num >= 0 {
+            (num + den / 2) / den
+        } else {
+            -((-num + den / 2) / den)
+        };
+        *slot = q.clamp(i16::MIN as i64, i16::MAX as i64) as i16;
+    }
+    let mut raw = vec![0_i32; rows];
+    q1_0_matvec(data, &acts, rows, &mut raw)?;
+    // Rescale by amax/32767: out_milli = round(raw × amax/32767).
+    let num_scale = i64::from(amax);
+    for (o, r) in out.iter_mut().zip(raw.iter()).take(rows) {
+        let v = i64::from(*r);
+        let mag = (v.unsigned_abs() as i64 * num_scale + 16_383) / 32_767;
+        let signed = if v < 0 { -mag } else { mag };
+        *o = signed.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,6 +290,46 @@ mod tests {
         for (i, &v) in out.iter().enumerate() {
             assert_eq!(v, if i % 2 == 0 { 1000 } else { -1000 });
         }
+    }
+
+    #[test]
+    fn matvec_scaled_matches_f64_dequant_reference() {
+        // One row, 2 blocks; γ values from fp16 bits 0x3C00 (1.0) and
+        // 0x4248 (≈3.140625). Reference: decode via half_to_milli, dot in
+        // f64, ×1000.
+        let signs: Vec<bool> = (0..256).map(|i| i % 3 != 0).collect();
+        let data = build_row(&signs, &[0x3C00, 0x4248]);
+        let x: Vec<i32> = (0..256)
+            .map(|i| (i * 71) % 400 - 200)
+            .collect();
+        let mut out = [0_i32; 1];
+        matvec_scaled(&data, &x, 1, &mut out).unwrap();
+
+        let g = [1000.0_f64, 3141.0]; // milli views of the fp16 scales
+        let mut want = 0.0_f64;
+        for (b, gb) in g.iter().enumerate() {
+            for k in 0..128 {
+                let i = b * 128 + k;
+                let w = if signs[i] { *gb } else { -*gb };
+                want += w * f64::from(x[i]);
+            }
+        }
+        want /= 1000.0; // milli × milli → milli needs /1000
+        let got = f64::from(out[0]);
+        assert!(
+            (got - want).abs() <= 2.0 + want.abs() * 0.002,
+            "matvec_scaled {got} vs f64 {want}"
+        );
+        assert_ne!(out[0], 0);
+    }
+
+    #[test]
+    fn matvec_scaled_zero_input_is_zero() {
+        let data = [0_u8; 36];
+        let x = [0_i32; 256];
+        let mut out = [5_i32; 1];
+        matvec_scaled(&data, &x, 1, &mut out).unwrap();
+        assert_eq!(out[0], 0);
     }
 
     #[test]
