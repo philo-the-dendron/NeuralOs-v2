@@ -33,6 +33,12 @@
 //! version bounds, duplicate tensor names, `n_dims ≤ 4`, non-zero pow2
 //! alignment, and data offsets that stay inside the buffer. Every failure
 //! is a loud [`GgufError`]; nothing is best-effort.
+//!
+//! Known tolerances (mirroring the reference): a non-`U32`
+//! `general.alignment` falls back to 32 silently (llama.cpp logs and
+//! falls back too); array metadata costs ~32 bytes of enum per element,
+//! so parse memory can reach ~32× the file size for pathological
+//! `array of u8` blobs — bounded by the buffer, loud nothing.
 
 use core::fmt;
 
@@ -62,7 +68,9 @@ mod types {
     pub const FLOAT64: u32 = 12;
 }
 
-/// A metadata value — one of the 13 GGUF value types.
+/// A metadata value — one of the 13 GGUF value types. Parse-edge data
+/// only: `F32`/`F64` variants carry file metadata as-parsed and never
+/// enter the compute path (the crate's integer-only doctrine).
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetadataValue {
     U8(u8),
@@ -281,9 +289,14 @@ impl<'a> GgufFile<'a> {
         }
 
         let mut tensors: Vec<TensorInfo> = Vec::new();
+        // Hash-set duplicate detection: the naive O(n²) scan was a CPU
+        // DoS on hostile files (a 30 MB file can legally declare ~1M
+        // tensors → ~10^12 comparisons; 2026-08-15 review).
+        let mut seen: std::collections::HashSet<String> =
+            std::collections::HashSet::with_capacity(usize::try_from(n_tensors).unwrap_or(4096).min(4096));
         for _ in 0..n_tensors {
             let name = r.string()?;
-            if tensors.iter().any(|t| t.name == name) {
+            if !seen.insert(name.clone()) {
                 return Err(GgufError::DuplicateTensorName);
             }
             let n_dims = r.u32()?;
@@ -314,17 +327,48 @@ impl<'a> GgufFile<'a> {
             buf,
         };
 
-        // Every tensor's data slice must lie inside the buffer.
+        // Every tensor's data slice must lie inside the buffer — one
+        // sorted-offset pass (calling `tensor_data` per tensor would be
+        // O(T²) min-offset scans; the 2026-08-15 review's many-tensor
+        // test makes that cost visible).
+        let mut offsets: Vec<u64> = file.tensors.iter().map(|t| t.offset).collect();
+        offsets.sort_unstable();
         for t in &file.tensors {
-            let _ = file.tensor_data(t)?;
+            let start = file
+                .data_start
+                .checked_add(t.offset)
+                .ok_or(GgufError::DataOutOfBounds)?;
+            let start = usize::try_from(start).map_err(|_| GgufError::DataOutOfBounds)?;
+            if start > buf.len() {
+                return Err(GgufError::DataOutOfBounds);
+            }
+            let end = match offsets.partition_point(|&o| o <= t.offset) {
+                idx if idx < offsets.len() => {
+                    let e = file
+                        .data_start
+                        .checked_add(offsets[idx])
+                        .ok_or(GgufError::DataOutOfBounds)?;
+                    usize::try_from(e).map_err(|_| GgufError::DataOutOfBounds)?
+                }
+                _ => buf.len(),
+            };
+            if end > buf.len() || end < start {
+                return Err(GgufError::DataOutOfBounds);
+            }
         }
         Ok(file)
     }
 
     /// The full data slice of one tensor, bounds-checked against the
-    /// buffer. The slice length is whatever the file's layout implies
-    /// (offset of the NEXT tensor, or buffer end for the last) — GGUF
-    /// stores no per-tensor byte size.
+    /// buffer. **The slice length is an inference, not a fact**: GGUF
+    /// stores no per-tensor byte size, so the end boundary is the
+    /// smallest strictly-greater offset among ALL tensors (or the buffer
+    /// end for the last). For the real file (sorted, gapless offsets)
+    /// this equals the next tensor's start; for a hostile file with
+    /// unsorted/gapped/overlapping offsets the slice can include gap
+    /// bytes or other tensors' bytes. Consumers MUST size-check the
+    /// slice against `dims × type` (as `model.rs` does) before trusting
+    /// it — never trust `tensor_data().len()` alone.
     ///
     /// # Errors
     ///
@@ -338,8 +382,9 @@ impl<'a> GgufFile<'a> {
         if start > self.buf.len() {
             return Err(GgufError::DataOutOfBounds);
         }
-        // End: the next tensor's offset (tensors are laid out in order),
-        // else the buffer end.
+        // End: the smallest strictly-greater offset among all tensors
+        // (equals "next tensor" for sorted gapless files; see the doc
+        // for the hostile-file caveats).
         let next_offset = self
             .tensors
             .iter()
@@ -641,5 +686,70 @@ mod tests {
         let bytes = w.finish(16, &[0xAB]);
         let f = GgufFile::parse(&bytes).expect("parse");
         assert_eq!(f.alignment, 32);
+    }
+
+    #[test]
+    fn version_2_parses() {
+        // The reference reader accepts v2; container layout is
+        // byte-identical for what we read (the fork's type IDs are
+        // version-independent). Pinned so a future tightening is loud.
+        let mut bytes = sample_file();
+        bytes[4..8].copy_from_slice(&2_u32.to_le_bytes());
+        let f = GgufFile::parse(&bytes).expect("v2 parses");
+        assert_eq!(f.version, 2);
+    }
+
+    #[test]
+    fn non_u32_alignment_falls_back_to_32() {
+        // Reference-faithful: a wrong-typed general.alignment KV falls
+        // back to the default (llama.cpp logs and does the same).
+        // Pinned here so the policy is contract, not accident.
+        let mut w = W::new();
+        w.str("general.alignment");
+        w.u32(types::UINT64); // hostile/wrong type
+        w.u64(64);
+        w.counts(0, 1);
+        let bytes = w.finish(32, &[]);
+        let f = GgufFile::parse(&bytes).expect("parse");
+        assert_eq!(f.alignment, 32);
+    }
+
+    #[test]
+    fn unsorted_offsets_follow_min_greater_rule() {
+        // tensor A @ 32 declared first, tensor B @ 0 second: A's slice
+        // runs to EOF (no greater offset exists), B's runs to A's start.
+        // Documented behavior — lengths are inference (see tensor_data).
+        let mut w = W::new();
+        w.counts(2, 0);
+        w.tensor("a", &[8, 1], 0, 32);
+        w.tensor("b", &[8, 1], 0, 0);
+        let mut data = vec![0_u8; 64];
+        data[32..40].fill(0xAA); // "a"'s bytes
+        let bytes = w.finish(32, &data);
+        let f = GgufFile::parse(&bytes).expect("parse");
+        let a = f.tensor("a").expect("a");
+        let b = f.tensor("b").expect("b");
+        // a starts at its offset and runs to the buffer end (32 bytes).
+        assert_eq!(f.tensor_data(a).unwrap().len(), 32);
+        // b starts at 0 and stops at a's strictly-greater offset.
+        assert_eq!(f.tensor_data(b).unwrap().len(), 32);
+    }
+
+    #[test]
+    fn many_distinct_tensors_parse_fast() {
+        // Regression pin for the O(n²) duplicate scan DoS: 50k tensors
+        // (~2 MB of headers) must parse in hash time, not 1.25e9 string
+        // compares. A reintroduced quadratic scan makes this test
+        // visibly slow (seconds), not silently pass.
+        let mut w = W::new();
+        w.counts(50_000, 0);
+        for i in 0..50_000_u32 {
+            w.tensor(&format!("t.{i}"), &[1, 1], 0, 0);
+        }
+        // One shared data byte at offset 0; every tensor's slice is the
+        // min-greater-offset inference — only the LAST gets 1 byte.
+        let bytes = w.finish(32, &[0x42]);
+        let f = GgufFile::parse(&bytes).expect("50k tensors parse");
+        assert_eq!(f.tensors.len(), 50_000);
     }
 }

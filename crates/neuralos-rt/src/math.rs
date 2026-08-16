@@ -12,7 +12,8 @@
 //! - Activations/hidden: **milli** (i32; real × 1000).
 //! - Softmax/SiLU exponentials: **Q12** (0..=4096 ≈ 0..1).
 //! - `exp(x) = 2^(x·log2(e))`: decompose the exponent into an integer
-//!   shift and a 10-bit fractional table lookup; clamp below 2^-12 → 0.
+//!   shift and a 10-bit fractional table lookup; clamp below 2^-11 → 0
+//!   (the floor is hit at `|x| ≥ 7624` milli: n = ceil(7624·1443/1e6) = 12).
 
 /// Q12 full scale.
 pub const Q12: i64 = 4096;
@@ -20,6 +21,24 @@ pub const Q12: i64 = 4096;
 const EXP2_ENTRIES: usize = 1024;
 /// milli-domain log2(e) × 1000 (round(1.4426950408889634 × 1000)).
 const LOG2_E_MILLI: i64 = 1443;
+
+/// Divide with round-half-away-from-zero: the shared rounding convention
+/// of every fixed-point hop in this crate (milli↔unit, Q12, rescale).
+///
+/// `den` must be positive (debug-asserted). For `num ≥ 0` this is
+/// `(num + den/2) / den`; negatives round symmetrically away from zero —
+/// never the trunc-toward-zero Rust `/` default.
+///
+/// Tested once, against an f64 reference, in [`crate::math::tests`].
+#[must_use]
+pub fn div_round_half_away(num: i64, den: i64) -> i64 {
+    debug_assert!(den > 0, "divisor must be positive");
+    if num >= 0 {
+        (num + den / 2) / den
+    } else {
+        -((-num + den / 2) / den)
+    }
+}
 
 /// The integer nonlinear kit: one exp2 table, many uses (softmax, SiLU).
 #[derive(Debug, Clone)]
@@ -41,7 +60,10 @@ impl MathKit {
     }
 
     /// `2^(x_milli/1000)` in Q12 for `x_milli ≤ 0` (callers max-subtract
-    /// first). Returns 0 below the Q12 floor (exponent < −12).
+    /// first; a positive input saturates to [`Q12`]). Returns 0 once the
+    /// exponent falls below the Q12 floor (`x_milli ≤ −7624`, i.e.
+    /// 2^−11 — one quantum above resolution). Input bound: the internal
+    /// `× 1443` product must stay inside i64, so `|x_milli| ≲ 6.4e15`.
     #[must_use]
     pub fn exp2_q12(&self, x_milli: i64) -> i64 {
         if x_milli >= 0 {
@@ -64,9 +86,18 @@ impl MathKit {
     }
 
     /// Integer softmax over milli logits → Q12 probabilities summing to
-    /// [`Q12`] exactly (the last element carries the rounding remainder).
+    /// [`Q12`] **exactly, for any length** — floor quotas plus the
+    /// largest-remainder correction (the `rem` units left by flooring go
+    /// to the elements with the largest fractional residuals).
+    ///
+    /// `out.len()` must equal `logits_milli.len()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics (release too, via indexing) if `out` is shorter than
+    /// `logits_milli`; a longer `out` leaves its tail unwritten.
     pub fn softmax_q12(&self, logits_milli: &[i32], out: &mut [i32]) {
-        debug_assert_eq!(logits_milli.len(), out.len());
+        debug_assert_eq!(logits_milli.len(), out.len(), "softmax length mismatch");
         if logits_milli.is_empty() {
             return;
         }
@@ -79,48 +110,66 @@ impl MathKit {
             sum += e;
         }
         if sum == 0 {
-            // Everything underflowed (impossible with the max element
-            // contributing ≥ Q12·2^0… kept as a hard guard).
-            let last = out.len() - 1;
+            // Unreachable through this API (the max element contributes
+            // exp2_q12(0) = Q12), kept as a hard guard: all mass on the max.
+            let argmax = logits_milli
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, &l)| l)
+                .map(|(i, _)| i)
+                .unwrap_or(0);
             out.fill(0);
-            out[last] = Q12 as i32;
+            out[argmax] = Q12 as i32;
             return;
         }
+        let n = exps.len();
+        // Floor quotas: p_i = floor(e_i·Q12/sum) — all non-negative here.
+        let mut floors = vec![0_i64; n];
+        let mut rems = vec![0_i64; n];
         let mut acc: i64 = 0;
-        let last = out.len() - 1;
-        for (i, &e) in exps.iter().enumerate() {
-            if i == last {
-                out[i] = (Q12 - acc).clamp(0, Q12) as i32;
-            } else {
-                // p_i = round(e·4096/sum), half-away.
-                let p = (e * Q12 + sum / 2) / sum;
-                acc += p;
-                out[i] = p.clamp(0, Q12) as i32;
-            }
+        for i in 0..n {
+            let scaled = exps[i] * Q12;
+            floors[i] = scaled / sum;
+            rems[i] = scaled % sum;
+            acc += floors[i];
+        }
+        // Σfloor ≤ Q12 < Σfloor + n — distribute the remainder one unit
+        // at a time, largest residual first (ties → larger e), so the sum
+        // is exactly Q12 for every input.
+        let mut rem = Q12 - acc;
+        debug_assert!(rem >= 0 && (rem as usize) < n, "remainder out of range");
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by(|&a, &b| rems[a].cmp(&rems[b]).then(exps[a].cmp(&exps[b])));
+        let mut k = n;
+        while rem > 0 {
+            k -= 1;
+            floors[order[k]] += 1;
+            rem -= 1;
+        }
+        for (slot, &p) in out.iter_mut().zip(floors.iter()) {
+            *slot = p.clamp(0, Q12) as i32;
         }
     }
 
     /// SiLU (swish): `x·sigmoid(x)` in milli, all integer via the exp
-    /// table. Sign-correct by construction; zero at zero.
+    /// table. Sign-correct by construction; zero at zero. Accuracy:
+    /// within ~2 milli + 2% of the f64 reference for `|x| < 7.6`;
+    /// for `x ≤ −7624` the output is 0 (the exp table's Q12 floor),
+    /// a documented absolute error of at most ~4 milli at the cliff.
     #[must_use]
     pub fn silu_milli(&self, x_milli: i32) -> i32 {
         // sigmoid(x) = 1/(1+e^{−x}), in Q12.
         let sig_q12 = if x_milli >= 0 {
             // e^{−x} ≤ 1 → Q12 cleanly; sig = 4096·4096/(4096+e).
             let e = self.exp2_q12(-i64::from(x_milli));
-            (Q12 * Q12 + (Q12 + e) / 2) / (Q12 + e)
+            div_round_half_away(Q12 * Q12, Q12 + e)
         } else {
             // e^{x} ≤ 1; sig = e·4096/(4096+e).
             let e = self.exp2_q12(i64::from(x_milli));
-            (e * Q12 + (Q12 + e) / 2) / (Q12 + e)
+            div_round_half_away(e * Q12, Q12 + e)
         };
         // silu = x · sig / 4096 (milli × Q12 → milli), round-half-away.
-        let prod = i64::from(x_milli) * sig_q12;
-        if prod >= 0 {
-            ((prod + Q12 / 2) / Q12) as i32
-        } else {
-            (-((-prod + Q12 / 2) / Q12)) as i32
-        }
+        div_round_half_away(i64::from(x_milli) * sig_q12, Q12) as i32
     }
 }
 
@@ -139,8 +188,18 @@ impl Default for MathKit {
 /// "neox" style), beta_fast 32, beta_slow 1, ext_factor 1, attn_factor
 /// 1.0. `mscale_total = 1.0·(1 + 0.1·ln(1/0.25)) ≈ 1.1386`.
 ///
+/// Fidelity notes (2026-08-15 adversarial review): mscale is baked into
+/// cos AND sin — the llama.cpp lineage convention — so attention scores
+/// carry mscale² ≈ 1.2965; the YaRN *paper* scales scores by mscale
+/// once, but the fork (our pinned reference) does it this way.
+/// `ext_factor`/`attn_factor` are fixed at 1 (not parameters).
+///
 /// cos/sin live in milli, computed at the load edge; [`RopeTables::apply`]
 /// is pure integer afterward.
+///
+/// # Panics (in [`RopeTables::new_yarn`], debug)
+///
+/// Panics if `head_dim` is odd (rotation pairs need an even dimension).
 #[derive(Debug, Clone)]
 pub struct RopeTables {
     max_pos: usize,
@@ -162,6 +221,7 @@ impl RopeTables {
         beta_fast: f64,
         beta_slow: f64,
     ) -> Self {
+        assert!(head_dim.is_multiple_of(2), "head_dim must be even (rotation pairs)");
         let pairs = head_dim / 2;
         let freq_scale = 1.0 / yarn_factor;
         // corr_dim(n_rot) = n_dims·ln(orig/(n_rot·2π))/(2·ln(base)).
@@ -171,6 +231,12 @@ impl RopeTables {
         };
         let low = corr_dim(beta_fast).floor().max(0.0);
         let high = corr_dim(beta_slow).ceil().min((head_dim - 1) as f64);
+        // The pinned reference formula: ramp(i0) with i0 the ELEMENT
+        // index (the reference iterates i0 += 2), so i0/2 is the PAIR
+        // index. Callers below pass i0 = 2·pair. (2026-08-15 review:
+        // passing the pair index directly shifted the interpolation
+        // window from pairs [low, high] to [2·low, 2·high] — one octave
+        // high; this call site is the fix, pinned by the i0=2i test.)
         let ramp = |i0: f64| -> f64 {
             let y = (i0 / 2.0 - low) / (high - low).max(0.001);
             1.0 - y.clamp(0.0, 1.0)
@@ -187,7 +253,7 @@ impl RopeTables {
             for i in 0..pairs {
                 let theta_extrap = pos as f64 * theta_base;
                 let theta_interp = freq_scale * theta_extrap;
-                let r = ramp(i as f64); // ext_factor = 1
+                let r = ramp(2.0 * i as f64); // ext_factor = 1; i0 = element index
                 let theta = theta_interp * (1.0 - r) + theta_extrap * r;
                 cos_milli[pos * pairs + i] = (theta.cos() * mscale * 1000.0).round() as i32;
                 sin_milli[pos * pairs + i] = (theta.sin() * mscale * 1000.0).round() as i32;
@@ -199,7 +265,8 @@ impl RopeTables {
 
     /// Apply RoPE in place to one head's `head_dim` milli values at
     /// `pos`, half-split pairing: `(v[i], v[i+pairs])` rotated by
-    /// `(cos_i, sin_i)`. Pure integer (i64 products, /1000).
+    /// `(cos_i, sin_i)`. Pure integer (i64 products, round-half-away,
+    /// clamped into i32 — hostile magnitudes saturate, never wrap).
     ///
     /// # Panics
     ///
@@ -213,8 +280,10 @@ impl RopeTables {
             let s = i64::from(self.sin_milli[pos * pairs + i]);
             let x1 = i64::from(head[i]);
             let x2 = i64::from(head[i + pairs]);
-            head[i] = ((x1 * c - x2 * s + 500) / 1000) as i32;
-            head[i + pairs] = ((x2 * c + x1 * s + 500) / 1000) as i32;
+            let r1 = div_round_half_away(x1 * c - x2 * s, 1000);
+            let r2 = div_round_half_away(x2 * c + x1 * s, 1000);
+            head[i] = r1.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+            head[i + pairs] = r2.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
         }
     }
 }
@@ -226,6 +295,31 @@ mod tests {
     // f64 references — the doctrine for numeric tests (ISA Learning,
     // session 2): compare against an independent float path, not
     // hand-derived integers.
+
+    #[test]
+    fn div_round_half_away_matches_f64() {
+        // Ties round away from zero on both signs; otherwise nearest.
+        assert_eq!(div_round_half_away(1500, 1000), 2);
+        assert_eq!(div_round_half_away(-1500, 1000), -2);
+        assert_eq!(div_round_half_away(500, 1000), 1);
+        assert_eq!(div_round_half_away(-500, 1000), -1);
+        assert_eq!(div_round_half_away(499, 1000), 0);
+        assert_eq!(div_round_half_away(-499, 1000), 0);
+        assert_eq!(div_round_half_away(0, 7), 0);
+        // Odd divisor: half still rounds away exactly.
+        assert_eq!(div_round_half_away(5, 10), 1); // 0.5
+        assert_eq!(div_round_half_away(-5, 10), -1);
+        // Randomized sweep vs the f64 reference (round = half away).
+        let mut x = 0x2545_F491_4F6C_DD1D_u64;
+        for _ in 0..2000 {
+            x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+            let num = (x >> 1) as i64 % 1_000_003 - 500_001;
+            x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+            let den = ((x >> 1) % 4093 + 1) as i64;
+            let want = ((num as f64) / (den as f64)).round() as i64;
+            assert_eq!(div_round_half_away(num, den), want, "{num}/{den}");
+        }
+    }
 
     #[test]
     fn exp2_table_basics() {
@@ -240,10 +334,13 @@ mod tests {
                 "e^({x_milli}m) = {got} vs {want}"
             );
         }
-        assert_eq!(kit.exp2_q12(-20_000), 0); // e^-20 < Q12 floor
-        // Monotone nonincreasing for x ≤ 0.
+        // Q12 floor at the 2^-11 boundary (n = ceil(|x|·1443/1e6) = 12).
+        assert_eq!(kit.exp2_q12(-7623), 2); // last surviving value
+        assert_eq!(kit.exp2_q12(-7624), 0); // first floored value
+        assert_eq!(kit.exp2_q12(-20_000), 0);
+        // Monotone nonincreasing over the full live domain [−7623, 0].
         let mut prev = Q12;
-        for step in 0..200 {
+        for step in 0..1200 {
             let x = -i64::from(step) * 7;
             let e = kit.exp2_q12(x);
             assert!(e <= prev, "exp2 not monotone at {x}");
@@ -254,12 +351,23 @@ mod tests {
     #[test]
     fn softmax_matches_f64_and_sums_exact() {
         let kit = MathKit::new();
-        let cases: Vec<Vec<i32>> = vec![
+        let mut cases: Vec<Vec<i32>> = vec![
             vec![0, 0, 0, 0],
             vec![1000, 0, -1000],
             vec![5000, 4997, -200, -9000],
             vec![-3000, -3000, 12000, 11000, 0],
+            // 2026-08-15 review: constructed breakers of the old
+            // last-element remainder-carry (summed 4097/4098).
+            vec![0, -1386, -1386, -7624],
+            vec![0, 0, 0, 0, 0, 0, -7624], // 6-way tie at max + floored tail
         ];
+        // Every tie-count from 2..=20 with a floored tail, plus a
+        // 64-way tie (the in-model window).
+        for k in [2_usize, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 19, 20, 26, 31, 63] {
+            let mut v = vec![0_i32; k];
+            v.push(-7624);
+            cases.push(v);
+        }
         for logits in cases {
             let mut out = vec![0_i32; logits.len()];
             kit.softmax_q12(&logits, &mut out);
@@ -283,6 +391,11 @@ mod tests {
                 );
             }
         }
+        // Exact-sum holds for a long tail-only spread too (no ties).
+        let spread: Vec<i32> = (0..64).map(|i| -i * 120).collect();
+        let mut out = vec![0_i32; 64];
+        kit.softmax_q12(&spread, &mut out);
+        assert_eq!(out.iter().map(|p| i64::from(*p)).sum::<i64>(), Q12);
     }
 
     #[test]
@@ -299,18 +412,22 @@ mod tests {
     #[test]
     fn silu_matches_f64() {
         let kit = MathKit::new();
-        for x_milli in -6000..=6000i32 {
+        for x_milli in -9000..=9000i32 {
             let x = f64::from(x_milli) / 1000.0;
             let want = x / (1.0 + (-x).exp()) * 1000.0;
             let got = f64::from(kit.silu_milli(x_milli));
             // Relative+absolute slack: table quantization (2^-10 on the
-            // exponent) + /1000 rounding.
+            // exponent) + /1000 rounding; beyond the x ≤ −7624 cliff the
+            // output is 0 by design — a documented ≤4 milli absolute
+            // error (see silu_milli docs).
+            let cliff = x_milli <= -7624;
             assert!(
-                (got - want).abs() <= 2.0 + want.abs() * 0.02,
+                (got - want).abs() <= 2.0 + want.abs() * 0.02 + if cliff { 4.5 } else { 0.0 },
                 "silu({x_milli}) = {got} vs {want}"
             );
         }
         assert_eq!(kit.silu_milli(0), 0);
+        assert_eq!(kit.silu_milli(-8000), 0); // cliff: documented zero
     }
 
     #[test]
@@ -348,7 +465,13 @@ mod tests {
     #[test]
     fn rope_matches_f64_reference() {
         // Independent f64 re-derivation of the fork's YaRN at a few
-        // (pos, i) pairs — catches table-layout and pairing mistakes.
+        // (pos, i) pairs — catches table-layout, pairing, AND ramp-window
+        // mistakes. The ramp argument is the ELEMENT index (i0 = 2·pair),
+        // per the pinned formula `1−clamp((i0/2−low)/(high−low))` — the
+        // 2026-08-15 review caught the code (and this test's earlier
+        // copy) feeding the pair index straight in, which shifted the
+        // interpolation window one octave; pairs 17..34 are checked
+        // explicitly to pin the window.
         let rope = RopeTables::new_yarn(128, 16, 1e6, 4.0, 8192, 32.0, 1.0);
         let pairs = 64_usize;
         let corr = |n_rot: f64| -> f64 {
@@ -361,11 +484,11 @@ mod tests {
             let mut head: Vec<i32> = (0..128).map(|i| i * 53 % 300 - 150).collect();
             let original = head.clone();
             rope.apply(&mut head, pos);
-            for i in [0_usize, 1, 10, 32, 63] {
+            for i in [0_usize, 1, 10, 17, 22, 32, 34, 63] {
                 let theta_base = 1e6_f64.powf(-(2.0 * i as f64) / 128.0);
                 let extrap = pos as f64 * theta_base;
                 let interp = 0.25 * extrap;
-                let y = ((i as f64 / 2.0 - low) / (high - low).max(0.001)).clamp(0.0, 1.0);
+                let y = ((i as f64 - low) / (high - low).max(0.001)).clamp(0.0, 1.0);
                 let r = 1.0 - y;
                 let theta = interp * (1.0 - r) + extrap * r;
                 let c = theta.cos() * mscale;

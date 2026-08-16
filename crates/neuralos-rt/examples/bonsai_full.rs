@@ -9,10 +9,18 @@
 //! cargo run -p neuralos-rt --release --example bonsai_full
 //! ```
 //!
-//! Gates: every block's residual stream must stay nonzero and off the
-//! i32 rails; logits top-5 printed (ids only — tokenizer is session 4).
+//! Gates (strengthened by the 2026-08-15 adversarial review):
+//! - per-LAYER liveness: every block's residual delta > 0 (a dead
+//!   attention/FFN wiring shows delta 0 — the old final-hidden-only
+//!   check could not see that);
+//! - every layer's residual stays under the norm-soundness rail
+//!   (6.66e7 milli — not the i32 rail, which sits 32× too high);
+//! - final hidden per position: mostly nonzero, bounded;
+//! - logits top-5 printed with distinct values (ids only — tokenizer
+//!   is session 4); argmax must not collapse to token 0;
+//! - total forward time under 5 min (the ISC-35 falsifier, now gated).
 
-use neuralos_rt::{GgufFile, Qwen3};
+use neuralos_rt::{GgufFile, Qwen3, RESIDUAL_SOUND_MAX};
 
 const PROMPT: &[u32] = &[0, 42, 151668, 7];
 const MAX_POS: usize = 64;
@@ -35,18 +43,49 @@ fn main() {
     );
 
     let t1 = std::time::Instant::now();
-    let h = model.forward(PROMPT).expect("forward");
+    let (h, health) = model
+        .forward_with_health(PROMPT)
+        .expect("forward");
     let fwd = t1.elapsed();
-    println!("forward: {} tokens × 28 blocks in {:.1?}", PROMPT.len(), fwd);
+    println!("forward: {} tokens × {} layers in {:.1?}", PROMPT.len(), health.per_layer_delta.len(), fwd);
+    if fwd > std::time::Duration::from_secs(300) {
+        println!("FULL: NO (forward exceeded 5 min: {fwd:?})");
+        std::process::exit(1);
+    }
 
-    // Health gates over the residual stream.
-    let rail = i32::MAX - 1;
-    let mut failures = 0;
+    let mut failures = 0_usize;
+
+    // Per-layer liveness + soundness gates.
+    for (l, &delta) in health.per_layer_delta.iter().enumerate() {
+        let live = delta > 0;
+        println!(
+            "  layer {l:>2}: residual delta {delta:>10} {}",
+            if live { "OK" } else { "DEAD" }
+        );
+        if !live {
+            failures += 1;
+        }
+    }
+    let rail: u32 = RESIDUAL_SOUND_MAX.try_into().unwrap_or(u32::MAX);
+    let absmax_u = health.max_abs_residual.unsigned_abs();
+    println!(
+        "residual absmax {} (soundness rail {RESIDUAL_SOUND_MAX}) {}",
+        health.max_abs_residual,
+        if absmax_u < rail { "OK" } else { "OUT OF RANGE" }
+    );
+    if absmax_u >= rail {
+        failures += 1;
+    }
+
+    // Final-hidden per-position gates (nonzero, bounded — compared in
+    // u32 so an i32::MIN element cannot wrap negative and pass).
+    let bound = u32::try_from(RESIDUAL_SOUND_MAX).unwrap_or(u32::MAX);
+    const EMB: usize = 2048;
     for (pos, hh) in h.iter().enumerate() {
         let nz = hh.iter().filter(|v| **v != 0).count();
         let absmax = hh.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0);
         let mean = hh.iter().map(|v| i64::from(*v)).sum::<i64>() / hh.len() as i64;
-        let ok = nz >= EMB * 9 / 10 && (absmax as i32) < rail;
+        let ok = nz >= EMB * 9 / 10 && absmax < bound;
         println!(
             "  pos {pos}: hidden nz {nz}/2048, absmax {absmax}, mean {mean} {}",
             if ok { "OK" } else { "DEGENERATE" }
@@ -65,9 +104,16 @@ fn main() {
         print!("({id}, {v}) ");
     }
     println!();
+    // Uniform-logit collapse (top1 == top5 value) is degenerate too.
+    if let (Some((_, first)), Some((_, last))) = (top.first(), top.last()) {
+        if first == last {
+            println!("FULL: NO (uniform top-5 logits: {first})");
+            std::process::exit(1);
+        }
+    }
 
     if failures > 0 {
-        println!("FULL: NO ({failures} degenerate positions)");
+        println!("FULL: NO ({failures} failed gates)");
         std::process::exit(1);
     }
     let argmax = top.first().map(|(id, _)| *id);
@@ -78,5 +124,3 @@ fn main() {
     }
     println!("FULL: OK — 28-block Qwen3 forward + tied logits on real Q1_0 weights, integer compute path");
 }
-
-const EMB: usize = 2048;

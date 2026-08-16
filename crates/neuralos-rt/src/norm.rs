@@ -10,10 +10,13 @@
 //!
 //! # Working range (documented bound)
 //!
-//! `Σx²` accumulates in i64: sound while `2048 · max(x²) < 2^63`, i.e.
-//! `|x| ≲ 5×10^7` milli (≈ 50 000 in real units) — embedding-scale values
-//! are orders of magnitude below. The `x·w` product needs
-//! `|x·w| < 2^63` — same order. Debug asserts guard both.
+//! `Σx²` accumulates in i64 with a checked add (always-on): sound while
+//! `2048 · max(x²) < 2^63`, i.e. `|x| ≲ 5×10^7` milli (≈ 50 000 in real
+//! units) — embedding-scale values are orders of magnitude below, and a
+//! value beyond the range panics loudly ("outside documented working
+//! range"), never silently wraps. The `x·w` product needs
+//! `|x·w| < 2^63` — same order (any i32×i32 product fits, so the
+//! per-element path cannot overflow).
 
 /// Convert raw f32 bits to the milli domain: `round(v × 1000)` — the f32
 /// sibling of `neuralos_snn::half_to_milli`, same integer construction
@@ -22,7 +25,8 @@
 /// This is a load-edge conversion (file bytes → fixed point), not part of
 /// the compute path: norm weights arrive as f32 tensors and never float
 /// again. ±inf saturates; NaN maps to 0 (both documented, mirroring the
-/// fp16 sibling).
+/// fp16 sibling). Values below 0.0005 (exponent field ≤ 86 — including
+/// every subnormal) round to 0 — the milli grid's honest floor.
 #[must_use]
 pub fn f32_bits_to_milli(bits: u32) -> i32 {
     let negative = (bits >> 31) == 1;
@@ -38,28 +42,35 @@ pub fn f32_bits_to_milli(bits: u32) -> i32 {
     }
     let mant = i64::from(bits & 0x007F_FFFF) | (1_i64 << 23);
     // value = mant × 2^(exp-127-23); milli = value × 1000.
-    // exp ∈ [1, 254]: shift can be negative (large exponents) — f32 max
-    // (≈3.4e38 → 3.4e41 milli) far exceeds i32, so saturate via i64 pow.
+    // exp ∈ [1, 254] → e = exp-150 ∈ [-149, 104]. Every e < -34 gives
+    // value < 2^24·2^-35 < 0.0005 → milli rounds to 0 — early-return so
+    // the right-shift below never reaches Rust's shift-≥64 panic/mask
+    // territory (2026-08-15 review: the whole [1, 86] exponent decade
+    // previously hit that path).
     let e = i64::from(exp) - 127 - 23;
-    let scaled = if e >= 0 {
-        mant.checked_shl(u32::try_from(e).unwrap_or(63))
-            .map(|m| m.saturating_mul(1000))
-            .unwrap_or(i64::MAX)
-    } else {
-        let shift = u32::try_from(-e).unwrap_or(63);
-        let num = mant * 1000;
-        let half = 1_i64 << (shift - 1);
-        (num + half) >> shift
-    };
-    let milli = scaled.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
-    if negative {
-        -milli
-    } else {
-        milli
+    if e < -34 {
+        return 0;
     }
+    if e >= 0 {
+        // value ≥ 2^23 → milli ≥ 8.4e9, beyond i32 entirely: saturate by
+        // sign (the old shift path wrapped `1_i64 << 63` to i64::MIN and
+        // inverted the sign for huge positives — caught by the f64 sweep
+        // at 0x5F00_0000 = 2^127).
+        return if negative { i32::MIN } else { i32::MAX };
+    }
+    // e ∈ [−34, −1] → shift ≤ 34: safe.
+    let shift = u32::try_from(-e).unwrap_or(63);
+    let num = mant * 1000;
+    let half = 1_i64 << (shift - 1);
+    let scaled = (num + half) >> shift;
+    // Clamp the SIGNED value so finite negatives saturate to i32::MIN
+    // (−(i32::MAX) would be a one-LSB lie; the review's f64 sweep caught
+    // the asymmetry at bits 0xCA80_0000 = −2^22).
+    let signed = if negative { -scaled } else { scaled };
+    signed.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
-/// Exact integer square root: the unique `r` with `r² ≤ n < (r+1)².
+/// Exact integer square root: the unique `r` with `r² ≤ n < (r+1)²`.
 /// Newton's method on u64 — no float anywhere.
 #[must_use]
 pub fn isqrt(n: u64) -> u64 {
@@ -84,35 +95,35 @@ pub fn isqrt(n: u64) -> u64 {
 /// eps floor (Qwen3's 1e-6 eps rounds to 0 at milli resolution; a zero rms
 /// on a zero vector must not divide by zero).
 ///
-/// All-milli, all-integer: `Σx²` in i64, per-element `x·w` in i64 with
-/// round-half-away division. Bounds documented at the module level.
+/// All-milli, all-integer: `Σx²` in i64 with checked adds, per-element
+/// `x·w` in i64 (cannot overflow — any i32×i32 fits) with round-half-away
+/// division. Bounds documented at the module level.
 ///
-/// # Panics (debug only)
+/// # Panics
 ///
-/// Debug-asserts the documented working range (`Σx²` and `|x·w| < 2^63`).
+/// Panics (release too) if `Σx²` leaves the documented working range
+/// (`|x| ≳ 6.7e7` milli across a 2048-wide vector) or if slice lengths
+/// mismatch (indexed access).
 pub fn rms_norm_milli(x: &[i32], w: &[i32], out: &mut [i32]) {
     debug_assert_eq!(x.len(), w.len(), "weight length mismatch");
     debug_assert_eq!(x.len(), out.len(), "output length mismatch");
     let n = x.len();
-    let sum_sq: i64 = x
-        .iter()
-        .map(|&v| {
-            let v64 = i64::from(v);
-            v64.checked_mul(v64)
-                .expect("x² overflow — outside documented working range")
-        })
-        .sum();
-    debug_assert!(sum_sq >= 0, "Σx² overflowed");
+    let mut sum_sq: i64 = 0;
+    for &v in x {
+        let v64 = i64::from(v);
+        let sq = v64
+            .checked_mul(v64)
+            .expect("x² overflow — outside documented working range");
+        sum_sq = sum_sq
+            .checked_add(sq)
+            .expect("Σx² overflow — outside documented working range");
+    }
     let mean = (sum_sq + n as i64 / 2) / n as i64; // round
     let rms = isqrt(mean.unsigned_abs()).max(1) as i64;
     for i in 0..n {
         let prod = i64::from(x[i]) * i64::from(w[i]);
-        let q = if prod >= 0 {
-            (prod + rms / 2) / rms
-        } else {
-            -((-prod + rms / 2) / rms)
-        };
-        out[i] = q.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+        out[i] = crate::math::div_round_half_away(prod, rms)
+            .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     }
 }
 
@@ -132,6 +143,46 @@ mod tests {
         assert_eq!(f32_bits_to_milli(0x7F80_0000), i32::MAX); // +inf
         assert_eq!(f32_bits_to_milli(0xFF80_0000), i32::MIN); // −inf
         assert_eq!(f32_bits_to_milli(0x7FC0_0000), 0); // NaN
+        // 2026-08-15 review: the [1, 86] exponent decade (shift ≥ 64)
+        // previously panicked in debug / masked-shifted in release —
+        // and at shift == 64 returned −2^31 for a POSITIVE input.
+        assert_eq!(f32_bits_to_milli(0x0080_0000), 0); // min normal 1.18e−38
+        assert_eq!(f32_bits_to_milli(0x2A80_0000), 0); // ≈4.5e−13
+        assert_eq!(f32_bits_to_milli(0x2B00_0000), 0); // ≈5.9e−13 (old sign flip)
+        assert_eq!(f32_bits_to_milli(0xAB00_0000), 0); // its negative twin
+        // Smallest values that reach 1 milli: 2^-10 = 0.00098 (e = −33)
+        // rounds to 1; 2^-11 = 0.00049 (e = −34) rounds to 0 — the floor.
+        assert_eq!(f32_bits_to_milli(0x3A80_0000), 1); // 2^−10
+        assert_eq!(f32_bits_to_milli(0x3A00_0000), 0); // 2^−11
+    }
+
+    #[test]
+    fn f32_milli_sweep_matches_f64_reference() {
+        // Every exponent × representative mantissas × both signs vs the
+        // f64 reference — the full conversion surface, not ten vectors.
+        for exp in 0..=255_u32 {
+            for mant in [0x0000_0000_u32, 0x0000_0001, 0x4000_0000, 0x7FFF_FFFF] {
+                for sign in [0_u32, 0x8000_0000] {
+                    let bits = sign | (exp << 23) | mant;
+                    let f = f32::from_bits(bits);
+                    let want: i64 = if f.is_nan() {
+                        0
+                    } else if f.is_infinite() {
+                        i64::from(if f > 0.0 { i32::MAX } else { i32::MIN })
+                    } else {
+                        let r = (f64::from(f) * 1000.0).round();
+                        if r >= f64::from(i32::MAX) {
+                            i64::from(i32::MAX)
+                        } else if r <= f64::from(i32::MIN) {
+                            i64::from(i32::MIN)
+                        } else {
+                            r as i64
+                        }
+                    };
+                    assert_eq!(i64::from(f32_bits_to_milli(bits)), want, "bits {bits:#010x}");
+                }
+            }
+        }
     }
 
     #[test]

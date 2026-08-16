@@ -1,8 +1,8 @@
 # NeuralOs-v2 workspace
 #
-# Single member: neuralos-snn. Other crates (neuralos-ml, neuralos-app,
-# neuralos-crypto, neuralos-riscv) will be added when they have real code —
-# no empty scaffolding (lesson from v0.1).
+# Members: neuralos-snn (published crate), neuralos-app (Slint
+# visualizer), neuralos-rt (ternary-LLM runtime). Further crates are
+# added when they have real code — no empty scaffolding (v0.1 lesson).
 
 [workspace]
 resolver = "2"

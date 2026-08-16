@@ -77,6 +77,7 @@ fn main() {
 
     // --- ISC-21: every tensor in bounds; Q1_0 byte sizes exact.
     let mut checked_q1_0 = 0_usize;
+    let mut total_q1_0 = 0_usize;
     let mut failures = 0_usize;
     for t in &f.tensors {
         let data = match f.tensor_data(t) {
@@ -88,11 +89,14 @@ fn main() {
             }
         };
         if t.ty == GGML_TYPE_Q1_0 {
-            // Row-major: dim[0] = contiguous width. rows = product of the rest.
+            total_q1_0 += 1;
+            // Row-major: dim[0] = contiguous width. rows = product of the
+            // rest. u128 so hostile dims cannot overflow the expected-size
+            // product into a wrapped pass (review finding).
             let cols = t.dims.first().copied().unwrap_or(0);
-            let rows: u64 = t.dims.iter().skip(1).product();
-            let expected = rows * cols.div_ceil(128) * 18;
-            if data.len() as u64 != expected {
+            let rows: u128 = t.dims.iter().skip(1).map(|&d| d as u128).product::<u128>().max(1);
+            let expected: u128 = rows * ((cols as u128).div_ceil(128)) * 18;
+            if data.len() as u128 != expected {
                 println!(
                     "FAIL size: {} got {} bytes, expected {expected}",
                     t.name,
@@ -104,10 +108,26 @@ fn main() {
             }
         }
     }
-    println!(
-        "bounds+size: all {} tensors sliced in-bounds; {checked_q1_0} q1_0 tensors byte-exact vs dims",
-        f.tensors.len()
-    );
+    // Rope provenance (the runtime pins base 1e6 / orig 8192 — print
+    // what the file actually says; load() cross-checks these).
+    for key in ["qwen3.rope.freq_base", "qwen3.rope.original_context"] {
+        match f.value(key) {
+            Some(v) => println!("rope kv: {key} = {v:?}"),
+            None => println!("rope kv: {key} absent (defaults: 1e6 / 8192)"),
+        }
+    }
+    if failures == 0 {
+        println!(
+            "bounds+size: all {} tensors sliced in-bounds; {checked_q1_0}/{total_q1_0} q1_0 tensors byte-exact vs dims",
+            f.tensors.len()
+        );
+    } else {
+        println!(
+            "bounds+size: {} failure(s) across {} tensors ({checked_q1_0}/{total_q1_0} q1_0 byte-exact)",
+            failures,
+            f.tensors.len()
+        );
+    }
 
     // --- ISC-22: the Stage-2 codec meets real model bytes.
     let emb = f.tensor("token_embd.weight").expect("token_embd.weight exists");
@@ -127,6 +147,10 @@ fn main() {
         println!("PROBE: NO ({failures} failures)");
         std::process::exit(1);
     }
+    // Empirical order-of-magnitude window: the real file's first block
+    // reads 27 milli (recorded in ISA ISC-22). It is a smoke detector,
+    // not a derived bound — a future model with a much smaller/larger
+    // embedding scale would need this widened (deferred review task).
     if !(1..=100).contains(&milli) {
         println!("PROBE: NO (embedding scale milli {milli} outside [1,100])");
         std::process::exit(1);

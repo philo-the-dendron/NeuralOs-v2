@@ -13,14 +13,14 @@
 //!
 //! Usage: `cargo run -p neuralos-rt --example bonsai_forward -- [path]`
 
-use neuralos_rt::{f32_bits_to_milli, q1_0_matvec, q1_0_row_to_milli, rms_norm_milli, GgufFile};
+use neuralos_rt::{f32_bits_to_milli, matvec_scaled, q1_0_row_to_milli, rms_norm_milli, GgufFile};
 
 const EMB: usize = 2048;
 const TOKENS: &[u32] = &[0, 1, 42, 151668]; // first, second, arbitrary, last valid
 
-fn stats(v: &[i32]) -> (i64, i32, usize) {
+fn stats(v: &[i32]) -> (i64, u32, usize) {
     let mean = v.iter().map(|x| i64::from(*x)).sum::<i64>() / v.len() as i64;
-    let absmax = v.iter().map(|x| x.unsigned_abs()).max().unwrap_or(0) as i32;
+    let absmax = v.iter().map(|x| x.unsigned_abs()).max().unwrap_or(0);
     let nonzero = v.iter().filter(|x| **x != 0).count();
     (mean, absmax, nonzero)
 }
@@ -78,24 +78,16 @@ fn main() {
         let (h_mean, h_absmax, h_nz) = stats(&h);
         println!("           norm milli mean {h_mean:>5}, absmax {h_absmax:>6}, nonzero {h_nz}/{EMB}");
 
-        // --- QKV projections: activations → i16 (absmax normalize), then q1_0 matvec.
-        let amax = h.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0);
-        let acts: Vec<i16> = h
-            .iter()
-            .map(|&v| {
-                if amax == 0 {
-                    0
-                } else {
-                    i32::round_div(i64::from(v) * 32_767, i64::from(amax)) as i16
-                }
-            })
-            .collect();
+        // --- QKV projections via the unit-chaining wrapper: milli in,
+        // milli out (true units — the review flagged that this example's
+        // old hand-rolled normalize printed raw partial-sum units under
+        // a "milli" label).
         let mut q_out = [0_i32; 2048];
         let mut k_out = [0_i32; 1024];
         let mut v_out = [0_i32; 1024];
-        q1_0_matvec(q_data, &acts, 2048, &mut q_out).expect("q matvec");
-        q1_0_matvec(k_data, &acts, 1024, &mut k_out).expect("k matvec");
-        q1_0_matvec(v_data, &acts, 1024, &mut v_out).expect("v matvec");
+        matvec_scaled(q_data, &h, 2048, &mut q_out).expect("q matvec");
+        matvec_scaled(k_data, &h, 1024, &mut k_out).expect("k matvec");
+        matvec_scaled(v_data, &h, 1024, &mut v_out).expect("v matvec");
         let (q_mean, q_absmax, q_nz) = stats(&q_out);
         let (k_mean, k_absmax, k_nz) = stats(&k_out);
         let (v_mean, v_absmax, v_nz) = stats(&v_out);
@@ -104,16 +96,18 @@ fn main() {
         );
 
         // Sanity gates: stages mostly-nonzero (a single exact-cancelling
-        // matvec element is arithmetic, not degeneracy) + bounded (no rails).
-        let rail = i32::MAX - 1;
+        // matvec element is arithmetic, not degeneracy) + bounded (under
+        // the norm soundness rail, compared in u32 — an i32::MIN value
+        // cannot wrap negative and pass).
+        let bound: u32 = 66_600_000;
         let ok = x_var_ok
             && h_nz > EMB / 2
             && q_nz >= 2048 * 95 / 100
             && k_nz >= 1024 * 95 / 100
             && v_nz >= 1024 * 95 / 100
-            && q_absmax < rail
-            && k_absmax < rail
-            && v_absmax < rail;
+            && q_absmax < bound
+            && k_absmax < bound
+            && v_absmax < bound;
         if !ok {
             println!("           STAGE DEGENERATE for token {tok}");
             failures += 1;
@@ -125,19 +119,4 @@ fn main() {
         std::process::exit(1);
     }
     println!("FORWARD: OK — real tokens flow embedding -> RMSNorm -> QKV on real Q1_0 weights, integer-only");
-}
-
-/// Integer round-half-away division helper (kept local; mirror of the
-/// module-private pattern).
-trait RoundDiv {
-    fn round_div(a: i64, b: i64) -> i64;
-}
-impl RoundDiv for i32 {
-    fn round_div(a: i64, b: i64) -> i64 {
-        if a >= 0 {
-            (a + b / 2) / b
-        } else {
-            -((-a + b / 2) / b)
-        }
-    }
 }

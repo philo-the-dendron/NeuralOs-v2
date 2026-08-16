@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "NeuralOS ternary-LLM runtime — loads Bonsai-style Q1_0 GGUF models in pure Rust (Stage 4 of the ternary bridge)."
+# Workspace-internal by design: depends on neuralos-snn by unversioned
+# path, so it cannot be published as-is and is not intended to be
+# (2026-08-15 review: make that explicit instead of accidental).
+publish = false
 
 [dependencies]
 neuralos-snn = { path = "../neuralos-snn" }
