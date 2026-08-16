@@ -26,9 +26,11 @@ pub mod math;
 pub mod model;
 pub mod norm;
 pub mod q1_0;
+pub mod token;
 
 pub use gguf::{GgufError, GgufFile, MetadataValue, TensorInfo, GGML_TYPE_Q1_0, GGML_TYPE_Q2_0};
 pub use math::{div_round_half_away, MathKit, RopeTables};
-pub use model::{ForwardHealth, ModelError, Qwen3, RESIDUAL_SOUND_MAX};
+pub use model::{ForwardHealth, ModelError, Qwen3, Session, RESIDUAL_SOUND_MAX};
 pub use norm::{f32_bits_to_milli, isqrt, rms_norm_milli};
 pub use q1_0::{matvec_scaled, q1_0_matvec, q1_0_row_to_milli, Q1_0_BLOCK, Q1_0_BLOCK_BYTES, Q10Error};
+pub use token::{Tokenizer, TokenizerError};

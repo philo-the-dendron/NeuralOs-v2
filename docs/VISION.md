@@ -71,7 +71,7 @@ real artifacts already shipped, not a dead-end:
 | **1. Ternary SNN** | `Trit` weight type `{-1,0,+1}` + scale | a more efficient + more biologically-plausible SNN variant | does it still spike + learn (STDP) comparably to i16? **✓ Spiking: YES (1.00× baseline). Learning: Stage 1 deterministic NO → Stage 1.5b stochastic YES (bridge reopened) → Stage 1.5c structured selectivity YES → Stage 1.5d full pairwise STDP YES (missing LTP half added + CSR sync bug fixed; selectivity re-confirmed at SI 1.000 vs i16 1.000 under structured input, rule now bidirectional). Stage 2 is now firmly earned on the corrected substrate (see below).** |
 | **2. Format bridge** | ternary format spec; BitNet-compatible **export**, Prism `Q1_0` **import** | NeuralOS speaks the lingua franca of both fields | can we round-trip a ternary tensor? **✓ YES (2026-08-15, see below): `i2_s` round-trip bit-exact, `q1_0`/`q2_0` import exact, `docs/TERNARY_FORMAT.md` is the spec.** |
 | **3. Shared kernel** | one `no_std` ternary matmul; a tiny hybrid net (SNN layer + dense-LLM-style layer) | a reusable Rust ternary kernel + a showable hybrid demo | does the union compose — compute something coherent? **✓ YES (2026-08-15, see below): 4/4 classification through one kernel, weights arriving as `i2_s` wire bytes.** |
-| **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research **— OPENED 2026-08-15, session 1 done (see below); gate pending** |
+| **4. Full Rust ternary-LLM** | extend/replace candle's quantized kernels to run a Bonsai `Q1_0` model in pure Rust | the Rust answer to `bitnet.cpp` — sovereignty-grade local AI | gated on Stage 3's proof; multi-session research **— CLOSED 2026-08-16, gate verdict: **NO (3/5 strict prompts; see session 4 below) — tokenizer + incremental decode + deterministic generation all work end-to-end; the 1-bit 1.7B failed two word-sequence continuations. Bridge stops with shipped artifacts per gate doctrine; merge/unmerge call is the principal's** |
 
 **Format decision — deferred.** Stage 1 uses plain `{-1,0,+1}` + scale (zero
 wire-format lock-in while we don't yet know the ternary regime works for our
@@ -508,10 +508,66 @@ logits now), 14.6 s forward. Deferred (named ISA tasks): `#[non_exhaustive]`
 + const-hoisting (alpha.2 checklist), gguf lazy arrays, reference-logit
 equivalence test (session-4 pre-gate).
 
+**Session 4 — tokenize → generate → the GATE (verdict: NO, 3/5).** The
+finish line ran: `rt::token` loads the gpt2 byte-level BPE tokenizer
+from the GGUF's embedded metadata (151 669 tokens, 151 387 merges) with
+the Qwen2 pre-tokenizer as a hand-rolled scanner pinned verbatim from
+the fork's own `unicode_regex_split_custom_qwen2` — no new dependencies
+(the `regex` crate cannot even express the pattern's `(?!\S)`
+lookahead). The forward was refactored alongside (not inside):
+`Session`/`prefill`/`step` give an append-only KV cache whose outputs
+are **bit-identical** to the reviewed full forward — proven at
+tolerance 0 on a nonzero synthetic model (CI) and on the real file.
+`argmax_logit` + a deterministic greedy loop complete generation:
+**0.22 tok/s decode, 0.26–0.29 tok/s prefill** (release, 2-core),
+residuals 18–29 M under the 66.6 M soundness rail.
+
+**The gate** (`examples/bonsai_generate.rs`, 5 strict prompts fixed
+before any run + 1 structural chat demonstrator via the embedded
+template): `STAGE 4 GATE: NO` — 3/5 strict.
+
+- **PASS** — `"1 2 3 4 5 6 7"` → `" 8 9 10 11 1"` (digit-pattern
+  continuation).
+- **PASS** — `"10 11 12 13"` → `" 14 15 16 17"` (multi-digit carry).
+- **FAIL** — `"one two three four"` → `"-digit numbers. The problem is
+  that the numbers are not unique"` (coherent text about numbers, not
+  the sequence).
+- **FAIL** — `"Monday Tuesday Wednesday"` → `": 10:00 AM\nWednesday: "`
+  (schedule-listing continuation).
+- **PASS** — `"The capital of France is"` → `" Paris, which is the
+  capital of France…"` (factual recall — the honestly-at-risk one).
+- **Chat demonstrator** (structural, never verdict-bearing):
+  "Sure! Here's how you can count from 1 to" — coherent, cleanly
+  formatted, pre-closed `<think>` handled.
+
+**What the NO means (honest reading):** the runtime is proven
+end-to-end — container, tokenizer, template, incremental integer
+forward, greedy decode all work, deterministically, on real weights;
+the chat demonstrator's coherence is the strongest single piece of
+evidence that the stack is sound. What failed is the *model's
+capability* on two word-sequence prompts — exactly the failure mode a
+1-bit 1.7B can afford. Per gate doctrine the bridge stops here with
+shipped artifacts; no prompt-fishing was done (the set and expected
+strings were fixed pre-run, and the failures are the result).
+Session C's first act is named in the ISA: pin the fork's reference
+logits for a fixed prompt against ours, so any future quality claim
+sits on an external anchor before the next capability judgment.
+
+**Session-4 catches (honest):** the plan's `\p{N}{1,3}` digit grouping
+was GPT-4 recall, not Qwen2 — the fork's source says `\p{N}` (one
+digit per piece), caught by fetching the reference before writing the
+scanner. Qwen's digit splitting (`" 8"` = two tokens) is why strict
+prompts judge decoded-TEXT prefixes, never ids. The Bonsai chat
+template inserts no default system prompt (unlike official Qwen3) —
+read from the file, fragments asserted.
+
 **Remaining sessions (honest slice):** attention + full forward
 (**✓ session 3**) → adversarial review of the whole arc (**✓ session
-3.5**) → tokenizer + generation = the Stage 4 gate
-(measurable bar: fixed prompts, expected-token checks).
+3.5**) → tokenizer + generation = the Stage 4 gate (**✓ session 4 —
+verdict NO, recorded**) → Session C (deferred fog: fork-logit
+reference equivalence first, alpha.2 republish checklist, gguf lazy
+arrays, contiguity validation; merge/no-merge of the branch is the
+principal's call).
 
 ### 3. The lab bench (visible)
 

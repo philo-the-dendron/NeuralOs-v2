@@ -3,9 +3,9 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 36/36
+progress: 42/42
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-15T23:59:00Z
+updated: 2026-08-16T16:30:00Z
 principal_stated_goal: "ok so we are ready for step 3 ?" → "go" — Stage 3 (shared kernel + hybrid gate), locked choices: A·classification demo, A·absmax i16 activations
 ---
 
@@ -84,7 +84,62 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(ISC-1..10: Stage 2, 11..17: Stage 3, 18..23: Stage 4 s1, 24..29: Stage 4 s2 — closed, see Verification.)
+(ISC-1..10: Stage 2, 11..17: Stage 3, 18..23: Stage 4 s1, 24..29: Stage 4 s2, 30..36: Stage 4 s3 — closed, see Verification.)
+
+- [x] ISC-37: `rt::token` ships the gpt2 byte-level BPE tokenizer from
+  the GGUF's embedded data (`tokenizer.ggml.{model,pre,tokens,
+  token_type,merges}`): GPT-2 byte↔unicode table, Qwen2
+  pre-tokenizer as a hand-rolled scanner pinned verbatim from the
+  fork's `unicode_regex_split_custom_qwen2` (contractions /
+  optional-char+letters / SINGLE digit / space+punct+newlines /
+  `\s*[\r\n]+` / run-minus-one / run — zero new dependencies), BPE
+  by the fork's (rank, left-index) priority-queue semantics, special
+  partition (control+user_defined, longest first), literal special
+  decode. Falsifier: byte-table pins, scanner vectors + lossless
+  property, BPE rank/position vectors, synthetic round-trips fail;
+  real-file: counts, pinned special ids, table-derived expected ids,
+  round-trips (all green).
+- [x] ISC-38: incremental decode — `Qwen3::{new_session, prefill,
+  step}` with a persistent append-only KV cache; `forward_inner`
+  untouched; the incremental path reproduces the full forward
+  BIT-EXACTLY (tolerance 0) on a nonzero synthetic model in CI and on
+  the real Bonsai file (4-token prompt + 1 appended token, all
+  positions). Session carries the fog-(g) residual witness.
+  Falsifier: either exact-equality test finding one differing i32.
+- [x] ISC-39: greedy generation — `Qwen3::argmax_logit` (O(vocab)
+  scan, ties to lowest id, same units/degenerate contract as
+  `topk_logits`) + the deterministic decode loop in the gate example;
+  stop on eos 151645 or a cap. Falsifier: tie-break/peak tests, or
+  two gate runs disagreeing (greedy must be deterministic — verified:
+  identical output across two full runs).
+- [x] ISC-40: `examples/bonsai_generate.rs` — THE GATE: 5 strict
+  prompts (chosen before any run, rationale in the header) judged by
+  decoded-TEXT prefix against pinned expected strings (ids never the
+  contract — Qwen splits digits, " 8" is two tokens) + 1 chat
+  demonstrator via the embedded template (fragments asserted against
+  the template text; structural pass only, NEVER verdict-bearing);
+  YES = 5/5 strict AND all residuals under the soundness rail; tok/s
+  per phase printed. Falsifier: 4/5 strict (or fewer) printing NO
+  with evidence and exit 1.
+- [x] ISC-41: the gate RAN (release, 2026-08-16) — verdict **NO:
+  3/5 strict**. PASS: "1 2 3 4 5 6 7"→" 8 9 10 11 1",
+  "10 11 12 13"→" 14 15 16 17", "The capital of France is"→" Paris,
+  which is the capital of France…". FAIL: "one two three four"→
+  "-digit numbers. The problem is that the numbers are not unique",
+  "Monday Tuesday Wednesday"→": 10:00 AM\nWednesday: ". Chat
+  demonstrator (structural, non-verdict): PASS — "Sure! Here's how
+  you can count from 1 to". Residuals 18.1–29.1 M under the 66.6 M
+  rail (13→33 positions). Decode 0.22 tok/s, prefill 0.26–0.29 tok/s
+  (2-core, release). No prompt-fishing: the set and expected strings
+  were fixed pre-run; the failures are recorded as the result.
+  Falsifier: the recorded log contradicting any of this.
+- [x] ISC-42: discipline + protocol: 4 CI gates green (193 tests),
+  ignored real-file tests 3/3 green on the final code, probe/forward/
+  full still green, VISION/ROADMAP carry the honest NO, branch
+  pushed; **no merge to main — the gate said NO, the merge call is
+  the principal's** (Session C's first act: the fork-logit
+  comparison, see Decisions). Falsifier: any gate red, docs absent,
+  or an unprincipled merge.
 
 - [x] ISC-30: `rt::math` ships the integer softmax machinery — a 1024-entry
   Q12 `2^frac` table, `exp_q12(x_milli)` via max-subtract + exp2
@@ -339,6 +394,15 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 | isc | type | check | threshold | tool | anchors_to |
 |---|---|---|---|---|---|
+| ISC-37 | unit+property+real | byte table, scanner vectors + lossless, BPE rank/pos, specials, round-trips; real: counts, special ids, expected ids | 100% | cargo test (real: --ignored) | rt::token::tests |
+| ISC-38 | unit+real | incremental vs full forward, ALL positions + appended token | exact (tol 0) | cargo test (synthetic CI + real --ignored) | rt::model::tests::{incremental_matches_forward_synthetic_exact, real_incremental_matches_forward_exact} |
+| ISC-39 | unit | argmax tie→lowest id, peak row wins, agrees with topk[0] | exact | cargo test | rt::model::tests::argmax_tie_breaks_lowest_and_finds_peak |
+| ISC-40 | gate | example prints per-prompt evidence + verdict, exit code honest | yes | cargo run --release --example | examples/bonsai_generate.rs |
+| ISC-41 | evidence | recorded run: 3/5 strict, deterministic across 2 runs, NO + exit 1 | as recorded | run log (this session) | ISA Verification |
+| ISC-42 | build+doc+git | 4 CI gates, ignored 3/3, probe/forward/full green, docs truth, branch pushed, NO merge | 0 fail | cargo + git | CI + docs/ + remotes |
+
+| isc | type | check | threshold | tool | anchors_to |
+|---|---|---|---|---|---|
 | ISC-30 | property | softmax vs f64 ref; exact Q12 sum | ≤3/4096 dev; sum=4096 | cargo test | rt::math::tests |
 | ISC-31 | unit+property | silu vs f64 ref, zero, sign | tol documented | cargo test | rt::math::tests |
 | ISC-32 | unit+property | rope identity/norm/f64-rotation | tol documented | cargo test | rt::math::tests |
@@ -389,6 +453,79 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-10 | unit | decoded tensor ↔ Trit::to_weight round-trip stays on-grid | exact | cargo test | bridge::tests::decoded_trits_feed_trit_substrate |
 
 ## Decisions
+
+- 2026-08-16 (s4) · **THE GATE SAID NO — Stage 4 closes unmerged by
+  design.** Honest verdict recorded: 3/5 strict (digit counting ×2 and
+  factual recall pass; word-sequence continuations fail). Per gate
+  doctrine the bridge stops here with shipped artifacts: the format
+  bridge, shared kernel, GGUF container, full integer forward, and now
+  tokenizer + incremental decode + deterministic generation are all
+  real, tested, and green — what failed is the 1-bit 1.7B's
+  *capability* on two prompts, not the runtime (the chat demonstrator
+  replies coherently; failures are continuation-shaped, not
+  garbage-shaped). Branch pushed, main untouched; **the merge call is
+  the principal's.** **Session C's first act: the fork-logit
+  reference comparison** (fog (a)) — pin PrismML-Eng/llama.cpp logits
+  for a fixed prompt against ours BEFORE any quality judgment beyond
+  this gate; the deferred dependency now has a name and a reason
+  (two failed prompts are within the range a subtly-off logit could
+  cause, and equivalence would sharpen the NO into "model capability"
+  vs "runtime drift").
+- 2026-08-16 (s4) · Pre-tokenizer = hand-rolled scanner, no `regex`
+  crate. Rationale: the pattern needs `(?!\S)` lookahead which `regex`
+  does not support (only fancy-regex would, a heavy add); the fork
+  ITSELF hand-rolls (`unicode_regex_split_custom_qwen2`); the scanner
+  is ~100 deterministic lines pinned rule-by-rule from that source.
+  **The pinned pattern has `\p{N}` — ONE digit per piece** — not the
+  `\p{N}{1,3}` of the GPT-4/llama3 patterns the plan drafted from
+  recall; source-pinning caught it before a single test ran.
+  Documented deviations: Rust-std unicode classes (`is_alphabetic` ≈
+  \p{L}+wider), no unassigned-cp distinction in the punct rule, ASCII
+  case-folding for contractions — none affect ASCII gate text.
+- 2026-08-16 (s4) · Tokenizer facts that shaped the gate: Qwen splits
+  digits (`" 8"` = `Ġ`+`8`, no `Ġ8` token, no multi-digit tokens) —
+  strict prompts are judged by decoded-TEXT prefix, ids are never the
+  contract (principal pin №2). The Bonsai chat template (read from the
+  file) inserts NO default system prompt on the non-tools path
+  (unlike official Qwen3) and its `add_generation_prompt` block
+  pre-closes thinking: `<|im_start|>assistant\n<think>\n\n</think>\n\n`
+  — rendering asserts each fragment verbatim against the embedded
+  template string instead of shipping a Jinja engine.
+- 2026-08-16 (s4) · Incremental decode is a NEW path; `forward_inner`
+  is byte-untouched (mission constraint). Equivalence is by
+  construction (attention is position-local given the caches; the FFN
+  is position-local; same arithmetic order — integer exactness makes
+  order-identical computation bit-identical) AND pinned by tests:
+  synthetic nonzero model in CI + the real file (tolerance 0), both
+  green on the final code. `Session` grows per position (~229 KB), not
+  by `max_pos` up front. fog (f) graduated.
+- 2026-08-16 (s4) · Residual watch (fog (g)) graduated into evidence:
+  `Session::max_abs_residual` per layer boundary; the gate prints it
+  per prompt and vetoes on the 66.6 M rail. Growth observed this run:
+  18.1 M @ 13 positions → 29.1 M @ 33 positions — well under the rail
+  at gate-scale prompts; longer generations keep the witness.
+- 2026-08-16 (s4) · Hardening carried into reviewed code (same class
+  as the s3.5 OOV/65-token fixes, no math change on real files):
+  `topk_logits` and `argmax_logit` bound their embedding scan by the
+  tensor's actual row count, not the VOCAB const — real files are
+  identical (151 669 rows), synthetic/short tensors no longer panic.
+- 2026-08-16 (s4) · Sampling NOT implemented (temperature/top-k were
+  the stretch pressure valve): greedy-only, per "honesty over reach".
+  The file's `general.sampling.*` KVs (temp 0.5, top_k 20) are
+  recorded as provenance for a future session.
+- 2026-08-16 (s4, principal pins) · Gate design locked pre-run:
+  6 prompts = 5 strict + 1 structural chat demonstrator; **YES = 5/5
+  strict in the gate logic itself** (no partial credit, no near-miss
+  language — 4/5 prints NO + exit 1); strict PASS = decoded-text
+  prefix vs pinned expected string, ids resolved at runtime only; on
+  NO, record evidence and name the fork-logit comparison as Session
+  C's first act (done, above).
+- 2026-08-16 (s4) · Deferred fog ledger, owners named: (a) reference-
+  logit equivalence → **Session C, first act**; (b) alpha.2 hygiene
+  bundle (`#[non_exhaustive]`, const hoisting, decode_q1_0 friction) →
+  Session C publish checklist; (c) gguf lazy arrays → Session C; (d)
+  tensor contiguity validation → Session C; (e) probe scale-window
+  derivation → stays open until a second real model arrives.
 
 - 2026-08-15 (s3.5) · **Adversarial review dispositions** (10 agents;
   every finding adopted / rebutted / deferred — full ledger, severity
@@ -798,3 +935,65 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   logits 0.8 s, top-5 printed, exit 0
 - ISC-36: 4 CI gates green (163 tests total); VISION session-3 section +
   ROADMAP s1–s3 line
+
+## Learning (Stage 4, session 4)
+
+- conjectured: the Qwen2 split pattern groups digits `\p{N}{1,3}`
+  (drafted into the session plan from tokenizer recall).
+  refuted by: the fork's own source — `llama-vocab.cpp` PRE_TYPE_QWEN2
+  carries `\p{N}` (single digit), and its custom scanner emits one
+  digit per piece; the commented "original regex from tokenizer.json"
+  agrees.
+  learned: plan-stage recall is test-stage bug source; the
+  verify-from-source mandate extends to PATTERNS, not just layouts —
+  and this one was caught before costing anything because the source
+  was fetched before the scanner was written.
+  criterion now: any pinned pattern/constant enters the plan only
+  with its fetched-source citation attached.
+- conjectured (5 more instances this session, all test-side): my
+  scanner/BPE test vectors were right (" 8" one token; "14" one
+  piece; " x" split; "a\tb" split; merge chains self-assemble from
+  partial operands).
+  refuted by: cargo test + a vocab probe — Qwen has no `Ġ8`/`14`
+  tokens (digit splitting BY DESIGN), rule 2 fires before the
+  whitespace rules (so " x"/"\tb" glue to words), and a merge whose
+  operands aren't themselves merge-reachable never applies ("he"
+  needs ("h","e") before ("he","llo")).
+  learned: same structural lesson, new surface — for VOCAB-shaped
+  expectations, probe the artifact first (the 10-line python vocab
+  scan settled in minutes what three test-fail rounds muddied).
+  criterion now: before pinning tokenization expectations, dump the
+  real vocab's relevant entries; never assert a token exists because
+  "it obviously would".
+
+## Verification (Stage 4, session 4)
+
+- ISC-37: rt::token::tests — byte_table_pins_and_bijection,
+  scanner_rule_vectors, scanner_is_lossless, bpe_merges_by_rank_then_position,
+  encode_decode_roundtrip_synthetic, specials_partition_and_decode,
+  decode_rejects_bad_input (CI); real_vocab_and_specials_pinned +
+  real_roundtrips_and_expected_ids (ignored, run this session:
+  151 669 tokens / 151 387 merges, eos 151645, pad 151643, digit-
+  splitting pinned, chat prompt tokenizes with specials split out)
+- ISC-38: incremental_matches_forward_synthetic_exact (nonzero
+  synthetic, CI) + real_incremental_matches_forward_exact (real file,
+  ignored, 788 s debug) — every hidden state equal at tolerance 0,
+  including the appended 5th token
+- ISC-39: argmax_tie_breaks_lowest_and_finds_peak (tie→id 0, peak row
+  wins, agrees with topk[0])
+- ISC-40/41: `cargo run -p neuralos-rt --release --example
+  bonsai_generate` — run TWICE this session, identical output
+  (greedy deterministic): strict 3/5, chat demonstrator structural
+  PASS, STAGE 4 GATE: NO, exit 1. Full log evidence in the run
+  (prompts, ids, generated text, expected, residuals, tok/s)
+- ISC-42: 4 CI gates green this session (check/test/clippy -D
+  warnings/no_std — 193 tests: 56 rt + 134 snn + 3 doc); ignored
+  real-file tests 3/3; bonsai_probe PROBE: YES, bonsai_forward
+  FORWARD: OK, bonsai_full FULL: OK (release, top-5 identical to
+  session 3 — determinism across sessions); VISION session-4 section
+  + stages-table row + ROADMAP line carry the NO; branch pushed to
+  both remotes, main untouched
+
+- 2026-08-16 · Session 4 closed: ISC-37..42 all on evidence. **Stage 4
+  gate verdict: NO (3/5 strict)** — recorded, not appealed. The ISA
+  stays OPEN as the Stage-4/Session-C carrier (fog ledger above).

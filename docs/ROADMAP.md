@@ -120,19 +120,28 @@ Gate question for the phase:
 Stage 4 (full Rust ternary-LLM runtime on Bonsai `Q1_0`) is now the earned
 step — explicitly gated, multi-session research territory.
 
-**Stage 4 — OPENED (branch `stage4-ternary-runtime`; sessions 1–3
-shipped 2026-08-15):** s1 — GGUF container on the real file (310
-tensors, all `q1_0` byte-exact). s2 — `q1_0_matvec` + integer RMSNorm,
-first-layer compute (`FORWARD: OK`). s3 — **full 28-block Qwen3
-forward**: YaRN RoPE + GQA + integer softmax + SiLU FFN + tied logits,
-integer compute path (`FULL: OK`, 4 tok in 14.2 s release). s3.5 —
-**adversarial review of the whole bridge arc** (10 agents): YaRN ramp
-window fixed (one octave high), softmax exact-sum made true for all n
-(was false at n=4), f32→milli small-exponent decade fixed, hostile-scale
-saturation, 65-token/OOV panics → loud errors, shared round-half-away
-helper, dims+config validated at load, golden lane/byte-order vectors,
-per-layer health gates (`FULL: OK` re-run: 28/28 layers alive). Base
-reviewed; remaining: tokenizer + generation (the gate).
+**Stage 4 — CLOSED 2026-08-16 (gate verdict: NO; branch
+`stage4-ternary-runtime`, merge call deferred to principal):** s1 —
+GGUF container on the real file (310 tensors, all `q1_0` byte-exact).
+s2 — `q1_0_matvec` + integer RMSNorm, first-layer compute (`FORWARD:
+OK`). s3 — **full 28-block Qwen3 forward**: YaRN RoPE + GQA + integer
+softmax + SiLU FFN + tied logits, integer compute path (`FULL: OK`,
+4 tok in 14.2 s release). s3.5 — **adversarial review of the whole
+bridge arc** (10 agents): YaRN ramp window fixed (one octave high),
+softmax exact-sum made true for all n (was false at n=4), f32→milli
+small-exponent decade fixed, hostile-scale saturation, 65-token/OOV
+panics → loud errors, shared round-half-away helper, dims+config
+validated at load, golden lane/byte-order vectors, per-layer health
+gates (`FULL: OK` re-run: 28/28 layers alive). s4 — **tokenizer +
+incremental decode + generation = the gate**: embedded Qwen2 BPE
+(fork-pinned hand-rolled scanner, zero deps), bit-exact KV-cache
+refactor (tolerance 0 vs the reviewed forward, synthetic + real),
+greedy decode 0.22 tok/s (release, 2-core), chat demonstrator coherent
+("Sure! Here's how you can count from 1 to") — but the strict gate
+said **NO: 3/5** (digit counting ×2 and "The capital of France is
+→ Paris" pass; word-sequence continuations fail). Bridge stops with
+shipped artifacts per gate doctrine; Session C's first act is the
+fork-logit reference comparison (ISA Decisions 2026-08-16).
 
 ### Phase 4 — RISC-V deployment proof
 

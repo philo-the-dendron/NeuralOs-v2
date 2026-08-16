@@ -1,4 +1,4 @@
-//! Qwen3 forward on Bonsai Q1_0 weights — Stage 4, session 3.
+//! Qwen3 forward on Bonsai Q1_0 weights — Stage 4, sessions 3–4.
 //!
 //! All compute is integer (milli-domain activations, i64 intermediates);
 //! f64 appears only at the load edge (norm weights, rope tables — the
@@ -16,6 +16,18 @@
 //! GQA: 16 Q heads, 8 KV heads — Q head `h` attends KV head `h/2`.
 //! Output: tied embeddings (the file has no `output.weight`; verified in
 //! `bonsai_probe`) → `logits[t] = h·emb_t`.
+//!
+//! Two execution paths share one arithmetic contract:
+//! - [`Qwen3::forward`] — the reviewed session-3 full forward
+//!   (recomputed per call; `forward_with_health` adds layer evidence).
+//! - [`Qwen3::new_session`] / [`Session`] — append-only incremental
+//!   decode: [`Qwen3::prefill`] the prompt once, then
+//!   [`Qwen3::step`] one token at a time against the persistent KV
+//!   cache. The per-position arithmetic is the SAME code shape in the
+//!   SAME order (attention is position-local given the caches; the FFN
+//!   is position-local), so integer exactness makes the two paths
+//!   bit-identical — pinned by exact-equality tests (tolerance 0) on a
+//!   synthetic nonzero model (CI) and on the real file.
 
 use crate::gguf::{GgufFile, MetadataValue};
 use crate::math::{div_round_half_away, MathKit, RopeTables};
@@ -98,6 +110,49 @@ struct LayerSlices {
     gate: Vec<u8>,        // 6144 out
     up: Vec<u8>,          // 6144 out
     down: Vec<u8>,        // 2048 out
+}
+
+/// A persistent, append-only decode state: the per-layer KV caches plus
+/// the residual-soundness witness (fog (g) from the 2026-08-15 review —
+/// residual growth with prompt length is now carried evidence, not a
+/// print in one example).
+///
+/// Positions enter via [`Qwen3::prefill`] / [`Qwen3::step`] and never
+/// leave — each new token attends the whole history with no recompute
+/// (the session-3 full forward is O(N²) over a prompt; this is O(N)).
+/// Caches grow per position (~229 KB), not by `max_pos` up front.
+#[derive(Debug)]
+pub struct Session {
+    /// `[layer][pos][kv_head]` — post-norm post-RoPE keys, milli.
+    k_cache: Vec<Vec<[[i32; HEAD_DIM]; KV_HEADS]>>,
+    /// `[layer][pos][kv_head]` — values, milli.
+    v_cache: Vec<Vec<[[i32; HEAD_DIM]; KV_HEADS]>>,
+    n: usize,
+    /// Largest absolute residual seen at any layer boundary (the
+    /// [`RESIDUAL_SOUND_MAX`] witness).
+    max_abs_residual: i32,
+}
+
+impl Session {
+    /// Number of positions cached (prompt + generated so far).
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.n
+    }
+
+    /// Whether no tokens have been processed yet.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+
+    /// Largest absolute residual at any layer boundary so far — compare
+    /// against [`RESIDUAL_SOUND_MAX`] (the norm-soundness rail; fog (g)
+    /// evidence).
+    #[must_use]
+    pub fn max_abs_residual(&self) -> i32 {
+        self.max_abs_residual
+    }
 }
 
 /// A loaded Qwen3 Bonsai model over a parsed GGUF buffer.
@@ -310,6 +365,160 @@ impl Qwen3 {
         Ok((h, health))
     }
 
+    /// Start an incremental decode session (empty caches).
+    #[must_use]
+    pub fn new_session(&self) -> Session {
+        Session {
+            k_cache: vec![Vec::new(); self.layers.len()],
+            v_cache: vec![Vec::new(); self.layers.len()],
+            n: 0,
+            max_abs_residual: 0,
+        }
+    }
+
+    /// Prefill a session with the prompt, returning the hidden state
+    /// after each token. Thin loop over [`Qwen3::step`] — prefill is
+    /// just the first N steps (append-only; no recompute).
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Qwen3::step`].
+    pub fn prefill(
+        &self,
+        ses: &mut Session,
+        tokens: &[u32],
+    ) -> Result<Vec<[i32; EMB]>, ModelError> {
+        let mut out = Vec::with_capacity(tokens.len());
+        for &t in tokens {
+            out.push(self.step(ses, t)?);
+        }
+        Ok(out)
+    }
+
+    /// Run ONE token through all layers against the session's caches,
+    /// appending its K/V and returning its final hidden state. The
+    /// arithmetic mirrors `forward_inner`'s per-position body verbatim
+    /// (same order, same rounding) — integer exactness makes the two
+    /// paths bit-identical (pinned by tests at tolerance 0).
+    ///
+    /// # Errors
+    ///
+    /// [`ModelError::PositionOutOfRange`] when the session is already at
+    /// `max_pos` positions (rope table exhausted); [`ModelError::TokenOutOfRange`]
+    /// for an out-of-vocabulary id; tensor errors as
+    /// [`ModelError::BadTensorSize`].
+    pub fn step(&self, ses: &mut Session, token: u32) -> Result<[i32; EMB], ModelError> {
+        let pos = ses.n;
+        if pos >= self.max_pos {
+            return Err(ModelError::PositionOutOfRange);
+        }
+        let mut h = [0_i32; EMB];
+        self.embed(token, &mut h)?;
+
+        let mut q_raw = [0_i32; EMB];
+        let mut k_raw = [0_i32; KV_HEADS * HEAD_DIM];
+        let mut v_raw = [0_i32; KV_HEADS * HEAD_DIM];
+        let mut normed = [0_i32; EMB];
+        let mut attn_out = [0_i32; EMB];
+        let mut scores = vec![0_i32; pos + 1];
+        let mut probs = vec![0_i32; pos + 1];
+
+        for (l, layer) in self.layers.iter().enumerate() {
+            // ---- Attention (this position against the cached history) ----
+            rms_norm_milli(&h, &layer.attn_norm, &mut normed);
+            matvec_scaled(&layer.q, &normed, EMB, &mut q_raw)
+                .map_err(|_| ModelError::BadTensorSize("q".into()))?;
+            matvec_scaled(&layer.k, &normed, KV_HEADS * HEAD_DIM, &mut k_raw)
+                .map_err(|_| ModelError::BadTensorSize("k".into()))?;
+            matvec_scaled(&layer.v, &normed, KV_HEADS * HEAD_DIM, &mut v_raw)
+                .map_err(|_| ModelError::BadTensorSize("v".into()))?;
+
+            ses.k_cache[l].push([[0_i32; HEAD_DIM]; KV_HEADS]);
+            ses.v_cache[l].push([[0_i32; HEAD_DIM]; KV_HEADS]);
+            for kv in 0..KV_HEADS {
+                let mut k_head = [0_i32; HEAD_DIM];
+                for d in 0..HEAD_DIM {
+                    k_head[d] = k_raw[kv * HEAD_DIM + d];
+                }
+                let mut k_normed = [0_i32; HEAD_DIM];
+                rms_norm_milli(&k_head, &layer.k_norm, &mut k_normed);
+                self.rope.apply(&mut k_normed, pos);
+                ses.k_cache[l][pos][kv] = k_normed;
+                for d in 0..HEAD_DIM {
+                    ses.v_cache[l][pos][kv][d] = v_raw[kv * HEAD_DIM + d];
+                }
+            }
+
+            let mut ctx = [0_i32; EMB];
+            for qh in 0..HEADS {
+                let mut q_head = [0_i32; HEAD_DIM];
+                for d in 0..HEAD_DIM {
+                    q_head[d] = q_raw[qh * HEAD_DIM + d];
+                }
+                let mut q_normed = [0_i32; HEAD_DIM];
+                rms_norm_milli(&q_head, &layer.q_norm, &mut q_normed);
+                self.rope.apply(&mut q_normed, pos);
+                let q_head = q_normed;
+                let kv = qh / (HEADS / KV_HEADS);
+                for (t, score) in scores.iter_mut().enumerate().take(pos + 1) {
+                    let mut dot: i64 = 0;
+                    for (&q, &k) in q_head
+                        .iter()
+                        .zip(ses.k_cache[l][t][kv].iter())
+                    {
+                        dot += i64::from(q) * i64::from(k);
+                    }
+                    let s = dot * SCORE_SCALE_MILLI + dot * SCORE_SCALE_EXTRA_NUM / 10_000;
+                    *score = div_round_half_away(s, 1000)
+                        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+                }
+                self.kit.softmax_q12(&scores, &mut probs);
+                let mut acc = [0_i64; HEAD_DIM];
+                for (t, &p) in probs.iter().enumerate().take(pos + 1) {
+                    let p = i64::from(p);
+                    for (a, &v) in acc.iter_mut().zip(ses.v_cache[l][t][kv].iter()) {
+                        *a += p * i64::from(v);
+                    }
+                }
+                for (d, &a) in acc.iter().enumerate() {
+                    ctx[qh * HEAD_DIM + d] = div_round_half_away(a, 4096)
+                        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+                }
+            }
+            matvec_scaled(&layer.out_w, &ctx, EMB, &mut attn_out)
+                .map_err(|_| ModelError::BadTensorSize("out".into()))?;
+            for d in 0..EMB {
+                h[d] = h[d].saturating_add(attn_out[d]);
+            }
+
+            // ---- FFN ----
+            rms_norm_milli(&h, &layer.ffn_norm, &mut normed);
+            let mut gate = [0_i32; FFN];
+            let mut up = [0_i32; FFN];
+            matvec_scaled(&layer.gate, &normed, FFN, &mut gate)
+                .map_err(|_| ModelError::BadTensorSize("gate".into()))?;
+            matvec_scaled(&layer.up, &normed, FFN, &mut up)
+                .map_err(|_| ModelError::BadTensorSize("up".into()))?;
+            for i in 0..FFN {
+                let s = i64::from(self.kit.silu_milli(gate[i]));
+                let u = i64::from(up[i]);
+                gate[i] = div_round_half_away(s * u, 1000)
+                    .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+            }
+            let mut down = [0_i32; EMB];
+            matvec_scaled(&layer.down, &gate, EMB, &mut down)
+                .map_err(|_| ModelError::BadTensorSize("down".into()))?;
+            for d in 0..EMB {
+                h[d] = h[d].saturating_add(down[d]);
+            }
+            let layer_max: i64 = h.iter().map(|v| i64::from(v.unsigned_abs())).max().unwrap_or(0);
+            ses.max_abs_residual =
+                ses.max_abs_residual.max(layer_max.min(i64::from(i32::MAX)) as i32);
+        }
+        ses.n += 1;
+        Ok(h)
+    }
+
     fn forward_inner(
         &mut self,
         tokens: &[u32],
@@ -484,9 +693,10 @@ impl Qwen3 {
             })
             .collect();
         let row_bytes = EMB / crate::q1_0::Q1_0_BLOCK * crate::q1_0::Q1_0_BLOCK_BYTES;
+        let rows = self.emb.len() / row_bytes;
         let mut raw = [0_i32; 1];
-        let mut all: Vec<(u32, i32)> = Vec::with_capacity(VOCAB);
-        for t in 0..VOCAB {
+        let mut all: Vec<(u32, i32)> = Vec::with_capacity(rows);
+        for t in 0..rows {
             let row = &self.emb[t * row_bytes..][..row_bytes];
             crate::q1_0::q1_0_matvec(row, &acts, 1, &mut raw)
                 .map_err(|_| ModelError::BadTensorSize("emb".into()))?;
@@ -499,6 +709,48 @@ impl Qwen3 {
         all.sort_by(|a, b| b.1.cmp(&a.1));
         all.truncate(k);
         Ok(all)
+    }
+
+    /// Greedy decoding's pick: the argmax logit over the tied embedding
+    /// for one hidden state — O(vocab) single pass, no full sort (the
+    /// generation loop calls this once per token). Ties break to the
+    /// LOWEST id (first-seen wins on strict `>`), matching
+    /// [`Qwen3::topk_logits`]'s stable-sort convention. Same units and
+    /// zero/degenerate contract as [`Qwen3::topk_logits`].
+    ///
+    /// # Errors
+    ///
+    /// [`ModelError::BadTensorSize`] if the embedding tensor is corrupt
+    /// (surfaces from the row scan).
+    pub fn argmax_logit(&self, h: &[i32; EMB]) -> Result<(u32, i32), ModelError> {
+        let mut normed = [0_i32; EMB];
+        rms_norm_milli(h, &self.out_norm, &mut normed);
+        let amax = normed.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0);
+        if amax == 0 {
+            return Ok((0, 0)); // degenerate hidden — sentinel, as documented
+        }
+        let acts: Vec<i16> = normed
+            .iter()
+            .map(|&v| {
+                div_round_half_away(i64::from(v) * 32_767, i64::from(amax))
+                    .clamp(i16::MIN as i64, i16::MAX as i64) as i16
+            })
+            .collect();
+        let row_bytes = EMB / crate::q1_0::Q1_0_BLOCK * crate::q1_0::Q1_0_BLOCK_BYTES;
+        let rows = self.emb.len() / row_bytes;
+        let mut raw = [0_i32; 1];
+        let mut best: (u32, i32) = (0, i32::MIN);
+        for t in 0..rows {
+            let row = &self.emb[t * row_bytes..][..row_bytes];
+            crate::q1_0::q1_0_matvec(row, &acts, 1, &mut raw)
+                .map_err(|_| ModelError::BadTensorSize("emb".into()))?;
+            let milli = div_round_half_away(i64::from(raw[0]) * i64::from(amax), 32_767)
+                .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+            if milli > best.1 {
+                best = (t as u32, milli);
+            }
+        }
+        Ok(best)
     }
 }
 
@@ -773,5 +1025,152 @@ mod tests {
         let b = one_tensor_file("t", &[8, 1], 0, &[0_u8; 32]);
         let f = GgufFile::parse(&b).expect("parse");
         assert_eq!(expect_kv(&f, "qwen3.block_count", 28), Ok(()));
+    }
+
+    // ---- Session (incremental decode) + argmax — session 4 ----
+
+    /// A NONZERO synthetic model: every q1_0 block carries fp16 scale
+    /// 1.0 (0x3C00) and the 0xAA sign pattern; every norm weight is
+    /// 1.0 (1000 milli). Real arithmetic flows (unlike the zero model,
+    /// where equality is vacuous) at synthetic cost: 1 layer.
+    fn synthetic_model_nonzero(max_pos: usize, emb_rows: usize) -> Qwen3 {
+        let fill = |rows: usize, width: usize| -> Vec<u8> {
+            let blocks = width / 128;
+            let mut d = Vec::with_capacity(rows * blocks * 18);
+            for _ in 0..rows * blocks {
+                d.extend_from_slice(&0x3C00_u16.to_le_bytes());
+                d.extend(std::iter::repeat_n(0xAA_u8, 16));
+            }
+            d
+        };
+        let layer = LayerSlices {
+            attn_norm: vec![1000_i32; EMB],
+            q: fill(EMB, EMB),
+            k: fill(KV_HEADS * HEAD_DIM, EMB),
+            v: fill(KV_HEADS * HEAD_DIM, EMB),
+            q_norm: vec![1000_i32; HEAD_DIM],
+            k_norm: vec![1000_i32; HEAD_DIM],
+            out_w: fill(EMB, EMB),
+            ffn_norm: vec![1000_i32; EMB],
+            gate: fill(FFN, EMB),
+            up: fill(FFN, EMB),
+            down: fill(EMB, FFN),
+        };
+        Qwen3 {
+            layers: vec![layer],
+            out_norm: vec![1000_i32; EMB],
+            emb: fill(emb_rows, EMB),
+            kit: MathKit::new(),
+            rope: RopeTables::new_yarn(HEAD_DIM, max_pos, 1e6, 4.0, 8192, 32.0, 1.0),
+            max_pos,
+        }
+    }
+
+    #[test]
+    fn incremental_matches_forward_synthetic_exact() {
+        // The mission's equivalence falsifier, CI-runnable: the
+        // incremental path must reproduce the full forward BIT-EXACTLY
+        // (tolerance 0) on real (nonzero) arithmetic.
+        let prompt: &[u32] = &[0, 42, 7, 3];
+        let mut model = synthetic_model_nonzero(16, 64);
+        let full = model.forward(prompt).expect("full forward");
+
+        let mut ses = model.new_session();
+        assert!(ses.is_empty());
+        let inc = model.prefill(&mut ses, prompt).expect("prefill");
+        assert_eq!(ses.len(), prompt.len());
+        assert_eq!(inc.len(), full.len());
+        for (pos, (a, b)) in inc.iter().zip(full.iter()).enumerate() {
+            assert_eq!(a, b, "hidden mismatch at pos {pos}");
+        }
+
+        // Appending one more token must match a fresh full forward over
+        // prompt+token — still bit-exact.
+        let mut ses2 = model.new_session();
+        model.prefill(&mut ses2, prompt).expect("prefill 2");
+        let h_next = model.step(&mut ses2, 5).expect("step");
+        let full2 = model.forward(&[0, 42, 7, 3, 5]).expect("full forward 2");
+        assert_eq!(&h_next, full2.last().expect("nonempty"));
+
+        // The residual witness is populated and sane on nonzero weights.
+        assert!(ses2.max_abs_residual() > 0);
+    }
+
+    #[test]
+    fn session_error_paths() {
+        let model = synthetic_model_nonzero(2, 8);
+        let mut ses = model.new_session();
+        assert!(model.step(&mut ses, 0).is_ok());
+        assert!(model.step(&mut ses, 1).is_ok());
+        // Rope table exhausted at max_pos.
+        assert_eq!(
+            model.step(&mut ses, 0),
+            Err(ModelError::PositionOutOfRange)
+        );
+        // Out-of-vocabulary ids are loud on the incremental path too.
+        let mut ses2 = model.new_session();
+        assert_eq!(
+            model.step(&mut ses2, 8),
+            Err(ModelError::TokenOutOfRange)
+        );
+        assert!(ses2.is_empty(), "failed step must not advance the session");
+    }
+
+    #[test]
+    fn argmax_tie_breaks_lowest_and_finds_peak() {
+        // Uniform logits (zero-weight model) → tie → lowest id (0).
+        let mut model = synthetic_model(8, 8);
+        let h = model.forward(&[0]).expect("forward");
+        assert_eq!(model.argmax_logit(&h[0]).unwrap(), (0, 0));
+
+        // A peak row wins: embedding row 3 with a large scale and all
+        // + signs dominates every dot product.
+        let mut model = synthetic_model_nonzero(4, 4);
+        let row_bytes = EMB / 128 * 18;
+        for b in 0..EMB / 128 {
+            let base = 3 * row_bytes + b * 18;
+            model.emb[base..base + 2].copy_from_slice(&0x7BFF_u16.to_le_bytes()); // fp16 ≈ 6.5e4
+        }
+        let h = model.forward(&[0]).expect("forward");
+        let (id, val) = model.argmax_logit(&h[0]).unwrap();
+        assert_eq!(id, 3);
+        assert!(val > 0);
+        // And argmax agrees with topk's first element (convention pin).
+        let top = model.topk_logits(&h[0], 3).unwrap();
+        assert_eq!(top[0], (id, val));
+    }
+
+    #[test]
+    #[ignore = "needs models/Bonsai-1.7B-Q1_0.gguf (gitignored, 248 MB)"]
+    fn real_incremental_matches_forward_exact() {
+        let Some(buf) = ["models/Bonsai-1.7B-Q1_0.gguf", "../../models/Bonsai-1.7B-Q1_0.gguf"]
+            .iter()
+            .find_map(|p| std::fs::read(p).ok())
+        else {
+            eprintln!("model file absent — skipping");
+            return;
+        };
+        let f = GgufFile::parse(&buf).expect("container parses");
+        let mut model = Qwen3::load(&f, 16).expect("model loads");
+        let prompt: &[u32] = &[0, 42, 151_668, 7];
+        let (full, health) = model.forward_with_health(prompt).expect("full forward");
+
+        let mut ses = model.new_session();
+        let inc = model.prefill(&mut ses, prompt).expect("prefill");
+        assert_eq!(inc.len(), full.len());
+        for (pos, (a, b)) in inc.iter().zip(full.iter()).enumerate() {
+            assert_eq!(a, b, "REAL MODEL: hidden mismatch at pos {pos}");
+        }
+        // One appended token, still exact vs a 5-token full forward.
+        let h5 = model.step(&mut ses, 9).expect("step");
+        let full5 = model.forward(&[0, 42, 151_668, 7, 9]).expect("forward 5");
+        assert_eq!(&h5, full5.last().unwrap());
+        // Residual witness populated and under the norm-soundness rail.
+        assert!(ses.max_abs_residual() > 0);
+        assert!(
+            ses.max_abs_residual().unsigned_abs()
+                < u32::try_from(RESIDUAL_SOUND_MAX).unwrap_or(u32::MAX)
+        );
+        assert_eq!(health.per_layer_delta.len(), 28);
     }
 }
