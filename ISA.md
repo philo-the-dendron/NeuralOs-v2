@@ -84,6 +84,40 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre — see Verification.)
+
+- [ ] ISC-44: tokenizer stale-rank bug fixed — BPE heap entries validated
+  against the push-time rank (fork's text-equality check); regression
+  trap in CI (synthetic wrong-rank shape) + real-file pin
+  (" France" = 9625, full prompt ids). Falsifier: bpe_stale_rank_entry_does_not_fire_early + real_france_prompt_tokenization_pinned.
+- [ ] ISC-45: attention score unit chain corrected (dot is milli²; milli
+  score = dot × 88.3883 / 1e6, was /1e3 → every score 1000× too large →
+  softmax saturated to hard argmax) — all three sites + the circular
+  reference rewritten in real units. Falsifier: attention_pipeline test
+  (honest reference) + drift harness numbers.
+- [ ] ISC-46: q1_0 matvec applies γ at fp16-EXACT precision (integer
+  mantissa×2^shift), milli quantization removed from the compute path;
+  hostile-scale fallback preserves Session-A saturation; references
+  exact-decoded, regression pin added. Falsifier: matvec tests incl.
+  matvec_gamma_is_fp16_exact_not_milli.
+- [ ] ISC-47: drift converged past C-pre's bar: teacher-forced fork
+  comparison argmax 36/36 steps across p2/p3/p4, overlap ≥9/10 mean,
+  max |Δtop| 0.597 (was 5.407); per-block int-vs-f64 error ≤1.1%
+  decaying (was 15.5% injection at block 0). Falsifier: harness tables
+  (evidence below) + f64 reference validated against the fork (±0.03).
+- [ ] ISC-48: frozen gate re-run verbatim: 3/5 strict (unchanged), but
+  continuations now byte-identical to the fork's greedy (" Paris, and
+  the capital of Spain…", " four four the first part…", ": 10:00 AM -
+  12") — the faithful-runtime state; chat demonstrator coherent; NO
+  verdict stands, now demonstrated at generation level. Falsifier: gate
+  log + fork logs side-by-side.
+- [ ] ISC-49: 4 CI gates green (195 tests incl. real-file suite:
+  France pin, vocab pins, incremental≡forward exact); probe/forward/
+  full green on the real file. Falsifier: any failing.
+- [ ] ISC-50: docs truth (VISION C-core section, ROADMAP); ISA ledger
+  updated; merge call presented to the principal (push held per
+  protocol). Falsifier: docs absent/contradicting.
+
 (ISC-1..10: Stage 2, 11..17: Stage 3, 18..23: Stage 4 s1, 24..29: Stage 4 s2, 30..36: Stage 4 s3, 37..42: Stage 4 s4, 43: C-pre — closed, see Verification.)
 
 - [x] ISC-37: `rt::token` ships the gpt2 byte-level BPE tokenizer from
@@ -484,6 +518,28 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-10 | unit | decoded tensor ↔ Trit::to_weight round-trip stays on-grid | exact | cargo test | bridge::tests::decoded_trits_feed_trit_substrate |
 
 ## Decisions
+
+- 2026-08-16 (C-core) · **Root cause of the C-pre logit drift: a 1000x
+  unit error in the attention score chain.** dot is milli² (real×1e6);
+  milli scores need dot × 88.3883/1e6; the code divided by 1e3. Every
+  attention distribution collapsed to near-one-hot (secondary context
+  mass lost per head per block ≈ the measured 15.5% block-0 injection).
+  Found by the f64 microscope (per-block Frobenius + stage-by-stage
+  diff), validated by the f64 reference matching the FORK's logits to
+  ±0.03 — the reference was the independent witness both times.
+- 2026-08-16 (C-core) · Tokenizer fix: heap entries carry the push-time
+  rank and are validated at pop (fork semantics: text-equality). The
+  stale-rank shape (entry pushed for (l,m); m grows via lower-rank
+  merges; grown pair fires at the stale position) produced [" F",
+  "rance"] on " France" vs the fork's single token 9625.
+- 2026-08-16 (C-core) · Exact-γ (fp16 mantissa×2^shift, integer) in
+  q1_0_matvec: measured NOT the drift driver (kept anyway — strictly
+  more faithful, milli-γ carried 0.4–1.9% per-block error). Ladder items
+  ②③ (norm-weight/rope precision) NOT needed for the bar — residual
+  drift (max 0.6/18 logit) sits under it; recorded as future polish.
+- 2026-08-16 (C-core) · forward_block_states diagnostic API added
+  (substep snapshots: emb, attn-l, ffn-l) — permanent instrument, used
+  by the harness; capture flag keeps normal forward allocation-free.
 
 - 2026-08-16 (s4-C-pre) · **THE 3/5 NO IS ATTRIBUTED — the reference
   fails the same two prompts.** Session C's first act (the fork-logit
@@ -1165,3 +1221,45 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   re-derived from the captured raw line in a second pass before it
   enters any doc, and scratch-tool output quirks get documented
   beside the tool at capture time, never trusted silently.
+
+## Learning
+
+- conjectured (session-3 → C-pre): the integer attention pipeline's
+  unit chain was sound; its test proved it.
+  refuted by: the f64 microscope — the reference INSIDE the test shared
+  the same wrong /1000 chain; both sides divided twice and agreed.
+  learned: a reference that re-encodes the implementation's unit
+  assumptions is not a reference. The f64-from-scratch mini-forward
+  (real units end-to-end, validated against the FORK before use) broke
+  the circularity — two independent witnesses or it didn't happen.
+  criterion now: unit-chain tests derive units from first principles
+  (real units in the reference; conversions only at the boundary under
+  test) and the strongest available external anchor (fork logits)
+  validates the reference itself at least once per session.
+- conjectured: γ milli-quantization (0.4–1.9%/block) was the drift
+  driver (my hypothesis ladder's #1).
+  refuted by: exact-γ changed nothing (5.4→6.0); the score-scale bug
+  was 1000x bigger and hid behind it.
+  learned: measurement before mutation only works if the measurement
+  can see the actual bug — per-block Frobenius localized the injection
+  in one run after two hypothesis-fixes failed. Hypothesis ladders are
+  for ORDERING experiments, not replacing them.
+  criterion now: when a precision fix doesn't move the needle, stop
+  fixing and build the next-finer microscope before the next mutation.
+
+## Verification (C-core)
+
+- ISC-44: token::tests::{bpe_stale_rank_entry_does_not_fire_early (CI),
+  real_france_prompt_tokenization_pinned (ignored, real file)}
+- ISC-45: model::tests::attention_pipeline_matches_f64_reference
+  (rewritten honest reference, tighter tolerance) + drift harness
+- ISC-46: q1_0::tests::{matvec_matches_reference_*,
+  matvec_gamma_is_fp16_exact_not_milli, hostile-scale tests unchanged}
+- ISC-47: harness (/tmp/opencode/cpre/refcmp bins drift+micro):
+  argmax 36/36, overlap 9-10/10, max Δtop 0.597; per-block err 1.1%→0.4%
+- ISC-48: gate log (release): 3/5 strict, fork-byte-identical
+  continuations, chat PASS, residuals 18-29M < 66.6M rail
+- ISC-49: 195 workspace tests green; clippy -D warnings clean; no_std
+  build clean; bonsai_probe YES / bonsai_full OK on the real file
+- ISC-50: VISION + ROADMAP C-core sections; this ledger; commits local
+  only — merge/push presented to the principal

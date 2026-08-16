@@ -133,22 +133,71 @@ pub fn q1_0_matvec(
         let mut acc: i64 = 0;
         for b in 0..blocks {
             let base = b * Q1_0_BLOCK_BYTES;
-            let gamma_milli = i64::from(half_to_milli(u16::from_le_bytes([
-                row[base],
-                row[base + 1],
-            ])));
+            let scale_bits = u16::from_le_bytes([row[base], row[base + 1]]);
             let mut partial: i64 = 0;
             for k in 0..Q1_0_BLOCK {
                 let a = i64::from(acts[b * Q1_0_BLOCK + k]);
                 let sign = (row[base + 2 + k / 8] >> (k % 8)) & 1;
                 partial += if sign == 1 { a } else { -a };
             }
-            // Round-half-away-from-zero on the milli→unit conversion.
-            acc += crate::math::div_round_half_away(partial * gamma_milli, 1000);
+            // γ at fp16-EXACT precision (mantissa × 2^shift, pure
+            // integer). The milli grid quantizes the model's real block
+            // scales (γ ≈ 0.02–0.09 → milli 20–90) with 0.4–1.9% relative
+            // error per block; compounded through every matvec of every
+            // block that surfaced as multi-percent logit drift vs the
+            // f32 reference (session C-core). The fork multiplies by the
+            // fp16-exact γ; this matches it, integer-only.
+            acc += match half_scale_mant_shift(scale_bits) {
+                Some((m, sh)) => {
+                    // Bounds: |partial| ≤ 128·32767 ≈ 4.2e6, m ≤ 2048 →
+                    // |num| ≤ 8.6e9; sh ∈ [−24, 5] → |result| ≤ 2.75e14,
+                    // and the 16-block row sum stays ≪ i64::MAX.
+                    let num = partial * m as i64;
+                    if sh >= 0 {
+                        num << sh
+                    } else {
+                        let s = u32::try_from(-sh).expect("sh ≥ −24");
+                        let half = 1_u64 << (s - 1);
+                        let q = (num.unsigned_abs() + half) >> s;
+                        if num >= 0 {
+                            q as i64
+                        } else {
+                            -(q as i64)
+                        }
+                    }
+                }
+                None => {
+                    // Hostile/degenerate scale (sign bit, ±inf, NaN):
+                    // Session-A saturation semantics via the milli view.
+                    crate::math::div_round_half_away(
+                        partial * i64::from(half_to_milli(scale_bits)),
+                        1000,
+                    )
+                }
+            };
         }
         out[j] = acc.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     }
     Ok(())
+}
+
+/// An fp16 scale as an exact integer pair `(mantissa, shift)` with
+/// `γ = mant × 2^shift` — dyadic, so integer arithmetic can apply it
+/// with zero quantization. `None` on degenerate scales (sign bit set,
+/// exponent 31 = ±inf/NaN) — callers fall back to the documented
+/// saturation semantics.
+fn half_scale_mant_shift(h: u16) -> Option<(u64, i32)> {
+    if h & 0x8000 != 0 {
+        return None; // negative scale: hostile input
+    }
+    let exp = i32::from((h >> 10) & 0x1F);
+    let mant = u64::from(h & 0x03FF);
+    match exp {
+        31 => None,                     // inf / NaN
+        0 if mant == 0 => Some((0, 0)), // +0: an all-zero block
+        0 => Some((mant, -24)),         // subnormal
+        e => Some((mant | 0x400, e - 25)),
+    }
 }
 
 /// The unit-chaining wrapper (session 3): milli activations in, milli
@@ -231,6 +280,22 @@ mod tests {
     }
 
     /// Scalar reference through the Stage-2 codec + explicit milli math.
+    /// Exact fp16 decode in f64 (test-side, independent of production
+    /// integer arithmetic): sign × (mant | 0x400) · 2^(exp−25), subnormals
+    /// sign × mant · 2^−24. Dyadic → exact in f64.
+    #[allow(dead_code)] // kept as documentation of the fp16 layout; the
+                        // reference path uses half_scale_mant_shift.
+    fn half_exact(h: u16) -> f64 {
+        let sign = if h & 0x8000 != 0 { -1.0 } else { 1.0 };
+        let exp = i32::from((h >> 10) & 0x1F);
+        let mant = f64::from(h & 0x03FF);
+        if exp == 0 {
+            sign * mant * (-24.0_f64).exp2()
+        } else {
+            sign * (mant + 1024.0) * f64::from(exp - 25).exp2()
+        }
+    }
+
     fn reference(data: &[u8], acts: &[i16], rows: usize) -> Vec<i32> {
         let n = acts.len();
         (0..rows)
@@ -239,9 +304,15 @@ mod tests {
                 let mut trits = vec![Trit::Zero; n];
                 let mut scales = vec![0_u16; n / Q1_0_BLOCK];
                 neuralos_snn::decode_q1_0(row, &mut trits, &mut scales).unwrap();
-                let mut acc: i64 = 0;
+                let mut acc: f64 = 0.0;
                 for b in 0..n / Q1_0_BLOCK {
-                    let g = i64::from(half_to_milli(scales[b]));
+                    // Mirror production semantics exactly: fp16-exact for
+                    // normal positive scales, the documented milli
+                    // saturation for degenerate ones (sign/inf/NaN).
+                    let g = match super::half_scale_mant_shift(scales[b]) {
+                        Some((m, sh)) => (m as f64) * f64::from(sh).exp2(),
+                        None => f64::from(half_to_milli(scales[b])) / 1000.0,
+                    };
                     let mut partial: i64 = 0;
                     for k in 0..Q1_0_BLOCK {
                         let t = trits[b * Q1_0_BLOCK + k];
@@ -252,14 +323,10 @@ mod tests {
                         };
                         partial += w * i64::from(acts[b * Q1_0_BLOCK + k]);
                     }
-                    let c = if partial * g >= 0 {
-                        (partial * g + 500) / 1000
-                    } else {
-                        -((-partial * g + 500) / 1000)
-                    };
-                    acc += c;
+                    // Dyadic product — exact in f64; round half away.
+                    acc += (partial as f64 * g).round();
                 }
-                acc.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+                acc.clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
             })
             .collect()
     }
@@ -443,6 +510,21 @@ mod tests {
             matvec_scaled(&data, &[0_i32; 256], usize::MAX, &mut [0_i32; 1]),
             Err(Q10Error::TooShort)
         );
+    }
+
+    #[test]
+    fn matvec_gamma_is_fp16_exact_not_milli() {
+        // γ = fp16 0x3555 = 0.33349609375 → milli rounds to 333 (−0.15%).
+        // A milli-γ implementation yields a measurably different dot
+        // product; the exact one matches the f64 reference to the unit.
+        let signs: Vec<bool> = (0..128).map(|i| i % 2 == 0).collect();
+        let data = build_row(&signs, &[0x3555]);
+        let acts: Vec<i16> = (0..128).map(|i| ((i * 91) % 300 - 150) as i16).collect();
+        let mut out = [0_i32; 1];
+        q1_0_matvec(&data, &acts, 1, &mut out).unwrap();
+        assert_eq!(out[0], reference(&data, &acts, 1)[0]);
+        // And the value is nonzero (a real product, not a degenerate 0).
+        assert_ne!(out[0], 0);
     }
 
     #[test]

@@ -440,13 +440,12 @@ impl Tokenizer {
                     let Some(&out) = id_of.get(&merged) else {
                         return Err(TokenizerError::UnknownMergeToken(merged));
                     };
-                    m.insert(
-                        (ia, ib),
-                        MergeRule {
-                            rank: rank as u32,
-                            out,
-                        },
-                    );
+                    // Fork semantics (`emplace` = first insertion wins) —
+                    // duplicate merge lines keep the earliest rank.
+                    m.entry((ia, ib)).or_insert(MergeRule {
+                        rank: rank as u32,
+                        out,
+                    });
                 }
                 m
             }
@@ -594,16 +593,26 @@ impl Tokenizer {
             push_bigram(i as i64 - 1, i as i64, &ids, &self.merges, &mut heap);
         }
 
-        while let Some(std::cmp::Reverse((_, l, r))) = heap.pop() {
+        while let Some(std::cmp::Reverse((pushed_rank, l, r))) = heap.pop() {
             let (l, r) = (l as usize, r as usize);
             // Staleness: both alive and still adjacent (a merge on either
             // side kills the link — the fork's text comparison).
             if lens[l] == 0 || lens[r] == 0 || next[l] != r as i64 {
                 continue;
             }
+            // Rank staleness (the fork's `left_token + right_token !=
+            // bigram.text` check): a surviving symbol can GROW after this
+            // entry was pushed, leaving a live-but-outdated bigram. The
+            // entry is valid only if the CURRENT pair's rank is still the
+            // rank it was pushed with — otherwise the grown pair would
+            // fire at the stale entry's position, out of merge order
+            // (found live on " France" → [" F","rance"] vs "ĠFrance").
             let Some(rule) = self.merges.get(&(ids[l], ids[r])) else {
                 continue;
             };
+            if rule.rank != pushed_rank {
+                continue;
+            }
             let out_id = rule.out;
             // Merge r into l.
             lens[l] += lens[r];
@@ -660,6 +669,87 @@ impl Tokenizer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Hand-assemble a minimal GGUF buffer with just the tokenizer KVs.
+    fn synthetic_gguf(tokens: &[&str], merges: &[&str]) -> Vec<u8> {
+        fn put_str(b: &mut Vec<u8>, s: &str) {
+            b.extend_from_slice(&(s.len() as u64).to_le_bytes());
+            b.extend_from_slice(s.as_bytes());
+        }
+        let mut b = Vec::new();
+        b.extend_from_slice(b"GGUF");
+        b.extend_from_slice(&3_u32.to_le_bytes());
+        b.extend_from_slice(&0_u64.to_le_bytes()); // n_tensors
+        b.extend_from_slice(&5_u64.to_le_bytes()); // n_kv
+        // model = "gpt2"
+        put_str(&mut b, "tokenizer.ggml.model");
+        b.extend_from_slice(&8_u32.to_le_bytes());
+        put_str(&mut b, "gpt2");
+        // pre = "qwen2"
+        put_str(&mut b, "tokenizer.ggml.pre");
+        b.extend_from_slice(&8_u32.to_le_bytes());
+        put_str(&mut b, "qwen2");
+        // tokens: array[string]
+        put_str(&mut b, "tokenizer.ggml.tokens");
+        b.extend_from_slice(&9_u32.to_le_bytes());
+        b.extend_from_slice(&8_u32.to_le_bytes());
+        b.extend_from_slice(&(tokens.len() as u64).to_le_bytes());
+        for t in tokens {
+            put_str(&mut b, t);
+        }
+        // token_type: array[i32], all NORMAL
+        put_str(&mut b, "tokenizer.ggml.token_type");
+        b.extend_from_slice(&9_u32.to_le_bytes());
+        b.extend_from_slice(&5_u32.to_le_bytes());
+        b.extend_from_slice(&(tokens.len() as u64).to_le_bytes());
+        for _ in tokens {
+            b.extend_from_slice(&1_i32.to_le_bytes());
+        }
+        // merges: array[string]
+        put_str(&mut b, "tokenizer.ggml.merges");
+        b.extend_from_slice(&9_u32.to_le_bytes());
+        b.extend_from_slice(&8_u32.to_le_bytes());
+        b.extend_from_slice(&(merges.len() as u64).to_le_bytes());
+        for m in merges {
+            put_str(&mut b, m);
+        }
+        while b.len() % 32 != 0 {
+            b.push(0);
+        }
+        b
+    }
+
+    #[test]
+    fn bpe_stale_rank_entry_does_not_fire_early() {
+        // The wrong-rank shape, found live on " France" (C-pre finding):
+        // a heap entry pushed for (l, m) survives both liveness checks
+        // after m GROWS via later merges; without rank validation the
+        // grown pair fires at the stale entry's position — out of merge
+        // order — stealing l from the better merge (w, l) and killing the
+        // fork's tokenization. Fork semantics: skip on text mismatch.
+        //
+        // Vocab: 256 byte chars + lm, qo, mqo, lmqo, wl (ids 256..=260).
+        // Merges in rank order:
+        //   "q o"@0, "m qo"@1, "l m"@2, "w l"@3, "l mqo"@4
+        // Correct: wlmqo -> [wl, mqo] = [260, 258].
+        // Buggy:   wlmqo -> [w, lmqo] = [119, 259].
+        let (byte_char, _) = build_byte_table();
+        let base: Vec<String> = byte_char.iter().map(|c| c.to_string()).collect();
+        let extra = ["lm", "qo", "mqo", "lmqo", "wl"];
+        let all: Vec<String> = base.iter().cloned().chain(extra.iter().map(|s| (*s).to_string())).collect();
+        let strs: Vec<&str> = all.iter().map(String::as_str).collect();
+        let bytes = synthetic_gguf(
+            &strs,
+            &["q o", "m qo", "l m", "w l", "l mqo"],
+        );
+        let f = GgufFile::parse(&bytes).expect("synthetic container parses");
+        let t = Tokenizer::from_gguf(&f).expect("tokenizer loads");
+
+        let ids = t.encode("wlmqo");
+        assert_eq!(ids, vec![260, 258], "stale-rank entry fired out of order");
+        // And the piece decodes back exactly.
+        assert_eq!(t.decode(&ids).unwrap(), "wlmqo");
+    }
 
     // ---- byte table ----
 
@@ -984,6 +1074,25 @@ mod tests {
             vec![t.token_id(" ").unwrap(), t.token_id("8").unwrap()]
         );
         assert!(t.encode("14").len() == 2);
+    }
+
+    #[test]
+    #[ignore = "needs models/Bonsai-1.7B-Q1_0.gguf (gitignored, 248 MB)"]
+    fn real_france_prompt_tokenization_pinned() {
+        // The C-pre finding, fixed: " France" must reach the single vocab
+        // token ĠFrance (9625) — the fork's tokenization, fork-verified in
+        // session C-pre. Before the stale-rank fix we produced
+        // [" F", "rance"] = [434, 34106].
+        let Some(buf) = real_file() else {
+            eprintln!("model file absent — skipping");
+            return;
+        };
+        let t = real_tokenizer(&buf);
+        assert_eq!(t.encode(" France"), vec![9625]);
+        assert_eq!(
+            t.encode("The capital of France is"),
+            vec![785, 6722, 315, 9625, 374]
+        );
     }
 
     #[test]

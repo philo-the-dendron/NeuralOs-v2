@@ -153,6 +153,20 @@ executed); two Session-C findings recorded: our tokenizer splits
 logits drift beyond rounding vs the f32 reference inside the top-10
 (deltas up to ~5.4) while agreeing at the verdict-step argmax.
 
+**C-core (2026-08-16) — both findings fixed; fidelity past the bar:**
+(1) the tokenizer bug was a stale-rank BPE heap entry firing a grown
+pair out of merge order — fixed with the fork's push-time-rank
+validation (" France" now reaches ĠFrance/9625, CI trap + real-file
+pins); (2) the drift was a **1000x attention-score unit error**
+(milli^2 dot /1e3 instead of /1e6 -> softmax saturated into hard
+argmax — 15.5% error injected at block 0's attention, found by an
+f64 micro-forward that matches the fork to ±0.03), plus exact-gamma
+matvec (fp16 mantissa x 2^shift, integer) kept on faithfulness
+grounds. After: teacher-forced fork comparison argmax-identical
+**36/36 steps**, max |dTop| 0.597 (was 5.407); frozen gate re-run
+**3/5 with fork-byte-identical continuations** — the faithful-runtime
+state. Merge call with the principal (commits local per protocol).
+
 ### Phase 4 — RISC-V deployment proof
 
 Goal: make the `no_std` claim concrete.

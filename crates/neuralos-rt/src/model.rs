@@ -169,6 +169,10 @@ pub struct Qwen3 {
     kit: MathKit,
     rope: RopeTables,
     max_pos: usize,
+    /// Per-block hidden snapshots, filled only when `capture` is armed by
+    /// [`Qwen3::forward_block_states`] (diagnostic path).
+    block_states: Vec<Vec<[i32; EMB]>>,
+    capture: bool,
 }
 
 fn f32_tensor_milli(
@@ -315,6 +319,8 @@ impl Qwen3 {
             // YaRN from the real file's KV: base 1e6, factor 4, orig 8192.
             rope: RopeTables::new_yarn(HEAD_DIM, max_pos, 1e6, 4.0, 8192, 32.0, 1.0),
             max_pos,
+            block_states: Vec::new(),
+            capture: false,
         })
     }
 
@@ -363,6 +369,25 @@ impl Qwen3 {
         };
         let h = self.forward_inner(tokens, Some(&mut health))?;
         Ok((h, health))
+    }
+
+    /// Diagnostic variant of [`Qwen3::forward`] that also returns the
+    /// full hidden-state matrix at every substep boundary: entry 0 is
+    /// the embedding layer, then per block `l` two entries — after
+    /// block `l`'s attention residual and after its FFN residual (2·L+1
+    /// entries total). All positions, milli units — the per-block drift
+    /// microscope used by the reference-comparison harness (session
+    /// C-core) and available for future profiling.
+    pub fn forward_block_states(
+        &mut self,
+        tokens: &[u32],
+    ) -> Result<Vec<Vec<[i32; EMB]>>, ModelError> {
+        self.block_states = Vec::new();
+        self.capture = true;
+        let result = self.forward_inner(tokens, None);
+        self.capture = false;
+        let states = std::mem::take(&mut self.block_states);
+        result.map(|_| states)
     }
 
     /// Start an incremental decode session (empty caches).
@@ -469,7 +494,12 @@ impl Qwen3 {
                         dot += i64::from(q) * i64::from(k);
                     }
                     let s = dot * SCORE_SCALE_MILLI + dot * SCORE_SCALE_EXTRA_NUM / 10_000;
-                    *score = div_round_half_away(s, 1000)
+                    // dot is milli^2 (real x 1e6); score is milli — so the
+                    // conversion is x 88.3883 / 1e6, NOT /1e3 (the /1e3
+                    // variant made every score 1000x too large, saturating
+                    // softmax into a hard argmax — the 15% block-0 drift
+                    // found by the C-core microscope).
+                    *score = div_round_half_away(s, 1_000_000)
                         .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
                 }
                 self.kit.softmax_q12(&scores, &mut probs);
@@ -535,6 +565,9 @@ impl Qwen3 {
             self.embed(t, &mut row)?;
             h.push(row);
         }
+        if self.capture {
+            self.block_states.push(h.clone());
+        }
         // KV caches: [layer][pos][kv_head].
         let mut k_cache = vec![vec![[[0_i32; HEAD_DIM]; KV_HEADS]; n]; LAYERS];
         let mut v_cache = vec![vec![[[0_i32; HEAD_DIM]; KV_HEADS]; n]; LAYERS];
@@ -591,12 +624,12 @@ impl Qwen3 {
                         for d in 0..HEAD_DIM {
                             dot += i64::from(q_head[d]) * i64::from(k_cache[l][t][kv][d]);
                         }
-                        // × 88.3883 / 1000 → milli logits (i64, bounded:
-                        // |q|,|k| ≲ 1e5 milli → |dot| ≤ 128e10; × 88.4
-                        // ≈ 1.13e14 « i64::MAX).
+                        // dot is milli^2; milli scores = dot x 88.3883
+                        // / 1e6 (bounded: |dot| ≤ 128e10; x 88.4 ≈ 1.1e14
+                        // « i64::MAX).
                         let s = dot * SCORE_SCALE_MILLI
                             + dot * SCORE_SCALE_EXTRA_NUM / 10_000;
-                        scores[t] = div_round_half_away(s, 1000)
+                        scores[t] = div_round_half_away(s, 1_000_000)
                             .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
                     }
                     self.kit.softmax_q12(&scores[..=pos], &mut probs[..=pos]);
@@ -625,6 +658,10 @@ impl Qwen3 {
             let mut gate = [0_i32; FFN];
             let mut up = [0_i32; FFN];
             let mut down = [0_i32; EMB];
+            if self.capture {
+                // Substep snapshot: after this block's attention residual.
+                self.block_states.push(h.clone());
+            }
             for hp in h.iter_mut().take(n) {
                 rms_norm_milli(hp, &layer.ffn_norm, &mut normed);
                 matvec_scaled(&layer.gate, &normed, FFN, &mut gate)
@@ -643,6 +680,10 @@ impl Qwen3 {
                 for d in 0..EMB {
                     hp[d] = hp[d].saturating_add(down[d]);
                 }
+            }
+
+            if self.capture {
+                self.block_states.push(h.clone());
             }
 
             if let Some(health) = health.as_deref_mut() {
@@ -792,7 +833,9 @@ mod tests {
                 dot += i64::from(q[d]) * i64::from(kr[t][d]);
             }
             let s = dot * SCORE_SCALE_MILLI + dot * SCORE_SCALE_EXTRA_NUM / 10_000;
-            scores[t] = div_round_half_away(s, 1000) as i32;
+            // Production chain (fixed 2026-08-16): dot is milli^2, milli
+            // scores = dot x 88.3883 / 1e6.
+            scores[t] = div_round_half_away(s, 1_000_000) as i32;
         }
         let mut probs = [0_i32; 6];
         kit.softmax_q12(&scores[..=pos], &mut probs[..=pos]);
@@ -803,9 +846,10 @@ mod tests {
             }
         }
 
-        // f64 reference: same pipeline in floats (rope via the same
-        // tables' f64 equivalents would be circular — so recompute cos/sin
-        // per the YaRN formulas independently).
+        // f64 reference in REAL units end-to-end (milli inputs /1000,
+        // exact softmax) — no shared unit chain with the integer side
+        // (the pre-fix version divided by 1000 twice on both sides and
+        // the circularity hid the 1000x score-scale bug).
         let corr = |n_rot: f64| -> f64 {
             128.0 * (8192.0 / (n_rot * 2.0 * std::f64::consts::PI)).ln() / (2.0 * 1e6_f64.ln())
         };
@@ -814,9 +858,6 @@ mod tests {
         let angle = |p: usize, i: usize| -> (f64, f64) {
             let extrap = p as f64 * 1e6_f64.powf(-(2.0 * i as f64) / 128.0);
             let interp = 0.25 * extrap;
-            // Ramp over the PAIR index (i0 = 2·i element index → i0/2 = i)
-            // — the 2026-08-15 review fixed the same i/2 transcription
-            // slip here that lived in the implementation.
             let y = ((i as f64 - low) / (high - low).max(0.001)).clamp(0.0, 1.0);
             let r = 1.0 - y;
             let th = interp * (1.0 - r) + extrap * r;
@@ -826,7 +867,7 @@ mod tests {
             let mut out = vec![0.0; HEAD_DIM];
             for i in 0..64 {
                 let (c, s) = angle(p, i);
-                let (x1, x2) = (f64::from(v[i]), f64::from(v[i + 64]));
+                let (x1, x2) = (f64::from(v[i]) / 1000.0, f64::from(v[i + 64]) / 1000.0);
                 out[i] = x1 * c - x2 * s;
                 out[i + 64] = x2 * c + x1 * s;
             }
@@ -834,24 +875,24 @@ mod tests {
         };
         let qf = rot(pos, &q_src);
         let kf: Vec<Vec<f64>> = (0..=pos).map(|t| rot(t, &k_src[t])).collect();
-        let maxs = (0..=pos)
+        let scores_real: Vec<f64> = (0..=pos)
             .map(|t| {
-                // d = Σ q·k in milli² → milli (real×1000); score_milli =
-                // d × 88.3883 (NO extra /1000 — d is already milli).
-                let d: f64 = (0..HEAD_DIM).map(|i| qf[i] * kf[t][i]).sum::<f64>() / 1000.0;
-                d * 88.388_347
+                let dot: f64 = (0..HEAD_DIM).map(|i| qf[i] * kf[t][i]).sum();
+                dot / (HEAD_DIM as f64).sqrt()
             })
-            .collect::<Vec<f64>>();
-        let mx = maxs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        let exps: Vec<f64> = maxs.iter().map(|s| ((*s - mx) / 1000.0_f64).exp()).collect();
+            .collect();
+        let mx = scores_real.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let exps: Vec<f64> = scores_real.iter().map(|s| (s - mx).exp()).collect();
         let sum: f64 = exps.iter().sum();
         for d in 0..HEAD_DIM {
             let want: f64 = (0..=pos)
-                .map(|t| exps[t] / sum * f64::from(v[t][d]))
+                .map(|t| exps[t] / sum * f64::from(v[t][d]) / 1000.0)
                 .sum();
-            let got = (ctx[d] as f64) / 4096.0;
+            // ctx accumulates probs(Q12) x v(milli): /4096 -> milli, /1000
+            // -> real.
+            let got = ctx[d] as f64 / 4096.0 / 1000.0;
             assert!(
-                (got - want).abs() <= 4.0 + want.abs() * 0.02,
+                (got - want).abs() <= 0.004 + want.abs() * 0.02,
                 "ctx[{d}] {got} vs {want}"
             );
         }
@@ -888,6 +929,8 @@ mod tests {
             kit: MathKit::new(),
             rope: RopeTables::new_yarn(HEAD_DIM, max_pos, 1e6, 4.0, 8192, 32.0, 1.0),
             max_pos,
+            block_states: Vec::new(),
+            capture: false,
         }
     }
 
@@ -1063,6 +1106,8 @@ mod tests {
             kit: MathKit::new(),
             rope: RopeTables::new_yarn(HEAD_DIM, max_pos, 1e6, 4.0, 8192, 32.0, 1.0),
             max_pos,
+            block_states: Vec::new(),
+            capture: false,
         }
     }
 

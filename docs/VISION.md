@@ -584,6 +584,47 @@ the top-10 elsewhere (top-logit deltas up to ~5.4, later-step flips
 on near-ties) — measured for the first time, not fixed; the Session
 C delta redteam owns both.
 
+**Session C-core — the drift killed (2026-08-16).** Both C-pre
+counter-findings root-caused and fixed, with the runtime's fidelity
+pushed past the reference-comparison bar. The instrument that did it:
+an f64 mini-forward written from scratch in the harness (real units
+end-to-end) — which matched the FORK's logits to ±0.03 and thereby
+became the independent witness the integer path had never had.
+
+- **Tokenizer (stale-rank BPE):** a heap entry pushed for a symbol
+  pair can survive both liveness checks after one symbol GROWS via
+  later merges; our pop re-looked-up the CURRENT pair and fired it at
+  the stale entry's rank position — out of merge order. On " France"
+  that produced [" F", "rance"] where the fork reaches the single
+  token ĠFrance (9625). Fix: validate the popped entry against its
+  push-time rank (the fork's text-equality check). CI regression trap
+  (synthetic wrong-rank shape) + real-file pins.
+- **Score scale (the big one):** the attention dot product lives in
+  milli² (real×10⁶); milli scores need dot × 88.3883/10⁶ — the code
+  divided by 10³, making **every score 1000× too large and saturating
+  the integer softmax into a hard argmax.** Every attention head lost
+  its secondary context mass; the f64 microscope measured the
+  injection at **15.5% after block 0's attention alone** (1.1% at the
+  embedding, then flat). The session-3 unit test had agreed with the
+  bug because its f64 reference re-encoded the same wrong chain —
+  circular green, now recorded as an ISA Learning.
+- **Exact-γ (kept):** q1_0 matvec now applies block scales at
+  fp16-exact precision (integer mantissa × 2^shift); the milli grid
+  had been quantizing the model's γ ≈ 0.02–0.09 by 0.4–1.9% per
+  block. Measured NOT the drift driver — kept because it is strictly
+  more faithful.
+
+**After (teacher-forced fork comparison, all three prompts):** argmax
+agreement **36/36 steps**, top-10 overlap 9–10/10, max |Δtop| 0.597
+(was 5.407); our France step-0 top logit 18.38 vs fork 18.38 (was
+12.98); per-block error ≤1.1% and decaying. **The frozen gate re-run:
+3/5 strict — verdict unchanged — but our continuations are now
+byte-identical to the reference's greedy** (" Paris, and the capital
+of Spain is Madrid…", " four four the first part…", ": 10:00 AM -
+12"): the faithful-runtime state, where the runtime reproduces the
+model's failures as faithfully as its successes. Merge call to the
+principal with the full evidence.
+
 **Remaining sessions (honest slice):** attention + full forward
 (**✓ session 3**) → adversarial review of the whole arc (**✓ session
 3.5**) → tokenizer + generation = the Stage 4 gate (**✓ session 4 —
@@ -591,9 +632,12 @@ verdict NO, recorded**) → Session C-pre (**✓ 2026-08-16 — the NO
 attributed: the reference fork fails the same two prompts, passes
 the same three, digit prompts byte-identical; tokenizer "France"
 split + logit-drift findings recorded for the delta redteam**) →
-Session C (delta redteam on tokenizer/generation code, alpha.2
-republish checklist, gguf lazy arrays, contiguity validation;
-merge/no-merge of the branch is the principal's call).
+Session C-core (**✓ 2026-08-16 — both findings fixed; drift past the
+bar; gate re-run fork-byte-identical at 3/5; runtime fidelity
+demonstrated at logit AND generation level**) → Session C (delta
+redteam on the new code, alpha.2 republish checklist, gguf lazy
+arrays, contiguity validation; merge/no-merge of the branch is the
+principal's call).
 
 ### 3. The lab bench (visible)
 
