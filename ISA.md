@@ -5,7 +5,7 @@ project: NeuralOS v2
 phase: climbing
 progress: 36/36
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-15T22:40:00Z
+updated: 2026-08-15T23:59:00Z
 principal_stated_goal: "ok so we are ready for step 3 ?" → "go" — Stage 3 (shared kernel + hybrid gate), locked choices: A·classification demo, A·absmax i16 activations
 ---
 
@@ -314,6 +314,26 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 - fog: Stage-4 gate definition — "coherent completion from the real 1.7B
   model" needs a measurable bar (fixed prompts + expected-token checks)
   before the generation session.
+- fog (from s3.5 review, deferred tasks, named):
+  (a) reference-logit equivalence — pin fork/HF logits for a fixed
+  4-token prompt BEFORE trusting generation quality (the composed
+  forward has no external anchor yet; every gate is health-shaped);
+  (b) alpha.2 republish checklist adds: `#[non_exhaustive]` on all
+  error enums, const-hoisting policy for bridge format consts,
+  `decode_q1_0` scale_bits_out API friction decision;
+  (c) gguf lazy arrays — parse memory can reach ~32× file size on
+  hostile `array of u8` blobs (documented in gguf.rs; typed/lazy
+  storage is the real fix);
+  (d) tensor-layout contiguity validation (offsets in order, aligned;
+  today's exact-size consumers contain it);
+  (e) probe scale-window [1,100] is empirical (real value 27), not a
+  derived bound — widen when a second real model arrives;
+  (f) incremental KV decode (forward currently re-runs the full prompt;
+  generation session must own this);
+  (g) residual watch: real-model residual absmax reached 17.9M of the
+  66.6M norm-soundness rail at 4 tokens — session 4 should gate it
+  per-layer (forward_with_health already returns it) and watch growth
+  with prompt length.
 
 ## Test Strategy
 
@@ -369,6 +389,68 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-10 | unit | decoded tensor ↔ Trit::to_weight round-trip stays on-grid | exact | cargo test | bridge::tests::decoded_trits_feed_trit_substrate |
 
 ## Decisions
+
+- 2026-08-15 (s3.5) · **Adversarial review dispositions** (10 agents;
+  every finding adopted / rebutted / deferred — full ledger, severity
+  order):
+  - **Adopted (fixed + tests this session):** YaRN ramp window (element
+    index i0 = 2·pair fed to the pinned formula — was one octave high;
+    window pairs 17..34 pinned in tests); softmax exact-sum (floor +
+    largest-remainder — the remainder-carry version summed 4097 at
+    n=4; counterexamples + tie-family tests added); f32_bits_to_milli
+    small-exponent decade (shift ≥ 64; early-return e < −34, signed
+    clamp, e ≥ 0 saturates by sign — f64 sweep over all exponents ×
+    mantissas pins it); fp16 −inf γ saturation in q1_0_row_to_milli
+    (−(i32::MIN) panic → i64-clamp saturation); 65-token score panic
+    (Vec-sized) + OOV token panic (embed guard + `TokenOutOfRange`);
+    matvec_scaled contract (validates data/out sizes before any work —
+    zero path included; checked rows·row_bytes); round-half-away drift
+    (FFN + rope rounded half-up on negatives; one shared
+    `div_round_half_away`, f64-tested, replaces every inline site);
+    rms_norm Σx² checked (release silent wrap → always-on panic with
+    message); topk logits rescaled to true milli (doc was false);
+    loader dims validation (transposed tensors reject) + config-KV
+    cross-checks (`ConfigMismatch`); `absmax_normalize_q15` → u16
+    (32768 wrap); golden i2_s/q1_0/q2_0 vectors (lane AND byte order —
+    the period-8 known vector was permutation-blind); exhaustive
+    65 536-pattern fp16→milli pin; gguf HashSet dup-scan + sorted-pass
+    slice validation (two O(n²) DoS paths); u32 gate compares in
+    examples (i32::MIN wrap hole); per-layer forward health
+    (`ForwardHealth` — dead-attention layers can no longer pass
+    bonsai_full); residual soundness rail 6.66e7 (not the i32 rail,
+    which sat 32× too high); `rt` publish = false; rt reuses snn's
+    Q1_0_BLOCK/BYTES (single-sourced); doc-truth fixes (tensor_data
+    inference rule, alignment fallback policy, v2 acceptance, exp2
+    octave "2^−11", silu cliff, mscale²-into-cos/sin lineage note,
+    score-scale split rationale, # Panics sections); bonsai_forward on
+    matvec_scaled (true milli labels); probe fixes (print order,
+    197/197 totals, u128 size math, rope-KV provenance printed).
+  - **Rebutted (reason):** `matvec_scaled` → `matvec_milli` rename
+    (documented in ISA/VISION; churn > gain); `forward(&mut self)` →
+    `&self` (session-4 KV cache needs mut — comment added); topk
+    error-on-degenerate-hidden (example gates catch it upstream; doc
+    states the sentinel); examples' `.expect` panics (exit-code contract
+    still holds, scope is examples); `Q10Error` rename (doc line added
+    instead); negative-finite f32 milli −i32::MAX vs MIN one-LSB
+    asymmetry (fixed anyway by the signed-clamp — moot).
+  - **Deferred (named tasks in Not-yet-specified fog list):**
+    reference-logit equivalence test; alpha.2 hygiene bundle
+    (non_exhaustive, const hoisting, decode_q1_0 friction); gguf lazy
+    arrays; contiguity validation; probe scale-window derivation;
+    incremental KV decode; per-layer residual gating in session 4.
+- 2026-08-15 (s3.5) · Honest correction of session-3 evidence: the
+  "per-block health gates" claim for bonsai_full (ISC-35) was in fact
+  final-hidden-only — a dead attention layer would have passed. The
+  claim is now true (per-layer deltas via `forward_with_health`), and
+  the top-5 changed after the YaRN fix (expected; the recorded run was
+  made with subtly wrong RoPE tables — ranking plausibility, not
+  correctness evidence). ISC-30's "sums to 4096 exactly" was true only
+  for n ≤ 3 + luck; now true for all n by construction.
+- 2026-08-15 (s3.5) · Rope provenance from the real file (probe now
+  prints it): `qwen3.rope.freq_base = F32(1000000.0)` ✓ matches pin;
+  `qwen3.rope.original_context` ABSENT — the 8192 default is our pin
+  from the fork's runtime config, documented as such (load() checks it
+  when present).
 
 - 2026-08-15 (s3) · YaRN pinned verbatim from the fork's `ggml-cpu/ops.cpp`
   (`rope_yarn` + `rope_yarn_ramp` + `ggml_rope_yarn_corr_dims` in
@@ -633,6 +715,74 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   paper, not by assuming which side is guilty.
   criterion now: on int-vs-ref mismatch, write the unit chain (milli² →
   milli → Q12) explicitly before touching either side.
+
+## Verification (Stage 4, session 3.5 — adversarial review)
+
+- 4 CI gates green after all fixes: check/test/clippy −D warnings/no_std
+  (183 tests: 46 rt + 134 snn + 3 doc) — all run this session
+- math: `div_round_half_away_matches_f64` (2000-case sweep + ties);
+  `softmax_matches_f64_and_sums_exact` now includes both constructed
+  breakers + 20 tie-counts + 64-way tie + spread; `silu_matches_f64`
+  swept ±9000 with the documented cliff; `rope_matches_f64_reference`
+  re-derived with the corrected window (pairs 17/22/32/34 pinned)
+- norm: `f32_milli_sweep_matches_f64_reference` (all 256 exponents × 4
+  mantissas × 2 signs vs f64); targeted decade vectors
+  (0x0080_0000, 0x2A80_0000, 0x2B00_0000 → 0)
+- q1_0: `matvec_scaled_validates_sizes_before_any_work` (zero+short,
+  short-out, absurd rows); `hostile_scale_blocks_saturate_not_panic`
+  (±inf fp16 γ); `matvec_scaled_matches_f64_2048_wide` (real row width);
+  negative-γ case in the multi-block reference test
+- model: `forward_past_64_tokens_is_ok_not_panic` (65/128/129 + empty),
+  `forward_out_of_vocabulary_token_is_err_not_panic`,
+  `forward_with_health_reports_layer_evidence`,
+  `loader_rejects_transposed_dims`, `loader_config_kv_mismatches_are_loud`
+- gguf: `version_2_parses`, `non_u32_alignment_falls_back_to_32`,
+  `unsorted_offsets_follow_min_greater_rule`,
+  `many_distinct_tensors_parse_fast` (50k tensors, both O(n²) paths gone)
+- snn: `i2_s_lane_order_golden_vector` (period 3, independent
+  column-major expected bytes), `q1_0_byte_order_golden_vector`,
+  `q2_0_byte_and_lane_order_golden_vector`, `absmax_i16_min_returns_32768_not_wrapped`,
+  `half_to_milli_exhaustive_vs_f64` (all 65 536 patterns)
+- Real model: bonsai_probe `PROBE: YES` (197/197, rope KV printed),
+  bonsai_forward `FORWARD: OK` (true milli units), bonsai_full
+  `FULL: OK` (release): 28/28 layer deltas alive (40 302 → 4 193 896),
+  residual absmax 17 962 389 < 66 600 000 rail, forward 14.6 s, logits
+  0.8 s, top-5 (16, 11555) (17, 10800) (18, 10505) (15, 9564) (20, 9360)
+- Anti-claims re-grepped post-fix: no float type/literal/cast in
+  bridge.rs/kernel.rs outside tests; no heap in public functions
+
+## Learning (Stage 4, session 3.5)
+
+- conjectured: the three YaRN test derivations (impl, math test, model
+  test) verified the ramp formula.
+  refuted by: the red-team derivation check — all three shared the same
+  transcription slip (pair index fed where the pinned formula takes
+  element index i0), so the suite was circular and stayed green while
+  the interpolation window sat one octave high.
+  learned: N mutually-consistent derivations are ONE derivation
+  copy-pasted N times; "independent reference" must differ in
+  *construction* (the fixed test derives from the formula text with
+  i0 = 2i and pins the window boundaries explicitly), not just in
+  authorship.
+  criterion now: reference-fidelity tests must include at least one
+  structural invariant (e.g. r = 0 for all pairs ≥ high) that a shared
+  transcription error cannot satisfy.
+- conjectured (5th and 6th instances, same session): my review-session
+  test vectors were hand-derived correctly (0x3900_0000 → 1; q1_0
+  byte-order positives = elements 0..7; absmax i16::MAX → 32767;
+  0x2E66 → "fp16 0.05" per the copied comment — actually ≈0.1).
+  refuted by: cargo test, four times — each expectation wrong while the
+  implementation was right (verified by first-principles derivation
+  after the fact).
+  learned: the Stage-2 lesson is now structural and unconditional:
+  hand-derived numeric expectations are forbidden; derive from the
+  formula in the test (set comprehensions, not magic arrays), or
+  reference-test against f64 — and NEVER copy a numeric claim from a
+  comment (0x2E66 "0.05" was itself wrong from session 2).
+  criterion now: every new expected value in a test is either computed
+  in-test from the documented algorithm or compared against an f64
+  reference; literals only for bit patterns already pinned by
+  exhaustive sweeps.
 
 ## Verification (Stage 4, session 3)
 

@@ -120,13 +120,19 @@ Gate question for the phase:
 Stage 4 (full Rust ternary-LLM runtime on Bonsai `Q1_0`) is now the earned
 step — explicitly gated, multi-session research territory.
 
-**Stage 4 — OPENED (branch `stage4-ternary-runtime`; sessions 1–3 shipped
-2026-08-15):** s1 — GGUF container on the real file (310 tensors, all
-`q1_0` byte-exact). s2 — `q1_0_matvec` + integer RMSNorm, first-layer
-compute (`FORWARD: OK`). s3 — **full 28-block Qwen3 forward**: YaRN RoPE
-+ GQA + integer softmax + SiLU FFN + tied logits, integer compute path
-(`FULL: OK`, 4 tok in 14.2 s release). Remaining: tokenizer + generation
-(the gate).
+**Stage 4 — OPENED (branch `stage4-ternary-runtime`; sessions 1–3
+shipped 2026-08-15):** s1 — GGUF container on the real file (310
+tensors, all `q1_0` byte-exact). s2 — `q1_0_matvec` + integer RMSNorm,
+first-layer compute (`FORWARD: OK`). s3 — **full 28-block Qwen3
+forward**: YaRN RoPE + GQA + integer softmax + SiLU FFN + tied logits,
+integer compute path (`FULL: OK`, 4 tok in 14.2 s release). s3.5 —
+**adversarial review of the whole bridge arc** (10 agents): YaRN ramp
+window fixed (one octave high), softmax exact-sum made true for all n
+(was false at n=4), f32→milli small-exponent decade fixed, hostile-scale
+saturation, 65-token/OOV panics → loud errors, shared round-half-away
+helper, dims+config validated at load, golden lane/byte-order vectors,
+per-layer health gates (`FULL: OK` re-run: 28/28 layers alive). Base
+reviewed; remaining: tokenizer + generation (the gate).
 
 ### Phase 4 — RISC-V deployment proof
 

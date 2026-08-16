@@ -476,8 +476,41 @@ the numerator) and a ×1000 unit slip in a *reference* test (the
 implementation was right; the reference was wrong — recorded as the
 inverse of the session-2 failure mode).
 
+**Session 3.5 — adversarial review (10 agents, full arc).** Before
+session 4 leans on this base, the whole bridge arc (rt + snn
+bridge/kernel) went through a red-team pass. Found and fixed, severity
+order: the **YaRN ramp window sat one octave high** (the pinned formula
+takes the ELEMENT index i0 = 2·pair; the code fed the pair index —
+interpolation band [34,68] instead of [17,34]; all three test
+derivations shared the slip, so tests stayed green — fixed + window
+pairs pinned); the **softmax exact-sum invariant was false at n=4**
+(concrete counterexample `[0, −1386, −1386, −7624]` summed to 4097;
+rewritten floor + largest-remainder, now exact for every length);
+**`f32_bits_to_milli` was broken across an entire exponent decade**
+(shift ≥ 64 panics/masks; at shift 64 it returned −2³¹ for a positive
+input); a **fp16 −inf scale panicked** on `−(i32::MIN)` in embedding
+decode (now saturates per the documented policy); the **65-token
+prompt panic** (fixed [i32;64] score arrays) and **out-of-vocab token
+panic** (both now loud `ModelError`s); `matvec_scaled`'s error contract
+holes; round-half-away drift at three sites (one shared, f64-tested
+`div_round_half_away` helper replaces all inline copies); loader
+shape-blindness (dims now validated — transposed tensors reject);
+config KVs cross-checked at load; `absmax_normalize_q15` returns u16
+(32768 no longer wraps); golden non-symmetric i2_s/q1_0/q2_0 vectors
+pin lane AND byte order (the old period-8 vector was lane-blind); all
+65 536 fp16→milli conversions pinned exhaustively. Hardened:
+HashSet dup-scan (O(n²) DoS), u32 gate compares, per-layer residual
+deltas + soundness rail in bonsai_full (a dead attention layer can no
+longer pass), `rt` marked `publish = false`. Post-fix run: all 28
+layers alive (deltas 40k→4.2M milli), residual absmax 17.9M under the
+66.6M norm-soundness rail, top-5 shifted as expected (true milli
+logits now), 14.6 s forward. Deferred (named ISA tasks): `#[non_exhaustive]`
++ const-hoisting (alpha.2 checklist), gguf lazy arrays, reference-logit
+equivalence test (session-4 pre-gate).
+
 **Remaining sessions (honest slice):** attention + full forward
-(**✓ session 3**) → tokenizer + generation = the Stage 4 gate
+(**✓ session 3**) → adversarial review of the whole arc (**✓ session
+3.5**) → tokenizer + generation = the Stage 4 gate
 (measurable bar: fixed prompts, expected-token checks).
 
 ### 3. The lab bench (visible)
