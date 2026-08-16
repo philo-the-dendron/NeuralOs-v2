@@ -3,9 +3,9 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 42/42
+progress: 43/43
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-16T16:30:00Z
+updated: 2026-08-16T21:30:00Z
 principal_stated_goal: "ok so we are ready for step 3 ?" → "go" — Stage 3 (shared kernel + hybrid gate), locked choices: A·classification demo, A·absmax i16 activations
 ---
 
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(ISC-1..10: Stage 2, 11..17: Stage 3, 18..23: Stage 4 s1, 24..29: Stage 4 s2, 30..36: Stage 4 s3 — closed, see Verification.)
+(ISC-1..10: Stage 2, 11..17: Stage 3, 18..23: Stage 4 s1, 24..29: Stage 4 s2, 30..36: Stage 4 s3, 37..42: Stage 4 s4, 43: C-pre — closed, see Verification.)
 
 - [x] ISC-37: `rt::token` ships the gpt2 byte-level BPE tokenizer from
   the GGUF's embedded data (`tokenizer.ggml.{model,pre,tokens,
@@ -138,8 +138,29 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   full still green, VISION/ROADMAP carry the honest NO, branch
   pushed; **no merge to main — the gate said NO, the merge call is
   the principal's** (Session C's first act: the fork-logit
-  comparison, see Decisions). Falsifier: any gate red, docs absent,
+  comparison, see Decisions).   Falsifier: any gate red, docs absent,
   or an unprincipled merge.
+
+- [x] ISC-43 (C-pre): the 3/5 NO is ATTRIBUTED by reference
+  comparison: PrismML-Eng/llama.cpp @ 9ca265a (branch prism,
+  CPU-only scratch build, /tmp/opencode/cpre) run
+  greedy-by-construction (`--temp 0 --top-k 0 --top-p 1.0 --min-p
+  0.0 --seed 42 -no-cnv`) on all 5 frozen prompts FAILS THE SAME
+  TWO and passes the same three (p0/p1 continuations byte-identical
+  to ours over 24 greedy steps); at the verdict step the reference's
+  own top-10 puts " five" at rank 4 (10.517 vs its argmax " four"
+  11.486) and " Thursday" outside its top-10 — the two failures are
+  the model's under greedy, not our runtime's. Counter-evidence
+  recorded honestly (both named Session-C findings, neither
+  gate-bearing): logit-level fidelity is NOT within tolerance
+  (top-logit deltas up to 5.4, top-10 overlap 5-8/10, later-step
+  argmax flips on near-ties) and our tokenizer splits "France"
+  ([434, 34106] vs fork [9625]). The gate example, prompts, expected
+  strings, and verdict logic are untouched (re-run reproduces the
+  recorded NO, content-identical); work committed LOCALLY only — no
+  push, no merge (the principal's gate). Falsifier: any captured
+  log line contradicting the tables in Decisions/Verification, a
+  pushed branch, or a merge commit on main.
 
 - [x] ISC-30: `rt::math` ships the integer softmax machinery — a 1024-entry
   Q12 `2^frac` table, `exp_q12(x_milli)` via max-subtract + exp2
@@ -370,9 +391,12 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   model" needs a measurable bar (fixed prompts + expected-token checks)
   before the generation session.
 - fog (from s3.5 review, deferred tasks, named):
-  (a) reference-logit equivalence — pin fork/HF logits for a fixed
-  4-token prompt BEFORE trusting generation quality (the composed
-  forward has no external anchor yet; every gate is health-shaped);
+  (a) reference-logit equivalence — **DISCHARGED 2026-08-16
+  (C-pre)**: ran against the fork itself (Decisions + Verification,
+  s4-C-pre entries); outcome: gate-verdict equivalence PROVEN (the
+  reference fails the same two prompts), logit-level equivalence
+  REFUTED within tolerance (deltas up to 5.4) — the residual
+  question moved to (g2);
   (b) alpha.2 republish checklist adds: `#[non_exhaustive]` on all
   error enums, const-hoisting policy for bridge format consts,
   `decode_q1_0` scale_bits_out API friction decision;
@@ -388,7 +412,13 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   (g) residual watch: real-model residual absmax reached 17.9M of the
   66.6M norm-soundness rail at 4 tokens — session 4 should gate it
   per-layer (forward_with_health already returns it) and watch growth
-  with prompt length.
+  with prompt length. (Graduated s4 — Session::max_abs_residual.)
+  (g2) logit-drift tolerance policy (NEW, C-pre): fork-vs-ours
+  top-logit deltas measured at −0.24…−5.41 with top-10 rank
+  shuffles and later-step argmax flips on near-ties — decide the
+  acceptance bar (and whether/how to narrow it) plus the
+  tokenizer "France" split fix; owned by Session C's delta
+  redteam.
 
 ## Test Strategy
 
@@ -400,6 +430,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-40 | gate | example prints per-prompt evidence + verdict, exit code honest | yes | cargo run --release --example | examples/bonsai_generate.rs |
 | ISC-41 | evidence | recorded run: 3/5 strict, deterministic across 2 runs, NO + exit 1 | as recorded | run log (this session) | ISA Verification |
 | ISC-42 | build+doc+git | 4 CI gates, ignored 3/3, probe/forward/full green, docs truth, branch pushed, NO merge | 0 fail | cargo + git | CI + docs/ + remotes |
+| ISC-43 | evidence | reference E2E 5/5 prompts + fork/ours logit captures; verdict-step argmax table; frozen-gate re-run content-identical; local commit only | as recorded | llama-completion + refcmp + run logs (ISA Verification) | Decisions 2026-08-16 (C-pre) |
 
 | isc | type | check | threshold | tool | anchors_to |
 |---|---|---|---|---|---|
@@ -453,6 +484,51 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-10 | unit | decoded tensor ↔ Trit::to_weight round-trip stays on-grid | exact | cargo test | bridge::tests::decoded_trits_feed_trit_substrate |
 
 ## Decisions
+
+- 2026-08-16 (s4-C-pre) · **THE 3/5 NO IS ATTRIBUTED — the reference
+  fails the same two prompts.** Session C's first act (the fork-logit
+  comparison, ISC-42's named dependency) RAN and is **DISCHARGED** —
+  this entry is the evidence pointer. Reference:
+  PrismML-Eng/llama.cpp @ 9ca265a57f85f2117942490f421f64a226dd9847
+  (branch prism), llama-completion built CPU-only in /tmp (cmake
+  4.4.2 from a pip wheel unpacked to /tmp — no system mutation; see
+  Verification for the exact commands), greedy forced by construction
+  (`--temp 0 --top-k 0 --top-p 1.0 --min-p 0.0 --seed 42 -no-cnv` —
+  the tool auto-enables chat mode on template-bearing models, so
+  `-no-cnv` is mandatory). E2E: fork fails "one two three four"
+  → " four four the first part…" and "Monday Tuesday Wednesday"
+  → ": 10:00 AM - 12"; passes the same three, with p0 " 8 9 10 11 1"
+  and p1 " 14 15 16 17" BYTE-IDENTICAL to ours. Verdict-step logits:
+  p3 argmax ":" both (8.554 / 7.917); p4 on the fork's ids argmax
+  " Paris" both (18.385 margin 4.45 / ours 12.978 margin 0.77); p2
+  argmax differs (fork " four" @11.486 with " five" rank 4 @10.517,
+  margin 0.97; ours "-digit" @11.250 near-tie over " four" @11.003,
+  " five" rank 13 @9.197) — both runtimes deny " five" the top.
+  **The merge case is presented to the principal; NOT executed this
+  session** (protocol: local commit, stop, wait — the push gate and
+  the merge call are the principal's).
+- 2026-08-16 (s4-C-pre) · **Two honest findings the comparison
+  surfaced (recorded, not fixed — Session C delta-redteam scope):**
+  (1) **Tokenizer divergence, OUR side**: "France" → ours
+  [434 "Fr", 34106 "ance"] vs fork [9625 "France"]; the reference
+  BPE reaches the single token, ours does not — p4's E2E comparison
+  is VOID per the session pin and its logit comparison ran on the
+  fork's ids instead; p0–p3 tokenizations match ours exactly. A
+  real rt::token bug candidate (merge-chain application), not
+  papered over. (2) **Logit-level fidelity to the f32 reference is
+  NOT within tolerance**: top-logit deltas −0.24…−5.41
+  (content-dependent), top-10 set overlap 5–8/10, argmax flips at
+  p2 s0 (0.25-margin near-tie blob), p3 s8 (same pair {198,481},
+  opposite order, our margin 0.29 / fork 0.69), p4 s6/s8/s10/s11
+  after the first flip — compounding integer-vs-f32 numerics. A
+  systematic YaRN config mismatch is RULED OUT (the GGUF carries
+  rope.scaling type=yarn factor=4.0 orig 8192 = our pinned values,
+  and p0/p1 match byte-exact for 24 steps, which a systematic
+  scaling error would poison; NB: session-3.5's "orig_ctx ABSENT"
+  note was checking a shorter key name than the file's
+  `qwen3.rope.scaling.original_context_length`). The integer path
+  never promised f32 exactness — but the drift is now MEASURED, and
+  a tolerance decision belongs to Session C.
 
 - 2026-08-16 (s4) · **THE GATE SAID NO — Stage 4 closes unmerged by
   design.** Honest verdict recorded: 3/5 strict (digit counting ×2 and
@@ -997,3 +1073,95 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 - 2026-08-16 · Session 4 closed: ISC-37..42 all on evidence. **Stage 4
   gate verdict: NO (3/5 strict)** — recorded, not appealed. The ISA
   stays OPEN as the Stage-4/Session-C carrier (fog ledger above).
+
+## Verification (Stage 4, session C-pre)
+
+- Reference build: fork cloned `--depth 1 --branch prism` @
+  9ca265a57f85f2117942490f421f64a226dd9847; cmake 4.4.2 from a pip
+  wheel unpacked to /tmp/opencode/cpre/cmake (no sudo, no system
+  mutation); configure `-DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=OFF
+  -DGGML_VULKAN=OFF -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF
+  -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+  -DLLAMA_BUILD_SERVER=OFF`, then `--build build --target
+  llama-completion -j3` — 100%, clean link.
+- E2E (5 frozen prompts, `-n 12 --temp 0 --top-k 0 --top-p 1.0
+  --min-p 0.0 --seed 42 -no-cnv -c 512 --verbose-prompt`): fork 3/5
+  with the SAME pass/fail pattern as ours. p0 " 8 9 10 11 1" and
+  p1 " 14 15 16 17" byte-identical to ours (24 greedy steps). p2
+  fork " four four the first part of the question is to find the"
+  vs ours "-digit numbers. The problem is that the numbers are not
+  unique" (both FAIL " five"). p3 fork ": 10:00 AM - 12" vs ours
+  ": 10:00 AM\nWednesday: " (both FAIL " Thursday"). p4 fork
+  " Paris, and the capital of Spain is Madrid. Which of" — E2E VOID
+  per session pin (tokenizer divergence below); its logit
+  comparison ran on the fork's ids instead. Double-run
+  determinism: p2/p4 regenerations byte-identical.
+- Tokenization: fork ids == our gate ids exactly on p0–p3
+  (13/11/4/3 tokens); p4 DIVERGES — fork [785, 6722, 315, 9625
+  "France", 374] vs ours [785, 6722, 315, 434 "Fr", 34106 "ance",
+  374]. Model KVs (dumped this session): add_bos_token=0 (no BOS
+  either side), eos 151645, gpt2 BPE.
+- Fork logit capture: env-gated `NEURALOS_DUMP` patch at the
+  completion.cpp sample site (raw top-10 before the sampler chain;
+  scratch patch in /tmp only) — full 12-step traces for p2/p3/p4.
+- Our logit capture: /tmp/opencode/cpre/refcmp scratch bin (path-dep
+  on crates/neuralos-rt; repo untouched) — top-10, argmax, and
+  expected-token rank per step at the same positions. Scratch-tool
+  quirk (documented, /tmp only): its "rank" line searches the wide
+  (post-top-10) list first, so a printed rank ≥1990 means a top-10
+  member (true rank = printed−1990) and a printed rank <1990 means
+  true rank = printed+10; the raw top-10 lines are exact and are
+  what the tables below cite.
+- Verdict-step (step 0) comparison — p3: argmax ":" BOTH (fork
+  8.5537 / ours 7.917); " Thursday" outside fork top-10 (≤5.381),
+  ours true rank 1201 @1.704. p4 on the fork's ids [785, 6722, 315,
+  9625, 374]: argmax " Paris" BOTH (fork 18.3848, margin 4.45 over
+  " which" 13.9318; ours 12.978, margin 0.77 over " the" 12.213);
+  pre-divergence argmax agreement s0–s5 (6/6), first flip at s6
+  (" France" 15.257 vs " Spain" 14.033 ours; fork " Spain" 16.352
+  vs " France" 14.528). p2: fork argmax " four" @11.4858 with
+  " five" rank 4 @10.5174; ours argmax "-digit" @11.250 (near-tie
+  over " four" @11.003), " five" true rank 13 @9.197 — no runtime
+  puts " five" on top.
+- Fidelity deltas (honest counterweight): top-logit deltas p2 s0
+  −0.24, p3 s0 −0.64, p3 s1 +0.33, p4(fork-ids) s0 −5.41; top-10
+  set overlap 7/10 (p2 s0), 8/10 (p3 s0), 7/10 (p4 s0); later argmax
+  flips p3 s8 (ours "\n" 12.487 over " AM" 12.198; fork " AM" 13.391
+  over "\n" 12.704 — same pair, opposite order) and p4 s6/s8/s10/s11
+  after the first flip. YaRN mismatch ruled out: GGUF carries
+  rope.scaling type=yarn factor=4.0 orig 8192 (= our pin), and p0/p1
+  byte-exact agreement over 24 steps would be impossible under a
+  systematic scaling error.
+- Frozen-gate proof: `target/release/examples/bonsai_generate`
+  re-run on the untouched example — verdict-bearing content identical
+  to /tmp/opencode/s4/gate_run.log (only wall-clock lines differ):
+  STAGE 4 GATE: NO — 3/5, exit 1.
+- Discipline: 4 CI gates green this session (check/test 193/clippy
+  -D warnings/no_std); bonsai_probe PROBE: YES, bonsai_forward
+  FORWARD: OK, bonsai_full FULL: OK (release, top-5 identical to
+  s3/s3.5/s4 — cross-session determinism); zero code edits (docs
+  only); commit LOCAL, not pushed, not merged.
+
+- 2026-08-16 · Session C-pre closed: ISC-43 on evidence — the 3/5
+  attributed (model capability under greedy, reproduced by the
+  reference), fidelity + tokenizer findings handed to Session C.
+  The ISA stays OPEN as the Session C carrier.
+
+## Learning (Stage 4, session C-pre)
+
+- conjectured (twice, caught twice in the same session): the fork's
+  captured top-10s read cleanly at first pass — " five" absent from
+  the fork's p2 top-10; " Paris" rank 1990 (not argmax) in my own
+  tool's output.
+  refuted by: a slow second pass over the grepped lines before
+  writing the ISA — " five" IS the fork's p2 rank-4 entry (10.5174,
+  the 5th field, one near-miss from changing the failure-margin
+  story), and the scratch tool's rank line had a list-order quirk
+  (wide-list-before-top-10) that mislabeled an argmax as rank 1990.
+  learned: attribution numbers survive a fast read and die on a
+  re-read; a near-miss rank claim is exactly the kind of error that
+  quietly overstates a capability margin (1.5 logits of story).
+  criterion now: every rank/margin figure in an attribution table is
+  re-derived from the captured raw line in a second pass before it
+  enters any doc, and scratch-tool output quirks get documented
+  beside the tool at capture time, never trusted silently.

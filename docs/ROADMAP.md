@@ -142,6 +142,16 @@ said **NO: 3/5** (digit counting ×2 and "The capital of France is
 → Paris" pass; word-sequence continuations fail). Bridge stops with
 shipped artifacts per gate doctrine; Session C's first act is the
 fork-logit reference comparison (ISA Decisions 2026-08-16).
+**C-pre (2026-08-16) — the NO attributed:** the reference fork
+itself (PrismML-Eng/llama.cpp @ 9ca265a, greedy
+forced-by-construction) fails the same two prompts and passes the
+same three, with the digit prompts byte-identical to ours over 24
+greedy steps — the two failures are the 1-bit model's under greedy,
+not the runtime's. Merge case presented to the principal (not
+executed); two Session-C findings recorded: our tokenizer splits
+"France" where the reference reaches the single token, and our
+logits drift beyond rounding vs the f32 reference inside the top-10
+(deltas up to ~5.4) while agreeing at the verdict-step argmax.
 
 ### Phase 4 — RISC-V deployment proof
 

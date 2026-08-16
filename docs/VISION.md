@@ -561,13 +561,39 @@ prompts judge decoded-TEXT prefixes, never ids. The Bonsai chat
 template inserts no default system prompt (unlike official Qwen3) —
 read from the file, fragments asserted.
 
+**Session C-pre — the NO attributed (2026-08-16).** The held merge's
+blocking question — is the 3/5 our runtime's fault or the model's? —
+was answered by building the reference runtime itself
+(PrismML-Eng/llama.cpp @ `9ca265a`, CPU-only scratch build) and
+running the same five frozen prompts, greedy forced by construction:
+**the reference fails the same two prompts and passes the same
+three.** "one two three four" → " four four the first part…" and
+"Monday Tuesday Wednesday" → ": 10:00 AM - 12" — while the two digit
+prompts come out **byte-identical** to ours (" 8 9 10 11 1", "
+14 15 16 17", 24 greedy steps of agreement). At the verdict step the
+reference's own distribution denies the expected tokens the top:
+" five" sits at rank 4 (10.517) under its argmax " four" (11.486),
+and " Thursday" is outside its top-10 — under greedy decoding, the
+failures are the 1-bit 1.7B's, not the runtime's. The verdict line
+is untouched; the merge case went to the principal with the
+evidence. Two honest counter-findings ride along as Session-C scope:
+our tokenizer splits "France" ([Fr, ance]) where the reference BPE
+reaches the single token, and our logits track the reference at the
+argmax level on verdict steps but drift well beyond rounding inside
+the top-10 elsewhere (top-logit deltas up to ~5.4, later-step flips
+on near-ties) — measured for the first time, not fixed; the Session
+C delta redteam owns both.
+
 **Remaining sessions (honest slice):** attention + full forward
 (**✓ session 3**) → adversarial review of the whole arc (**✓ session
 3.5**) → tokenizer + generation = the Stage 4 gate (**✓ session 4 —
-verdict NO, recorded**) → Session C (deferred fog: fork-logit
-reference equivalence first, alpha.2 republish checklist, gguf lazy
-arrays, contiguity validation; merge/no-merge of the branch is the
-principal's call).
+verdict NO, recorded**) → Session C-pre (**✓ 2026-08-16 — the NO
+attributed: the reference fork fails the same two prompts, passes
+the same three, digit prompts byte-identical; tokenizer "France"
+split + logit-drift findings recorded for the delta redteam**) →
+Session C (delta redteam on tokenizer/generation code, alpha.2
+republish checklist, gguf lazy arrays, contiguity validation;
+merge/no-merge of the branch is the principal's call).
 
 ### 3. The lab bench (visible)
 
