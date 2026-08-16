@@ -77,6 +77,10 @@ pub fn pack_trits(trits: &[Trit], out: &mut [u8]) -> Result<usize, BridgeError> 
 /// # Errors
 ///
 /// [`BridgeError::UnsupportedCode`] on code 3 (corrupt data).
+///
+/// # Panics
+///
+/// Panics if `i >= packed.len() × 4` (slice indexing).
 pub fn unpack_trit(packed: &[u8], i: usize) -> Result<Trit, BridgeError> {
     let code = (packed[i / TRITS_PER_BYTE] >> (2 * (i % TRITS_PER_BYTE))) & 0x03;
     match code {
@@ -91,14 +95,15 @@ pub fn unpack_trit(packed: &[u8], i: usize) -> Result<Trit, BridgeError> {
 /// `BitNet`'s per-token activation quantization.
 ///
 /// `out[i] = round(value[i] / absmax × 32767)` in pure integer math
-/// (round-half-away-from-zero). Returns the absmax itself — the scale the
-/// caller needs to un-normalize downstream (for argmax consumers the scale
-/// cancels; for honest dense outputs it does not). An all-zero vector
-/// normalizes to zeros and returns 0.
+/// (round-half-away-from-zero). Returns the absmax itself (as `u16` —
+/// the scale the caller needs to un-normalize downstream; note
+/// `absmax` is 32768 when the input contains [`i16::MIN`], which does
+/// NOT fit i16: the old `i16` return wrapped to −32768 there). An
+/// all-zero vector normalizes to zeros and returns 0.
 ///
 /// `values.len()` must equal `out.len()`.
 #[must_use]
-pub fn absmax_normalize_q15(values: &[i16], out: &mut [i16]) -> i16 {
+pub fn absmax_normalize_q15(values: &[i16], out: &mut [i16]) -> u16 {
     debug_assert_eq!(values.len(), out.len(), "value/out length mismatch");
     let absmax = values.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0);
     if absmax == 0 {
@@ -117,7 +122,7 @@ pub fn absmax_normalize_q15(values: &[i16], out: &mut [i16]) -> i16 {
         };
         *slot = q.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
     }
-    absmax as i16
+    absmax
 }
 
 /// The shared ternary matvec: `out[j] = Σᵢ w[j·n+i] · a[i]`.
@@ -129,13 +134,15 @@ pub fn absmax_normalize_q15(values: &[i16], out: &mut [i16]) -> i16 {
 /// `out` receives `rows` i32 accumulators.
 ///
 /// Accumulation bound: `|out[j]| ≤ n × 32767` — overflow-free for any
-/// `n < 65 536` (documented, asserted in debug builds).
+/// `n < 65 536` (debug-asserted; in release a larger `n` wraps silently,
+/// so the bound is a contract, not an enforcement).
 ///
 /// # Errors
 ///
-/// [`BridgeError::BadLength`] if `n % 4 != 0`; [`BridgeError::TooShort`] if
-/// `packed_weights.len() < rows·n/4` or `out.len() < rows`;
-/// [`BridgeError::UnsupportedCode`] on any code-3 lane.
+/// [`BridgeError::BadLength`] if `n % 4 != 0`; [`BridgeError::TooShort`]
+/// if `packed_weights.len() < rows·n/4` or `out.len() < rows`;
+/// [`BridgeError::UnsupportedCode`] on any code-3 lane. On `Err`, `out`
+/// may already hold partial row results — do not use them.
 pub fn ternary_matvec(
     packed_weights: &[u8],
     activations: &[i16],
@@ -215,6 +222,20 @@ mod tests {
         let scale = absmax_normalize_q15(&vals, &mut out);
         assert_eq!(scale, 10);
         assert_eq!(out, [32_767, 16_384, 0, -32_767]); // 16383.5 rounds away → 16384
+    }
+
+    #[test]
+    fn absmax_i16_min_returns_32768_not_wrapped() {
+        // 2026-08-15 review: the old i16 return wrapped 32768 → −32768,
+        // flipping every downstream un-normalization sign. Derived
+        // expectations (not hand-waved): absmax = 32768 (from i16::MIN);
+        // i16::MIN → −32768·32767/32768 = −32767 exactly; i16::MAX →
+        // 32767·32767/32768 = 32766.00003 → 32766.
+        let vals = [i16::MIN, 0, i16::MAX];
+        let mut out = [0_i16; 3];
+        let scale = absmax_normalize_q15(&vals, &mut out);
+        assert_eq!(scale, 32_768); // u16 — does not wrap
+        assert_eq!(out, [-32_767, 0, 32_766]);
     }
 
     #[test]
@@ -310,7 +331,7 @@ mod tests {
             let mut out = vec![0_i16; vals.len()];
             let scale = absmax_normalize_q15(&vals, &mut out);
             let max_abs = vals.iter().map(|v| v.unsigned_abs()).max().unwrap();
-            prop_assert_eq!(scale, max_abs as i16);
+            prop_assert_eq!(scale, max_abs);
             for (v, &o) in vals.iter().zip(out.iter()) {
                 // Q15 by construction: the output can never be i16::MIN
                 // (|out| ≤ 32767 — the clamp is unreachable for in-range math).

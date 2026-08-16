@@ -180,7 +180,10 @@ pub fn encode_i2_s(trits: &[Trit], scale_bits: u32, out: &mut [u8]) -> Result<us
 ///
 /// `trits.len()` is the tensor length `n` (must be `n % 128 == 0`);
 /// `bytes.len()` must be at least [`i2_s_encoded_len`]. Returns the raw f32
-/// scale bits from the tail — the exact inverse of [`encode_i2_s`].
+/// scale bits from the tail — the exact inverse of [`encode_i2_s`]. The
+/// 28 tail pad bytes after the scale are not validated (the reference
+/// ignores them too). On [`BridgeError::UnsupportedCode`], `trits` may
+/// hold partial output — do not use it.
 ///
 /// # Errors
 ///
@@ -426,7 +429,8 @@ pub fn wire_gamma_to_substrate(gamma_milli: i32) -> i16 {
 ///
 /// [`BridgeError::BadLength`] if `n % 128 != 0`; [`BridgeError::TooShort`]
 /// if either buffer is undersized; [`BridgeError::UnsupportedCode`] on a
-/// code-3 lane.
+/// code-3 lane. On error, `out` may hold partial writes — do not use
+/// them.
 pub fn repack_i2s_to_kernel(i2s: &[u8], n: usize, out: &mut [u8]) -> Result<(), BridgeError> {
     if !n.is_multiple_of(I2_S_BLOCK) {
         return Err(BridgeError::BadLength);
@@ -486,6 +490,56 @@ mod tests {
         let mut back = [Trit::Zero; I2_S_BLOCK];
         let got_scale = decode_i2_s(&buf, &mut back).expect("decode");
         assert_eq!(got_scale, scale_bits);
+        assert_eq!(&back, &trits[..]);
+    }
+
+    #[test]
+    fn i2_s_lane_order_golden_vector() {
+        // 2026-08-15 review: the known vector above has period 8, and
+        // 32 % 8 == 0 makes all four lanes of every byte identical — ANY
+        // lane permutation reproduces those bytes. This vector uses a
+        // period-3 pattern (3 ∤ 32) so the four lanes of each byte carry
+        // DIFFERENT codes; the expected bytes are built by an
+        // independent column-major loop (element e = j + 32·lane, code
+        // << (6 − 2·lane)) that never touches i2_s_byte_index — a lane
+        // swap now scrambles every byte and fails the test.
+        let code_of = |i: usize| -> u8 {
+            let t = match i % 3 {
+                0 => Trit::MinusOne,
+                1 => Trit::Zero,
+                _ => Trit::One,
+            };
+            trit_to_code(t)
+        };
+        let trits: Vec<Trit> = (0..I2_S_BLOCK)
+            .map(|i| match i % 3 {
+                0 => Trit::MinusOne,
+                1 => Trit::Zero,
+                _ => Trit::One,
+            })
+            .collect();
+        let mut buf = [0_u8; 64];
+        let written = encode_i2_s(&trits, 0, &mut buf).expect("encode");
+        assert_eq!(written, 64);
+
+        // Independent expected-bytes construction (column-major).
+        let mut expected = [0_u8; 64];
+        for (j, slot) in expected.iter_mut().enumerate().take(32) {
+            for lane in 0..4_usize {
+                let e = 32 * lane + j; // element index in the 128-block
+                *slot |= code_of(e) << (6 - 2 * lane);
+            }
+        }
+        // Bytes 32..36 are the scale (0.0 here) — compare packed region.
+        assert_eq!(
+            &buf[..32],
+            &expected[..32],
+            "i2_s lane order must match the reference transposition"
+        );
+
+        // And decoding the independent bytes returns the original trits.
+        let mut back = [Trit::Zero; I2_S_BLOCK];
+        decode_i2_s(&buf, &mut back).expect("decode");
         assert_eq!(&back, &trits[..]);
     }
 
@@ -585,6 +639,32 @@ mod tests {
     }
 
     #[test]
+    fn q1_0_byte_order_golden_vector() {
+        // 2026-08-15 review: the uniform-bytes vector above pins BIT
+        // order but not BYTE order (16 identical bytes are position-
+        // blind). Byte j gets exactly one set bit at position j%8 →
+        // element 8j + (j%8) is positive (an independently-derived set:
+        // {0, 9, 18, 27, 36, 45, 54, 63, 72+1, …}); every other element
+        // is −γ.
+        let mut bytes = Vec::with_capacity(18);
+        bytes.extend_from_slice(&0x3C00_u16.to_le_bytes());
+        let mut sign_bytes = [0_u8; 16];
+        for (j, slot) in sign_bytes.iter_mut().enumerate() {
+            *slot = 1 << (j % 8);
+        }
+        bytes.extend_from_slice(&sign_bytes);
+        let mut trits = [Trit::Zero; Q1_0_BLOCK];
+        let mut scales = [0_u16; 1];
+        decode_q1_0(&bytes, &mut trits, &mut scales).expect("decode");
+        let positives: std::collections::HashSet<usize> =
+            (0..16_usize).map(|j| 8 * j + j % 8).collect();
+        for (i, t) in trits.iter().enumerate() {
+            let want = if positives.contains(&i) { Trit::One } else { Trit::MinusOne };
+            assert_eq!(*t, want, "element {i}");
+        }
+    }
+
+    #[test]
     fn q1_0_rejects_bad_input() {
         let mut trits = [Trit::Zero; Q1_0_BLOCK];
         let mut scales = [0u16; 1];
@@ -633,11 +713,40 @@ mod tests {
         bytes[0..2].copy_from_slice(&0x4400_u16.to_le_bytes());
         bytes[2] = 0x03;
         let mut trits = [Trit::Zero; Q2_0_BLOCK];
-        let mut scales = [0u16; 1];
+        let mut scales = [0_u16; 1];
         assert_eq!(
             decode_q2_0(&bytes, &mut trits, &mut scales),
             Err(BridgeError::UnsupportedCode)
         );
+    }
+
+    #[test]
+    fn q2_0_byte_and_lane_order_golden_vector() {
+        // Period-3 codes across 64 elements: every byte carries three
+        // distinct lanes and consecutive bytes differ — byte order AND
+        // lane order both pinned (uniform 0xA4 bytes are position-blind).
+        // codes: i%3 == 0 → −1 (00), 1 → 0 (01), 2 → +1 (10).
+        let code_of = |i: usize| -> u8 { (i % 3) as u8 };
+        let mut bytes = Vec::with_capacity(18);
+        bytes.extend_from_slice(&0x4400_u16.to_le_bytes()); // fp16 4.0
+        for j in 0..16_usize {
+            let mut b = 0_u8;
+            for lane in 0..4_usize {
+                b |= code_of(4 * j + lane) << (2 * lane);
+            }
+            bytes.push(b);
+        }
+        let mut trits = [Trit::Zero; Q2_0_BLOCK];
+        let mut scales = [0_u16; 1];
+        decode_q2_0(&bytes, &mut trits, &mut scales).expect("decode");
+        for (i, t) in trits.iter().enumerate() {
+            let want = match i % 3 {
+                0 => Trit::MinusOne,
+                1 => Trit::Zero,
+                _ => Trit::One,
+            };
+            assert_eq!(*t, want, "element {i}");
+        }
     }
 
     #[test]
@@ -677,6 +786,33 @@ mod tests {
         for &(h, f32_bits, milli) in cases {
             assert_eq!(half_to_f32_bits(h), f32_bits, "f32 bits for fp16 {h:#06x}");
             assert_eq!(half_to_milli(h), milli, "milli for fp16 {h:#06x}");
+        }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn half_to_milli_exhaustive_vs_f64() {
+        // 2026-08-15 review: the milli conversion is hostile-file input
+        // (every fp16 bit pattern can arrive in a Q1_0/Q2_0 scale) —
+        // pin ALL 65 536 of them against an f64 reference instead of
+        // trusting construction. Runs in milliseconds.
+        for h in 0..=u16::MAX {
+            let f = f32::from_bits(half_to_f32_bits(h));
+            let want: i64 = if f.is_nan() {
+                0
+            } else if f.is_infinite() {
+                i64::from(if f > 0.0 { i32::MAX } else { i32::MIN })
+            } else {
+                let r = (f64::from(f) * 1000.0).round();
+                if r >= f64::from(i32::MAX) {
+                    i64::from(i32::MAX)
+                } else if r <= f64::from(i32::MIN) {
+                    i64::from(i32::MIN)
+                } else {
+                    r as i64
+                }
+            };
+            assert_eq!(i64::from(half_to_milli(h)), want, "fp16 bits {h:#06x}");
         }
     }
 
