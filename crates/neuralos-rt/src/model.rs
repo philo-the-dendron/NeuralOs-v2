@@ -41,10 +41,9 @@
 //!   bit-identical — pinned by exact-equality tests (tolerance 0) on a
 //!   synthetic nonzero model (CI) and on the real file.
 
-use crate::gguf::{GgufFile, MetadataValue};
+use crate::gguf::{GgufFile, MetadataValue, GGML_TYPE_Q1_0, GGML_TYPE_Q2_0};
 use crate::math::{div_round_half_away, MathKit, RopeTables};
 use crate::norm::rms_norm_milli;
-use crate::q1_0::{matvec_scaled, q1_0_row_to_milli};
 
 /// Residual-stream soundness rail for the 1.7B shape (emb 2048):
 /// `rms_norm_milli`'s `Σx²` accumulation (checked) is guaranteed only
@@ -248,16 +247,94 @@ pub struct ForwardHealth {
 #[derive(Debug)]
 struct LayerSlices {
     attn_norm: Vec<i32>,  // milli, emb
-    q: Vec<u8>,           // q1_0 rows: heads·head_dim out × emb in
-    k: Vec<u8>,           // kv_heads·head_dim out
-    v: Vec<u8>,           // kv_heads·head_dim out
+    q: QuantData,         // heads·head_dim out × emb in
+    k: QuantData,         // kv_heads·head_dim out
+    v: QuantData,         // kv_heads·head_dim out
     q_norm: Vec<i32>,     // milli, head_dim
     k_norm: Vec<i32>,     // milli, head_dim
-    out_w: Vec<u8>,       // emb out × heads·head_dim in
+    out_w: QuantData,     // emb out × heads·head_dim in
     ffn_norm: Vec<i32>,   // milli, emb
-    gate: Vec<u8>,        // ffn out × emb in
-    up: Vec<u8>,          // ffn out × emb in
-    down: Vec<u8>,        // emb out × ffn in
+    gate: QuantData,      // ffn out × emb in
+    up: QuantData,        // ffn out × emb in
+    down: QuantData,      // emb out × ffn in
+}
+
+/// A quantized weight tensor's bytes plus the format they lay in —
+/// the per-tensor type routing (session D). Q1_0 files construct only
+/// [`QuantData::Q10`] and hit the SAME `q1_0` functions the 1.7B/4B
+/// sessions ran; Q2_0 files construct [`QuantData::Q20`] and hit the
+/// sibling module. Mixed files (f32 norms + either weight format) are
+/// the normal case and Just Work — norms never pass through here.
+#[derive(Debug)]
+pub enum QuantData {
+    /// `GGML_TYPE_Q1_0` (41): 128 w / 18 B blocks, fp16 γ = mean|w| +
+    /// 16 sign bytes.
+    Q10(Vec<u8>),
+    /// `GGML_TYPE_Q2_0` (42): 128 w / 34 B blocks, fp16 d = max|w| +
+    /// 32 code bytes.
+    Q20(Vec<u8>),
+}
+
+impl QuantData {
+    /// The raw block bytes (format-agnostic slicing is the caller's,
+    /// via [`QuantData::row_bytes`]).
+    fn raw(&self) -> &[u8] {
+        match self {
+            Self::Q10(d) | Self::Q20(d) => d,
+        }
+    }
+
+    /// Row stride for a `width`-wide tensor of this format.
+    fn row_bytes(&self, width: usize) -> usize {
+        match self {
+            Self::Q10(_) => width / crate::q1_0::Q1_0_BLOCK * crate::q1_0::Q1_0_BLOCK_BYTES,
+            Self::Q20(_) => width / crate::q2_0::Q2_0_BLOCK * crate::q2_0::Q2_0_BLOCK_BYTES,
+        }
+    }
+
+    /// The unit-chaining matvec (milli in, milli out) — the per-layer
+    /// compute seam both weight formats route through.
+    ///
+    /// # Errors
+    ///
+    /// [`ModelError::BadTensorSize`] on any size/code error from the
+    /// underlying format matvec.
+    fn matvec_scaled(&self, x_milli: &[i32], rows: usize, out: &mut [i32]) -> Result<(), ModelError> {
+        let r: Result<(), ()> = match self {
+            Self::Q10(d) => crate::q1_0::matvec_scaled(d, x_milli, rows, out).map_err(|_| ()),
+            Self::Q20(d) => crate::q2_0::matvec_scaled(d, x_milli, rows, out).map_err(|_| ()),
+        };
+        r.map_err(|_| ModelError::BadTensorSize("matvec".into()))
+    }
+
+    /// One row's bytes → milli values (the embedding-materialization
+    /// path).
+    ///
+    /// # Errors
+    ///
+    /// [`ModelError::BadTensorSize`] on bad sizes or an impossible
+    /// code.
+    fn row_to_milli(&self, row: &[u8], out: &mut [i32]) -> Result<(), ModelError> {
+        let r: Result<(), ()> = match self {
+            Self::Q10(_) => crate::q1_0::q1_0_row_to_milli(row, out).map_err(|_| ()),
+            Self::Q20(_) => crate::q2_0::q2_0_row_to_milli(row, out).map_err(|_| ()),
+        };
+        r.map_err(|_| ModelError::BadTensorSize("row".into()))
+    }
+
+    /// One row × i16 acts → raw partial-sum units (the logits path —
+    /// `rows = 1` against the row slice the caller strides out).
+    ///
+    /// # Errors
+    ///
+    /// [`ModelError::BadTensorSize`] on any underlying error.
+    fn row_matvec(&self, row: &[u8], acts: &[i16], out: &mut [i32]) -> Result<(), ModelError> {
+        let r: Result<(), ()> = match self {
+            Self::Q10(_) => crate::q1_0::q1_0_matvec(row, acts, 1, out).map_err(|_| ()),
+            Self::Q20(_) => crate::q2_0::q2_0_matvec(row, acts, 1, out).map_err(|_| ()),
+        };
+        r.map_err(|_| ModelError::BadTensorSize("row matvec".into()))
+    }
 }
 
 /// A persistent, append-only decode state: the per-layer KV caches plus
@@ -317,7 +394,7 @@ pub struct Qwen3 {
     cfg: ModelConfig,
     layers: Vec<LayerSlices>,
     out_norm: Vec<i32>,
-    emb: Vec<u8>,
+    emb: QuantData,
     kit: MathKit,
     rope: RopeTables,
     /// (main, extra) score-scale split for `cfg.head_dim`.
@@ -439,6 +516,51 @@ fn q1_0_tensor(
     Ok(d[..expect].to_vec())
 }
 
+/// Load a quantized weight tensor of `rows` rows, each `width` wide,
+/// routing on the tensor's own GGML type: `Q1_0` (41) goes through
+/// [`q1_0_tensor`] VERBATIM — the 1.7B/4B path is byte-identical to
+/// pre-session-D (structural identity, pinned by the regression
+/// suite); `Q2_0` (42) validates the same way at the 128 w / 34 B
+/// geometry (dims, exact-or-alignment-padded bytes, formula bytes
+/// only); anything else is LOUD — this loader reads two ternary
+/// formats and refuses to guess at a third.
+fn quant_tensor(
+    f: &GgufFile<'_>,
+    name: &str,
+    rows: usize,
+    width: usize,
+) -> Result<QuantData, ModelError> {
+    let t = f.tensor(name).ok_or_else(|| ModelError::MissingTensor(name.into()))?;
+    match t.ty {
+        GGML_TYPE_Q1_0 => Ok(QuantData::Q10(q1_0_tensor(f, name, rows, width)?)),
+        GGML_TYPE_Q2_0 => {
+            if t.dims.len() != 2 || t.dims[0] != width as u64 || t.dims[1] != rows as u64 {
+                return Err(ModelError::BadTensorSize(format!(
+                    "{name} dims {:?} (want [{width}, {rows}])",
+                    t.dims
+                )));
+            }
+            let d = f.tensor_data(t).map_err(|_| ModelError::BadTensorSize(name.into()))?;
+            let expect = rows * (width / crate::q2_0::Q2_0_BLOCK) * crate::q2_0::Q2_0_BLOCK_BYTES;
+            let align = f.alignment.max(1);
+            let padded = expect
+                .checked_add(align as usize - 1)
+                .map(|x| x / align as usize * align as usize)
+                .unwrap_or(usize::MAX);
+            if d.len() != expect && d.len() != padded {
+                return Err(ModelError::BadTensorSize(format!(
+                    "{name} ({} B, want {expect} (or {padded} padded))",
+                    d.len()
+                )));
+            }
+            Ok(QuantData::Q20(d[..expect].to_vec()))
+        }
+        ty => Err(ModelError::BadTensorSize(format!(
+            "{name}: unsupported tensor type {ty} (this loader reads q1_0 = 41 and q2_0 = 42)"
+        ))),
+    }
+}
+
 /// Cross-check an optional metadata KV against a wanted integer —
 /// loud on mismatch, silent pass-through when the key is absent
 /// (defaults documented at the call sites).
@@ -524,16 +646,16 @@ impl Qwen3 {
         for l in 0..cfg.layers {
             layers.push(LayerSlices {
                 attn_norm: f32_tensor_milli(f, &format!("blk.{l}.attn_norm.weight"), cfg.emb)?,
-                q: q1_0_tensor(f, &format!("blk.{l}.attn_q.weight"), q_rows, cfg.emb)?,
-                k: q1_0_tensor(f, &format!("blk.{l}.attn_k.weight"), kv_rows, cfg.emb)?,
-                v: q1_0_tensor(f, &format!("blk.{l}.attn_v.weight"), kv_rows, cfg.emb)?,
+                q: quant_tensor(f, &format!("blk.{l}.attn_q.weight"), q_rows, cfg.emb)?,
+                k: quant_tensor(f, &format!("blk.{l}.attn_k.weight"), kv_rows, cfg.emb)?,
+                v: quant_tensor(f, &format!("blk.{l}.attn_v.weight"), kv_rows, cfg.emb)?,
                 q_norm: f32_tensor_milli(f, &format!("blk.{l}.attn_q_norm.weight"), cfg.head_dim)?,
                 k_norm: f32_tensor_milli(f, &format!("blk.{l}.attn_k_norm.weight"), cfg.head_dim)?,
-                out_w: q1_0_tensor(f, &format!("blk.{l}.attn_output.weight"), cfg.emb, q_rows)?,
+                out_w: quant_tensor(f, &format!("blk.{l}.attn_output.weight"), cfg.emb, q_rows)?,
                 ffn_norm: f32_tensor_milli(f, &format!("blk.{l}.ffn_norm.weight"), cfg.emb)?,
-                gate: q1_0_tensor(f, &format!("blk.{l}.ffn_gate.weight"), cfg.ffn, cfg.emb)?,
-                up: q1_0_tensor(f, &format!("blk.{l}.ffn_up.weight"), cfg.ffn, cfg.emb)?,
-                down: q1_0_tensor(f, &format!("blk.{l}.ffn_down.weight"), cfg.emb, cfg.ffn)?,
+                gate: quant_tensor(f, &format!("blk.{l}.ffn_gate.weight"), cfg.ffn, cfg.emb)?,
+                up: quant_tensor(f, &format!("blk.{l}.ffn_up.weight"), cfg.ffn, cfg.emb)?,
+                down: quant_tensor(f, &format!("blk.{l}.ffn_down.weight"), cfg.emb, cfg.ffn)?,
             });
         }
         // vocab = embedding row count (no vocab_size KV in these files).
@@ -548,7 +670,7 @@ impl Qwen3 {
         }
         cfg.vocab = usize::try_from(emb_t.dims[1])
             .map_err(|_| ModelError::BadTensorSize("token_embd rows".into()))?;
-        let emb = q1_0_tensor(f, "token_embd.weight", cfg.vocab, cfg.emb)?;
+        let emb = quant_tensor(f, "token_embd.weight", cfg.vocab, cfg.emb)?;
         let rope = RopeTables::new_yarn(
             cfg.head_dim,
             max_pos,
@@ -581,15 +703,15 @@ impl Qwen3 {
     fn embed(&self, token: u32, out: &mut [i32]) -> Result<(), ModelError> {
         let row_bytes = self.emb_row_bytes();
         let t = usize::try_from(token).map_err(|_| ModelError::TokenOutOfRange)?;
-        if t >= self.emb.len() / row_bytes {
+        if t >= self.emb.raw().len() / row_bytes {
             return Err(ModelError::TokenOutOfRange);
         }
-        let row = &self.emb[t * row_bytes..][..row_bytes];
-        q1_0_row_to_milli(row, out).map_err(|_| ModelError::BadTensorSize("emb row".into()))
+        let row = &self.emb.raw()[t * row_bytes..][..row_bytes];
+        self.emb.row_to_milli(row, out)
     }
 
     fn emb_row_bytes(&self) -> usize {
-        self.cfg.emb / crate::q1_0::Q1_0_BLOCK * crate::q1_0::Q1_0_BLOCK_BYTES
+        self.emb.row_bytes(self.cfg.emb)
     }
 
     /// Full forward: `tokens` (length n ≤ max_pos) → per-position hidden
@@ -713,12 +835,11 @@ impl Qwen3 {
         for (l, layer) in self.layers.iter().enumerate() {
             // ---- Attention (this position against the cached history) ----
             rms_norm_milli(&h, &layer.attn_norm, &mut normed);
-            matvec_scaled(&layer.q, &normed, heads * head_dim, &mut q_raw)
-                .map_err(|_| ModelError::BadTensorSize("q".into()))?;
-            matvec_scaled(&layer.k, &normed, kv_width, &mut k_raw)
-                .map_err(|_| ModelError::BadTensorSize("k".into()))?;
-            matvec_scaled(&layer.v, &normed, kv_width, &mut v_raw)
-                .map_err(|_| ModelError::BadTensorSize("v".into()))?;
+            layer
+                .q
+                .matvec_scaled(&normed, heads * head_dim, &mut q_raw)?;
+            layer.k.matvec_scaled(&normed, kv_width, &mut k_raw)?;
+            layer.v.matvec_scaled(&normed, kv_width, &mut v_raw)?;
 
             ses.k_cache[l].push(vec![0_i32; kv_width]);
             ses.v_cache[l].push(vec![0_i32; kv_width]);
@@ -773,8 +894,7 @@ impl Qwen3 {
                         .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
                 }
             }
-            matvec_scaled(&layer.out_w, &ctx, emb, &mut attn_out)
-                .map_err(|_| ModelError::BadTensorSize("out".into()))?;
+            layer.out_w.matvec_scaled(&ctx, emb, &mut attn_out)?;
             for d in 0..emb {
                 h[d] = h[d].saturating_add(attn_out[d]);
             }
@@ -783,10 +903,8 @@ impl Qwen3 {
             rms_norm_milli(&h, &layer.ffn_norm, &mut normed);
             let mut gate = vec![0_i32; ffn];
             let mut up = vec![0_i32; ffn];
-            matvec_scaled(&layer.gate, &normed, ffn, &mut gate)
-                .map_err(|_| ModelError::BadTensorSize("gate".into()))?;
-            matvec_scaled(&layer.up, &normed, ffn, &mut up)
-                .map_err(|_| ModelError::BadTensorSize("up".into()))?;
+            layer.gate.matvec_scaled(&normed, ffn, &mut gate)?;
+            layer.up.matvec_scaled(&normed, ffn, &mut up)?;
             for i in 0..ffn {
                 let s = i64::from(self.kit.silu_milli(gate[i]));
                 let u = i64::from(up[i]);
@@ -794,8 +912,7 @@ impl Qwen3 {
                     .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
             }
             let mut down = vec![0_i32; emb];
-            matvec_scaled(&layer.down, &gate, emb, &mut down)
-                .map_err(|_| ModelError::BadTensorSize("down".into()))?;
+            layer.down.matvec_scaled(&gate, emb, &mut down)?;
             for d in 0..emb {
                 h[d] = h[d].saturating_add(down[d]);
             }
@@ -854,12 +971,11 @@ impl Qwen3 {
             let mut acc = vec![0_i64; head_dim];
             for pos in 0..n {
                 rms_norm_milli(&h[pos], &layer.attn_norm, &mut normed);
-                matvec_scaled(&layer.q, &normed, heads * head_dim, &mut q_raw)
-                    .map_err(|_| ModelError::BadTensorSize("q".into()))?;
-                matvec_scaled(&layer.k, &normed, kv_width, &mut k_raw)
-                    .map_err(|_| ModelError::BadTensorSize("k".into()))?;
-                matvec_scaled(&layer.v, &normed, kv_width, &mut v_raw)
-                    .map_err(|_| ModelError::BadTensorSize("v".into()))?;
+                layer
+                    .q
+                    .matvec_scaled(&normed, heads * head_dim, &mut q_raw)?;
+                layer.k.matvec_scaled(&normed, kv_width, &mut k_raw)?;
+                layer.v.matvec_scaled(&normed, kv_width, &mut v_raw)?;
 
                 // Per-head q/k norm + rope; stash KV.
                 for kv in 0..kv_heads {
@@ -916,8 +1032,7 @@ impl Qwen3 {
                     }
                 }
                 // Output projection + residual.
-                matvec_scaled(&layer.out_w, &ctx, emb, &mut attn_out)
-                    .map_err(|_| ModelError::BadTensorSize("out".into()))?;
+                layer.out_w.matvec_scaled(&ctx, emb, &mut attn_out)?;
                 for d in 0..emb {
                     h[pos][d] = h[pos][d].saturating_add(attn_out[d]);
                 }
@@ -933,10 +1048,8 @@ impl Qwen3 {
             }
             for hp in h.iter_mut().take(n) {
                 rms_norm_milli(hp, &layer.ffn_norm, &mut normed);
-                matvec_scaled(&layer.gate, &normed, ffn, &mut gate)
-                    .map_err(|_| ModelError::BadTensorSize("gate".into()))?;
-                matvec_scaled(&layer.up, &normed, ffn, &mut up)
-                    .map_err(|_| ModelError::BadTensorSize("up".into()))?;
+                layer.gate.matvec_scaled(&normed, ffn, &mut gate)?;
+                layer.up.matvec_scaled(&normed, ffn, &mut up)?;
                 // SiLU(gate) ⊙ up, milli: silu_milli × up / 1000.
                 for i in 0..ffn {
                     let s = i64::from(self.kit.silu_milli(gate[i]));
@@ -944,8 +1057,7 @@ impl Qwen3 {
                     gate[i] = div_round_half_away(s * u, 1000)
                         .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
                 }
-                matvec_scaled(&layer.down, &gate, emb, &mut down)
-                    .map_err(|_| ModelError::BadTensorSize("down".into()))?;
+                layer.down.matvec_scaled(&gate, emb, &mut down)?;
                 for d in 0..emb {
                     hp[d] = hp[d].saturating_add(down[d]);
                 }
@@ -1005,13 +1117,12 @@ impl Qwen3 {
             })
             .collect();
         let row_bytes = self.emb_row_bytes();
-        let rows = self.emb.len() / row_bytes;
+        let rows = self.emb.raw().len() / row_bytes;
         let mut raw = [0_i32; 1];
         let mut all: Vec<(u32, i32)> = Vec::with_capacity(rows);
         for t in 0..rows {
-            let row = &self.emb[t * row_bytes..][..row_bytes];
-            crate::q1_0::q1_0_matvec(row, &acts, 1, &mut raw)
-                .map_err(|_| ModelError::BadTensorSize("emb".into()))?;
+            let row = &self.emb.raw()[t * row_bytes..][..row_bytes];
+            self.emb.row_matvec(row, &acts, &mut raw)?;
             // Rescale into true milli units (ranking is invariant — the
             // factor is global and positive).
             let milli = div_round_half_away(i64::from(raw[0]) * i64::from(amax), 32_767)
@@ -1050,13 +1161,12 @@ impl Qwen3 {
             })
             .collect();
         let row_bytes = self.emb_row_bytes();
-        let rows = self.emb.len() / row_bytes;
+        let rows = self.emb.raw().len() / row_bytes;
         let mut raw = [0_i32; 1];
         let mut best: (u32, i32) = (0, i32::MIN);
         for t in 0..rows {
-            let row = &self.emb[t * row_bytes..][..row_bytes];
-            crate::q1_0::q1_0_matvec(row, &acts, 1, &mut raw)
-                .map_err(|_| ModelError::BadTensorSize("emb".into()))?;
+            let row = &self.emb.raw()[t * row_bytes..][..row_bytes];
+            self.emb.row_matvec(row, &acts, &mut raw)?;
             let milli = div_round_half_away(i64::from(raw[0]) * i64::from(amax), 32_767)
                 .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
             if milli > best.1 {
@@ -1204,22 +1314,22 @@ mod tests {
         let row_bytes = |rows: usize, width: usize| rows * (width / 128) * 18;
         let layer = LayerSlices {
             attn_norm: vec![0_i32; cfg.emb],
-            q: vec![0_u8; row_bytes(cfg.heads * cfg.head_dim, cfg.emb)],
-            k: vec![0_u8; row_bytes(cfg.kv_heads * cfg.head_dim, cfg.emb)],
-            v: vec![0_u8; row_bytes(cfg.kv_heads * cfg.head_dim, cfg.emb)],
+            q: QuantData::Q10(vec![0_u8; row_bytes(cfg.heads * cfg.head_dim, cfg.emb)]),
+            k: QuantData::Q10(vec![0_u8; row_bytes(cfg.kv_heads * cfg.head_dim, cfg.emb)]),
+            v: QuantData::Q10(vec![0_u8; row_bytes(cfg.kv_heads * cfg.head_dim, cfg.emb)]),
             q_norm: vec![0_i32; cfg.head_dim],
             k_norm: vec![0_i32; cfg.head_dim],
-            out_w: vec![0_u8; row_bytes(cfg.emb, cfg.heads * cfg.head_dim)],
+            out_w: QuantData::Q10(vec![0_u8; row_bytes(cfg.emb, cfg.heads * cfg.head_dim)]),
             ffn_norm: vec![0_i32; cfg.emb],
-            gate: vec![0_u8; row_bytes(cfg.ffn, cfg.emb)],
-            up: vec![0_u8; row_bytes(cfg.ffn, cfg.emb)],
-            down: vec![0_u8; row_bytes(cfg.emb, cfg.ffn)],
+            gate: QuantData::Q10(vec![0_u8; row_bytes(cfg.ffn, cfg.emb)]),
+            up: QuantData::Q10(vec![0_u8; row_bytes(cfg.ffn, cfg.emb)]),
+            down: QuantData::Q10(vec![0_u8; row_bytes(cfg.emb, cfg.ffn)]),
         };
         Qwen3 {
             cfg: cfg.clone(),
             layers: vec![layer],
             out_norm: vec![0_i32; cfg.emb],
-            emb: vec![0_u8; row_bytes(cfg.vocab, cfg.emb)],
+            emb: QuantData::Q10(vec![0_u8; row_bytes(cfg.vocab, cfg.emb)]),
             kit: MathKit::new(),
             rope: RopeTables::new_yarn(
                 cfg.head_dim,
@@ -1583,22 +1693,22 @@ mod tests {
         let cfg = cfg_17b(emb_rows);
         let layer = LayerSlices {
             attn_norm: vec![1000_i32; cfg.emb],
-            q: fill(cfg.heads * cfg.head_dim, cfg.emb),
-            k: fill(cfg.kv_heads * cfg.head_dim, cfg.emb),
-            v: fill(cfg.kv_heads * cfg.head_dim, cfg.emb),
+            q: QuantData::Q10(fill(cfg.heads * cfg.head_dim, cfg.emb)),
+            k: QuantData::Q10(fill(cfg.kv_heads * cfg.head_dim, cfg.emb)),
+            v: QuantData::Q10(fill(cfg.kv_heads * cfg.head_dim, cfg.emb)),
             q_norm: vec![1000_i32; cfg.head_dim],
             k_norm: vec![1000_i32; cfg.head_dim],
-            out_w: fill(cfg.emb, cfg.heads * cfg.head_dim),
+            out_w: QuantData::Q10(fill(cfg.emb, cfg.heads * cfg.head_dim)),
             ffn_norm: vec![1000_i32; cfg.emb],
-            gate: fill(cfg.ffn, cfg.emb),
-            up: fill(cfg.ffn, cfg.emb),
-            down: fill(cfg.emb, cfg.ffn),
+            gate: QuantData::Q10(fill(cfg.ffn, cfg.emb)),
+            up: QuantData::Q10(fill(cfg.ffn, cfg.emb)),
+            down: QuantData::Q10(fill(cfg.emb, cfg.ffn)),
         };
         Qwen3 {
             cfg: cfg.clone(),
             layers: vec![layer],
             out_norm: vec![1000_i32; cfg.emb],
-            emb: fill(cfg.vocab, cfg.emb),
+            emb: QuantData::Q10(fill(cfg.vocab, cfg.emb)),
             kit: MathKit::new(),
             rope: RopeTables::new_yarn(
                 cfg.head_dim,
@@ -1666,6 +1776,137 @@ mod tests {
         assert!(ses2.is_empty(), "failed step must not advance the session");
     }
 
+    /// A NONZERO all-q2_0 model (mixed with f32 norms by construction):
+    /// every q2_0 block carries fp16 scale 1.0 and period-3 codes
+    /// (−1, 0, +1). The routing's own equivalence falsifier — the
+    /// incremental path must reproduce the full forward BIT-EXACTLY
+    /// through the Q20 arm of every dispatch site.
+    fn synthetic_model_nonzero_q2_0(max_pos: usize, emb_rows: usize) -> Qwen3 {
+        let fill = |rows: usize, width: usize| -> Vec<u8> {
+            let blocks = width / 128;
+            let mut d = Vec::with_capacity(rows * blocks * 34);
+            for _ in 0..rows * blocks {
+                d.extend_from_slice(&0x3C00_u16.to_le_bytes());
+                let mut codes = [0_u8; 32];
+                for k in 0..128 {
+                    codes[k / 4] |= ((k % 3) as u8) << (2 * (k % 4));
+                }
+                d.extend_from_slice(&codes);
+            }
+            d
+        };
+        let cfg = cfg_17b(emb_rows);
+        let layer = LayerSlices {
+            attn_norm: vec![1000_i32; cfg.emb],
+            q: QuantData::Q20(fill(cfg.heads * cfg.head_dim, cfg.emb)),
+            k: QuantData::Q20(fill(cfg.kv_heads * cfg.head_dim, cfg.emb)),
+            v: QuantData::Q20(fill(cfg.kv_heads * cfg.head_dim, cfg.emb)),
+            q_norm: vec![1000_i32; cfg.head_dim],
+            k_norm: vec![1000_i32; cfg.head_dim],
+            out_w: QuantData::Q20(fill(cfg.emb, cfg.heads * cfg.head_dim)),
+            ffn_norm: vec![1000_i32; cfg.emb],
+            gate: QuantData::Q20(fill(cfg.ffn, cfg.emb)),
+            up: QuantData::Q20(fill(cfg.ffn, cfg.emb)),
+            down: QuantData::Q20(fill(cfg.emb, cfg.ffn)),
+        };
+        Qwen3 {
+            cfg: cfg.clone(),
+            layers: vec![layer],
+            out_norm: vec![1000_i32; cfg.emb],
+            emb: QuantData::Q20(fill(cfg.vocab, cfg.emb)),
+            kit: MathKit::new(),
+            rope: RopeTables::new_yarn(
+                cfg.head_dim,
+                max_pos,
+                cfg.rope_base,
+                cfg.yarn_factor,
+                cfg.orig_ctx,
+                32.0,
+                1.0,
+            ),
+            score: ModelConfig::score_scale(cfg.head_dim),
+            max_pos,
+            block_states: Vec::new(),
+            capture: false,
+        }
+    }
+
+    #[test]
+    fn q2_0_model_incremental_matches_forward_exact() {
+        let prompt: &[u32] = &[0, 42, 7, 3];
+        let mut model = synthetic_model_nonzero_q2_0(16, 64);
+        let full = model.forward(prompt).expect("full forward");
+        let mut ses = model.new_session();
+        let inc = model.prefill(&mut ses, prompt).expect("prefill");
+        for (pos, (a, b)) in inc.iter().zip(full.iter()).enumerate() {
+            assert_eq!(a, b, "q2_0 hidden mismatch at pos {pos}");
+        }
+        let mut ses2 = model.new_session();
+        model.prefill(&mut ses2, prompt).expect("prefill 2");
+        let h_next = model.step(&mut ses2, 5).expect("step");
+        let full2 = model.forward(&[0, 42, 7, 3, 5]).expect("full forward 2");
+        assert_eq!(&h_next, full2.last().expect("nonempty"));
+        assert!(ses2.max_abs_residual() > 0);
+        // Logits paths route through the Q20 arm too.
+        let (id, val) = model.argmax_logit(&h_next).unwrap();
+        assert!(val != 0 || id == 0);
+        let top = model.topk_logits(&h_next, 3).unwrap();
+        assert_eq!(top[0], (id, val));
+    }
+
+    #[test]
+    fn quant_tensor_routes_by_type_and_rejects_unknown() {
+        // q2_0 dims/bytes validated exactly like q1_0 (transposed
+        // rejects), and an unknown type is LOUD.
+        let bytes = 2048 * (6144 / 128) * 34;
+        let data = vec![0_u8; bytes];
+        let good = one_tensor_file("t.weight", &[6144, 2048], 42, &data);
+        let f = GgufFile::parse(&good).expect("parse");
+        assert!(matches!(quant_tensor(&f, "t.weight", 2048, 6144), Ok(QuantData::Q20(_))));
+        let bad = one_tensor_file("t.weight", &[2048, 6144], 42, &data);
+        let f = GgufFile::parse(&bad).expect("parse");
+        assert!(matches!(
+            quant_tensor(&f, "t.weight", 2048, 6144),
+            Err(ModelError::BadTensorSize(_))
+        ));
+        // Truncated q2_0 data (right dims, wrong byte count) errors.
+        let short = one_tensor_file("t.weight", &[6144, 2048], 42, &data[..bytes - 34]);
+        let f = GgufFile::parse(&short).expect("parse");
+        assert!(matches!(
+            quant_tensor(&f, "t.weight", 2048, 6144),
+            Err(ModelError::BadTensorSize(_))
+        ));
+        // f32 (type 0) where a quantized weight is required → loud,
+        // naming the type and the two this loader reads.
+        let f32s = vec![0_u8; 256];
+        let wrong = one_tensor_file("t.weight", &[6144, 2048], 0, &f32s);
+        let f = GgufFile::parse(&wrong).expect("parse");
+        assert!(matches!(
+            quant_tensor(&f, "t.weight", 2048, 6144),
+            Err(ModelError::BadTensorSize(msg)) if msg.contains("unsupported tensor type 0")
+        ));
+        // And q1_0 still routes to the verbatim path.
+        let q1 = vec![0_u8; 2048 * (6144 / 128) * 18];
+        let q1file = one_tensor_file("t.weight", &[6144, 2048], 41, &q1);
+        let f = GgufFile::parse(&q1file).expect("parse");
+        assert!(matches!(quant_tensor(&f, "t.weight", 2048, 6144), Ok(QuantData::Q10(_))));
+    }
+
+    #[test]
+    fn q2_0_loader_accepts_alignment_padding() {
+        // Mirror of the q1_0 padding test at the 34 B geometry: 3 rows
+        // × 1 block = 102 B, padded to the 32-byte boundary (128).
+        let expect = 3 * 34;
+        let data = vec![0xA5_u8; expect + 32 - expect % 32];
+        let b = one_tensor_file("t.weight", &[128, 3], 42, &data);
+        let f = GgufFile::parse(&b).expect("parse");
+        let got = quant_tensor(&f, "t.weight", 3, 128).expect("padded slice loads");
+        let QuantData::Q20(d) = got else {
+            panic!("must route to Q20");
+        };
+        assert_eq!(d.len(), expect, "padding must not be copied");
+    }
+
     #[test]
     fn argmax_tie_breaks_lowest_and_finds_peak() {
         // Uniform logits (zero-weight model) → tie → lowest id (0).
@@ -1677,9 +1918,12 @@ mod tests {
         // + signs dominates every dot product.
         let mut model = synthetic_model_nonzero(4, 4);
         let row_bytes = 2048 / 128 * 18;
+        let QuantData::Q10(emb_bytes) = &mut model.emb else {
+            panic!("q1_0 synthetic model must carry QuantData::Q10");
+        };
         for b in 0..2048 / 128 {
             let base = 3 * row_bytes + b * 18;
-            model.emb[base..base + 2].copy_from_slice(&0x7BFF_u16.to_le_bytes()); // fp16 ≈ 6.5e4
+            emb_bytes[base..base + 2].copy_from_slice(&0x7BFF_u16.to_le_bytes()); // fp16 ≈ 6.5e4
         }
         let h = model.forward(&[0]).expect("forward");
         let (id, val) = model.argmax_logit(&h[0]).unwrap();
@@ -1723,13 +1967,26 @@ mod tests {
         assert_eq!(health.per_layer_delta.len(), 28);
     }
 
-    /// BOTH real files load through the config-driven loader with the
-    /// geometry the probe pinned, and a 2-token forward produces sane
-    /// (nonzero, under-rail) residuals on each — the 4B session's
-    /// loader acceptance test.
+    /// ALL THREE real files load through the config-driven loader with
+    /// the geometry the probe pinned, and a 2-token forward produces
+    /// sane (nonzero, under-rail) residuals on each — the 4B session's
+    /// loader acceptance test, grown by the Q2_0 member (session D;
+    /// the Q2_0 file's config is the 4B Q1_0's exactly, per probe).
     #[test]
-    #[ignore = "needs models/Bonsai-{1.7B,4B}-Q1_0.gguf (gitignored)"]
+    #[ignore = "needs models/Bonsai-{1.7B,4B}-Q1_0.gguf + models/Ternary-Bonsai-4B-Q2_0.gguf (gitignored)"]
     fn real_files_load_with_expected_configs() {
+        let cfg_4b = ModelConfig {
+            emb: 2560,
+            heads: 32,
+            kv_heads: 8,
+            head_dim: 128,
+            ffn: 9728,
+            layers: 36,
+            vocab: 151_669,
+            rope_base: 5e6,
+            yarn_factor: 4.0,
+            orig_ctx: 8192,
+        };
         let cases = [
             (
                 "models/Bonsai-1.7B-Q1_0.gguf",
@@ -1746,21 +2003,8 @@ mod tests {
                     orig_ctx: 8192,
                 },
             ),
-            (
-                "models/Bonsai-4B-Q1_0.gguf",
-                ModelConfig {
-                    emb: 2560,
-                    heads: 32,
-                    kv_heads: 8,
-                    head_dim: 128,
-                    ffn: 9728,
-                    layers: 36,
-                    vocab: 151_669,
-                    rope_base: 5e6,
-                    yarn_factor: 4.0,
-                    orig_ctx: 8192,
-                },
-            ),
+            ("models/Bonsai-4B-Q1_0.gguf", cfg_4b.clone()),
+            ("models/Ternary-Bonsai-4B-Q2_0.gguf", cfg_4b),
         ];
         for (path, want) in cases {
             let Some(buf) = std::fs::read(path).ok().or_else(|| {
