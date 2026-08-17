@@ -163,16 +163,25 @@ pub fn q2_0_matvec(
         for b in 0..blocks {
             let base = b * Q2_0_BLOCK_BYTES;
             let scale_bits = u16::from_le_bytes([row[base], row[base + 1]]);
+            // Branch-free partial: element value = (code − 1) · a with
+            // code ∈ {0,1,2} = {−1,0,+1} (code 3 excluded by the scan);
+            // four LSB-first lanes per code byte.
             let mut partial: i64 = 0;
-            for k in 0..Q2_0_BLOCK {
-                let code = (row[base + 2 + k / 4] >> (2 * (k % 4))) & 0b11;
-                let a = i64::from(acts[b * Q2_0_BLOCK + k]);
-                partial += match code {
-                    0 => -a,
-                    1 => 0,
-                    2 => a,
-                    _ => unreachable!("code 3 excluded by the pre-scan"),
-                };
+            let codes = &row[base + 2..base + Q2_0_BLOCK_BYTES];
+            for (byte, act4) in codes
+                .iter()
+                .zip(acts[b * Q2_0_BLOCK..].chunks_exact(4))
+            {
+                let a = [
+                    i64::from(act4[0]),
+                    i64::from(act4[1]),
+                    i64::from(act4[2]),
+                    i64::from(act4[3]),
+                ];
+                partial += (i64::from(byte & 0b11) - 1) * a[0]
+                    + (i64::from((byte >> 2) & 0b11) - 1) * a[1]
+                    + (i64::from((byte >> 4) & 0b11) - 1) * a[2]
+                    + (i64::from(byte >> 6) - 1) * a[3];
             }
             // d at fp16-EXACT precision — same helper and rationale as
             // the q1_0 path (session C-core): the milli grid quantizes

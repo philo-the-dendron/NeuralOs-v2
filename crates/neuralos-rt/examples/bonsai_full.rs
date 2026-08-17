@@ -49,6 +49,10 @@ fn main() {
     let fwd = t1.elapsed();
     let (emb, layers) = (model.config().emb, model.config().layers);
     let rail = model.residual_sound_max();
+    let weight_format = match f.tensor("token_embd.weight").map(|t| t.ty) {
+        Some(ty) if ty == neuralos_rt::GGML_TYPE_Q2_0 => "Q2_0",
+        _ => "Q1_0",
+    };
     println!("forward: {} tokens × {layers} layers in {fwd:?} (emb {emb}, rail {rail})", PROMPT.len());
     if fwd > std::time::Duration::from_secs(300) {
         println!("FULL: NO (forward exceeded 5 min: {fwd:?})");
@@ -124,5 +128,8 @@ fn main() {
         println!("FULL: NO (argmax collapsed to token 0)");
         std::process::exit(1);
     }
-    println!("FULL: OK — {layers}-block Qwen3 forward + tied logits on real Q1_0 weights, integer compute path");
+    println!(
+        "FULL: OK — {layers}-block Qwen3 forward + tied logits on real {} weights, integer compute path",
+        weight_format
+    );
 }
