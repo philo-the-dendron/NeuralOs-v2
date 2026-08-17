@@ -185,8 +185,9 @@ pub fn q1_0_matvec(
 /// `γ = mant × 2^shift` — dyadic, so integer arithmetic can apply it
 /// with zero quantization. `None` on degenerate scales (sign bit set,
 /// exponent 31 = ±inf/NaN) — callers fall back to the documented
-/// saturation semantics.
-fn half_scale_mant_shift(h: u16) -> Option<(u64, i32)> {
+/// saturation semantics. Shared by the q1_0 and q2_0 compute paths
+/// (fp16-generic — the block layouts differ, the scale does not).
+pub(crate) fn half_scale_mant_shift(h: u16) -> Option<(u64, i32)> {
     if h & 0x8000 != 0 {
         return None; // negative scale: hostile input
     }
