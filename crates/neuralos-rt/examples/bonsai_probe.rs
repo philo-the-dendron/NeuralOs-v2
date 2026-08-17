@@ -92,13 +92,18 @@ fn main() {
             total_q1_0 += 1;
             // Row-major: dim[0] = contiguous width. rows = product of the
             // rest. u128 so hostile dims cannot overflow the expected-size
-            // product into a wrapped pass (review finding).
+            // product into a wrapped pass (review finding). The slice may
+            // carry alignment padding (the 4B's token_embd sits 24 B short
+            // of a 32-byte boundary) — accept the formula size or its
+            // alignment-rounded-up form, nothing else.
             let cols = t.dims.first().copied().unwrap_or(0);
             let rows: u128 = t.dims.iter().skip(1).map(|&d| d as u128).product::<u128>().max(1);
             let expected: u128 = rows * ((cols as u128).div_ceil(128)) * 18;
-            if data.len() as u128 != expected {
+            let align = f.alignment.max(1) as u128;
+            let padded = expected.div_ceil(align) * align;
+            if data.len() as u128 != expected && data.len() as u128 != padded {
                 println!(
-                    "FAIL size: {} got {} bytes, expected {expected}",
+                    "FAIL size: {} got {} bytes, expected {expected} (or {padded} padded)",
                     t.name,
                     data.len()
                 );
@@ -108,12 +113,19 @@ fn main() {
             }
         }
     }
-    // Rope provenance (the runtime pins base 1e6 / orig 8192 — print
-    // what the file actually says; load() cross-checks these).
-    for key in ["qwen3.rope.freq_base", "qwen3.rope.original_context"] {
-        match f.value(key) {
-            Some(v) => println!("rope kv: {key} = {v:?}"),
-            None => println!("rope kv: {key} absent (defaults: 1e6 / 8192)"),
+    // Full config-block provenance (4B session): dump every qwen3.* /
+    // general.* KV verbatim — the config diff vs 1.7B is evidence, and
+    // load() cross-checks the ones it consumes. Strings truncate to
+    // 60 chars (chat templates are multi-KB).
+    for (k, v) in &f.kv {
+        if k.starts_with("qwen3.") || k.starts_with("general.") {
+            let vs = match v {
+                neuralos_rt::MetadataValue::String(s) => {
+                    format!("{:?}", &s.chars().take(60).collect::<String>())
+                }
+                other => format!("{other:?}"),
+            };
+            println!("config kv: {k} = {vs}");
         }
     }
     if failures == 0 {

@@ -107,7 +107,7 @@ fn generate(model: &Qwen3, tok: &Tokenizer, prompt: &str) -> RunResult {
         .prefill(&mut ses, &prompt_ids)
         .expect("prefill on the real model");
     let prefill = t0.elapsed();
-    let mut last = *h.last().expect("nonempty prompt");
+    let mut last = h.last().expect("nonempty prompt").clone();
     let mut gen: Vec<u32> = Vec::new();
     let mut stopped_on_eos = false;
     let t1 = Instant::now();
