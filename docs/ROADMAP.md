@@ -167,6 +167,22 @@ grounds. After: teacher-forced fork comparison argmax-identical
 **3/5 with fork-byte-identical continuations** — the faithful-runtime
 state. Merge call with the principal (commits local per protocol).
 
+**Session 4B (2026-08-16) — runtime generalized to Bonsai-4B; gate
+NO 4/5, fork-attributed.** Config-driven `rt::model` (geometry from
+the file's own KVs — 36 blocks/emb 2560/32-8 heads/FFN 9728/
+freq_base 5e6, head_dim 128 and vocab 151 669 unchanged; score
+scale derived from head_dim, pinned bit-identical to the 1.7B
+constants; alignment-padded tensor slices handled), refactor
+regression-proven on 1.7B (gate byte-identical, real-file
+incremental≡forward green, e1821be worktree witness). On 4B:
+probe/forward/full green (36/36 layers alive), drift 35/36 argmax
+(France second witness 12/12, |dTop| 0.064), and the frozen gate
+**NO 4/5**: p0/p1/p2/p4 pass with fork-byte-identical continuations
+(" five six seven…" — the 1.7B's failure prompt passes on 4B);
+"Monday Tuesday Wednesday"→" Thursday" fails on BOTH runtimes.
+Per-model record: 1.7B NO 3/5, 4B NO 4/5, both the model's ceiling
+under greedy. 8B-vs-stop + merge are the principal's calls.
+
 ### Phase 4 — RISC-V deployment proof
 
 Goal: make the `no_std` claim concrete.

@@ -3,9 +3,9 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 43/43
+progress: 56/56
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-16T21:30:00Z
+updated: 2026-08-17T02:55:00Z
 principal_stated_goal: "ok so we are ready for step 3 ?" → "go" — Stage 3 (shared kernel + hybrid gate), locked choices: A·classification demo, A·absmax i16 activations
 ---
 
@@ -86,35 +86,108 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 (Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre — see Verification.)
 
-- [ ] ISC-44: tokenizer stale-rank bug fixed — BPE heap entries validated
+- [x] ISC-51: the 4B's config pinned from the file BEFORE any code —
+  probe + full `qwen3.*`/`general.*` KV dump on both tiers, diff in
+  Decisions: 36 blocks, emb 2560, 32/8 heads, head_dim 128
+  (key_length == value_length == 128 VERIFIED), FFN 9728, vocab
+  151 669 (tensor-derived — no vocab_size KV), and TWO silent
+  breakers found: `qwen3.rope.freq_base` = **5e6** (1e6 on 1.7B —
+  the old pin would have run wrong rope tables) and the embedding
+  slice carrying 24 B of alignment padding (54 600 840 → 54 600 864;
+  the old exact-size rule rejected the file). Falsifier: probe logs
+  (/tmp/opencode/s4b/probe_{4b,17b}*.log) + the KV dump lines.
+- [x] ISC-52: `rt::model` is config-driven: `ModelConfig::from_gguf`
+  reads the fork's own KVs (required keys loud on absent/non-numeric;
+  value_length/freq_base/eps/scaling-type cross-checked; emb/ffn %128,
+  head_dim %2, heads %kv_heads invariants), runtime dims replace every
+  1.7B constant (attention context `heads·head_dim` — genuinely
+  non-square on 4B's q/attn_output), the score scale DERIVES from
+  head_dim at the load edge and is pinned: `score_scale(128) ==
+  (88, 3883)` bit-identical to the replaced constants, tensor loads
+  tolerate exact-or-alignment-padded sizes (padding never copied).
+  Falsifier: from_gguf_reads_the_4b_config_block,
+  from_gguf_is_loud_on_missing_and_broken,
+  score_scale_pins_the_1_7b_split, loader_accepts_alignment_padding…
+  + ignored real_files_load_with_expected_configs (BOTH files).
+- [x] ISC-53: the refactor is regression-proven behavior-preserving
+  on 1.7B (principal pin №1, hard gate): fresh pre-refactor gate log
+  at e1821be captured, post-refactor re-run byte-diffed — 43/43
+  verdict-bearing lines identical (ids, texts, pass/fail, residuals,
+  verdict; only wall-clock lines excluded); real-file suite green
+  (incremental≡forward exact, release 69 s + debug 888 s); and the
+  full-forward path pinned by an independent witness (e1821be
+  worktree run reproduces the new bonsai_full numbers EXACTLY —
+  the s3.5-recorded top-5 was a pre-C-core artifact, see Learning).
+  Falsifier: any diff line in gate_17b_{baseline,post}.norm diff.
+- [x] ISC-54: the 4B evidence chain, release, RSS on every run:
+  probe PROBE: YES (398 tensors, 253/253 q1_0 incl. the padded
+  embedding, first-block scale 19 milli ∈ [1,100]); forward FORWARD:
+  OK; full FULL: OK (36/36 layers alive, residual 10.96 M « 60.0 M
+  derived rail, 51.5 s); drift (teacher-forced vs fork 4B dumps):
+  p2 12/12, p4 12/12 max |Δtop| 0.064 (the France/tokenizer
+  second witness — fork ids [785, 6722, 315, 9625, 374] ==
+  ours), p3 11/12 with ONE flip at step 1 (" June" 5534 @13.04 vs
+  ours " " 220 @13.14 — a 0.1-margin near-tie); fork E2E 4/5.
+  Peak RSS: 1.17 GB (gate/drift), 584 MB (probe/forward), 1.14 GB
+  (full). Falsifier: /tmp/opencode/s4b/{probe,forward,full,drift,
+  gate,fork4b}* logs.
+- [x] ISC-55: THE GATE on Bonsai-4B (frozen prompts/expected/verdict,
+  zero edits beyond the approved type-only `.cloned()`): **NO — 4/5**.
+  PASS p0 " 8 9 10 11 1", p1 " 14 15 16 17", p2 " five six seven
+  eight nine nine one zero one one two three" (the 1.7B failure
+  prompt PASSES on 4B), p4 " Paris. Paris is the capital of France.
+  Paris is the" — all four BYTE-IDENTICAL to the fork's continuations.
+  FAIL p3: ours ", 2024, 10:0" vs fork ", June 12, 2018," — the fork
+  fails the same prompt (verdict step 0: both argmax ","; " Thursday"
+  outside the fork's top-10); the continuation divergence is the
+  measured step-1 near-tie. Chat demonstrator PASS ("3\n\n4\n\n5",
+  clean eos). Residuals 11.1–15.1 M under the 66.6 M rail. Wall
+  37:22, decode 0.037–0.083 tok/s. **Attribution (same session): the
+  4/5 is the 4B model's ceiling under greedy on the frozen set —
+  fork-reproduced, four continuations fork-byte-identical.** The
+  8B-vs-stop call is the principal's. Falsifier: gate_4b.log +
+  fork4b/*.log contradicting any line here.
+- [x] ISC-56: discipline + docs truth: 4 CI gates green on the
+  refactored code (200 tests: 63 rt + 134 snn + 3 app; clippy
+  -D warnings clean; no_std clean), ignored real-file suite 5/5
+  (release) + the incremental test re-run in debug (888 s) for
+  profile parity with the recorded evidence; VISION/ROADMAP/ISA
+  carry the per-model record; commits LOCAL only — no push, no
+  merge (the principal's gates). The pin-2 deep-dive ladder did
+  NOT trigger (condition "4B lands 3/5" — it landed 4/5); rung
+  availability recorded in Decisions. Falsifier: any gate red,
+  docs absent/contradicting, or a pushed branch/merge commit.
+
+
+- [x] ISC-44: tokenizer stale-rank bug fixed — BPE heap entries validated
   against the push-time rank (fork's text-equality check); regression
   trap in CI (synthetic wrong-rank shape) + real-file pin
   (" France" = 9625, full prompt ids). Falsifier: bpe_stale_rank_entry_does_not_fire_early + real_france_prompt_tokenization_pinned.
-- [ ] ISC-45: attention score unit chain corrected (dot is milli²; milli
+- [x] ISC-45: attention score unit chain corrected (dot is milli²; milli
   score = dot × 88.3883 / 1e6, was /1e3 → every score 1000× too large →
   softmax saturated to hard argmax) — all three sites + the circular
   reference rewritten in real units. Falsifier: attention_pipeline test
   (honest reference) + drift harness numbers.
-- [ ] ISC-46: q1_0 matvec applies γ at fp16-EXACT precision (integer
+- [x] ISC-46: q1_0 matvec applies γ at fp16-EXACT precision (integer
   mantissa×2^shift), milli quantization removed from the compute path;
   hostile-scale fallback preserves Session-A saturation; references
   exact-decoded, regression pin added. Falsifier: matvec tests incl.
   matvec_gamma_is_fp16_exact_not_milli.
-- [ ] ISC-47: drift converged past C-pre's bar: teacher-forced fork
+- [x] ISC-47: drift converged past C-pre's bar: teacher-forced fork
   comparison argmax 36/36 steps across p2/p3/p4, overlap ≥9/10 mean,
   max |Δtop| 0.597 (was 5.407); per-block int-vs-f64 error ≤1.1%
   decaying (was 15.5% injection at block 0). Falsifier: harness tables
   (evidence below) + f64 reference validated against the fork (±0.03).
-- [ ] ISC-48: frozen gate re-run verbatim: 3/5 strict (unchanged), but
+- [x] ISC-48: frozen gate re-run verbatim: 3/5 strict (unchanged), but
   continuations now byte-identical to the fork's greedy (" Paris, and
   the capital of Spain…", " four four the first part…", ": 10:00 AM -
   12") — the faithful-runtime state; chat demonstrator coherent; NO
   verdict stands, now demonstrated at generation level. Falsifier: gate
   log + fork logs side-by-side.
-- [ ] ISC-49: 4 CI gates green (195 tests incl. real-file suite:
+- [x] ISC-49: 4 CI gates green (195 tests incl. real-file suite:
   France pin, vocab pins, incremental≡forward exact); probe/forward/
   full green on the real file. Falsifier: any failing.
-- [ ] ISC-50: docs truth (VISION C-core section, ROADMAP); ISA ledger
+- [x] ISC-50: docs truth (VISION C-core section, ROADMAP); ISA ledger
   updated; merge call presented to the principal (push held per
   protocol). Falsifier: docs absent/contradicting.
 
@@ -519,6 +592,54 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-16 (s4-4B) · **GATE ON BONSAI-4B: NO — 4/5, attributed
+  same-session.** Same frozen prompts, same verdict logic, bigger
+  tier: p0/p1/p2/p4 PASS with continuations BYTE-IDENTICAL to the
+  reference fork's greedy (incl. p2 " five…" — the 1.7B's failure
+  prompt — and p4 " Paris. Paris is the capital of France. Paris is
+  the"); p3 FAILS on both runtimes (ours ", 2024, 10:0", fork
+  ", June 12, 2018,"; both argmax "," at the verdict step, " Thursday"
+  outside the fork's top-10; the continuation divergence is the
+  drift-measured step-1 near-tie, 0.1 logit). Teacher-forced fidelity
+  on 4B: argmax 35/36 across p2/p3/p4, mean overlap 9/10, max |Δtop|
+  0.427 — same class as C-core's 1.7B bar (36/36, 0.597). The 4/5 is
+  the model's ceiling under greedy on this set; **the 8B-vs-stop call
+  is the principal's** (per-model record: 1.7B NO 3/5, 4B NO 4/5,
+  both fork-attributed — a YES would have flipped Stage 4 to "the
+  stack" per gate doctrine; it did not arrive).
+- 2026-08-16 (s4-4B) · **The 4B config diff — and the two silent
+  breakers the mission's "flag anything" instruction was for.**
+  Diff vs 1.7B (pinned from the files' own KVs): blocks 28→36, emb
+  2048→2560, heads 16→32, FFN 6144→9728, freq_base **1e6→5e6**;
+  kv_heads 8, head_dim 128 (key==value), YaRN yarn/4.0/8192, eps
+  1e-6, vocab 151 669 all UNCHANGED (the vocab guess from Qwen3-4B
+  upstream was wrong — Bonsai keeps the shared 151 669). Breaker 1:
+  `rope.freq_base` differs per tier — the old `expect_kv` pin would
+  have been a hard ConfigMismatch (good) but a default would have
+  been silently wrong rope tables; it is now a REQUIRED KV.
+  Breaker 2: the 4B `token_embd.weight` slice carries 24 B of
+  alignment padding (54 600 840 → 54 600 864, the next tensor's
+  aligned offset — the 1.7B total was 32-divisible by luck);
+  tensor-size checks now accept exact-or-alignment-padded and copy
+  only the formula bytes. Also: the attention context is
+  `heads·head_dim` (4096 ≠ emb 2560 on 4B) — q/attn_output are
+  genuinely non-square on 4B; dims validation covers it.
+- 2026-08-16 (s4-4B) · **Pin dispositions (principal's three):**
+  (1) frozen-file edit hardened into the pin-1 gate — pre-refactor
+  baseline captured at e1821be, post-refactor byte-diff 43/43
+  verdict-bearing lines identical; the one mid-run scare (bonsai_full
+  top-5 "changed") was localized to a STALE RECORD, not the code
+  (e1821be worktree witness reproduced the new numbers exactly; see
+  Learning). (2) The deep-dive ladder did NOT trigger — its
+  condition is "4B lands 3/5 AND the fork agrees"; 4B landed 4/5
+  with fork agreement on the single failure. Rung (a)
+  (Ternary-Bonsai-4B Q2_0, quantization severity) and rung (b)
+  (Bonsai-4B.gguf unquantized, ~8 GB mmap vs 2.3 GB free) remain
+  AVAILABLE to the principal if he wants the p3 failure decomposed
+  (quant vs base capability) — at 4/5 with both runtimes denying
+  " Thursday" at step 0, the question is narrow. (3) RAM: peak RSS
+  1.17 GB on every 4B heavy run vs 2.3 GB available — headroom held;
+  the buffer-drop-after-load option stayed in reserve, unused.
 - 2026-08-16 (C-core) · **Root cause of the C-pre logit drift: a 1000x
   unit error in the attention score chain.** dot is milli² (real×1e6);
   milli scores need dot × 88.3883/1e6; the code divided by 1e3. Every
@@ -1203,6 +1324,52 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   reference), fidelity + tokenizer findings handed to Session C.
   The ISA stays OPEN as the Session C carrier.
 
+## Verification (Stage 4, session 4B — Bonsai-4B)
+
+- Baseline discipline: 4 CI gates green at e1821be BEFORE any edit
+  (195 tests; ignored real-file 4/4 in 712 s debug); fresh 1.7B gate
+  baseline log captured at e1821be (3/5 NO, 9:09 wall, RSS 540 MB)
+  — /tmp/opencode/s4b/gate_17b_baseline.log.
+- ISC-51: probe on both tiers with the full config-KV dump
+  (probe_{17b,4b}.log); 4B pre-padding-fix showed the ONE failing
+  tensor (token_embd, +24 B) — post-fix 253/253 q1_0 byte-exact,
+  PROBE: YES; scale window [1,100] holds on the second real model
+  (19 milli; fog (e) evidence gained, window unchanged).
+- ISC-52: model.rs tests — from_gguf_reads_the_4b_config_block,
+  from_gguf_is_loud_on_missing_and_broken (5 loud paths),
+  score_scale_pins_the_1_7b_split ((88, 3883) + (125,0)/(62,5000)
+  derived splits), loader_accepts_alignment_padding_and_copies_exact_bytes,
+  residual_rail_derives_per_model (emb 2048 → 67 108 864 = 2^26
+  exactly; 2560 tighter); ignored real_files_load_with_expected_configs
+  green on BOTH files (config equality vs the pinned tables, 2-token
+  forwards, all layers alive, residuals under the per-model rail).
+- ISC-53: pin-1 hard gate — gate_17b_baseline.norm vs
+  gate_17b_post.norm: ZERO diff lines (43/43 verdict-bearing lines);
+  real-file suite post-refactor 5/5 release (69 s) +
+  real_incremental_matches_forward_exact in debug (888 s, profile
+  parity with the 712 s baseline); full-forward witness: e1821be
+  git-worktree bonsai_full run == new-code run EXACTLY (residual
+  17 965 859; top-5 (16, 11618) (17, 10688) (18, 10646) (15, 10181)
+  (19, 9605)) — the s3.5-recorded numbers were pre-C-core.
+- ISC-54: probe 4B PROBE: YES (RSS 584 MB); bonsai_forward 4B
+  FORWARD: OK (q 4096-wide, k/v 1024); bonsai_full 4B FULL: OK —
+  36/36 layers alive, residual 10 958 495 < 60 023 992 derived rail,
+  51.5 s, RSS 1.14 GB; drift 4B (refcmp, RSS 1.17 GB): p2 argmax
+  12/12 overlap 9/10 Δtop 0.427; p3 11/12 (one step-1 flip, 0.1
+  margin); p4 12/12 Δtop 0.064; tokenizer witness: fork 4B p4 ids
+  [785, 6722, 315, 9625, 374] == ours; fork E2E 4/5 (greedy forced,
+  same flags as C-pre).
+- ISC-55: THE GATE 4B — /tmp/opencode/s4b/gate_4b.log: strict 4/5,
+  STAGE 4 GATE: NO, exit 1; residuals 11 158 256–15 077 728 all
+  under the 66.6 M rail; wall 37:22, RSS 1 172 820 KB; fork
+  continuations second-pass-verified from raw dump lines (p3 fork
+  text is ", June 12, 2018," — an earlier from-memory read said
+  "2027, 12, 2028" and was WRONG; the raw line wins, again).
+- ISC-56: cargo check/test (200: 63 rt + 134 snn + 3 app)/clippy
+  -D warnings/no_std all green on the final code; VISION + ROADMAP
+  carry the 4B sections; commits local only.
+
+
 ## Learning (Stage 4, session C-pre)
 
 - conjectured (twice, caught twice in the same session): the fork's
@@ -1246,6 +1413,41 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   for ORDERING experiments, not replacing them.
   criterion now: when a precision fix doesn't move the needle, stop
   fixing and build the next-finer microscope before the next mutation.
+
+## Learning (Stage 4, session 4B)
+
+- conjectured: the refactor had changed bonsai_full's arithmetic —
+  the 1.7B top-5 came out different from the s3.5-recorded run
+  (residual 17 965 859 vs recorded 17 962 389; 5th id 19 vs 20)
+  while the gate (incremental path) was byte-identical.
+  refuted by: an e1821be worktree running the OLD bonsai_full
+  reproduced the NEW numbers exactly — the s3.5 top-5 citation was
+  recorded BEFORE C-core's score-scale fix (which changed every
+  forward output), and C-core's verification re-ran bonsai_full as
+  "OK" without re-pinning the numbers. The record was stale, not the
+  code; the incremental-path byte-diff had said so all along (the
+  exact-equality test chains forward ≡ incremental ≡ e1821be).
+  learned: when a core fix legitimately changes outputs, every
+  number downstream of it in the records goes stale at that moment —
+  re-pin them in the same session as the fix, or the next session
+  pays a false-alarm localization to find out.
+  criterion now: a behavior-changing fix re-runs and re-pins every
+  evidence number it touches (the fix's Verification block lists
+  them), and an apparent regression is first checked against the
+  TESTS that pin path-equivalence (they encode the ground truth the
+  prose may lag).
+- conjectured (second-pass catch, C-pre's lesson repeating): the
+  fork's p3 continuation from my first read of the interleaved
+  dump log — ", June 12, 2027, 12, 2028,".
+  refuted by: stripping the dump suffixes from the raw lines and
+  re-deriving — the text is ", June 12, 2018,". I had merged
+  top-10 entries into the continuation while skimming.
+  learned: interleaved dump logs are a NEW surface for the old
+  failure mode — attribution numbers survive a fast read and die on
+  a re-read, now twice in this ISA's history.
+  criterion now: every quoted continuation is produced by a
+  mechanical strip-and-concatenation of the raw log (the sed one-
+  liner), never by reading interleaved output by eye.
 
 ## Verification (C-core)
 

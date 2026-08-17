@@ -625,6 +625,37 @@ of Spain is Madrid…", " four four the first part…", ": 10:00 AM -
 model's failures as faithfully as its successes. Merge call to the
 principal with the full evidence.
 
+**Session 4B — the runtime generalizes; gate on Bonsai-4B: NO 4/5
+(2026-08-16).** The principal's call: attempt the strict YES on the
+bigger tier, same frozen prompts, same verdict logic. First the
+config diff, pinned from the file's own KVs before any code: 36
+blocks, emb 2560, 32/8 heads, head_dim **128 unchanged**, FFN 9728,
+vocab **151 669 unchanged** (not Qwen3-4B-upstream's 151 936) — and
+two silent breakers a constants-only port would have hit:
+`rope.freq_base` is **5e6 on 4B** (1e6 on 1.7B), and the 4B's
+embedding slice carries 24 B of GGUF alignment padding the exact-size
+rule rejected. `rt::model` is now config-driven (`ModelConfig` from
+the fork's own keys, required-loud), the attention score scale
+derives from head_dim and is pinned to reproduce the 1.7B constants
+bit-identically, and the refactor is regression-proven: the 1.7B gate
+byte-identical on all 43 verdict-bearing lines, the real-file
+incremental≡forward exact test green in both profiles, and an
+e1821be worktree witness pinning the full-forward path (which also
+exposed that the old recorded top-5 was a pre-C-core artifact —
+stale record, not drift). On 4B: probe/forward/full all green
+(36/36 layers alive, residual 10.96 M of the 60.0 M derived rail),
+teacher-forced drift 35/36 argmax with the France/tokenizer second
+witness clean (12/12, max |Δtop| 0.064), and **THE GATE: NO — 4/5**:
+p0/p1/p2/p4 pass with continuations **byte-identical to the fork's**
+— including "one two three four" → " five six seven eight…", the
+1.7B's failure prompt — and p3 ("…Thursday") fails on BOTH runtimes
+(fork: ", June 12, 2018,"; the divergence inside the continuation is
+one measured 0.1-logit near-tie). Per-model record: **1.7B NO 3/5,
+4B NO 4/5, both fork-attributed, four-of-four matching continuations
+byte-exact on the 4B.** The strict YES did not arrive; the 8B-or-stop
+call is the principal's. Peak RSS 1.17 GB, decode 0.04–0.08 tok/s
+(release, 4-core shared).
+
 **Remaining sessions (honest slice):** attention + full forward
 (**✓ session 3**) → adversarial review of the whole arc (**✓ session
 3.5**) → tokenizer + generation = the Stage 4 gate (**✓ session 4 —
@@ -634,10 +665,13 @@ the same three, digit prompts byte-identical; tokenizer "France"
 split + logit-drift findings recorded for the delta redteam**) →
 Session C-core (**✓ 2026-08-16 — both findings fixed; drift past the
 bar; gate re-run fork-byte-identical at 3/5; runtime fidelity
-demonstrated at logit AND generation level**) → Session C (delta
-redteam on the new code, alpha.2 republish checklist, gguf lazy
-arrays, contiguity validation; merge/no-merge of the branch is the
-principal's call).
+demonstrated at logit AND generation level**) → Session 4B (**✓
+2026-08-16 — runtime generalized to Bonsai-4B, config-driven +
+regression-proven; gate on 4B: NO 4/5, fork-attributed with four
+byte-identical continuations; per-model record stands**) → Session C
+(delta redteam on the new code, alpha.2 republish checklist, gguf
+lazy arrays, contiguity validation; merge/no-merge of the branch and
+the 8B-vs-stop call are the principal's).
 
 ### 3. The lab bench (visible)
 
