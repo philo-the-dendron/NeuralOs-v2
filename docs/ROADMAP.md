@@ -183,6 +183,21 @@ probe/forward/full green (36/36 layers alive), drift 35/36 argmax
 Per-model record: 1.7B NO 3/5, 4B NO 4/5, both the model's ceiling
 under greedy. 8B-vs-stop + merge are the principal's calls.
 
+**Session 4C (2026-08-17) — p3 coda: quantization severity.**
+Fork-only disambiguation ladder (same greedy flags, raw step-0
+top-10 dumps): F16 base " Thursday" TOP-1 (+3.054); Q2_0 TOP-1
+(+3.083) with the top-10 identical to F16 in order (max |Δ|
+0.0286 — 2-bit ternary near-lossless vs its own base); Q1_0 has
+" Thursday" outside the top-10. Prompt-shape hypothesis falsified
+(the base completes the bare prompt); chat shape buries the weekday
+chain at EVERY width — F16 chat step-0 is Q1_0's twin ("It" top-1
+13.66, no " Thursday" in top-10, top-3 order identical): the
+framing suppresses completion-mode on the base itself. p2's
+" five" margin triples at 2-bit (+0.93 → +2.97). **4/5 is the 1-bit
+4B's cap, not the family's.** 8B-under-1-bit = grounded capacity
+bet; frozen-prompts-on-Q2_0-4B = cheap likely-5/5 sibling. Both the
+principal's calls; no runtime changes.
+
 ### Phase 4 — RISC-V deployment proof
 
 Goal: make the `no_std` claim concrete.

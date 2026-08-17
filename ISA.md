@@ -5,7 +5,7 @@ project: NeuralOS v2
 phase: climbing
 progress: 56/56
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-17T02:55:00Z
+updated: 2026-08-17T03:15:00Z
 principal_stated_goal: "ok so we are ready for step 3 ?" → "go" — Stage 3 (shared kernel + hybrid gate), locked choices: A·classification demo, A·absmax i16 activations
 ---
 
@@ -640,6 +640,35 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   " Thursday" at step 0, the question is narrow. (3) RAM: peak RSS
   1.17 GB on every 4B heavy run vs 2.3 GB available — headroom held;
   the buffer-drop-after-load option stayed in reserve, unused.
+- 2026-08-17 (s4-4C) · **P3 DISAMBIGUATED: quantization severity —
+  the 1-bit quant destroyed the weekday chain; the base and 2-bit
+  ternary have it decisively.** Fork-side ladder only (greedy forced,
+  identical flags, NEURALOS_DUMP step-0 top-10s): F16 base puts
+  " Thursday" (7794) TOP-1 at 14.6529 (+3.054 margin); Q2_0 TOP-1 at
+  14.6527 (+3.083) with the step-0 top-10 IDENTICAL to F16 in order,
+  max |Δlogit| 0.0286 — 2-bit ternary is near-lossless against its own
+  base on this prompt; Q1_0 (s4b) had 7794 outside the top-10 (top-1
+  "," at 12.81). The prompt-shape hypothesis is FALSIFIED — the
+  unquantized base completes the bare prompt at top-1. Generations:
+  Q2_0 " Thursday04/05/2018"; F16 " Thursday04/10/2018" (same weekday
+  head; date digits diverge — the drift-measured near-tie class).
+  p2 corroborates: " five" margin +0.930 (Q1_0) → +2.972 (Q2_0),
+  3.2x. Chat shape (void-check PASSED — specials as control
+  ids in the verbose token log) goes to clarification-land at EVERY
+  width: Q1_0 "It seems like your message might be a typo or
+  incomplete." ("It" top-1 13.17, <|im_end|> rank-4); **F16 chat
+  step-0 is the same animal — "It" top-1 at 13.66, no 7794 in the
+  top-10, top-3 order identical to Q1_0's** — the template's framing
+  suppresses completion-mode on the base itself, so chat-shape can
+  never surface this knowledge class at any bit-width (and the
+  failure at the frozen gate, which runs BARE, is not a chat
+  artifact at all).
+  Matrix row: base PASS + Q2_0 PASS → quantization severity. **4/5
+  stands as the frozen Q1_0 gate's honest cap; 8B-under-1-bit is a
+  capacity bet now grounded (2-bit restored the class at 4B), and the
+  cheap sibling option is on the table — the frozen prompts on Q2_0-4B
+  would very likely read 5/5 (outside the frozen gate's quant; both
+  calls the principal's).** No runtime changes; docs-only diff.
 - 2026-08-16 (C-core) · **Root cause of the C-pre logit drift: a 1000x
   unit error in the attention score chain.** dot is milli² (real×1e6);
   milli scores need dot × 88.3883/1e6; the code divided by 1e3. Every
@@ -1368,6 +1397,49 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 - ISC-56: cargo check/test (200: 63 rt + 134 snn + 3 app)/clippy
   -D warnings/no_std all green on the final code; VISION + ROADMAP
   carry the 4B sections; commits local only.
+
+## Verification (Stage 4, session 4C — p3 disambiguation coda)
+
+- Apparatus: the SAME fork binary as s4b (build pinned at 9ca265a +
+  the env-gated NEURALOS_DUMP patch — `getenv` in completion.cpp,
+  dump = raw top-10 logits pre-sampler); identical run flags to the
+  gate (greedy forced: --temp 0 --top-k 0 --top-p 1.0 --min-p 0.0
+  --seed 42 -no-cnv -c 512 -n 12). All logs+time -v captures in
+  /tmp/opencode/s4c/. Models fetched from HF prism-ml/
+  Ternary-Bonsai-4B-gguf: Q2_0 1 074 969 344 B, F16 8 049 911 840 B
+  (GGUF v3 magic checked on both).
+- Rung (a): p3_q2_0.log step=0 — `7794:14,6527 220:11,5701 6602:
+  11,4052 7920:11,2683 …`; greedy emitted " Thursday" as token 1 →
+  7794 = " Thursday" TOP-1, margin +3.0826. Generation (mechanical
+  sed strip of dump suffixes): " Thursday04/05/2018". p2_q2_0.log
+  step=0: 4236 " five" TOP-1 at 13.2278, margin +2.9722 vs s4b
+  fork4b/p2.log (4236 at 11.3576, 11 at 10.4280, margin +0.9296).
+- Rung (b): p3_f16.log step=0 — `7794:14,6529 220:11,5987 6602:
+  11,4116 7920:11,2777 …` — TOP-1, margin +3.0542; Q2_0↔F16 step-0
+  top-10 identical token sets in identical order, max |Δ| 0.0286.
+  The 30-min guard fired after the step-10 dump (TERM delayed by a
+  D-state disk wait, one token from natural finish — 11/12 tokens);
+  salvage per plan: sed-strip text " Thursday04/10/2018". Load 3:20,
+  RSS peak 3.6 GB, decode disk-bound ~2.5 min/token (mmap streaming
+  8 GB/token-pass through 3.5 Gi available — memory gate held, no
+  swap-in, no OOM).
+- Chat void-check (principal's added gate): p3_chat_q1_0_v.time
+  verbose token log — `'<|im_start|>':151644 … '<|im_end|>':151645 …
+  '<think>':151667 … '</think>':151668`, embd_inp.size() 15 —
+  specials tokenized as control ids, run VALID (not void). Same
+  line banked for F16 (p3_chat_f16.time). Q1_0 chat generation
+  (sed-strip): "It seems like your message might be a typo or
+  incomplete."; step-0 top-10 headed by "It" (2132:13,1701) with
+  <|im_end|> (151645) at rank 4 — weekday knowledge absent via chat
+  at 1-bit too. F16 chat (p3_chat_f16.log): step-0 top-10 headed by
+  "It" (2132:13,6572), NO 7794 present, top-3 order (2132, 785, 40)
+  identical to Q1_0's chat run — clarification-land on the base
+  itself; the chat framing, not quantization, buries the weekday
+  chain there. Guard-salvaged F16 chat text: 'It looks like you've
+  written "Monday Tuesday' (9 of 12 tokens). Determinism witness:
+  non-verbose vs verbose chat runs' step-0 dumps byte-identical.
+- 4C makes NO runtime changes: 4 CI gates re-run green on the
+  docs-only diff; commits local per protocol.
 
 
 ## Learning (Stage 4, session C-pre)

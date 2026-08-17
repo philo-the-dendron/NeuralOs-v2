@@ -656,6 +656,29 @@ byte-exact on the 4B.** The strict YES did not arrive; the 8B-or-stop
 call is the principal's. Peak RSS 1.17 GB, decode 0.04–0.08 tok/s
 (release, 4-core shared).
 
+**Session 4C coda — p3 disambiguated: quantization severity
+(2026-08-17).** The principal approved a fork-side ladder to answer
+WHY p3 fails at 4B (greedy forced, raw top-10 dumps, our runtime
+untouched). Rung (b) first: the F16 base — 8 GB mmap streamed through
+3.5 Gi of RAM — puts " Thursday" TOP-1 at +3.05 logits. Rung (a):
+ternary Q2_0 puts it TOP-1 at +3.08, and its step-0 top-10 is
+IDENTICAL to the F16's in order, max |Δ| 0.029 — 2-bit ternary is
+near-lossless against its own base on this prompt. Q1_0 is where the
+weekday chain dies (" Thursday" outside the top-10). The
+prompt-shape hypothesis is falsified — the base completes the bare
+prompt decisively. And the chat template turns out to bury this
+knowledge class at EVERY width (void-check passed: specials as
+control ids): Q1_0 answers "It seems like your message might be a
+typo or incomplete." — and so does the F16 base ("It" top-1, no
+" Thursday" in its top-10, top-3 order identical to Q1_0's) — the
+framing itself suppresses completion-mode. So **4/5 is the 1-bit 4B's
+honest cap, not the family's**: the knowledge is
+present at F16 and Q2_0, and p2's " five" margin triples from +0.93
+to +2.97 at 2-bit. The 8B-under-1-bit question is now a grounded
+capacity bet, with a cheap sibling on the table — the frozen prompts
+on Q2_0-4B would very likely read 5/5. Both calls are the
+principal's.
+
 **Remaining sessions (honest slice):** attention + full forward
 (**✓ session 3**) → adversarial review of the whole arc (**✓ session
 3.5**) → tokenizer + generation = the Stage 4 gate (**✓ session 4 —
@@ -668,7 +691,13 @@ bar; gate re-run fork-byte-identical at 3/5; runtime fidelity
 demonstrated at logit AND generation level**) → Session 4B (**✓
 2026-08-16 — runtime generalized to Bonsai-4B, config-driven +
 regression-proven; gate on 4B: NO 4/5, fork-attributed with four
-byte-identical continuations; per-model record stands**) → Session C
+byte-identical continuations; per-model record stands) → Session 4C
+(**✓ 2026-08-17 — p3 coda: quantization severity; F16 base and Q2_0
+both TOP-1 " Thursday" (+3.05/+3.08, top-10s identical within
+0.029), 1-bit outside the top-10; prompt-shape falsified; chat shape
+buries the weekday chain at every width — even the base clarifies
+("It seems like…"); 8B/Q2_0 calls grounded for the
+principal**) → Session C
 (delta redteam on the new code, alpha.2 republish checklist, gguf
 lazy arrays, contiguity validation; merge/no-merge of the branch and
 the 8B-vs-stop call are the principal's).
