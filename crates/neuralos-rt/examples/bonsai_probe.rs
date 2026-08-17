@@ -77,8 +77,9 @@ fn main() {
 
     // --- ISC-21: every tensor in bounds; per-type byte sizes exact.
     // Session D: the check is per-format — q1_0 blocks are 128 w / 18 B,
-    // q2_0 blocks are 64 w / 18 B (docs/TERNARY_FORMAT.md §q2_0). The
-    // q2_0 arithmetic IS the group-64 pin: a g128-laid-out file would
+    // q2_0 blocks are 128 w / 34 B (the session-D re-pin from the fork's
+    // ggml-common.h QK2_0 = 128; docs/TERNARY_FORMAT.md §q2_0). The
+    // q2_0 arithmetic IS the layout pin: a 64w/18B-laid-out file would
     // fail every tensor here.
     let mut checked_q1_0 = 0_usize;
     let mut total_q1_0 = 0_usize;
