@@ -16,10 +16,13 @@
 //!   embeds losslessly into ternary, so no information is lost on import.
 //!   Export does not exist: ternary → binary would silently turn zeros into
 //!   `+γ`.
-//! - **Prism `q2_0`** (same fork, `block_q2_0`): import only. 18 bytes per 64
-//!   weights: LE fp16 scale (`max|w|`) + 16 bytes of LSB-first 2-bit lanes,
-//!   `00`=−1 `01`=0 `10`=+1. Code `11` (`+2·d`) cannot be produced by the
-//!   reference quantizer and is rejected loudly here.
+//! - **Prism `q2_0`** (same fork, `block_q2_0`): import only. 34 bytes per
+//!   128 weights: LE fp16 scale (`max|w|`) + 32 bytes of LSB-first 2-bit
+//!   lanes, `00`=−1 `01`=0 `10`=+1. Code `11` (`+2·d`) cannot be produced by
+//!   the reference quantizer and is rejected loudly here. (Re-pinned in
+//!   session D from the fork's `ggml/src/ggml-common.h` — `QK2_0 = 128`,
+//!   `qs[QK2_0/4]` — after the first real q2_0 file measured 680 B per
+//!   2560-wide row, refuting this module's earlier 18-B/64-weight layout.)
 //!
 //! # Integer-only, `no_std`, zero-alloc
 //!
@@ -38,7 +41,8 @@
 //!   `n % 128 != 0`. A permissive codec would be silently lossy; this one
 //!   refuses.
 //! - `q1_0` requires `n % 128 == 0` (the C reference asserts the same).
-//! - `q2_0` requires `n % 64 == 0` (ditto).
+//! - `q2_0` requires `n % 128 == 0` (ditto — `QK2_0` is 128, re-pinned
+//!   session D; it is NOT 64).
 
 #![allow(clippy::module_name_repetitions)]
 #![allow(
@@ -60,8 +64,9 @@ pub const I2_S_BLOCK: usize = 128;
 /// `q1_0` block size in values (one fp16 scale + 16 sign bytes).
 pub const Q1_0_BLOCK: usize = 128;
 
-/// `q2_0` block size in values (one fp16 scale + 16 bytes of 2-bit codes).
-pub const Q2_0_BLOCK: usize = 64;
+/// `q2_0` block size in values: one fp16 scale + 32 bytes of 2-bit codes
+/// (`QK2_0 = 128` in the fork's `ggml/src/ggml-common.h`; 34 B/block).
+pub const Q2_0_BLOCK: usize = 128;
 
 /// Errors from the format codecs. Loud by design — no decode path clamps,
 /// pads, or guesses. A short buffer, a wrong length, or an impossible code
@@ -262,15 +267,15 @@ pub fn decode_q1_0(bytes: &[u8], trits: &mut [Trit], scale_bits_out: &mut [u16])
 // Prism q2_0 — decode (import only)
 // ---------------------------------------------------------------------------
 
-/// Encoded byte length of a `q2_0` tensor with `n` weights: 18 bytes per
-/// 64-weight block (2-byte LE fp16 scale + 16 bytes of 2-bit codes).
+/// Encoded byte length of a `q2_0` tensor with `n` weights: 34 bytes per
+/// 128-weight block (2-byte LE fp16 scale + 32 bytes of 2-bit codes).
 #[must_use]
 pub const fn q2_0_encoded_len(n: usize) -> usize {
-    (n / Q2_0_BLOCK) * 18
+    (n / Q2_0_BLOCK) * 34
 }
 
-/// Decode a Prism `q2_0` tensor: per 64-weight block, a LE fp16 scale
-/// (`max|w|`) followed by 16 bytes of LSB-first 2-bit lanes — element `j`'s
+/// Decode a Prism `q2_0` tensor: per 128-weight block, a LE fp16 scale
+/// (`max|w|`) followed by 32 bytes of LSB-first 2-bit lanes — element `j`'s
 /// code is bits `2*(j%4)..2*(j%4)+1` of byte `j/4`, with `00`=−1, `01`=0,
 /// `10`=+1.
 ///
@@ -279,8 +284,8 @@ pub const fn q2_0_encoded_len(n: usize) -> usize {
 /// leaves `[-1, 1]`). This decoder rejects it loudly rather than inventing a
 /// mapping the reference never produced.
 ///
-/// Requires `trits.len() % 64 == 0`. Scale bits per block are written to
-/// `scale_bits_out` (needs `n/64` entries).
+/// Requires `trits.len() % 128 == 0`. Scale bits per block are written to
+/// `scale_bits_out` (needs `n/128` entries).
 ///
 /// # Errors
 ///
@@ -299,7 +304,7 @@ pub fn decode_q2_0(bytes: &[u8], trits: &mut [Trit], scale_bits_out: &mut [u16])
         return Err(BridgeError::TooShort);
     }
     for b in 0..blocks {
-        let base = b * 18;
+        let base = b * 34;
         scale_bits_out[b] = u16::from_le_bytes([bytes[base], bytes[base + 1]]);
         for j in 0..Q2_0_BLOCK {
             let code = (bytes[base + 2 + j / 4] >> (2 * (j % 4))) & 0x03;
@@ -689,15 +694,30 @@ mod tests {
 
     // ----- q2_0 known vector -----
 
+    /// The session-D re-pin, as an arithmetic witness: the fork's
+    /// `ggml/src/ggml-common.h` defines `QK2_0 = 128` with
+    /// `qs[QK2_0/4]` (34 B/block), and the real
+    /// `Ternary-Bonsai-4B-Q2_0.gguf` measures exactly
+    /// `2560/128 × 34 = 680 B` per embedding row. The pre-session-D
+    /// layout (64 w / 18 B) predicted 720 B/row and failed every one of
+    /// the file's 253 q2_0 tensors.
+    #[test]
+    fn q2_0_block_geometry_is_pinned() {
+        assert_eq!(Q2_0_BLOCK, 128);
+        assert_eq!(q2_0_encoded_len(128), 34);
+        assert_eq!(q2_0_encoded_len(2560), 680);
+        assert_eq!(q2_0_encoded_len(128 * 3), 34 * 3);
+    }
+
     #[test]
     fn q2_0_known_vector() {
-        // All 16 code bytes 0xA4 = 0b10_10_01_00 → lanes (LSB first)
-        // 00,01,10,10 → elements [−1,0,+1,+1] repeated 16×. Scale fp16 4.0
+        // All 32 code bytes 0xA4 = 0b10_10_01_00 → lanes (LSB first)
+        // 00,01,10,10 → elements [−1,0,+1,+1] repeated 32×. Scale fp16 4.0
         // = 0x4400.
         let pat = [Trit::MinusOne, Trit::Zero, Trit::One, Trit::One];
-        let mut bytes = Vec::with_capacity(18);
+        let mut bytes = Vec::with_capacity(34);
         bytes.extend_from_slice(&0x4400_u16.to_le_bytes());
-        bytes.extend(std::iter::repeat_n(0xA4_u8, 16));
+        bytes.extend(std::iter::repeat_n(0xA4_u8, 32));
         let mut trits = [Trit::Zero; Q2_0_BLOCK];
         let mut scales = [0u16; 1];
         decode_q2_0(&bytes, &mut trits, &mut scales).expect("decode");
@@ -709,7 +729,7 @@ mod tests {
     #[test]
     fn q2_0_code3_rejected() {
         // First element's lane = code 3 (0b11) — loud error.
-        let mut bytes = vec![0_u8; 18];
+        let mut bytes = vec![0_u8; 34];
         bytes[0..2].copy_from_slice(&0x4400_u16.to_le_bytes());
         bytes[2] = 0x03;
         let mut trits = [Trit::Zero; Q2_0_BLOCK];
@@ -718,18 +738,27 @@ mod tests {
             decode_q2_0(&bytes, &mut trits, &mut scales),
             Err(BridgeError::UnsupportedCode)
         );
+        // Code 3 in the LAST lane of the LAST byte too — the full 32-byte
+        // code span is checked, not just the head of the block.
+        let mut bytes = vec![0_u8; 34];
+        bytes[0..2].copy_from_slice(&0x4400_u16.to_le_bytes());
+        bytes[33] = 0xC0;
+        assert_eq!(
+            decode_q2_0(&bytes, &mut trits, &mut scales),
+            Err(BridgeError::UnsupportedCode)
+        );
     }
 
     #[test]
     fn q2_0_byte_and_lane_order_golden_vector() {
-        // Period-3 codes across 64 elements: every byte carries three
+        // Period-3 codes across 128 elements: every byte carries three
         // distinct lanes and consecutive bytes differ — byte order AND
         // lane order both pinned (uniform 0xA4 bytes are position-blind).
         // codes: i%3 == 0 → −1 (00), 1 → 0 (01), 2 → +1 (10).
         let code_of = |i: usize| -> u8 { (i % 3) as u8 };
-        let mut bytes = Vec::with_capacity(18);
+        let mut bytes = Vec::with_capacity(34);
         bytes.extend_from_slice(&0x4400_u16.to_le_bytes()); // fp16 4.0
-        for j in 0..16_usize {
+        for j in 0..32_usize {
             let mut b = 0_u8;
             for lane in 0..4_usize {
                 b |= code_of(4 * j + lane) << (2 * lane);
@@ -753,13 +782,19 @@ mod tests {
     fn q2_0_rejects_bad_input() {
         let mut trits = [Trit::Zero; Q2_0_BLOCK];
         let mut scales = [0u16; 1];
-        let mut odd = [Trit::Zero; 65];
+        let mut odd = [Trit::Zero; 100];
         assert_eq!(
-            decode_q2_0(&[0; 18], &mut odd, &mut scales),
+            decode_q2_0(&[0; 34], &mut odd, &mut scales),
             Err(BridgeError::BadLength)
         );
         assert_eq!(
-            decode_q2_0(&[0; 17], &mut trits, &mut scales),
+            decode_q2_0(&[0; 33], &mut trits, &mut scales),
+            Err(BridgeError::TooShort)
+        );
+        // Two blocks need two scale slots.
+        let mut two = [Trit::Zero; Q2_0_BLOCK * 2];
+        assert_eq!(
+            decode_q2_0(&[0; 34 * 2], &mut two, &mut scales),
             Err(BridgeError::TooShort)
         );
     }

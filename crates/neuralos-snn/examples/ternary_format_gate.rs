@@ -116,34 +116,35 @@ fn check_b_q1_0_import() -> Result<usize, String> {
 }
 
 fn check_c_q2_0_import() -> Result<usize, String> {
-    // One 64-weight block: scale fp16 4.0 (0x4400), code bytes 0xA4 =
-    // 0b10_10_01_00 → LSB-first codes 00,01,10,10 → [−1, 0, +1, +1] ×16.
-    let mut bytes = Vec::with_capacity(18);
+    // One 128-weight block (session-D re-pin: QK2_0 = 128, 34 B/block):
+    // scale fp16 4.0 (0x4400), code bytes 0xA4 = 0b10_10_01_00 →
+    // LSB-first codes 00,01,10,10 → [−1, 0, +1, +1] ×32.
+    let mut bytes = Vec::with_capacity(34);
     bytes.extend_from_slice(&0x4400_u16.to_le_bytes());
-    bytes.extend(std::iter::repeat_n(0xA4_u8, 16));
+    bytes.extend(std::iter::repeat_n(0xA4_u8, 32));
 
-    let mut trits = vec![Trit::Zero; 64];
+    let mut trits = vec![Trit::Zero; 128];
     let mut scales = [0_u16; 1];
     decode_q2_0(&bytes, &mut trits, &mut scales).map_err(|e| format!("decode failed: {e}"))?;
 
     let pat = [Trit::MinusOne, Trit::Zero, Trit::One, Trit::One];
-    let bad = (0..64).filter(|&i| trits[i] != pat[i % 4]).count();
+    let bad = (0..128).filter(|&i| trits[i] != pat[i % 4]).count();
     if bad != 0 || scales[0] != 0x4400 {
         return Err(format!("{bad} mismatches, scale {:#06x}", scales[0]));
     }
 
     // Code 3 must be a loud error, never a silent clamp.
-    let mut evil = vec![0_u8; 18];
+    let mut evil = vec![0_u8; 34];
     evil[0..2].copy_from_slice(&0x4400_u16.to_le_bytes());
     evil[2] = 0x03;
-    let mut sink = vec![Trit::Zero; 64];
+    let mut sink = vec![Trit::Zero; 128];
     let mut sink_scales = [0_u16; 1];
     let rejected = decode_q2_0(&evil, &mut sink, &mut sink_scales);
     if rejected != Err(BridgeError::UnsupportedCode) {
         return Err(format!("code 3 was not rejected: {rejected:?}"));
     }
-    println!("  C. q2_0 import         : 64/64 codes exact (scale fp16 4.0), code-3 input rejected loudly");
-    Ok(64)
+    println!("  C. q2_0 import         : 128/128 codes exact (scale fp16 4.0), code-3 input rejected loudly");
+    Ok(128)
 }
 
 fn main() {

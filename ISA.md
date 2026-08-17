@@ -592,6 +592,50 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-17 (s4-D) · **THE STAGE-2 Q2_0 PIN WAS WRONG — re-pinned from
+  source + file before any compute was built on it.** The probe-first
+  discipline caught it on the first run: all 253 q2_0 tensors FAILED the
+  Stage-2 arithmetic (18 B per 64 weights, 720 B per 2560-wide row) — the
+  real file measures **680 B/row = 34 B per 128 weights**. The fork's
+  actual `ggml/src/ggml-common.h:187` defines `QK2_0 = 128`,
+  `qs[QK2_0/4]` (fp16 `d = max|w|` + 32 code bytes; quantizer
+  `q = clamp(round(w/amax)+1, 0, 3)` → code 3 still unreachable; dequant
+  `11 → +2·d`; lanes LSB-first unchanged). The 2026-08-15 "correction"
+  ("C code defines QK2_0 = 64, the g128 label was loose") had it
+  BACKWARDS — Stage 2 fetched/misread the source and then validated the
+  wrong layout against self-derived hand vectors (the ISA's own
+  recurring lesson, now at format-spec scale). Fixed: `bridge.rs`
+  (`Q2_0_BLOCK = 128`, 34 B decode, tests re-derived from the C
+  formulas + a geometry pin citing the file measurement),
+  `ternary_format_gate` (re-run: YES), `bonsai_probe` per-type
+  arithmetic. Blast radius contained: no q2_0 bytes were ever consumed
+  by anything before this session (the 4C evidence is fork-side,
+  unaffected). The `alpha.2` republish checklist gains this as a
+  must-ship fix.
+- 2026-08-17 (s4-D) · **Ternary-Bonsai-4B-Q2_0.gguf facts, pinned
+  BEFORE the compute path existed** (probe log
+  /tmp/opencode/s4d/probe_q2_0.log): 1 074 969 344 B (= the 4C fetch,
+  md5 0bffe9323f3e27e64574f8884fbfecef); GGUF v3, **398 tensors =
+  f32×145 + q2_0×253** (all 253 byte-exact vs `rows × ⌈cols/128⌉ × 34`;
+  the 145 f32 are the norm tensors incl. output_norm — mixed file, as
+  expected); `token_embd.weight` carries **24 B alignment padding**
+  (103 134 920 → 103 134 944, same shape as the 4B Q1_0 — the only
+  padded tensor); config KVs IDENTICAL to the 4B Q1_0 (36 blocks,
+  emb 2560, FFN 9728, 32Q/8KV, key_length=value_length=128, rope base
+  **5e6**, YaRN yarn/4.0/8192, eps 1e-6, context 32 768); first
+  embedding block: **scale fp16 0x24c8 = 18.68 milli (max|w|)**, trits
+  +37/0×43/−48 of 128 — and the 4B Q1_0 file's first block carries the
+  SAME fp16 scale bits (0x24c8 = 19 milli) despite the mean-vs-max
+  convention difference (recorded observation, not a claim about the
+  quantizers). HF repo (fetched this session) ships FOUR variants:
+  Q2_0.gguf (on disk, this file), **Q2_0_g64.gguf and PQ2_0.gguf
+  (NOT downloaded — no type in the fork source we hold reads a "g64"
+  layout; existence recorded per mission, contents unverified)**, and
+  F16.gguf (used by 4C, deleted-after? no — on disk 8 GB). Probe scale
+  window for q2_0 set provisionally to [1, 1000] (max|w| ≥ mean|w|;
+  first real value 19 milli — fog (e) gains its second data point,
+  same 19 as the Q1_0 4B). Peak RSS 1.03 GB (probe).
+
 - 2026-08-16 (s4-4B) · **GATE ON BONSAI-4B: NO — 4/5, attributed
   same-session.** Same frozen prompts, same verdict logic, bigger
   tier: p0/p1/p2/p4 PASS with continuations BYTE-IDENTICAL to the

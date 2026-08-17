@@ -12,7 +12,7 @@
 //! (default `models/Bonsai-1.7B-Q1_0.gguf`).
 
 use neuralos_rt::{GgufFile, GGML_TYPE_Q1_0, GGML_TYPE_Q2_0};
-use neuralos_snn::{decode_q1_0, half_to_milli, Trit};
+use neuralos_snn::{decode_q1_0, decode_q2_0, half_to_milli, Trit};
 
 fn type_name(ty: u32) -> String {
     match ty {
@@ -75,10 +75,17 @@ fn main() {
         );
     }
 
-    // --- ISC-21: every tensor in bounds; Q1_0 byte sizes exact.
+    // --- ISC-21: every tensor in bounds; per-type byte sizes exact.
+    // Session D: the check is per-format — q1_0 blocks are 128 w / 18 B,
+    // q2_0 blocks are 64 w / 18 B (docs/TERNARY_FORMAT.md §q2_0). The
+    // q2_0 arithmetic IS the group-64 pin: a g128-laid-out file would
+    // fail every tensor here.
     let mut checked_q1_0 = 0_usize;
     let mut total_q1_0 = 0_usize;
+    let mut checked_q2_0 = 0_usize;
+    let mut total_q2_0 = 0_usize;
     let mut failures = 0_usize;
+    let mut padded_accepts: Vec<String> = Vec::new();
     for t in &f.tensors {
         let data = match f.tensor_data(t) {
             Ok(d) => d,
@@ -88,8 +95,23 @@ fn main() {
                 continue;
             }
         };
-        if t.ty == GGML_TYPE_Q1_0 {
-            total_q1_0 += 1;
+        if t.ty == GGML_TYPE_Q1_0 || t.ty == GGML_TYPE_Q2_0 {
+            // (weights per block, bytes per block): q1_0 = 128/18
+            // (fp16 γ + 16 sign bytes), q2_0 = 128/34 (fp16 max|w| d +
+            // 32 code bytes — session-D re-pin from the fork's
+            // ggml-common.h QK2_0 = 128; the first real q2_0 file
+            // measures 680 B per 2560-wide row, refuting 64/18).
+            let (qk, bpb): (u128, u128) = if t.ty == GGML_TYPE_Q1_0 {
+                (128, 18)
+            } else {
+                (128, 34)
+            };
+            let (checked, total) = if t.ty == GGML_TYPE_Q1_0 {
+                (&mut checked_q1_0, &mut total_q1_0)
+            } else {
+                (&mut checked_q2_0, &mut total_q2_0)
+            };
+            *total += 1;
             // Row-major: dim[0] = contiguous width. rows = product of the
             // rest. u128 so hostile dims cannot overflow the expected-size
             // product into a wrapped pass (review finding). The slice may
@@ -98,7 +120,7 @@ fn main() {
             // alignment-rounded-up form, nothing else.
             let cols = t.dims.first().copied().unwrap_or(0);
             let rows: u128 = t.dims.iter().skip(1).map(|&d| d as u128).product::<u128>().max(1);
-            let expected: u128 = rows * ((cols as u128).div_ceil(128)) * 18;
+            let expected: u128 = rows * ((cols as u128).div_ceil(qk)) * bpb;
             let align = f.alignment.max(1) as u128;
             let padded = expected.div_ceil(align) * align;
             if data.len() as u128 != expected && data.len() as u128 != padded {
@@ -109,7 +131,10 @@ fn main() {
                 );
                 failures += 1;
             } else {
-                checked_q1_0 += 1;
+                *checked += 1;
+                if data.len() as u128 != expected {
+                    padded_accepts.push(t.name.clone());
+                }
             }
         }
     }
@@ -130,41 +155,71 @@ fn main() {
     }
     if failures == 0 {
         println!(
-            "bounds+size: all {} tensors sliced in-bounds; {checked_q1_0}/{total_q1_0} q1_0 tensors byte-exact vs dims",
+            "bounds+size: all {} tensors sliced in-bounds; {checked_q1_0}/{total_q1_0} q1_0 + {checked_q2_0}/{total_q2_0} q2_0 tensors byte-exact vs dims",
             f.tensors.len()
         );
     } else {
         println!(
-            "bounds+size: {} failure(s) across {} tensors ({checked_q1_0}/{total_q1_0} q1_0 byte-exact)",
+            "bounds+size: {} failure(s) across {} tensors ({checked_q1_0}/{total_q1_0} q1_0 + {checked_q2_0}/{total_q2_0} q2_0 byte-exact)",
             failures,
             f.tensors.len()
         );
     }
+    if padded_accepts.is_empty() {
+        println!("padding: no tensor needed alignment-padded acceptance");
+    } else {
+        println!(
+            "padding: {} tensor(s) accepted alignment-padded (formula bytes only): {:?}",
+            padded_accepts.len(),
+            padded_accepts
+        );
+    }
 
-    // --- ISC-22: the Stage-2 codec meets real model bytes.
+    // --- ISC-22: the Stage-2 codec meets real model bytes — on BOTH
+    // tiers it ships for. The embedding tensor's own type picks the
+    // codec; q2_0 is where decode_q2_0 first eats real file bytes
+    // (session D closes the Stage-2 gap).
     let emb = f.tensor("token_embd.weight").expect("token_embd.weight exists");
     let data = f.tensor_data(emb).expect("embedding data slice");
-    let mut trits = [Trit::Zero; 128];
-    let mut scales = [0_u16; 1];
-    decode_q1_0(&data[..18], &mut trits, &mut scales).expect("first block decodes");
-    let milli = half_to_milli(scales[0]);
-    let plus = trits.iter().filter(|t| **t == Trit::One).count();
-    let minus = 128 - plus;
-    println!(
-        "token_embd first block: scale fp16 {:#06x} = {} milli; signs +{}/−{}",
-        scales[0], milli, plus, minus
-    );
+    let milli;
+    if emb.ty == GGML_TYPE_Q2_0 {
+        let mut trits = [Trit::Zero; 128];
+        let mut scales = [0_u16; 1];
+        decode_q2_0(&data[..34], &mut trits, &mut scales).expect("first q2_0 block decodes");
+        milli = half_to_milli(scales[0]);
+        let plus = trits.iter().filter(|t| **t == Trit::One).count();
+        let zero = trits.iter().filter(|t| **t == Trit::Zero).count();
+        let minus = trits.iter().filter(|t| **t == Trit::MinusOne).count();
+        println!(
+            "token_embd first block (q2_0): scale fp16 {:#06x} = {} milli (max|w|); trits +{}/0×{}/−{} of 128",
+            scales[0], milli, plus, zero, minus
+        );
+    } else {
+        let mut trits = [Trit::Zero; 128];
+        let mut scales = [0_u16; 1];
+        decode_q1_0(&data[..18], &mut trits, &mut scales).expect("first block decodes");
+        milli = half_to_milli(scales[0]);
+        let plus = trits.iter().filter(|t| **t == Trit::One).count();
+        let minus = 128 - plus;
+        println!(
+            "token_embd first block: scale fp16 {:#06x} = {} milli; signs +{}/−{}",
+            scales[0], milli, plus, minus
+        );
+    }
 
     if failures > 0 {
         println!("PROBE: NO ({failures} failures)");
         std::process::exit(1);
     }
-    // Empirical order-of-magnitude window: the real file's first block
-    // reads 27 milli (recorded in ISA ISC-22). It is a smoke detector,
-    // not a derived bound — a future model with a much smaller/larger
-    // embedding scale would need this widened (deferred review task).
-    if !(1..=100).contains(&milli) {
-        println!("PROBE: NO (embedding scale milli {milli} outside [1,100])");
+    // Empirical order-of-magnitude smoke window. Q1_0 (γ = mean|w|):
+    // the two real files read 27/19 milli — window [1,100], recorded in
+    // ISA ISC-22. Q2_0 (d = max|w|): first real file this session; the
+    // max convention runs larger than the mean, so the provisional
+    // window is one decade wider — the observed value is recorded in
+    // the ISA and narrows this for the next file (fog (e)).
+    let (lo, hi) = if emb.ty == GGML_TYPE_Q2_0 { (1, 1000) } else { (1, 100) };
+    if !(lo..=hi).contains(&milli) {
+        println!("PROBE: NO (embedding scale milli {milli} outside [{lo},{hi}])");
         std::process::exit(1);
     }
     println!("PROBE: YES — real Bonsai file reads clean through our container + codec");
