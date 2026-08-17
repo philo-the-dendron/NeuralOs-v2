@@ -265,7 +265,7 @@ fn main() {
         STRICT.len()
     );
     if strict_pass == STRICT.len() && rail_fail == 0 {
-        println!("STAGE 4 GATE: YES — tokenize → generate → judge, end to end, on real Q1_0 weights, integer compute path");
+        println!("STAGE 4 GATE: YES — tokenize → generate → judge, end to end, on the loaded model's real quantized weights, integer compute path");
     } else {
         let why = if strict_pass < STRICT.len() {
             format!("{} strict prompt(s) failed", STRICT.len() - strict_pass)
