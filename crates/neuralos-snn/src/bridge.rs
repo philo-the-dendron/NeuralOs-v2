@@ -21,7 +21,7 @@
 //!   lanes, `00`=−1 `01`=0 `10`=+1. Code `11` (`+2·d`) cannot be produced by
 //!   the reference quantizer and is rejected loudly here. (Re-pinned in
 //!   session D from the fork's `ggml/src/ggml-common.h` — `QK2_0 = 128`,
-//!   `qs[QK2_0/4]` — after the first real q2_0 file measured 680 B per
+//!   `qs[QK2_0/4]` — after the first real `q2_0` file measured 680 B per
 //!   2560-wide row, refuting this module's earlier 18-B/64-weight layout.)
 //!
 //! # Integer-only, `no_std`, zero-alloc
@@ -700,7 +700,7 @@ mod tests {
     /// `Ternary-Bonsai-4B-Q2_0.gguf` measures exactly
     /// `2560/128 × 34 = 680 B` per embedding row. The pre-session-D
     /// layout (64 w / 18 B) predicted 720 B/row and failed every one of
-    /// the file's 253 q2_0 tensors.
+    /// the file's 253 `q2_0` tensors.
     #[test]
     fn q2_0_block_geometry_is_pinned() {
         assert_eq!(Q2_0_BLOCK, 128);
