@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 56/56
+progress: 62/62
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-17T03:15:00Z
-principal_stated_goal: "ok so we are ready for step 3 ?" → "go" — Stage 3 (shared kernel + hybrid gate), locked choices: A·classification demo, A·absmax i16 activations
+updated: 2026-08-17T05:50:00Z
+principal_stated_goal: "Session D slice 1: Q2_0 native in the runtime — gate on Ternary-Bonsai-4B-Q2_0, per-model verdict"
 ---
 
 ## Problem
@@ -84,7 +84,81 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B — see Verification.)
+
+- [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
+  source + file before any compute was built on it.** The first probe
+  run on the real Q2_0 file failed ALL 253 q2_0 tensors against the
+  old 64 w/18 B arithmetic (file measures 680 B per 2560-wide row);
+  the fork's `ggml/src/ggml-common.h:187` says `QK2_0 = 128`,
+  `qs[QK2_0/4]` (34 B/block, 2.125 bpw; fp16 max|w| + 32 LSB-first
+  code bytes; quantizer `clamp(round(w/amax)+1, 0, 3)` → code 3
+  unreachable; dequant `11 → +2·d`). `bridge::decode_q2_0` + tests +
+  the Stage-2 gate example re-derived from the C formulas; Stage-2
+  gate re-run YES; HF ships Q2_0_g64.gguf + PQ2_0.gguf variants NOT
+  on disk, unreadable by any type in the fork source we hold
+  (existence recorded). Falsifier: q2_0_block_geometry_is_pinned +
+  the re-run gate log.
+- [x] ISC-58: `rt::q2_0` ships the compute seam — `q2_0_matvec`
+  (fp16-EXACT max|w| scale via the shared `half_scale_mant_shift`,
+  branch-free `(code−1)·a` inner loop, stride-aware code-3 pre-scan
+  that fires before ANY output write, hostile-scale milli fallback,
+  saturating i32 out), `q2_0_row_to_milli`, `matvec_scaled`; bounds
+  commentary re-derived for the seam (worst finite fp16 65504 = mant
+  2047 « 5 → |block result| ≤ 2.75e14; 20-block 2560-wide row sum
+  ≈ 5.5e15 « i64::MAX — the i64 bound holds at the seam by
+  construction). Falsifier: 10 tests incl. reference through the
+  published decode_q2_0 (independent lane path), f64 real-units sweep
+  at 2560, fp16-exact-vs-milli pin, code-3 head+tail out-untouched.
+- [x] ISC-59: the model is type-routed: `QuantData{Q10,Q20}` carries
+  per-tensor bytes; `quant_tensor` dispatches on the tensor's own GGML
+  type (41 → `q1_0_tensor` VERBATIM; 42 → same validation at 128w/34B;
+  else loud); LayerSlices/emb/embed/topk/argmax and all 8 per-layer
+  matvec sites route through it; mixed files (f32 norms + either
+  weight format) Just Work. Q1_0 structural identity is pinned by
+  EVIDENCE, not assertion: 1.7B gate byte-diff 43/43, both Q1_0
+  ignored suites green, probe green on both files. Falsifier:
+  q2_0_model_incremental_matches_forward_exact (tolerance 0),
+  quant_tensor_routes_by_type_and_rejects_unknown, q2_0 padding,
+  real_files_load_with_expected_configs (now 3 files).
+- [x] ISC-60: the Q2_0 evidence chain on the real file: probe PROBE:
+  YES (253/253 byte-exact, config == 4B Q1_0's, first block 0x24c8 =
+  18.68 milli max|w|, trits +37/0×43/−48); forward FORWARD: OK (real
+  ternary sparsity ~70% dense rows, per-format density gate); full
+  FULL: OK (36/36 layers, residual 4 237 901 « 60 023 992 rail,
+  top-5 digit tokens); decode_q2_0's real-bytes gap CLOSED (Stage-2
+  pin now eats a real file, first-block census continuous across the
+  re-pin). Falsifier: /tmp/opencode/s4d/{probe,forward,full}_q2_0.log.
+- [x] ISC-61: **THE GATE on Ternary-Bonsai-4B-Q2_0 (frozen example,
+  path arg only, zero edits): YES — 5/5. THE FAMILY'S FIRST YES.**
+  p0 " 8 9 10 11 1", p1 " 14 15 16 17", p2 " five six seven eight
+  nine ten\n\nWhat is the sum of", p3 **" Thursday04/05/2018 "** —
+  byte-identical to the fork's 4C Q2_0 greedy INCLUDING the trailing
+  space (dump-11 token 220), the weekday chain the 1-bit destroyed —
+  p4 " Paris. The capital of Japan is Tokyo. The capital of". Chat
+  demonstrator structural PASS ("1 \n2 \n3 \n4 \n5", clean eos).
+  Residuals 4 143 575–4 313 332 strict + 6 274 426 chat: **6.2–9.5%
+  of the derived 60.0 M rail** (calmer than Q1_0's 11–15 M — ternary
+  zeros shrink the residual stream; recorded finding, not a
+  footnote). Wall 11:21, RSS 2.16 GB. Per-model record: **1.7B Q1_0
+  NO 3/5 · 4B Q1_0 NO 4/5 · 4B Q2_0 YES 5/5.** Falsifier:
+  /tmp/opencode/s4d/gate_q2_0.log contradicting any line.
+- [x] ISC-62: drift vs the 4C fork anchors (pins 1+2 — teacher-forced
+  on the fork's OWN ids, ALL 12 steps each, values parsed
+  mechanically from the raw logs): **p3 argmax 12/12, 0 flips, mean
+  overlap 9.83/10, max |Δtop| 0.289** (step 0: ours " Thursday" top-1
+  14.629 vs fork 14.6527); **p2 argmax 11/12, one step-6 flip** (ours
+  271 @13.326 vs fork 44214 " eleven" @13.662 — a 0.34-logit near-tie,
+  exactly where our gate greedy legitimately diverged after " ten";
+  same class as s4b's recorded 0.1-margin flip), mean overlap 9.5/10,
+  max |Δtop| 0.336. Both INSIDE the C-core bar (argmax agreement,
+  ≥9/10 overlap, |Δtop| ≤ 0.597) and better than 4B Q1_0's 0.427.
+  **Pin-1 disposition: agreement — no unexplained divergence — the
+  verdict is recorded on clean logit evidence.** Discipline: 4 CI
+  gates green (214 tests: 76 rt + 135 snn + 3 app), ignored real-file
+  suite 5/5 (release, 155 s, incl. the Q2_0 loader member), 1.7B
+  gate byte-diff 43/43 vs the s4b baseline; commits LOCAL only.
+  Falsifier: drift_q2_0.log + any red gate.
 
 - [x] ISC-51: the 4B's config pinned from the file BEFORE any code —
   probe + full `qwen3.*`/`general.*` KV dump on both tiers, diff in
@@ -592,6 +666,49 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-17 (s4-D) · **GATE ON TERNARY-BONSAI-4B-Q2_0: YES — 5/5.
+    The family's first YES (2-bit tier); the per-model record now
+  reads 1.7B-Q1_0 NO 3/5 · 4B-Q1_0 NO 4/5 · 4B-Q2_0 YES 5/5 — three
+  honest rows, all fork-attributed, all in the paper.** The 4C coda's
+  physics landed exactly: 2-bit restored what 1-bit destroyed (p3 "
+  Thursday04/05/2018 " — fork-byte-identical to the 4C greedy,
+  trailing space included), p2's " five" passes with room to spare,
+  and the drift puts our logits at the C-core bar against the fork's
+  own dumps (p3 12/12 argmax, |Δtop| ≤ 0.289). The single honest
+  blemish INSIDE the passing continuations: our p2 greedy diverges
+  from the fork's after " ten" (step-6 near-tie, 0.34 logits —
+  measured, not hand-waved; both runtimes consistent with their own
+  choice). The gate example's YES line still prints "on real Q1_0
+  weights" — a FROZEN-artifact string inaccuracy on this run,
+  recorded here rather than edited (the loaded file and all evidence
+  lines name Q2_0 explicitly). The Q2_0 slice is the ternary seam
+  Session D slice 2 (Bonsai weights → Trit → SNN → STDP) builds on.
+- 2026-08-17 (s4-D) · **4B Q1_0 gate NOT re-run — rationale (principal
+  pin, recorded as decided):** the routing is STRUCTURAL IDENTITY for
+  ty 41 — `quant_tensor` calls `q1_0_tensor` verbatim, so a Q1_0 file
+  constructs `QuantData::Q10` and executes the same functions on the
+  same bytes as pre-session-D; the only mutable surface is the call
+  indirection, and the active guards are (a) the 1.7B gate
+  byte-diff 43/43 verdict-bearing lines, (b) both Q1_0 ignored
+  real-file suites green (incl. incremental≡forward exact), (c)
+  probes green on both files. A 37-minute re-run of the 4B Q1_0 gate
+  would add no guard the first three do not already encode; its
+  recorded verdict (NO 4/5) stands untouched.
+- 2026-08-17 (s4-D) · **Probe scale-window policy update (fog (e)
+  grows its second data point):** the q2_0 first-block scale reads
+  18.68 milli (max|w|) — inside even the q1_0 window [1,100]; the
+  q2_0 provisional window is [1,1000] (max ≥ mean convention, first
+  real file — narrows for the next one). Curiosity recorded, not
+  claimed: the 4B Q1_0 file's first block carries the SAME fp16
+  scale bits (0x24c8) despite the mean-vs-max convention difference.
+- 2026-08-17 (s4-D) · **Q2_0 residuals are structurally calmer** —
+  4.1–6.3 M vs Q1_0's 11–15 M on the same prompts (6–9% of the 60.0 M
+  derived rail): real ternary zeros genuinely shrink the residual
+  stream. Also: the branch-free q2_0 inner loop (`(code−1)·a`, four
+  LSB-first lanes per byte) took the 4-token full forward 193 s →
+  21.6 s with BIT-IDENTICAL output (the pre-optimization run is the
+  witness — residual + top-5 equal); the gate inherits it at 11:21
+  wall.
 - 2026-08-17 (s4-D) · **THE STAGE-2 Q2_0 PIN WAS WRONG — re-pinned from
   source + file before any compute was built on it.** The probe-first
   discipline caught it on the first run: all 253 q2_0 tensors FAILED the
@@ -1020,6 +1137,79 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   conversion policy; Trit-native packing's wire role) are Stage 3 scope,
   not this run's — killed here, to be re-articulated as claims in the
   Stage 3 ISA when that run opens.
+
+## Learning
+
+- conjectured (Stage 2, 2026-08-15, latent until session D): the q2_0
+  layout was correctly pinned from the fork's C source as 64 weights /
+  18 bytes, validated by hand-derived test vectors.
+  refuted by: the first real q2_0 file — every one of its 253 q2_0
+  tensors failed the arithmetic (680 B/row measured, 720 predicted);
+  the fork's actual ggml-common.h defines QK2_0 = 128, qs[32] (34 B).
+  The Stage-2 fetch misread the source, and the self-consistent hand
+  vectors then "confirmed" the wrong layout for two sessions — the
+  known hand-vector failure mode, now at format-spec scale, and it
+  survived precisely because NOTHING ever consumed a real q2_0 byte.
+  learned: a format pin is not verified by tests derived from the
+  same reading that produced the pin — circularity again, third
+  distinct surface (math units, shared derivations, now layout
+  pins). The probe-first discipline (measure the real artifact's
+  byte arithmetic BEFORE building compute on the pin) is what caught
+  it in one run.
+  criterion now: any layout pin gets either an independent re-read of
+  the reference source against the derived constants or a real-file
+  byte-arithmetic check before anything downstream trusts it; a codec
+  with no real file to eat stays marked UNVERIFIED-BY-ARTIFACT in the
+  spec.
+- conjectured (session D, four instances in one sitting, all
+  test-side): my q2_0 test expectations — the zero-input TooShort
+  case at 128-wide; the hostile-scale census (assumed ±1 alternating
+  codes where the builder emitted −1/0); the golden-vector zero count
+  (hand formula 154 vs constructed 153); the 2560-wide sweep (40
+  blocks — the PRE-re-pin 64-group mental model leaking into the
+  post-re-pin test).
+  refuted by: cargo test, four times; every fix was "derive from the
+  construction, not from a mental model of it."
+  learned: the ISA's standing lesson now fires on NEW-geometry
+  derivatives too — when a layout constant changes, tests written in
+  its shadow inherit stale arithmetic; sweep for the old constant's
+  multiples (40 = 2560/64) in every test that touches the new one.
+  criterion now: after any geometry re-pin, grep the new module's
+  tests for block counts derived from the OLD geometry before
+  running.
+
+## Verification (Stage 4, session D — Q2_0 native + the family's first YES)
+
+- ISC-57: probe_q2_0.log (0/253 against the old pin → 253/253 after
+  re-pin, PROBE: YES); fork source ggml-common.h:187-192 +
+  ggml-quants.c quantize/dequantize_row_q2_0 read this session;
+  bridge tests re-derived (q2_0_block_geometry_is_pinned pins
+  128/34/680); Stage-2 gate re-run: YES; snn suite 135 green
+- ISC-58: rt::q2_0::tests 10/10 — reference via published decode_q2_0,
+  f64 real-units 2560-wide sweep, fp16-exact pin, code-3 head+tail
+  with out untouched, hostile ±inf, golden lane/byte order,
+  size-validation-first; 1.7B Q1_0 forward/gate still green
+- ISC-59: model tests 76 green incl. q2_0 incremental≡forward
+  (tolerance 0) + routing + padding; real_files_load 3/3 (release);
+  **1.7B frozen-gate byte-diff: gate_17b_session_d.norm vs
+  gate_17b_post.norm — ZERO diff lines, 43/43 verdict-bearing** (3/5
+  NO reproduced, exit 1, wall 8:37 vs 9:09 baseline)
+- ISC-60: forward_q2_0.log (FORWARD: OK after per-format dispatch;
+  the first run's NO was the example's own q1_0 assumptions — 360 B
+  stride + 100%-density gate — both fixed with rationale); full
+  full_q2_0.log (36/36 alive, residual 4 237 901 < 60 023 992, top-5
+  digits, 21.6 s forward post-optimization, RSS 2.12 GB)
+- ISC-61: gate_q2_0.log — strict 5/5, chat structural PASS, STAGE 4
+  GATE: YES, exit 0; wall 11:21, RSS 2.16 GB; p3 continuation
+  fork-byte-identical to 4C (mechanical comparison vs the archived
+  anchor); residuals 4.14–6.27 M
+- ISC-62: drift_q2_0.log — teacher-forced on fork ids, 12 steps each,
+  anchors parsed mechanically: p3 argmax 12/12, overlap 9.83/10 mean,
+  max |Δtop| 0.289; p2 argmax 11/12 (step-6 near-tie flip, 0.34),
+  overlap 9.5/10, max |Δtop| 0.336 — pin-1 agreement, verdict
+  recorded on clean evidence; 4 CI gates green (214 tests), real-file
+  suite 5/5 release (155 s), commits local, no push/merge
+
 
 ## Learning
 

@@ -2,7 +2,9 @@
 
 *Status: implemented + gate-verified 2026-08-15 (`examples/ternary_format_gate.rs`,
 `crates/neuralos-snn/src/bridge.rs`). Every worked example below is byte-identical
-to a unit-test vector in the crate.*
+to a unit-test vector in the crate. The q2_0 layout was re-pinned 2026-08-17
+(session D) from the fork source + the first real q2_0 file — see §Prism q2_0
+and §Corrections.*
 
 This is the wire-format contract for moving ternary tensors between NeuralOS
 and the two ecosystems that actually ship ternary models. All layouts were
@@ -32,7 +34,7 @@ lanes within each byte):
 |---|---|---|---|
 | `i2_s` | f32 bits (raw `u32`) | BitNet-Round `γ = mean|w|` — same convention as `trit::tensor_scale` | 32-byte tail per row, first 4 bytes LE |
 | `q1_0` | fp16 bits (raw `u16`) | `γ = mean|w|` (BitNet-compatible) | 2 bytes LE per 128-weight block |
-| `q2_0` | fp16 bits (raw `u16`) | `d = max|w|` (TWN-style) | 2 bytes LE per 64-weight block |
+| `q2_0` | fp16 bits (raw `u16`) | `d = max|w|` (TWN-style) | 2 bytes LE per 128-weight block |
 
 NeuralOS is integer-only: scales travel as raw bits (`u16`/`u32`).
 `bridge::half_to_f32_bits` widens fp16→f32 bit-exactly in pure integer math;
@@ -93,9 +95,16 @@ B5 B5 B5 B5 B5 B5 B5 B5
 
 ## Prism `q2_0`
 
-**Layout.** Per 64-weight block, 18 bytes: LE fp16 scale (`max|w|`), then
-16 bytes of LSB-first 2-bit lanes. Element `j`'s code is bits
+**Layout.** Per 128-weight block, 34 bytes: LE fp16 scale (`max|w|`), then
+32 bytes of LSB-first 2-bit lanes. Element `j`'s code is bits
 `2·(j%4) .. 2·(j%4)+1` of byte `j/4`.
+
+*(Re-pinned 2026-08-17, session D: this spec previously described an
+18-byte / 64-weight block. The first real q2_0 file —
+`Ternary-Bonsai-4B-Q2_0.gguf` — failed all 253 q2_0 tensors against that
+arithmetic (680 B per 2560-wide row measured, 720 predicted), and the
+fork's actual `ggml/src/ggml-common.h` defines `QK2_0 = 128` with
+`qs[QK2_0/4]`. See Corrections below for the full history.)*
 
 **The code-3 question.** The reference dequantizer maps `11 → +2·d`, but
 the reference *quantizer* can never emit it (with `d = max|w|`,
@@ -103,11 +112,13 @@ the reference *quantizer* can never emit it (with `d = max|w|`,
 `BridgeError::UnsupportedCode` — a loud error, never a silent clamp.
 
 **Worked example** (== `bridge::tests::q2_0_known_vector`). Scale fp16
-`4.0` = `0x4400`, all 16 code bytes `0xA4 = 0b10_10_01_00` → LSB-first
-codes `00, 01, 10, 10` → elements `[−1, 0, +1, +1]` ×16:
+`4.0` = `0x4400`, all 32 code bytes `0xA4 = 0b10_10_01_00` → LSB-first
+codes `00, 01, 10, 10` → elements `[−1, 0, +1, +1]` ×32:
 
 ```
 00 44                         (LE fp16 4.0)
+A4 A4 A4 A4 A4 A4 A4 A4
+A4 A4 A4 A4 A4 A4 A4 A4
 A4 A4 A4 A4 A4 A4 A4 A4
 A4 A4 A4 A4 A4 A4 A4 A4
 ```
@@ -119,8 +130,8 @@ A4 A4 A4 A4 A4 A4 A4 A4
   packing places live elements in truncated bytes (silently dropped). A
   permissive codec would be silently lossy; ours refuses
   (`BadLength`).
-- `q1_0` requires `n % 128 == 0`; `q2_0` requires `n % 64 == 0` (both
-  asserted in the C reference).
+- `q1_0` requires `n % 128 == 0`; `q2_0` requires `n % 128 == 0` (both
+  asserted in the C reference — `QK1_0 = QK2_0 = 128`).
 - Real model dimensions are multiples of 256; these rules never bite in
   practice.
 
@@ -135,10 +146,29 @@ A4 A4 A4 A4 A4 A4 A4 A4
 
 ## Corrections to earlier docs
 
-`docs/RESEARCH_FINDINGS.md` called the Prism ternary format "Q2_0_g128".
-The fork's C source defines `QK2_0 = 64` — **group size 64** (2.25 bpw per
-weight including the fp16 scale). The C code is authoritative; the "g128"
-label was the model-card name, not the layout.
+The correction history of the q2_0 group size, in full (each entry
+superseded by the next — the current truth is the last line):
+
+1. `docs/RESEARCH_FINDINGS.md` originally called the Prism ternary
+   format "Q2_0_g128" (from the HF model-card naming).
+2. The 2026-08-15 Stage-2 session "corrected" that to group 64 /
+   18 B per block, claiming the fork's C source defined `QK2_0 = 64`.
+   **That correction was wrong** — the source was misread, and the
+   self-derived hand test vectors validated the wrong layout
+   circularly. Nothing consumed q2_0 bytes, so nothing caught it.
+3. **2026-08-17 (session D): the fork's actual
+   `ggml/src/ggml-common.h` defines `QK2_0 = 128`, `qs[QK2_0/4]` —
+   34 B per 128 weights — double-witnessed by the first real q2_0
+   file (every tensor byte-exact at that arithmetic) and by HF's own
+   `gguf.total` metadata.** The "g128" label in the research docs was
+   accidentally RIGHT; the model card's `Q2_0_g64.gguf` variant (which
+   the HF repo ships alongside `Q2_0.gguf`) is a separate file we have
+   not downloaded — no type in the fork source we hold reads a g64
+   layout.
+
+The lesson is recorded in the ISA (session D Learning): a layout pin
+needs either the reference source re-read against the derived constant
+or — better — a real file's byte arithmetic before the pin is trusted.
 
 ## GGUF container + type numbers (Stage 4, pinned 2026-08-15)
 
@@ -153,7 +183,7 @@ discriminants (from its `ggml/include/ggml.h`):
 | `q8_0` | 8 | 32 w / 34 B |
 | `tq1_0` | 34 | stock ternary |
 | **`q1_0`** | **41** | 128 w / 18 B |
-| **`q2_0`** | **42** | 64 w / 18 B |
+| **`q2_0`** | **42** | 128 w / 34 B |
 
 Container facts verified against the real `Bonsai-1.7B-Q1_0.gguf`: GGUF
 v3, tensor infos after the KV section, data section aligned to

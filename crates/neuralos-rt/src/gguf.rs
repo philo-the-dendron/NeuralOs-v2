@@ -44,7 +44,7 @@ use core::fmt;
 
 /// ggml tensor type: Prism fork's 1-bit (`block_q1_0`, 18 B / 128 weights).
 pub const GGML_TYPE_Q1_0: u32 = 41;
-/// ggml tensor type: Prism fork's ternary (`block_q2_0`, 18 B / 64 weights).
+/// ggml tensor type: Prism fork's ternary (`block_q2_0`, 34 B / 128 weights).
 pub const GGML_TYPE_Q2_0: u32 = 42;
 
 const MAGIC: &[u8; 4] = b"GGUF";

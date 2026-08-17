@@ -198,6 +198,24 @@ framing suppresses completion-mode on the base itself. p2's
 bet; frozen-prompts-on-Q2_0-4B = cheap likely-5/5 sibling. Both the
 principal's calls; no runtime changes.
 
+**Session D slice 1 (2026-08-17) — Q2_0 native: the family's first
+gate YES.** The principal called the sibling. The probe-first
+discipline caught our own Stage-2 q2_0 pin WRONG before any compute
+existed (real layout 128 w / 34 B, re-pinned from the fork source +
+file arithmetic; the 64 w / 18 B spec was a misread that
+self-consistent hand vectors had hidden). Shipped: re-pinned
+`decode_q2_0` eating real bytes, `rt::q2_0` compute (fp16-exact
+max|w| scales, loud code 3, branch-free inner loop), per-tensor
+`QuantData` type routing with Q1_0 structural identity byte-diff
+proven (1.7B gate 43/43, both Q1_0 suites green). **GATE on
+Ternary-Bonsai-4B-Q2_0: YES 5/5** — " Thursday04/05/2018 "
+fork-byte-identical to the 4C greedy; drift vs the fork anchors p3
+12/12 argmax (max |Δtop| 0.289), p2 11/12 with one measured
+0.34-logit near-tie; residuals 6–9% of the rail. Per-model record:
+**1.7B-Q1_0 NO 3/5 · 4B-Q1_0 NO 4/5 · 4B-Q2_0 YES 5/5.** The
+ternary seam Session D slice 2 (Bonsai → Trit → SNN → STDP) builds
+on this. Merge/no-merge: the principal's.
+
 ### Phase 4 — RISC-V deployment proof
 
 Goal: make the `no_std` claim concrete.

@@ -105,16 +105,25 @@ session, not from blogs or model cards):
   sign bytes, LSB-first. Binary `{−γ, +γ}`, no zero state — imports
   losslessly into ternary; export does not exist (would silently map zeros
   to `+γ`).
-- **Prism `q2_0`** (same fork, `block_q2_0`): per 64 weights, LE fp16 scale
-  (`max|w|`, TWN-style) + 16 bytes of LSB-first 2-bit lanes. Code `11`
-  decodes to `+2·d` in the reference dequantizer but cannot be emitted by
-  its quantizer; we reject it loudly.
+- **Prism `q2_0`** (same fork, `block_q2_0`): per 128 weights, LE fp16 scale
+  (`max|w|`, TWN-style) + 32 bytes of LSB-first 2-bit lanes (34 B/block —
+  the session-D re-pin; see the session D slice 1 section for how the
+  first real file caught our original 18 B/64 w spec being wrong). Code
+  `11` decodes to `+2·d` in the reference dequantizer but cannot be
+  emitted by its quantizer; we reject it loudly.
 
 **Honest findings:**
 
-1. **The "Q2_0_g128" label in our research docs was loose.** The fork's C
-   code defines `QK2_0 = 64` — group size **64** (2.25 bpw), not 128. The C
-   code is authoritative; corrected in `docs/TERNARY_FORMAT.md`.
+1. **The "Q2_0_g128" label in our research docs was RIGHT by accident —
+   and our "correction" of it was wrong.** Stage 2 pinned q2_0 as
+   group 64 / 18 B, claiming the fork's C source defined `QK2_0 = 64`.
+   Session D (2026-08-17) proved the source says **128** — 34 B per
+   block — when the first real q2_0 file failed every tensor against
+   the old arithmetic. The pin was re-derived from the fork's
+   `ggml-common.h` + the file's own bytes; self-consistent hand test
+   vectors had kept the misreading invisible (recorded as an ISA
+   Learning — a codec with no real artifact to eat stays
+   unverified-by-artifact).
 2. **`i2_s` requires `n % 128 == 0`, not merely `% 4`.** The reference
    truncates output at `n/4` bytes; with the transposed packing, any
    non-multiple of 128 leaves live elements in truncated bytes — silently
@@ -679,6 +688,37 @@ capacity bet, with a cheap sibling on the table — the frozen prompts
 on Q2_0-4B would very likely read 5/5. Both calls are the
 principal's.
 
+**Session D slice 1 — Q2_0 native: the family's first YES
+(2026-08-17).** The principal called the 4C coda's cheap sibling: run
+the frozen prompts on Ternary-Bonsai-4B-Q2_0 through OUR runtime. The
+slice gave the runtime native ternary weights end-to-end — and the
+probe-first discipline paid for the whole session before any compute
+existed: **the first probe run refuted our own Stage-2 q2_0 pin** (all
+253 q2_0 tensors failed the documented 64 w / 18 B arithmetic; the
+fork's real `block_q2_0` is **128 w / 34 B** — fp16 `max|w|` + 32
+LSB-first code bytes — double-witnessed by the file's byte arithmetic
+and HF's own metadata; the 2026-08-15 "correction" had it backwards,
+and self-derived test vectors had kept the error invisible because
+nothing had ever eaten a real q2_0 byte). Re-pinned from source,
+`decode_q2_0` finally eats real file bytes, and the compute stack
+ships: `rt::q2_0` (fp16-exact scales, loud code 3, branch-free inner
+loop — 193 s → 21.6 s on the 4B full forward with bit-identical
+output) plus per-tensor type routing in the model (`QuantData`; Q1_0
+files hit the exact same functions as before — 1.7B gate byte-diff
+43/43, both Q1_0 suites green). **THE GATE: YES — 5/5**, the first
+YES in the family's record: " Thursday04/05/2018 " — the weekday
+chain 1-bit destroyed, byte-identical to the fork's greedy down to
+the trailing space — plus p2 " five…", p0/p1/p4 fork-byte-identical.
+Drift vs the 4C fork anchors (teacher-forced, all 12 steps): p3
+argmax 12/12 with max |Δtop| 0.289; p2 11/12 with one measured
+0.34-logit near-tie flip — inside the C-core bar, and tighter than
+the 4B Q1_0's own drift. Q2_0 residuals run 6–9% of the soundness
+rail (calmer than Q1_0 — real ternary zeros shrink the stream).
+**Per-model record: 1.7B-Q1_0 NO 3/5 · 4B-Q1_0 NO 4/5 · 4B-Q2_0
+YES 5/5** — three honest rows, all fork-attributed, all in the
+paper. This slice is the ternary seam Session D slice 2 (Bonsai
+weights → Trit → SNN → STDP, the hybrid experiment) builds on.
+
 **Remaining sessions (honest slice):** attention + full forward
 (**✓ session 3**) → adversarial review of the whole arc (**✓ session
 3.5**) → tokenizer + generation = the Stage 4 gate (**✓ session 4 —
@@ -697,10 +737,20 @@ both TOP-1 " Thursday" (+3.05/+3.08, top-10s identical within
 0.029), 1-bit outside the top-10; prompt-shape falsified; chat shape
 buries the weekday chain at every width — even the base clarifies
 ("It seems like…"); 8B/Q2_0 calls grounded for the
-principal**) → Session C
-(delta redteam on the new code, alpha.2 republish checklist, gguf
-lazy arrays, contiguity validation; merge/no-merge of the branch and
-the 8B-vs-stop call are the principal's).
+  principal**) → Session D slice 1 (**✓ 2026-08-17 — Q2_0 native in
+  the runtime: Stage-2 q2_0 pin caught wrong by the probe and
+  re-pinned from source (128 w / 34 B); rt::q2_0 + QuantData type
+  routing with Q1_0 structural identity byte-diff-proven; GATE on
+  Ternary-Bonsai-4B-Q2_0: **YES 5/5, the family's first YES** —
+  " Thursday04/05/2018 " fork-byte-identical; drift p3 12/12
+  argmax |Δtop| ≤ 0.289 vs the 4C anchors; per-model record
+  1.7B-Q1_0 NO 3/5 · 4B-Q1_0 NO 4/5 · 4B-Q2_0 YES 5/5**) → Session D
+  slice 2 (Bonsai weights → Trit → SNN → STDP, the hybrid experiment
+  — builds on this slice's ternary seam) → Session C
+  (delta redteam on the new code, alpha.2 republish checklist — now
+  carrying the q2_0 codec fix as a must-ship, gguf
+  lazy arrays, contiguity validation; merge/no-merge of the branch and
+  the 8B-vs-stop call are the principal's).
 
 ### 3. The lab bench (visible)
 
