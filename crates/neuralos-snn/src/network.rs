@@ -855,6 +855,34 @@ impl SpikingNeuralNetwork {
         Ok(())
     }
 
+    /// Rebuild the CSR layout (authoritative forward sort + reverse CSR +
+    /// inverse permutation) after wiring the network externally via
+    /// [`add_synapse`].
+    ///
+    /// [`build_topology`] already does this for its own builders; this method
+    /// is the path for callers that construct synapse wiring themselves —
+    /// e.g. importing a pretrained weight matrix edge by edge. Without it:
+    ///
+    /// - `connections(pre)` returns slices with the right count but the wrong
+    ///   members whenever edges were added out of `pre_id` order (the
+    ///   incremental `row_ptrs` is only correct for sorted insertion), and
+    /// - `incoming(post)` returns nothing (the reverse CSR is empty until a
+    ///   finalize), silently regressing plasticity to the pre-1.5d LTD-only
+    ///   substrate — the post-firing LTP pass becomes unreachable.
+    ///
+    /// Contract: call **exactly once**, after all `add_synapse` calls and
+    /// before the first [`step`]. Like [`SparseSynapseMatrix::finalize`], it
+    /// is not idempotent on an already-finalized matrix (the counting sort's
+    /// source arrays hold insertion order); rebuilding external wiring means
+    /// clearing and re-adding. Also refreshes `stats.total_synapses`.
+    ///
+    /// [`step`]: Self::step
+    /// [`SparseSynapseMatrix::finalize`]: SparseSynapseMatrix::finalize
+    pub fn finalize_synapses(&mut self) {
+        self.synapse_matrix.finalize();
+        self.stats.total_synapses = self.synapses.len() as u32;
+    }
+
     /// Enable or disable STDP weight updates. When disabled, `step()` still
     /// propagates spikes and advances time, but synapse weights stay fixed —
     /// useful for sustained-firing visualization or as a control baseline.
@@ -1486,6 +1514,121 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn finalize_synapses_sorts_external_adds_and_builds_both_csrs() {
+        // Session D-2: the public external-wiring path. `add_synapse` in
+        // arbitrary pre_id order + `finalize_synapses()` must produce the
+        // authoritative forward CSR (right members, stable within-row order),
+        // the reverse CSR (right incoming edges), and refreshed stats.
+        let mut net = SpikingNeuralNetwork::new(
+            4,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+        )
+        .expect("valid");
+        net.build_topology().expect("build");
+        assert_eq!(net.synapse_count(), 0, "zero-connectivity start is empty");
+        // Deliberately unsorted pre order (pre 2, pre 0, pre 2 again, pre 1).
+        net.add_synapse(2, 0, -125).expect("add");
+        net.add_synapse(0, 1, 125).expect("add");
+        net.add_synapse(2, 3, -125).expect("add");
+        net.add_synapse(1, 3, 0).expect("add");
+        net.finalize_synapses();
+        assert_eq!(net.synapse_count(), 4);
+        assert_eq!(net.stats().total_synapses, 4, "stats must refresh");
+
+        // Forward CSR: each row holds exactly its presynaptic neuron's edges,
+        // stable order among same-pre adds (0 was added before 3 for pre 2).
+        let row0: Vec<(u16, i16)> = net
+            .synapse_matrix
+            .connections(0)
+            .map(|(p, w, _)| (p, w))
+            .collect();
+        assert_eq!(row0, vec![(1, 125)]);
+        let row1: Vec<(u16, i16)> = net
+            .synapse_matrix
+            .connections(1)
+            .map(|(p, w, _)| (p, w))
+            .collect();
+        assert_eq!(row1, vec![(3, 0)]);
+        let row2: Vec<(u16, i16)> = net
+            .synapse_matrix
+            .connections(2)
+            .map(|(p, w, _)| (p, w))
+            .collect();
+        assert_eq!(row2, vec![(0, -125), (3, -125)]);
+        assert_eq!(net.synapse_matrix.connections(3).count(), 0);
+
+        // Reverse CSR: post 3 receives from pre 1 and pre 2 (stable insertion
+        // order among same-post adds: pre 2's edge was added before pre 1's).
+        let inc3: Vec<u16> = net.synapse_matrix.incoming(3).map(|(p, _)| p).collect();
+        assert_eq!(inc3, vec![2, 1]);
+        let inc0: Vec<u16> = net.synapse_matrix.incoming(0).map(|(p, _)| p).collect();
+        assert_eq!(inc0, vec![2]);
+    }
+
+    #[test]
+    fn finalize_synapses_makes_ltp_reachable_on_external_wiring() {
+        // Session D-2: the reason `finalize_synapses` must exist. The LTP
+        // (post-firing) plasticity pass iterates the reverse CSR; on external
+        // wiring it is empty until a finalize, so pre-before-post firing can
+        // NEVER potentiate — the pre-1.5d LTD-only regression, silently. Same
+        // drive on two nets: the finalized one potentiates, the unfinalized
+        // one cannot (LTD clamps the zero-born excitatory weight at 0).
+        let mut net = SpikingNeuralNetwork::new(
+            4,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+        )
+        .expect("valid");
+        net.build_topology().expect("build");
+        net.neurons[1].noise_amplitude_ua = 0;
+        net.neurons[2].noise_amplitude_ua = 0;
+        net.add_synapse(1, 2, 0).expect("add");
+        net.finalize_synapses();
+
+        let mut raw = SpikingNeuralNetwork::new(
+            4,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+        )
+        .expect("valid");
+        raw.build_topology().expect("build");
+        raw.neurons[1].noise_amplitude_ua = 0;
+        raw.neurons[2].noise_amplitude_ua = 0;
+        raw.add_synapse(1, 2, 0).expect("add");
+
+        // Drive: pre (neuron 1) steps 0..6, then post (neuron 2) steps 7..17.
+        // Pre fires ≈step 6 (integer LIF integration needs 7 driven steps to
+        // reach −55 mV from rest), post ≈step 13 → pre-before-post within the
+        // STDP window → LTP is the only rule that can raise this weight.
+        for step in 0..18u32 {
+            let mut inp = vec![0_i16; 4];
+            if step < 7 {
+                inp[1] = 600;
+            } else {
+                inp[2] = 600;
+            }
+            net.step(&inp).expect("step");
+            raw.step(&inp).expect("step");
+        }
+        assert!(
+            net.neurons[1].last_spike_time_us > 0 && net.neurons[2].last_spike_time_us > 0,
+            "drive must make both pre and post fire (pre @ {}μs, post @ {}μs)",
+            net.neurons[1].last_spike_time_us,
+            net.neurons[2].last_spike_time_us
+        );
+        assert!(
+            net.synapses[0].weight > 0,
+            "finalized external wiring must allow LTP: weight {} (started 0)",
+            net.synapses[0].weight
+        );
+        assert_eq!(
+            raw.synapses[0].weight, 0,
+            "without finalize the reverse CSR is empty — LTP unreachable, weight frozen at 0"
+        );
     }
 
     #[test]
