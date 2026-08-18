@@ -109,12 +109,15 @@ may warrant an `alpha.2` republish. Bump the workspace `version` in the root
 
 ## A library behavior to know
 
-`SpikingNeuralNetwork::step()` calls `decay_synaptic_current` each step so the
-`adaptation_current` (which accumulates +2/spike) doesn't grow unboundedly and
-silence the network. **If you add new per-step logic, preserve this decay** —
-without it every sustained simulation self-quenches to ~0 Hz after ~3 s. There
-is also a `set_plasticity_enabled(bool)` toggle (default ON in the lib, OFF in
-the visualizer's sustained-firing mode).
+`SpikingNeuralNetwork::step()` calls `decay_adaptation_current` each step so
+the `adaptation_current` (which accumulates +2/spike) doesn't grow
+unboundedly and silence the network. **If you add new per-step logic,
+preserve this decay** — and preserve the session-F step ordering:
+adaptation decay → integrate (reads last step's pulses) → clear →
+propagate. The clear must stay AFTER the read or recurrent transmission
+dies silently (the 2026-08-18 bug; see the transmission tests in
+`network.rs`). There is also a `set_plasticity_enabled(bool)` toggle
+(default ON in the lib, OFF in the visualizer's sustained-firing mode).
 
 ## Do not
 

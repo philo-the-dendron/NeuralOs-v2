@@ -22,14 +22,17 @@
 //! # The voltage grid and the dead zone (why resolution is configurable)
 //!
 //! `delta_v = dt_over_tau · (leak + R·I/1000) / 1000` truncates to whole
-//! quanta. On the default mV grid, a steady total current below ~200 μA at
-//! rest (default params: τ=20 ms, R=100 MΩ, dt=1 ms) moves the membrane
-//! exactly zero, forever — even currents above the ~150 μA threshold
-//! current. The ternary substrate's recurrent pulses (weight/10 = ±12 μA at
-//! γ=125) sit 17× inside that blindness. [`VoltageResolution::CentiMillivolt`]
-//! shrinks the dead zone to ~2 μA with the same `i16`, no float, and
-//! bit-identical arithmetic shape; the mV default exists so every recorded
-//! result in the lineage keeps its exact numbers.
+//! quanta. On the default mV grid at default params (dt=1 ms, R=100 MΩ), a
+//! steady total current at rest below ~**200 μA (E, τ=20 ms)** or ~**100 μA
+//! (I, τ=10 ms)** — the dead zone scales as `τ`/`dt_over_tau` — moves the
+//! membrane exactly zero, forever. The ternary substrate's recurrent pulses
+//! (weight/10 = ±12 μA at γ=125) sit deep inside that blindness.
+//! [`VoltageResolution::CentiMillivolt`] shrinks both dead zones 100× with
+//! the same `i16`, no float, and bit-identical arithmetic shape; the mV
+//! default exists so every recorded result in the lineage keeps its exact
+//! numbers. (Session F addendum: coherent multi-spike pulse SUMS can cross
+//! a sub-threshold margin even on the mV grid — the dead zone binds single
+//! small currents, not stacked ones; see the post-fix sweep evidence.)
 //!
 //! # `no_std`
 //!
@@ -64,7 +67,8 @@ use heapless::Vec;
 /// Maximum spike history length (compile-time, no allocator).
 pub const MAX_SPIKE_HISTORY: usize = 64;
 
-/// Default synaptic current decay time constant (μs).
+/// Default synaptic current decay time constant (μs). DECORATIVE since
+/// session F (see [`LIFNeuron::tau_synapse_us`]).
 const DEFAULT_TAU_SYNAPSE_US: u32 = 5_000;
 
 /// Membrane potential lower bound (mV) — biological floor.
@@ -136,7 +140,10 @@ pub struct LIFNeuron {
     pub tau_membrane_us: u32,
     /// Refractory period (μs). Prevents immediate re-firing.
     pub tau_refractory_us: u32,
-    /// Synaptic current decay time constant (μs). Default `5_000` (5 ms).
+    /// Synaptic current decay time constant (μs). **DECORATIVE** since
+    /// session F: the accumulator is cleared-after-read by the network, so
+    /// no decay is applied — pulses live exactly one step at full
+    /// amplitude. Kept for a future conductance-shaped synapse.
     pub tau_synapse_us: u32,
 
     /// Remaining refractory time (μs). `0` when not refractory.
@@ -311,19 +318,27 @@ impl LIFNeuron {
         self.synaptic_current_ua = self.synaptic_current_ua.saturating_add(current_ua);
     }
 
-    /// Zero out synaptic current (typically after a network step).
+    /// Zero out synaptic current. The network calls this AFTER integration
+    /// has read the accumulator (session F's clear-after-read fix) — Phase 2
+    /// then injects fresh pulses for the next step to integrate.
     pub fn clear_synaptic_current(&mut self) {
         self.synaptic_current_ua = 0;
     }
 
-    /// Exponential-decay approximation of synaptic + adaptation currents.
-    /// Call each step for biological realism.
-    pub fn decay_synaptic_current(&mut self, dt_us: u32) {
-        // I[n+1] = I[n] · (1 − dt/τ) ≈ I[n] · (1000 − dt·1000/τ) / 1000
-        let decay_num = 1000_i32 - (((dt_us as i32) * 1000) / self.tau_synapse_us as i32).max(0);
-        self.synaptic_current_ua =
-            (i32::from(self.synaptic_current_ua) * decay_num / 1000) as i16;
-        // Adaptation decays linearly by 1 μA per call (simpler than exp).
+    /// Decay the spike-frequency adaptation current by 1 μA (linear).
+    ///
+    /// Called once per step by the network BEFORE integration — without it,
+    /// adaptation accumulates (+2/spike) unboundedly and silences the
+    /// network. Phase-identical to the historical opening-loop position.
+    ///
+    /// (Session F split: the historical `decay_synaptic_current` also
+    /// decayed the synaptic accumulator, but that half was structurally
+    /// dead in `step` since the port — the accumulator was always cleared
+    /// before its only read. Post-fix the network clears after the read, so
+    /// there is nothing to decay: pulses live exactly one step at full
+    /// amplitude, then are integrated and zeroed. `tau_synapse_us` is
+    /// decorative until a conductance-shaped synapse ships.)
+    pub fn decay_adaptation_current(&mut self) {
         if self.adaptation_current_ua > 0 {
             self.adaptation_current_ua = self.adaptation_current_ua.saturating_sub(1);
         }

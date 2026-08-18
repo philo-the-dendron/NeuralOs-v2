@@ -670,18 +670,23 @@ impl SpikingNeuralNetwork {
         let mut output_spikes: Vec<Spike> = Vec::new();
         let mut firing_neurons: Vec<u16> = Vec::new();
 
-        // Clear previous step's synaptic currents and decay adaptation.
-        // Synaptic current is cleared (instantaneous-synapse model: only this
-        // step's spikes contribute). Adaptation MUST decay each step or it
-        // accumulates (+2/spike) without bound and silences the network — a
-        // bug that previously made every sustained run self-quench after ~3 s.
+        // Adaptation decay (adaptation ONLY — session F split). MUST run
+        // each step or adaptation accumulates (+2/spike) without bound and
+        // silences the network — a bug that previously made every sustained
+        // run self-quench after ~3 s. Position: pre-integration, phase-
+        // identical to the historical opening loop.
         for n in &mut self.neurons {
-            n.clear_synaptic_current();
-            n.decay_synaptic_current(self.time_step_us);
+            n.decay_adaptation_current();
         }
         self.plasticity_queue.clear();
 
-        // Phase 1: integrate-and-fire all neurons (O(n)).
+        // Phase 1: integrate-and-fire all neurons (O(n)). This READS the
+        // recurrent pulses injected by the PREVIOUS step's Phase 2 — the
+        // one-step synaptic delay this orchestrator has always claimed and,
+        // since session F, actually has. (Historical bug, pinned then fixed:
+        // the pulses used to be cleared before this read, so recurrent
+        // transmission was structurally dead — every network-dynamic number
+        // in the lineage was re-pinned on this fix.)
         for (idx, neuron) in self.neurons.iter_mut().enumerate() {
             let current_ua = input_currents.get(idx).copied().unwrap_or(0);
             if neuron.integrate_and_fire(current_ua, self.time_step_us, self.current_time_us) {
@@ -698,6 +703,14 @@ impl SpikingNeuralNetwork {
                     self.spike_history.pop_front();
                 }
             }
+        }
+
+        // Post-read clear: the accumulator has been consumed; zero it so
+        // Phase 2's fresh pulses are the only content next step integrates.
+        // (A refractory neuron's unread pulse is dropped here — rare at
+        // ~35 Hz vs 2 ms refractory; documented, session F.)
+        for n in &mut self.neurons {
+            n.clear_synaptic_current();
         }
 
         // Phase 2: propagate spikes through synapses (O(active_synapses)).
@@ -2239,22 +2252,60 @@ mod tests {
         }
     }
 
-    // ----- Voltage resolution propagation (the finer ruler) -----
+    // ----- Transmission live (session F fix: clear-after-read reorder) -----
+    // Historical bug, pinned 2026-08-18 (stage 1c): Phase 2 injected
+    // weight/10 AFTER Phase 1's integration and the next step cleared the
+    // accumulator BEFORE it — recurrent current was never integrated; every
+    // "weights don't shape firing" result in the D-2/E lineage was this cut
+    // wire. The fix reorders step() (adaptation decay → integrate → clear →
+    // propagate): pulses now integrate on the NEXT step — the one-step
+    // delay the orchestrator always claimed. The tests below pin it exact.
 
-    /// BUG PINNED (found session E stage 1c, 2026-08-18): the recurrent
-    /// synaptic current injected by `step()` Phase 2 is NEVER integrated.
-    /// Phase 2 adds `weight/10` AFTER Phase 1's integration, and the next
-    /// step's opening loop calls `clear_synaptic_current()` BEFORE Phase 1
-    /// — the pulse is born and destroyed without ever reaching
-    /// `integrate_and_fire`. Consequences already recorded in the ISA: the
-    /// D-2/session-E "all three nets fire identically" result is explained
-    /// by this (weights are structurally silent in `step()`), not only by
-    /// mV-grid quantization. This canary pins the CURRENT behavior so any
-    /// future fix (reordering clear/integrate, or deferring injection to
-    /// the next step's integration) flips this test loudly and re-pins the
-    /// lineage. Until then: honest name, honest finding.
     #[test]
-    fn recurrent_current_is_never_integrated_in_step_bug_pinned() {
+    fn transmission_is_live_one_step_delayed_centimv() {
+        // 2 neurons ⇒ neuron 0 E, neuron 1 I (exc_count truncates to 1).
+        // Centi grid, noise off. Pre driven to fire on step 0 (E on centi:
+        // 3000 μA ⇒ delta_v 1500 quanta ⇒ −7000+1500 = −5500 = threshold).
+        // A +125-weight spike injects +12 μA (weight/10, truncating);
+        // I-type integration: current_term = 12·100·100/1000 = 120 cV,
+        // delta_v = 100·120/1000 = 12 quanta ⇒ post −7000 → −6988 exactly
+        // ONE step after the pre spike (and unmoved the step of the spike —
+        // the delay itself is pinned).
+        let mut net = SpikingNeuralNetwork::new_with_voltage_resolution(
+            2,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+            VoltageResolution::CentiMillivolt,
+        )
+        .expect("constructs");
+        net.build_topology().expect("empty build");
+        for n in &mut net.neurons {
+            n.noise_amplitude_ua = 0;
+        }
+        net.add_synapse(0, 1, 125).expect("edge");
+        net.finalize_synapses();
+
+        let spikes = net.step(&[3000, 0]).expect("step 0");
+        assert_eq!(spikes.len(), 1, "pre fires on step 0");
+        assert_eq!(
+            net.neurons[1].membrane_potential, -7_000,
+            "post unmoved on the spike step itself — one-step delay"
+        );
+
+        net.step(&[0, 0]).expect("step 1");
+        assert_eq!(
+            net.neurons[1].membrane_potential, -6_988,
+            "post integrates the pulse exactly one step later (+12 quanta)"
+        );
+    }
+
+    #[test]
+    fn transmission_is_live_one_step_delayed_mv_strong_weight() {
+        // Same pin on the DEFAULT mV grid with a strong weight: 2000 →
+        // +200 μA pulse. I-type mV: current_term = 200·100/1000 = 20,
+        // delta_v = 100·20/1000 = 2 mV ⇒ post −70 → −68 one step after pre.
+        // (A single ±12 μA pulse cannot move an mV-grid I neuron — dead
+        // zone ~100 μA; that sensitivity belongs to the centi grid.)
         let mut net =
             SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
                 .expect("constructs");
@@ -2262,30 +2313,46 @@ mod tests {
         for n in &mut net.neurons {
             n.noise_amplitude_ua = 0;
         }
-        net.add_synapse(0, 1, 125).expect("edge");
+        net.add_synapse(0, 1, 2000).expect("edge");
         net.finalize_synapses();
-        let mut pre_spikes = 0u64;
-        let mut post_ever_moved = false;
-        for t in 0..200 {
-            let inputs: Vec<i16> = if t % 20 < 10 { vec![600, 0] } else { vec![0, 0] };
-            for s in net.step(&inputs).expect("step") {
-                if s.neuron_id == 0 {
-                    pre_spikes += 1;
-                }
-            }
-            // Neuron 1 (I-type, no drive, at rest): any integrated recurrent
-            // current would move it off −70 (even one step, mV grid).
-            if net.neurons[1].membrane_potential != -70 {
-                post_ever_moved = true;
-            }
+
+        let spikes = net.step(&[3000, 0]).expect("step 0");
+        assert_eq!(spikes.len(), 1, "pre fires on step 0 (E mV: 3000 μA ⇒ +15 mV)");
+        assert_eq!(net.neurons[1].membrane_potential, -70, "delay: unmoved this step");
+
+        net.step(&[0, 0]).expect("step 1");
+        assert_eq!(net.neurons[1].membrane_potential, -68, "+2 mV one step later");
+    }
+
+    #[test]
+    fn transmission_pulses_sum_across_presynaptic_spikes() {
+        // Two presynaptic neurons firing the same step ⇒ both pulses land
+        // together in the accumulator ⇒ integrated as ONE summed current
+        // next step (the σ-accumulation the channel physics runs on).
+        // 3 neurons ⇒ 0,1 E; 2 I. Post = neuron 2 (I-type). Weights 125 each
+        // ⇒ 2 × +12 = +24 μA; centi I: current_term = 24·100·100/1000 = 240,
+        // delta_v = 100·240/1000 = 24 quanta ⇒ −7000 → −6976.
+        let mut net = SpikingNeuralNetwork::new_with_voltage_resolution(
+            3,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+            VoltageResolution::CentiMillivolt,
+        )
+        .expect("constructs");
+        net.build_topology().expect("empty build");
+        for n in &mut net.neurons {
+            n.noise_amplitude_ua = 0;
         }
-        assert!(pre_spikes > 0, "pre fired — the setup is sound");
-        assert!(
-            !post_ever_moved,
-            "IF THIS FAILS: transmission became live — the bug is fixed; \
-             re-pin the firing lineage (D-2/E numbers) and replace this canary \
-             with a positive transmission test"
-        );
+        net.add_synapse(0, 2, 125).expect("edge a");
+        net.add_synapse(1, 2, 125).expect("edge b");
+        net.finalize_synapses();
+
+        let spikes = net.step(&[3000, 3000, 0]).expect("step 0");
+        assert_eq!(spikes.len(), 2, "both pres fire");
+        assert_eq!(net.neurons[2].membrane_potential, -7_000, "delay");
+
+        net.step(&[0, 0, 0]).expect("step 1");
+        assert_eq!(net.neurons[2].membrane_potential, -6_976, "summed +24 quanta");
     }
 
     #[test]
