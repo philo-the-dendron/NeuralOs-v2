@@ -15,8 +15,8 @@ pub mod network;
 pub mod simd;
 
 pub use bridge::{
-    decode_i2_s, decode_q1_0, decode_q2_0, encode_i2_s, half_to_f32_bits, half_to_milli,
-    repack_i2s_to_kernel, wire_gamma_to_substrate, BridgeError,
+    decode_i2_s, decode_q1_0, decode_q2_0, encode_i2_s, encode_q2_0, half_to_f32_bits,
+    half_to_milli, repack_i2s_to_kernel, wire_gamma_to_substrate, BridgeError,
 };
 pub use kernel::{
     absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit, Q15_MAX, TRITS_PER_BYTE,

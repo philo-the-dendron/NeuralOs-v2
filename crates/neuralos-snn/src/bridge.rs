@@ -264,7 +264,7 @@ pub fn decode_q1_0(bytes: &[u8], trits: &mut [Trit], scale_bits_out: &mut [u16])
 }
 
 // ---------------------------------------------------------------------------
-// Prism q2_0 — decode (import only)
+// Prism q2_0 — decode + encode
 // ---------------------------------------------------------------------------
 
 /// Encoded byte length of a `q2_0` tensor with `n` weights: 34 bytes per
@@ -309,6 +309,54 @@ pub fn decode_q2_0(bytes: &[u8], trits: &mut [Trit], scale_bits_out: &mut [u16])
         for j in 0..Q2_0_BLOCK {
             let code = (bytes[base + 2 + j / 4] >> (2 * (j % 4))) & 0x03;
             trits[b * Q2_0_BLOCK + j] = code_to_trit(code)?;
+        }
+    }
+    Ok(())
+}
+
+/// Encode a ternary tensor into the Prism `q2_0` byte layout — the exact
+/// byte-level inverse of [`decode_q2_0`] (session E: the loop-closer's
+/// export path; ternary `{−1,0,+1}` is losslessly representable because the
+/// quantizer's reachable codes are exactly `trit + 1`).
+///
+/// `scale_bits` carries one raw LE fp16 bit pattern per 128-trit block.
+/// Callers re-exporting imported weights pass the bits `decode_q2_0` handed
+/// them — magnitudes preserved bit-exactly through the substrate round-trip.
+/// Callers quantizing fresh from i16 weights derive the scale themselves
+/// (the reference convention is `max|w|`).
+///
+/// Layout mirrors the decoder: per block, 2-byte LE scale then 32 bytes of
+/// LSB-first 2-bit lanes — element `j`'s code at byte `j/4`, shift
+/// `2*(j%4)`, with `00`=−1, `01`=0, `10`=+1. Code `11` is unconstructible
+/// here: every lane is written from a [`Trit`], so an encoder round trip can
+/// never produce the code the reference quantizer cannot.
+///
+/// Requires `trits.len() % 128 == 0`, `scale_bits.len() >= n/128`, and
+/// `out.len() >= `[`q2_0_encoded_len`]`(n)`.
+///
+/// # Errors
+///
+/// [`BridgeError::BadLength`] if `n % 128 != 0`; [`BridgeError::TooShort`]
+/// if `scale_bits` or `out` cannot hold the encoding.
+pub fn encode_q2_0(trits: &[Trit], scale_bits: &[u16], out: &mut [u8]) -> Result<(), BridgeError> {
+    let n = trits.len();
+    if !n.is_multiple_of(Q2_0_BLOCK) {
+        return Err(BridgeError::BadLength);
+    }
+    let blocks = n / Q2_0_BLOCK;
+    if scale_bits.len() < blocks {
+        return Err(BridgeError::TooShort);
+    }
+    if out.len() < q2_0_encoded_len(n) {
+        return Err(BridgeError::TooShort);
+    }
+    for b in 0..blocks {
+        let base = b * 34;
+        out[base..base + 2].copy_from_slice(&scale_bits[b].to_le_bytes());
+        out[base + 2..base + 34].fill(0);
+        for j in 0..Q2_0_BLOCK {
+            let code = trit_to_code(trits[b * Q2_0_BLOCK + j]);
+            out[base + 2 + j / 4] |= code << (2 * (j % 4));
         }
     }
     Ok(())
@@ -797,6 +845,107 @@ mod tests {
             decode_q2_0(&[0; 34 * 2], &mut two, &mut scales),
             Err(BridgeError::TooShort)
         );
+    }
+
+    // ----- q2_0 encode (session E: the export inverse) -----
+
+    #[test]
+    fn encode_q2_0_reproduces_known_vector_bytes() {
+        // The decode known vector, inverted byte-for-byte: 0x4400 scale +
+        // 32 × 0xA4 code bytes decode to the period-4 [−1,0,+1,+1] pattern;
+        // re-encoding that pattern with the SAME scale bits must give back
+        // the identical 34 bytes — the encoder is the byte-level inverse.
+        let pat = [Trit::MinusOne, Trit::Zero, Trit::One, Trit::One];
+        let trits: Vec<Trit> = (0..Q2_0_BLOCK).map(|i| pat[i % 4]).collect();
+        let mut out = [0_u8; 34];
+        encode_q2_0(&trits, &[0x4400], &mut out).expect("encode");
+        let mut expected = Vec::with_capacity(34);
+        expected.extend_from_slice(&0x4400_u16.to_le_bytes());
+        expected.extend(std::iter::repeat_n(0xA4_u8, 32));
+        assert_eq!(&out[..], &expected[..]);
+    }
+
+    #[test]
+    fn encode_q2_0_reproduces_golden_vector_bytes() {
+        // The lane+byte-order golden vector (period-3 codes), inverted:
+        // decode → encode must be the identity on the full 34 bytes.
+        let code_of = |i: usize| -> u8 { (i % 3) as u8 };
+        let mut bytes = Vec::with_capacity(34);
+        bytes.extend_from_slice(&0x4400_u16.to_le_bytes());
+        for j in 0..32_usize {
+            let mut b = 0_u8;
+            for lane in 0..4_usize {
+                b |= code_of(4 * j + lane) << (2 * lane);
+            }
+            bytes.push(b);
+        }
+        let mut trits = [Trit::Zero; Q2_0_BLOCK];
+        let mut scales = [0u16; 1];
+        decode_q2_0(&bytes, &mut trits, &mut scales).expect("decode");
+        let mut out = [0_u8; 34];
+        encode_q2_0(&trits, &scales, &mut out).expect("encode");
+        assert_eq!(&out[..], &bytes[..]);
+    }
+
+    #[test]
+    fn encode_q2_0_rejects_bad_input() {
+        let scales = [0x4400_u16; 2];
+        let odd = [Trit::Zero; 100];
+        assert_eq!(
+            encode_q2_0(&odd, &scales, &mut [0; 68]),
+            Err(BridgeError::BadLength)
+        );
+        let two_blocks = [Trit::Zero; Q2_0_BLOCK * 2];
+        // out too short for two blocks.
+        assert_eq!(
+            encode_q2_0(&two_blocks, &scales, &mut [0; 34]),
+            Err(BridgeError::TooShort)
+        );
+        // scales too short for two blocks (per-block scale indexing is
+        // load-bearing — the patched-file path relies on it).
+        assert_eq!(
+            encode_q2_0(&two_blocks, &scales[..1], &mut [0; 68]),
+            Err(BridgeError::TooShort)
+        );
+    }
+
+    // ----- q2_0 property: encode∘decode = identity -----
+
+    proptest! {
+        #[test]
+        fn prop_q2_0_round_trip(
+            blocks in 1_usize..=4,
+            seed in any::<u32>(),
+            scales_seed in any::<u64>(),
+        ) {
+            // xorshift32 trit generator (house style, deterministic from seed);
+            // per-block scale bits from xorshift64 so blocks carry DISTINCT
+            // scales — a scale-slot mixup cannot pass silently.
+            let n = blocks * Q2_0_BLOCK;
+            let mut x = seed | 1;
+            let trits: Vec<Trit> = (0..n)
+                .map(|_| {
+                    x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+                    match x % 3 { 0 => Trit::MinusOne, 1 => Trit::Zero, _ => Trit::One }
+                })
+                .collect();
+            let mut s = scales_seed | 1;
+            let scales: Vec<u16> = (0..blocks)
+                .map(|_| {
+                    s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+                    (s & 0xFFFF) as u16
+                })
+                .collect();
+            let mut buf = vec![0xFF_u8; q2_0_encoded_len(n) + 8]; // dirty: untouched bytes must not leak in
+            encode_q2_0(&trits, &scales, &mut buf).unwrap();
+            // Every byte the layout owns was written; the dirty tail is
+            // beyond the encoding and ignored by decode.
+            let mut back = vec![Trit::Zero; n];
+            let mut back_scales = vec![0u16; blocks];
+            decode_q2_0(&buf[..q2_0_encoded_len(n)], &mut back, &mut back_scales).unwrap();
+            prop_assert_eq!(&back_scales, &scales[..]);
+            prop_assert_eq!(&back, &trits[..]);
+        }
     }
 
     // ----- fp16 scale plumbing -----
