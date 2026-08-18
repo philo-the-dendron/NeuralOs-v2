@@ -11,11 +11,25 @@
 //!
 //! # Fixed-point convention
 //!
-//! - Membrane potential: `i16` mV (`-100..=50`, biological range)
+//! - Membrane potential: `i16` in the neuron's voltage quanta — mV in
+//!   [`VoltageResolution::Millivolt`] (default, `-100..=50`), centi-mV in
+//!   [`VoltageResolution::CentiMillivolt`] (`-10_000..=5_000`)
 //! - Time: `u32` microseconds (no float in hot path)
 //! - Current: `i16` μA
 //! - Resistance: `u16` MΩ
 //! - Capacitance: `u16` pF
+//!
+//! # The voltage grid and the dead zone (why resolution is configurable)
+//!
+//! `delta_v = dt_over_tau · (leak + R·I/1000) / 1000` truncates to whole
+//! quanta. On the default mV grid, a steady total current below ~200 μA at
+//! rest (default params: τ=20 ms, R=100 MΩ, dt=1 ms) moves the membrane
+//! exactly zero, forever — even currents above the ~150 μA threshold
+//! current. The ternary substrate's recurrent pulses (weight/10 = ±12 μA at
+//! γ=125) sit 17× inside that blindness. [`VoltageResolution::CentiMillivolt`]
+//! shrinks the dead zone to ~2 μA with the same `i16`, no float, and
+//! bit-identical arithmetic shape; the mV default exists so every recorded
+//! result in the lineage keeps its exact numbers.
 //!
 //! # `no_std`
 //!
@@ -35,7 +49,7 @@
 // Fixed-point design: types are intentionally narrow (i16 mV, u32 μs, i16 μA, u8 amplitude).
 // Casts between them are part of the design and bounded by physics:
 //   - dt_us ≤ ~2^31 μs (35 min) — realistic sim step ceiling
-//   - membrane_potential_mv in [-100, 50] — clamped after every integration
+//   - membrane_potential in [-100, 50] — clamped after every integration
 //   - spike intervals bounded by u32 — sim runs ≤ ~71 min before any risk
 // Allow clippy's cast lints for the hot path; every narrowing cast sits after a clamp
 // or against a documented bound.
@@ -59,6 +73,31 @@ pub const MEMBRANE_MV_MIN: i16 = -100;
 /// Membrane potential upper bound (mV) — biological ceiling.
 pub const MEMBRANE_MV_MAX: i16 = 50;
 
+/// Voltage-domain resolution of a neuron's stored potentials.
+///
+/// The membrane/threshold/resting/reset fields hold quanta of this grid.
+/// See the module doc's "dead zone" section for why this exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VoltageResolution {
+    /// 1 mV grid — the historical default. Dead zone ≈ 200 μA at rest.
+    #[default]
+    Millivolt,
+    /// 0.01 mV (10 μV) grid — 100× finer. Dead zone ≈ 2 μA; the ternary
+    /// substrate's ±12 μA recurrent pulses become visible membrane motion.
+    CentiMillivolt,
+}
+
+impl VoltageResolution {
+    /// Quanta per millivolt: 1 (mV grid) or 100 (centi-mV grid).
+    #[must_use]
+    pub const fn scale(self) -> i32 {
+        match self {
+            Self::Millivolt => 1,
+            Self::CentiMillivolt => 100,
+        }
+    }
+}
+
 /// Biological neuron classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NeuronType {
@@ -77,14 +116,21 @@ pub struct LIFNeuron {
     /// Biological classification (excitatory/inhibitory).
     pub neuron_type: NeuronType,
 
-    /// Current membrane potential (mV). Bounded by `[MEMBRANE_MV_MIN, MEMBRANE_MV_MAX]`.
-    pub membrane_potential_mv: i16,
-    /// Resting membrane potential (mV). Typically `-70`.
-    pub resting_potential_mv: i16,
-    /// Spike threshold (mV). `-55` excitatory, `-50` inhibitory.
-    pub threshold_mv: i16,
-    /// Reset potential after spike (mV). Typically `-80`.
-    pub reset_potential_mv: i16,
+    /// Current membrane potential, in this neuron's voltage quanta (mV or
+    /// centi-mV — see [`voltage_resolution`](Self::voltage_resolution)).
+    /// Bounded by `[MEMBRANE_MV_MIN, MEMBRANE_MV_MAX]` scaled to the grid.
+    pub membrane_potential: i16,
+    /// Resting potential (mV in Millivolt mode, centi-mV in `CentiMillivolt`).
+    /// Typically `-70`.
+    pub resting_potential: i16,
+    /// Spike threshold (quanta per the resolution). `-55` mV excitatory,
+    /// `-50` mV inhibitory.
+    pub threshold: i16,
+    /// Reset potential after spike (quanta per the resolution). `-80` mV.
+    pub reset_potential: i16,
+
+    /// The voltage grid the four potentials above live on.
+    pub voltage_resolution: VoltageResolution,
 
     /// Membrane time constant (μs). Determines integration speed.
     pub tau_membrane_us: u32,
@@ -125,19 +171,36 @@ impl LIFNeuron {
     }
 
     /// New neuron with specific biological type. Type sets threshold, tau, capacitance.
+    /// Voltage grid = mV (the historical default).
     #[must_use]
     pub fn new_with_type(id: u16, neuron_type: NeuronType) -> Self {
+        Self::new_with_type_resolution(id, neuron_type, VoltageResolution::Millivolt)
+    }
+
+    /// New neuron with a chosen biological type AND voltage resolution.
+    ///
+    /// All four potentials are constructed on the chosen grid (e.g. resting
+    /// `-70` mV / `-7_000` centi-mV). Currents, times, and history are
+    /// grid-independent.
+    #[must_use]
+    pub fn new_with_type_resolution(
+        id: u16,
+        neuron_type: NeuronType,
+        resolution: VoltageResolution,
+    ) -> Self {
         let (threshold_mv, tau_membrane_us, capacitance_pf) = match neuron_type {
             NeuronType::Excitatory => (-55, 20_000, 100), // 20 ms tau, pyramidal
             NeuronType::Inhibitory => (-50, 10_000, 80), // 10 ms tau, interneuron
         };
+        let s = resolution.scale();
         Self {
             id,
             neuron_type,
-            membrane_potential_mv: -70,
-            resting_potential_mv: -70,
-            threshold_mv,
-            reset_potential_mv: -80,
+            membrane_potential: (-70 * s) as i16,
+            resting_potential: (-70 * s) as i16,
+            threshold: (threshold_mv * s) as i16,
+            reset_potential: (-80 * s) as i16,
+            voltage_resolution: resolution,
             tau_membrane_us,
             tau_refractory_us: 2_000,
             tau_synapse_us: DEFAULT_TAU_SYNAPSE_US,
@@ -151,6 +214,23 @@ impl LIFNeuron {
             adaptation_current_ua: 0,
             spike_history: Vec::new(),
         }
+    }
+
+    /// Switch the voltage grid in place, rescaling the four stored potentials
+    /// (values are preserved exactly: ×100 or ÷100 on whole-quanta values).
+    /// Call before stepping; spikes/history/currents are grid-independent.
+    pub fn set_voltage_resolution(&mut self, resolution: VoltageResolution) {
+        if resolution == self.voltage_resolution {
+            return;
+        }
+        let new_s = resolution.scale();
+        let old_s = self.voltage_resolution.scale();
+        let rescale = |v: i16| -> i16 { ((i32::from(v) * new_s) / old_s) as i16 };
+        self.membrane_potential = rescale(self.membrane_potential);
+        self.resting_potential = rescale(self.resting_potential);
+        self.threshold = rescale(self.threshold);
+        self.reset_potential = rescale(self.reset_potential);
+        self.voltage_resolution = resolution;
     }
 
     /// Integrate the membrane equation for one time step, return `true` if a spike fired.
@@ -190,17 +270,21 @@ impl LIFNeuron {
         // Discretized:   ΔV = (dt/τ) · (V_rest − V + R·I)
         // Fixed-point:   dt_over_tau = (dt · 1000) / τ      (scaled by 1000)
         //                delta_v      = dt_over_tau · (leak + current) / 1000
+        // Voltage quanta: leak is stored-native; the current term converts
+        // μA → quanta (R·I/1000 mV, ×scale for the grid). At scale = 1 the
+        // expression sequence is byte-identical to the historical arithmetic.
+        let s = self.voltage_resolution.scale();
         let dt_over_tau = ((dt_us as i32) * 1000) / self.tau_membrane_us as i32;
-        let leak_term = i32::from(self.resting_potential_mv - self.membrane_potential_mv);
-        let current_term = (i32::from(total_current) * i32::from(self.resistance_mohm)) / 1000;
+        let leak_term = i32::from(self.resting_potential - self.membrane_potential);
+        let current_term = (i32::from(total_current) * i32::from(self.resistance_mohm) * s) / 1000;
         let delta_v = (dt_over_tau * (leak_term + current_term)) / 1000;
 
-        let new_v = i32::from(self.membrane_potential_mv)
+        let new_v = i32::from(self.membrane_potential)
             .saturating_add(delta_v)
-            .clamp(i32::from(MEMBRANE_MV_MIN), i32::from(MEMBRANE_MV_MAX));
-        self.membrane_potential_mv = new_v as i16;
+            .clamp(i32::from(MEMBRANE_MV_MIN) * s, i32::from(MEMBRANE_MV_MAX) * s);
+        self.membrane_potential = new_v as i16;
 
-        if self.membrane_potential_mv >= self.threshold_mv {
+        if self.membrane_potential >= self.threshold {
             self.spike(current_time_us);
             true
         } else {
@@ -210,7 +294,7 @@ impl LIFNeuron {
 
     /// Record a spike: reset potential, enter refractory, store timestamp, adapt.
     fn spike(&mut self, current_time_us: u32) {
-        self.membrane_potential_mv = self.reset_potential_mv;
+        self.membrane_potential = self.reset_potential;
         self.refractory_time_us = self.tau_refractory_us;
         self.last_spike_time_us = current_time_us;
         // Drop oldest if at capacity (we want recent spikes, not the first ones).
@@ -247,7 +331,7 @@ impl LIFNeuron {
 
     /// Reset neuron to its initial state (resting potential, no currents, no history).
     pub fn reset(&mut self) {
-        self.membrane_potential_mv = self.resting_potential_mv;
+        self.membrane_potential = self.resting_potential;
         self.refractory_time_us = 0;
         self.last_update_time_us = 0;
         self.last_spike_time_us = 0;
@@ -384,9 +468,20 @@ impl NeuronBuilder {
         self
     }
 
+    /// Threshold in mV — stored on the neuron's grid (×scale), so the
+    /// builder's contract stays mV in every resolution.
     #[must_use]
     pub fn threshold_mv(mut self, threshold: i16) -> Self {
-        self.neuron.threshold_mv = threshold;
+        let s = self.neuron.voltage_resolution.scale();
+        self.neuron.threshold = threshold * s as i16;
+        self
+    }
+
+    /// Switch the voltage grid, rescaling all four stored potentials
+    /// (preserves values; order-independent with the other setters).
+    #[must_use]
+    pub fn voltage_resolution(mut self, resolution: VoltageResolution) -> Self {
+        self.neuron.set_voltage_resolution(resolution);
         self
     }
 
@@ -454,15 +549,15 @@ mod tests {
         let n = LIFNeuron::new(1);
         assert_eq!(n.id, 1);
         assert_eq!(n.neuron_type, NeuronType::Excitatory);
-        assert_eq!(n.membrane_potential_mv, -70);
-        assert_eq!(n.threshold_mv, -55);
+        assert_eq!(n.membrane_potential, -70);
+        assert_eq!(n.threshold, -55);
         assert_eq!(n.tau_membrane_us, 20_000);
     }
 
     #[test]
     fn inhibitory_neuron_has_different_params() {
         let n = LIFNeuron::new_with_type(2, NeuronType::Inhibitory);
-        assert_eq!(n.threshold_mv, -50);
+        assert_eq!(n.threshold, -50);
         assert_eq!(n.tau_membrane_us, 10_000);
     }
 
@@ -475,25 +570,129 @@ mod tests {
             .build();
         assert_eq!(n.id, 3);
         assert_eq!(n.neuron_type, NeuronType::Inhibitory);
-        assert_eq!(n.threshold_mv, -45);
+        assert_eq!(n.threshold, -45);
         assert_eq!(n.tau_membrane_us, 15_000);
+    }
+
+    #[test]
+    fn builder_threshold_is_mv_in_every_resolution() {
+        let n = NeuronBuilder::new(9)
+            .voltage_resolution(VoltageResolution::CentiMillivolt)
+            .threshold_mv(-45)
+            .build();
+        assert_eq!(n.threshold, -4_500, "−45 mV stored as centi-mV");
+        assert_eq!(n.resting_potential, -7_000);
+    }
+
+    #[test]
+    fn resolution_switch_rescales_stored_potentials() {
+        let mut n = LIFNeuron::new_with_type_resolution(
+            10,
+            NeuronType::Excitatory,
+            VoltageResolution::CentiMillivolt,
+        );
+        n.membrane_potential = -6_000;
+        n.set_voltage_resolution(VoltageResolution::Millivolt);
+        assert_eq!(n.membrane_potential, -60);
+        assert_eq!(n.threshold, -55);
+        assert_eq!(n.reset_potential, -80);
     }
 
     #[test]
     fn positive_current_raises_membrane_potential() {
         let mut n = LIFNeuron::new(4);
-        let initial = n.membrane_potential_mv;
+        let initial = n.membrane_potential;
         // 10 ms step, 100 μA — biologically realistic depolarization.
         // (1 ms / 50 μA loses precision in the fixed-point math: dt_over_tau=50,
         // current_term=5, delta_v=(50*5)/1000=0. Documented behavior.)
         let spiked = n.integrate_and_fire(100, 10_000, 10_000);
         assert!(
-            n.membrane_potential_mv > initial,
+            n.membrane_potential > initial,
             "membrane should rise with sustained positive input (was {}, now {})",
             initial,
-            n.membrane_potential_mv
+            n.membrane_potential
         );
         assert!(!spiked, "single 10 ms step at 100 μA should not spike");
+    }
+
+    // ----- Voltage resolution: the dead zone, demonstrated and pinned -----
+
+    /// Noise-off helper (deterministic traces for hand-derived expectations).
+    fn quiet_neuron(id: u16, r: VoltageResolution) -> LIFNeuron {
+        let mut n = LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, r);
+        n.noise_amplitude_ua = 0;
+        n
+    }
+
+    #[test]
+    fn millivolt_trace_is_pinned_to_the_historical_arithmetic() {
+        // Hand-derived from the ORIGINAL formula (mV grid, E neuron,
+        // dt=1000 μs, τ=20 ms → dt_over_tau=50, R=100 → ct=I/10):
+        //   I=600: m −70 → ct 60 → ΔV=50·60/1000=3 → −67 | leak −3 → 2 → −65
+        //   → −63 (leak −7 → 2) → −61 → −59 → −57 → −55 ⇒ SPIKE at step 7.
+        let mut n = quiet_neuron(11, VoltageResolution::Millivolt);
+        let expected = [-67, -65, -63, -61, -59, -57];
+        for &want in &expected {
+            let spiked = n.integrate_and_fire(600, 1000, 0);
+            assert!(!spiked);
+            assert_eq!(n.membrane_potential, want);
+        }
+        let spiked = n.integrate_and_fire(600, 1000, 0);
+        assert!(spiked, "7th 600 μA step crosses −55");
+        assert_eq!(n.membrane_potential, -80, "spike reset");
+    }
+
+    #[test]
+    fn the_dead_zone_12ua_pair() {
+        // THE demonstration: the ternary substrate's recurrent pulse
+        // (±12 μA) is invisible on the mV grid and 6 quanta on centi-mV.
+        let mut mv = quiet_neuron(12, VoltageResolution::Millivolt);
+        mv.integrate_and_fire(12, 1000, 0);
+        assert_eq!(mv.membrane_potential, -70, "mV grid: 12 μA ⇒ ΔV = 0");
+
+        let mut cmv = quiet_neuron(13, VoltageResolution::CentiMillivolt);
+        cmv.integrate_and_fire(12, 1000, 0);
+        // ct = 12·100·100/1000 = 120 cV; ΔV = 50·120/1000 = 6 cV.
+        assert_eq!(cmv.membrane_potential, -7_000 + 6, "centi grid: 12 μA ⇒ 6 cV");
+    }
+
+    #[test]
+    fn above_threshold_current_blind_on_mv_spikes_on_centi() {
+        // 160 μA > the ~150 μA E threshold current (V_ss = −54 mV), yet the
+        // mV grid truncates every step to 0 from rest — silent forever.
+        // Centi-mV climbs to −54 mV and fires. The ruler, not the cable.
+        let mut mv = quiet_neuron(14, VoltageResolution::Millivolt);
+        let mut mv_spikes = 0;
+        for t in 0..100 {
+            if mv.integrate_and_fire(160, 1000, t) {
+                mv_spikes += 1;
+            }
+        }
+        assert_eq!(mv_spikes, 0, "mV grid is blind to 160 μA from rest");
+        assert_eq!(mv.membrane_potential, -70);
+
+        let mut cmv = quiet_neuron(15, VoltageResolution::CentiMillivolt);
+        let mut cmv_spikes = 0;
+        for t in 0..100 {
+            if cmv.integrate_and_fire(160, 1000, t) {
+                cmv_spikes += 1;
+            }
+        }
+        assert!(cmv_spikes >= 1, "centi grid fires on 160 μA (V_ss −54 mV)");
+    }
+
+    #[test]
+    fn centi_mode_constants_and_bounds() {
+        let n = quiet_neuron(16, VoltageResolution::CentiMillivolt);
+        assert_eq!(n.membrane_potential, -7_000);
+        assert_eq!(n.resting_potential, -7_000);
+        assert_eq!(n.threshold, -5_500);
+        assert_eq!(n.reset_potential, -8_000);
+        // Clamp bounds scale with the grid (−10_000..=5_000).
+        let mut m = quiet_neuron(17, VoltageResolution::CentiMillivolt);
+        m.membrane_potential = -9_999;
+        m.integrate_and_fire(-30_000, 1000, 0); // huge hyperpolarizing step
+        assert!(m.membrane_potential >= -10_000, "clamped at scaled floor");
     }
 
     #[test]
@@ -510,14 +709,14 @@ mod tests {
             t = t.saturating_add(10_000);
         }
         assert!(spiked, "200 μA over 10 ms steps should eventually spike");
-        assert_eq!(n.membrane_potential_mv, n.reset_potential_mv);
+        assert_eq!(n.membrane_potential, n.reset_potential);
         assert!(n.is_refractory());
     }
 
     #[test]
     fn refractory_blocks_repeated_spikes() {
         let mut n = LIFNeuron::new(6);
-        n.membrane_potential_mv = n.threshold_mv + 1;
+        n.membrane_potential = n.threshold + 1;
         let spiked = n.integrate_and_fire(0, 1000, 1000);
         assert!(spiked);
         // Same step tries again — must be blocked by refractory.
@@ -538,7 +737,7 @@ mod tests {
     #[test]
     fn reset_restores_initial_state() {
         let mut n = LIFNeuron::new(8);
-        n.membrane_potential_mv = -50;
+        n.membrane_potential = -50;
         n.synaptic_current_ua = 100;
         n.adaptation_current_ua = 10;
         // Force a spike via the private method by going through integrate path.
@@ -546,7 +745,7 @@ mod tests {
         n.spike(6000);
         assert_eq!(n.spike_count(), 2);
         n.reset();
-        assert_eq!(n.membrane_potential_mv, n.resting_potential_mv);
+        assert_eq!(n.membrane_potential, n.resting_potential);
         assert_eq!(n.synaptic_current_ua, 0);
         assert_eq!(n.adaptation_current_ua, 0);
         assert!(!n.is_refractory());
@@ -559,7 +758,7 @@ mod tests {
         // so the firing-rate window never advanced. Now last_update_time_us drives it.
         let mut n = LIFNeuron::new(9);
         // Spike at t = 1000.
-        n.membrane_potential_mv = n.threshold_mv + 1;
+        n.membrane_potential = n.threshold + 1;
         let _ = n.integrate_and_fire(0, 1000, 1000);
         // Step forward to t = 10_000_000 (10 sec) with no input.
         for step in 2..=10_000 {
@@ -632,7 +831,7 @@ mod tests {
             n.spike(5000);
             n.spike(6000);
             n.reset();
-            prop_assert_eq!(n.membrane_potential_mv, n.resting_potential_mv);
+            prop_assert_eq!(n.membrane_potential, n.resting_potential);
             prop_assert_eq!(n.synaptic_current_ua, 0);
             prop_assert_eq!(n.adaptation_current_ua, 0);
             prop_assert_eq!(n.refractory_time_us, 0);
@@ -653,8 +852,8 @@ mod tests {
                 let _ = n.integrate_and_fire(input, dt, t);
                 t = t.saturating_add(dt);
             }
-            prop_assert!(n.membrane_potential_mv >= MEMBRANE_MV_MIN);
-            prop_assert!(n.membrane_potential_mv <= MEMBRANE_MV_MAX);
+            prop_assert!(n.membrane_potential >= MEMBRANE_MV_MIN);
+            prop_assert!(n.membrane_potential <= MEMBRANE_MV_MAX);
         }
 
         /// Firing rate ≤ 1_000_000 / tau_refractory_us (refractory physical bound, +5% tolerance).
@@ -664,7 +863,7 @@ mod tests {
             tau_ref in 500u32..=10_000,
         ) {
             let mut n = NeuronBuilder::new(id).tau_refractory_us(tau_ref).build();
-            n.threshold_mv = -100; // force spiking with any input
+            n.threshold = -100; // force spiking with any input
             let mut t = 0_u32;
             for _ in 0..100 {
                 let _ = n.integrate_and_fire(1000, 1000, t);
@@ -685,7 +884,7 @@ mod tests {
         #[test]
         fn prop_history_never_exceeds_capacity(id in 0u16..=10) {
             let mut n = LIFNeuron::new(id);
-            n.threshold_mv = -100;
+            n.threshold = -100;
             for i in 0..1000_u32 {
                 let _ = n.integrate_and_fire(1000, 1000, i * 1000);
             }

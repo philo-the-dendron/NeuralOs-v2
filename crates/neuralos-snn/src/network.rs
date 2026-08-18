@@ -48,7 +48,7 @@
     clippy::similar_names
 )]
 
-use crate::lif_neuron::{LIFNeuron, NeuronType};
+use crate::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
 use crate::synapse::{STDPRule, Synapse};
 use crate::{Error, Result};
 use std::collections::VecDeque;
@@ -540,6 +540,10 @@ pub struct SpikingNeuralNetwork {
     /// once per active synapse in [`stochastic_ternary_step`]. Independent of
     /// `seed` (topology) so plasticity randomness decorrelates from wiring.
     ternary_flip_lfsr: u32,
+    /// Voltage grid every neuron was constructed on (see
+    /// [`LIFNeuron::voltage_resolution`]). Kept at network level so stats can
+    /// convert native quanta back to mV.
+    voltage_resolution: VoltageResolution,
 }
 
 impl SpikingNeuralNetwork {
@@ -551,6 +555,29 @@ impl SpikingNeuralNetwork {
     ///
     /// Returns [`Error::InvalidParameter`] if `neuron_count == 0` or `time_step_us == 0`.
     pub fn new(neuron_count: u16, time_step_us: u32, topology: NetworkTopology) -> Result<Self> {
+        Self::new_with_voltage_resolution(
+            neuron_count,
+            time_step_us,
+            topology,
+            VoltageResolution::Millivolt,
+        )
+    }
+
+    /// [`new`](Self::new) with an explicit voltage grid for every neuron —
+    /// [`VoltageResolution::CentiMillivolt`] opens the sub-mV regime (dead
+    /// zone ≈ 2 μA) where the ternary substrate's ±12 μA recurrent pulses
+    /// move the membrane. All downstream behavior (drive, STDP, plasticity)
+    /// is grid-independent; only membrane arithmetic granularity changes.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`new`](Self::new).
+    pub fn new_with_voltage_resolution(
+        neuron_count: u16,
+        time_step_us: u32,
+        topology: NetworkTopology,
+        resolution: VoltageResolution,
+    ) -> Result<Self> {
         if neuron_count == 0 {
             return Err(Error::InvalidParameter);
         }
@@ -581,7 +608,7 @@ impl SpikingNeuralNetwork {
             } else {
                 NeuronType::Inhibitory
             };
-            neurons.push(LIFNeuron::new_with_type(id, nt));
+            neurons.push(LIFNeuron::new_with_type_resolution(id, nt, resolution));
         }
 
         let estimated_synapses = estimate_synapses(neuron_count, &topology);
@@ -601,6 +628,7 @@ impl SpikingNeuralNetwork {
             plasticity_queue: Vec::with_capacity(estimated_synapses),
             plasticity_enabled: true,
             ternary_flip_lfsr: TERNARY_FLIP_SEED,
+            voltage_resolution: resolution,
         })
     }
 
@@ -829,11 +857,15 @@ impl SpikingNeuralNetwork {
         let mut total_v: i64 = 0;
         let mut sampled = 0u32;
         for i in (0..n).step_by(10) {
-            total_v += i64::from(self.neurons[i].membrane_potential_mv);
+            total_v += i64::from(self.neurons[i].membrane_potential);
             sampled += 1;
         }
         if sampled > 0 {
-            self.stats.avg_membrane_potential_mv = (total_v as f64 * 10.0) / n as f64;
+            // Convert native quanta → mV for the stat (÷scale; identity on
+            // the default grid, so historical numbers are unchanged).
+            let s = self.voltage_resolution.scale();
+            self.stats.avg_membrane_potential_mv =
+                (total_v as f64 * 10.0) / (n as f64 * f64::from(s));
         }
         let time_sec = self.current_time_us as f64 / 1_000_000.0;
         if time_sec > 0.0 {
@@ -2205,6 +2237,67 @@ mod tests {
                 "incoming({post}) must return post's actual incoming edges"
             );
         }
+    }
+
+    // ----- Voltage resolution propagation (the finer ruler) -----
+
+    #[test]
+    fn network_propagates_centimillivolt_resolution_to_every_neuron() {
+        let mut net = SpikingNeuralNetwork::new_with_voltage_resolution(
+            50,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+            VoltageResolution::CentiMillivolt,
+        )
+        .expect("constructs");
+        net.build_topology().expect("empty build");
+        for n in &net.neurons {
+            assert_eq!(n.voltage_resolution, VoltageResolution::CentiMillivolt);
+            assert_eq!(n.resting_potential, -7_000);
+        }
+        // E threshold −5_500 / I −5_000 on the scaled grid.
+        assert_eq!(net.neurons[0].threshold, -5_500);
+        assert_eq!(net.neurons[49].threshold, -5_000);
+    }
+
+    #[test]
+    fn sub_dead_zone_drive_spikes_only_in_centimillivolt_network() {
+        // Network-level dead-zone proof: 160 μA sustained (above the ~150 μA
+        // E threshold current, below the mV grid's 200 μA dead zone from
+        // rest). Same drive, same noise seeds — only the grid differs.
+        // 5 neurons ⇒ exc_count = 4 (neuron 0 is Excitatory; the I neurons
+        // sit at V_ss −54 mV < their −50 threshold and stay silent in both
+        // grids). Zero connectivity ⇒ every neuron is driven independently.
+        let drive = || vec![160_i16; 5];
+        let mut mv =
+            SpikingNeuralNetwork::new(5, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                .expect("constructs");
+        mv.build_topology().expect("build");
+        for n in &mut mv.neurons {
+            n.noise_amplitude_ua = 0;
+        }
+        let mut mv_spikes = 0;
+        for _ in 0..100 {
+            mv_spikes += mv.step(&drive()).expect("step").len();
+        }
+        assert_eq!(mv_spikes, 0, "mV grid: blind to 160 μA from rest");
+
+        let mut cmv = SpikingNeuralNetwork::new_with_voltage_resolution(
+            5,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+            VoltageResolution::CentiMillivolt,
+        )
+        .expect("constructs");
+        cmv.build_topology().expect("build");
+        for n in &mut cmv.neurons {
+            n.noise_amplitude_ua = 0;
+        }
+        let mut cmv_spikes = 0;
+        for _ in 0..100 {
+            cmv_spikes += cmv.step(&drive()).expect("step").len();
+        }
+        assert!(cmv_spikes >= 1, "centi grid: 160 μA fires the E neurons");
     }
 
     // ----- Property tests (Cardano-grade rigor) -----

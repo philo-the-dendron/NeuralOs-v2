@@ -22,7 +22,8 @@ pub use kernel::{
     absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit, Q15_MAX, TRITS_PER_BYTE,
 };
 pub use lif_neuron::{
-    LIFNeuron, NeuronBuilder, NeuronType, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN, MAX_SPIKE_HISTORY,
+    LIFNeuron, NeuronBuilder, NeuronType, VoltageResolution, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN,
+    MAX_SPIKE_HISTORY,
 };
 pub use synapse::{STDPRule, Synapse, SynapseBuilder, SynapseType, SCALE};
 pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternarize, Trit};
