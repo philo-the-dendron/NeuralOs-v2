@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 72/72
+progress: 76/76
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-18T21:00:00Z
-principal_stated_goal: "Session E stage 1c: the finer-ruler sweep (NO) — transmission bug found and pinned; fix fork to the principal"
+updated: 2026-08-19T00:30:00Z
+principal_stated_goal: "Session F: the transmission fix (a1b) + whole-lineage re-pin — synapses transmit; Hebbian reversal found"
 ---
 
 ## Problem
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -329,8 +329,73 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   the co-blocker, but upstream of it the wire is cut. Also refuted:
   the session-E audit's "pulse integrates with one-step delay"
   reading — it re-encoded the code COMMENT's intent, not the code's
-  behavior. Falsifier: /tmp/opencode/se/stage1c_sweep.log + the
+  behavior.   Falsifier: /tmp/opencode/se/stage1c_sweep.log + the
   canary test.
+
+- [x] ISC-73 (sF) · **THE TRANSMISSION FIX (a1b) — synapses transmit
+  again.** `step()` reordered per the reviewed split: adaptation
+  decay (pre-integrate, phase-identical to history — the a1b
+  invariant that keeps transmission-live the ONLY variable) →
+  integrate (reads the previous step's pulses — the one-step delay
+  the orchestrator always claimed) → clear-after-read → propagate →
+  plasticity. `decay_synaptic_current` split into
+  `decay_adaptation_current` (+ the existing pub clear) — the old
+  combined fn REMOVED (public-API change, alpha.2 manifest); its
+  synaptic half had been structurally dead since the port.
+  `tau_synapse_us` and `delay_us` marked decorative honestly.
+  Falsifier: transmission_is_live_one_step_delayed_centimv (post
+  −7,000 → −6,988 exactly one step after pre fires — the delay
+  itself pinned), transmission_is_live_one_step_delayed_mv_strong_weight
+  (−70 → −68), transmission_pulses_sum_across_presynaptic_spikes
+  (two pres ⇒ +24 quanta) — all exact-value, both grids.
+- [x] ISC-74 (sF) · **The suite is green with ZERO unit-pin
+  failures — the bisection predicate had nothing to bisect.** 152
+  snn tests green unchanged: no library unit pin ever exercised live
+  transmission through `step()` (the second reviewer's shared-miss,
+  confirmed empirically). The 1.5-lineage examples re-run IDENTICAL
+  (ternary_gate 3308 spikes / 3587 flips; selectivity YES) —
+  physics-consistent: balanced-topology weights are 8–20 ⇒ 0–2 μA
+  pulses, quantization-absorbed on the mV grid (dead zone per-type
+  E ~200 / I ~100 μA, docs corrected this session).
+- [x] ISC-75 (sF) · **D-2 RE-RUN POST-FIX — the new pinned state,
+  and THE HEBBIAN REVERSAL.** G2 (fixed weights): **35,115 /
+  35,136 / 35,157** — the first weight-borne rate divergence in the
+  lineage (imported −42, control −21 vs the zero-net drive baseline;
+  ±12 μA pulses now tip spike timing). G3 (STDP on): firing 35.13
+  Hz, events 18,817,891, flips 708,029, Hamming 64,877 (24.80% <
+  50%), sign crossings 0, mean Δ intra **+0.1075** vs inter +0.0000
+  — Δ-SI = **−1.0000**: the discrimination SIGN REVERSED. Pre-fix:
+  intra −0.3133 (same-step co-fire tie-break LTD, anti-Hebbian,
+  dead-wire artifact). Post-fix: intra-group pre spikes causally
+  drive post spikes one step later ⇒ pre-before-post ⇒ LTP ⇒
+  Hebbian potentiation — the regime the 1.5c scope note named as
+  the honest LTP exercise. |Δ-SI| = 1.0000 = perfect
+  discrimination both ways; the SIGN is the mechanism label. The
+  FROZEN gate's directional condition (meanΔ_inter > meanΔ_intra,
+  written for the LTD-carried regime) reads this as selective FAIL
+  → HYBRID GATE (phase 1): COLLAPSES, exit 1, **surgery NOT run** —
+  recorded as the honest output of the frozen criterion
+  (/tmp/opencode/sf/hybrid_{gate,loop}_fixed.log). The criterion
+  fork goes to the principal (Decision below).
+- [x] ISC-76 (sF) · **BOTH SWEEPS POST-FIX — A\* = 600 μA on both
+  grids; predictions 2/4 exact, 2 under-called in our favor.**
+  mV: Hamming 58,779 at 600 (timing-tipping among driven neurons,
+  predicted) but rate-L1 = 689 ≠ ≈0 (under-called): below the old
+  cliff, coherent same-group bursts STACK past the shrunken margin
+  — at 300 μA imported fires 1.14 Hz, control 0.99, zero 0.00
+  (RECRUITMENT — a WHO channel on mV; the reviewer's random-σ
+  analysis missed that bursts are coherent, not Gaussian). centi:
+  H(i,c) = 39,011 > H(i,z) = 23,907 ≈ H(c,z) = 23,958 —
+  **ARRANGEMENT carries more divergence than census content**
+  (imported vs its own shuffle is the largest gap — the strongest
+  model-informed signal in the project; the reviewer predicted
+  imp-vs-zero largest — under-called, recorded). I-population rates
+  diverge too (123.67/123.92/125.00 at 600 — live inhibition reads
+  weights). At centi 300 μA zero OUT-FIRES wired nets (7.50 vs 6.97
+  Hz — the live I-wall drags); at centi 150 recruitment again
+  (0.70/0.62/0.00); centi 100 all-silent (no bootstrap). Falsifier:
+  /tmp/opencode/sf/sweep_{mv,cmv}_fixed.log — every row. Visualizer
+  smoke green (exit 0).
 
 - [x] ISC-71 (sE-1) · **THE AMPLITUDE SWEEP: honest NO — the
   weight→firing channel does not open by amplitude alone.** Frozen
@@ -863,6 +928,41 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-19 (sF) · **The fix landed; the lineage re-pinned; the D-2
+    gate criterion fork goes to the principal.** The a1b reorder is
+  in (ISC-73): synapses transmit, one-step-delayed, exactly-value-
+  tested on both grids. The whole library suite survived green — no
+  unit pin ever exercised live transmission (ISC-74); the 1.5
+  examples reproduce IDENTICALLY (small weights, mV absorption —
+  physics, not luck). The D-2 experiment re-ran into a new pinned
+  state (ISC-75) whose headline is the **Hebbian reversal**: with
+  the wire live, correlated intra-group pairs POTENTIATE (pre
+  causally drives post one step later → LTP) instead of the
+  dead-wire era's co-fire LTD — Δ-SI flipped −0.31-signed to
+  +0.11-signed intra, |Δ-SI| = 1.0000 both eras. The frozen gate's
+  DIRECTIONAL condition encoded the dead-wire mechanism and now
+  reads COLLAPSES; hybrid_loop's surgery is parked (exit 1, by
+  design). Options for the principal: **(i) redefine selectivity to
+  |Δ-SI| ≥ floor with the direction PRINTED as the mechanism label**
+  (LTD-carried vs Hebbian-carried) — my recommendation: the
+  magnitude is the selectivity claim, the sign is the mechanism,
+  and pretending the old direction is still the physics would be
+  the circular-green failure mode in reverse; **(ii) keep the
+  frozen criterion, record the post-fix D-2 as COLLAPSES** — honest
+  but mislabels perfect Hebbian discrimination as a failure;
+  **(iii) re-freeze the example entirely with both directions
+  reported and no pass/fail on sign.** Whichever is called: the
+  pre-fix ADAPTS verdict stands as the history of the dead-wire
+  substrate; the new pinned state (35,115/35,136/35,157 · flips
+  708,029 · Hamming 24.80% · Δ-SI −1.0000 Hebbian) is the D-2
+  record going forward, and hybrid_loop's asserted preconditions
+  update FROM THIS RE-RUN (never by transcription — the second
+  reviewer's doctrine) once the criterion is called. Sweep
+  predictions: 2/4 exact, 2 under-called in our favor — coherent
+  group bursts (not random σ) cross sub-threshold margins on mV,
+  and weight ARRANGEMENT out-carries census content on centi; both
+  recorded as findings (ISC-76). alpha.2 manifest grows: the decay
+  split + fad081f renames are public-API changes.
 - 2026-08-18 (sE-1c) · **THE TRANSMISSION BUG: found, pinned, fix fork to
     the principal.** `step()` Phase 2 injects `weight/10` after
   integration; the next step clears it before integrating — the
@@ -1460,6 +1560,40 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Learning
 
+- conjectured (session F, from the second review's Job-3
+  derivation): with transmission live, the mV grid would show
+  timing-only divergence (Hamming > 0, rate-L1 ≈ 0) and centi would
+  carry the recruitment; random-σ statistics were the basis.
+  refuted by: the post-fix sweeps — mV showed BOTH (Hamming 58,779
+  AND rate-L1 689, with sub-cliff recruitment at 300 μA:
+  1.14/0.99/0.00 Hz), because same-group bursts are COHERENT, not
+  Gaussian: a synchronized ~5-spike volley stacks ~+60 μA into one
+  step and crosses margins random fluctuation cannot. The reviewer's
+  own σ math was right about noise and wrong about structure.
+  learned: in driven group-structured regimes, coherent transient
+  sums dominate over variance statistics — dead-zone margins
+  computed against σ under-call what correlated populations do.
+  criterion now: any per-neuron margin analysis in this substrate
+  quotes BOTH the random-σ crossing time AND the coherent-volley
+  threshold; sweep predictions pre-register which regime they
+  assume.
+- observed (session F): the D-2 discrimination sign REVERSED with
+  the transmission fix — intra Δ went −0.3133 (LTD-carried) to
+  +0.1075 (LTP-carried), |Δ-SI| = 1.0000 on both sides of the fix.
+  why it matters: the pre-fix "selectivity" was an artifact of the
+  same-step co-fire tie-break (dead wire ⇒ spikes were drive-only ⇒
+  correlated pairs met only in the LTD tie-break); the wire live,
+  causality flows pre→post and the pair meets in LTP instead. The
+  gate's directional condition was a mechanism label mistaken for a
+  correctness invariant.
+  learned: a metric's direction encodes the mechanism of the era it
+  was written in — when the mechanism changes under a fix, the
+  metric's SIGN must be re-derived, not inherited; the magnitude
+  claim (discrimination) and the mechanism claim (which rule
+  carries it) are separate assertions and should be reported
+  separately.
+  criterion now: selectivity metrics report |effect| and named
+  direction as two fields; gates assert magnitude, print mechanism.
 - conjectured (stage 1, then stage 1c, twice in one day): first, that
   lowering the drive amplitude would open the weight→firing channel;
   then, that the centi-mV grid would.
@@ -1559,6 +1693,36 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   criterion now: after any geometry re-pin, grep the new module's
   tests for block counts derived from the OLD geometry before
   running.
+
+## Verification (Session F — the transmission fix + lineage re-pin)
+
+- ISC-73: the a1b reorder (network.rs step(): decay_adaptation_
+  current → integrate → clear-after-read → propagate → plasticity);
+  three exact-value transmission tests green; lib suite 152; the
+  removed `decay_synaptic_current` + renamed fields = alpha.2
+  manifest items; tau_synapse_us/delay_us marked decorative; AGENTS.md
+  step-order warning updated.
+- ISC-74: workspace suite green (152 snn + 76 rt + 3 app); zero
+  unit-pin failures post-fix; ternary_gate (3308/3587, GATE: YES) +
+  ternary_selectivity (GATE: YES) byte-stable vs the recorded
+  1.5d-era numbers — small weights are mV-absorbed (per-type dead
+  zones documented).
+- ISC-75: /tmp/opencode/sf/hybrid_gate_fixed.log (+ hybrid_loop_
+  fixed.log, exit 1 by design): G2 35,115/35,136/35,157; G3 firing
+  35.13 Hz, events 18,817,891, flips 708,029, Hamming 64,877 =
+  24.80%, sign crossings 0, intra +0.1075 / inter +0.0000, Δ-SI
+  −1.0000 (Hebbian); frozen directional criterion ⇒ COLLAPSES/
+  selective-FAIL recorded; surgery parked. Criterion fork = the
+  principal's (Decision above).
+- ISC-76: /tmp/opencode/sf/sweep_mv_fixed.log + sweep_cmv_fixed.log
+  — full 9-row tables both grids, A\* = 600 both; mV 600: H(i,c)
+  58,779, L1 689, totals 35,115/35,136/35,157; mV 300 recruitment
+  row (1.14/0.99/0.00 E-Hz); centi 600: H(i,c) 39,011 > H(i,z)
+  23,907 ≈ H(c,z) 23,958; centi 300 zero-outfires-wired (7.50 vs
+  6.97); centi 150 recruitment (0.70/0.62/0.00); centi 100 all-
+  silent; I-rates diverge at 600 on both grids. Prediction scorecard
+  in the claims. Visualizer smoke (NEURALOS_SMOKE_MS=3000) exit 0.
+  4 CI gates green on the final tree.
 
 ## Verification (Session E stage 1c — the finer-ruler sweep + the transmission bug)
 

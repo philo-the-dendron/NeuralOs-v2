@@ -832,6 +832,38 @@ don't transmit is broken; the recommended path is fix + one
 dedicated re-pin session, but the call — and the lineage break — is
 the principal's.
 
+**Session F (2026-08-18/19): the wire is soldered — and the
+substrate changed its mind.** The a1b fix landed exactly as
+reviewed (adaptation decay phase-identical → integrate reads last
+step's pulses → clear-after-read → propagate), pinned by three
+exact-value transmission tests on both grids. The library suite
+never flinched — no unit test had ever exercised the wire — and the
+1.5-era gates reproduce identically (their small weights never
+could feel it). Then the D-2 re-run delivered the arc's most
+beautiful result yet: **the Hebbian reversal.** With transmission
+dead, correlated pairs only ever met in the same-step co-fire
+tie-break, so "selectivity" meant correlated-depresses-more (LTD,
+an artifact of a cut wire). With the wire live, an intra-group pre
+spike CAUSES its post to fire one step later — pre-before-post —
+LTP — potentiation: intra Δ +0.1075 vs inter exactly 0, the
+textbook "cells that fire together wire together," emerging from
+the substrate the moment its synapses started conducting.
+|Δ-SI| = 1.0000 on both sides of the fix: perfect discrimination
+both eras, opposite mechanism — the sign was never a correctness
+invariant, it was the era's fingerprint. The frozen gate still
+encodes the old direction and reads the new physics as COLLAPSES
+(recorded honestly; the criterion fork — magnitude with named
+direction, my recommendation — is the principal's). The post-fix
+sweeps complete the picture: A\* = 600 μA on both grids; on mV,
+coherent group bursts recruit neurons below the drive-only cliff
+(a WHO channel random statistics said was impossible — volleys are
+not noise); on centi, the imported weights' ARRANGEMENT carries
+more divergence than their census content — the substrate isn't
+just feeling the weights anymore, it can tell pretrained structure
+from a shuffle of itself. That is the model-informed coupling the
+whole redesign was after, arrived one bug-fix early. The loop
+surgery reopens the moment the criterion fork is called.
+
 **Remaining sessions (honest slice):** attention + full forward
 (**✓ session 3**) → adversarial review of the whole arc (**✓ session
 3.5**) → tokenizer + generation = the Stage 4 gate (**✓ session 4 —

@@ -333,6 +333,34 @@ the mV grid was a real-but-irrelevant co-blocker. Fix fork recorded in
 the ISA (recommended: fix + one re-pin session for the whole lineage —
 the principal's call).
 
+**Session F (2026-08-18/19) — the transmission fix (a1b) + lineage
+re-pin: synapses transmit; the Hebbian reversal.** The reviewed
+split landed: adaptation decay (phase-identical, the a1b invariant
+— transmission-live stays the only variable) → integrate (reads
+last step's pulses, the one-step delay the code always claimed) →
+clear-after-read → propagate. Three exact-value transmission tests
+pin it on both grids; the old combined decay fn removed (alpha.2
+manifest); tau_synapse_us/delay_us marked decorative. The library
+suite survived green — zero unit pins had ever exercised live
+transmission — and the 1.5 examples reproduce identically (small
+weights, mV absorption; per-type dead zones documented). The D-2
+re-run found a NEW pinned state with the headline **Hebbian
+reversal**: G2's three nets fire differently for the first time
+(35,115/35,136/35,157), and G3's discrimination flipped sign —
+intra pairs now POTENTIATE (+0.1075, pre causally drives post one
+step later → LTP) instead of the dead-wire era's co-fire LTD;
+|Δ-SI| = 1.0000 both eras, the sign is the mechanism label. The
+frozen gate's directional condition reads this as COLLAPSES —
+recorded honestly; the criterion fork (|Δ-SI| with named direction
+vs frozen direction vs dual-report) is the principal's. Post-fix
+sweeps: A\* = 600 μA on BOTH grids — mV shows timing-tipping AND
+sub-cliff recruitment (coherent group bursts stack past margins
+random σ cannot; prediction under-called), centi shows weight
+ARRANGEMENT out-carrying census content (imported-vs-shuffle the
+largest gap — the strongest model-informed signal yet). The loop
+surgery is parked at the frozen criterion until the fork is
+called. alpha.2 grows: decay split + field renames.
+
 ### Phase 4 — RISC-V deployment proof
 
 Goal: make the `no_std` claim concrete.
