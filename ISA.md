@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 64/64
+progress: 70/70
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-18T03:52:00Z
-principal_stated_goal: "Session D slice 2: Bonsai Q2_0 → Trit → SNN → STDP — the hybrid seam experiment"
+updated: 2026-08-18T17:30:00Z
+principal_stated_goal: "Session E stage 0: instrument + attribution package — KLD judge, control identity, the drive-informed verdict"
 ---
 
 ## Problem
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2 — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0 — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -198,8 +198,108 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   −0.3133 vs inter +0.0000 → **Δ-SI 1.0000** (level-SI −0.9990
   supporting, confounded by pretrained levels). Deterministic: two
   runs byte-identical modulo the wall line. Wall 20.5 s, peak RSS
-  1050 MB < 1536 budget. Falsifier: /tmp/opencode/s4d/hybrid_gate.log
+  1050 MB < 1536   budget. Falsifier: /tmp/opencode/s4d/hybrid_gate.log
   (+ .run2 for the determinism diff) contradicting any line.
+
+- [x] ISC-65 (sE) · **`encode_q2_0` — the export codec; Q2_0 is now a
+  two-way format.** The exact byte-level inverse of `decode_q2_0`:
+  per 128-trit block, 2-byte LE fp16 scale (caller-supplied bits —
+  re-export passes the imported bits through untouched) + 32 bytes of
+  LSB-first 2-bit lanes, codes = trit+1. Code 3 is unconstructible by
+  construction (every lane written from a Trit) — the encoder can
+  never emit the code the reference quantizer cannot. `no_std`,
+  buffer-based, loud errors, re-exported at the crate root. Falsifier:
+  encode_q2_0_reproduces_known_vector_bytes + _golden_vector_bytes
+  (decode→encode = byte identity on both pinned vectors) +
+  encode_q2_0_rejects_bad_input + prop_q2_0_round_trip (distinct
+  per-block scales, dirty buffer).
+- [x] ISC-66 (sE) · **THE SURGERY: `examples/hybrid_loop.rs` (frozen)
+  — LOOP EXPORT: CLEAN.** Phase 1 re-runs D-2 verbatim with its
+  recorded numbers ASSERTED as preconditions before any write (spikes
+  35,157 ×3 · events 16,183,885 · flips 321,571 · Hamming 57,005 ·
+  Δ-SI 1.0000 — all reproduced; the surgery operates only on the
+  exact recorded adapted state). Phase 2 exports the adapted 512×512
+  slice through encode_q2_0 with the file's ORIGINAL fp16 scale bits
+  (recorded decision: substrate adapted STRUCTURE at γ=125;
+  magnitudes stay the model's own) and splices a patched GGUF copy as
+  512 disjoint 136-byte chunks (row r, bytes [r·680, r·680+136) of
+  blk.0.attn_q.weight — the non-contiguity the pre-session audit
+  caught; tensor window computed from dims, never inferred slice
+  ends). S1 containment: 29,734 code bytes differ, ALL inside
+  declared chunks, outside = 0, scale bytes = 0 (asserted in-loop per
+  row). S2 disk round-trip: the written file re-parses as GGUF and
+  its 262,144 first-slice trits decode to EXACTLY the adapted slice,
+  0 mismatches. Deterministic: two runs' patched files sha256-identical
+  (87078612…). Falsifier: /tmp/opencode/se/hybrid_loop.log + the
+  sha256 pair.
+- [x] ISC-67 (sE) · **THE LOOP GATE: CLOSED — substrate-adapted
+  weights measurably change the foreign runtime's behavior.** Judge:
+  the reference fork rebuilt at the pinned commit 9ca265a (branch
+  prism, HEAD == pin verified; cmake 4.4.2 pip-wheel, CPU-only flags
+  per the C-pre record) + the NEURALOS_DUMP patch rewritten to spec
+  (env-gated, completion.cpp sample site, raw top-10 pre-sampler —
+  one API rename, llama_vocab_n_tokens). Instrument sanity: baseline
+  reproduces the ISA-recorded 4C anchors EXACTLY (p3 step-0
+  7794:14.6527; p2 step-0 4236:13.2278). Protocol: 5 frozen prompts,
+  greedy-forced flags verbatim + `-t 4` pinned, `-n 12`, double-run
+  each variant (both byte-identical). Result (mechanical table,
+  parsed from raw dumps): **60/60 steps across all 5 prompts show
+  logit deltas** from the patched file — max |Δ| per prompt p0 0.452
+  · p1 0.088 · p2 0.534 · p3 0.124 · p4 0.093; mean |Δ| 0.05–0.22;
+  top-10 overlap dips to 8/10 (p2) and 9/10 (p4) — even membership
+  moved; **0/60 argmax flips** (greedy continuations byte-identical
+  — honest effect size: 57,005 of 10.5 M weights = 0.5%, one
+  attention slice, layer 0 of 36). Attribution chain, every link
+  mechanically verified: same binary + same flags + same machine +
+  both variants double-run deterministic ⊕ patched file differs from
+  original ONLY inside the declared chunks (S1) ⊕ chunks carry ONLY
+  the STDP-adapted trits at original scales (S2 + ISC-65 + asserted
+  D-2 preconditions). The widening ladder did NOT fire (G3 asked for
+  deltas on ≥1 prompt; all 60 steps delivered). Falsifier:
+  /tmp/opencode/se/{baseline,patched}/p*_run{1,2}.{log,err} + the
+  delta.py table contradicting any line.
+
+- [x] ISC-68 (sE-0) · **CONTROL IDENTITY — the codec+surgery path is a
+  MEASURED transparent transformation.** `hybrid_loop` control mode
+  (3rd arg `control`): the full surgery pipeline (decode → assert →
+  encode_q2_0 → splice → S1 → write → S2) run with the UNADAPTED
+  source trits — code bytes changed 0/65,536, scale 0/4,096, S1
+  outside 0, S2 0 mismatches, and the written file is BYTE-IDENTICAL
+  to the original (sha256 4e0bf8b737b0431528b… == source both sides;
+  full-file identity assert in-example). This converts the
+  encode-exactness construction argument into a measured fact and
+  closes the attribution chain: any behavioral delta on the adapted
+  file is the STDP trits alone. Falsifier:
+  /tmp/opencode/se/stage0/hybrid_loop_control.log + the sha pair.
+- [x] ISC-69 (sE-0) · **The KLD instrument stands, deterministic.**
+  `llama-perplexity` built from the same fork build dir (target +
+  flags verified: `-f --chunks --ppl-output-type 1 --save-all-logits
+  --kl-divergence --kl-divergence-base`); corpora mechanically
+  pinned — corpus A = fork README lines 1–180 @ 9ca265a (sha
+  18fb5452…, `-c 128 --chunks 2`), corpus B = the 5 frozen prompts +
+  their banked baseline continuations concatenated (sha 781d1e21…,
+  `-c 32`, teacher-forced). Determinism: baseline run1 == run2 Final
+  lines EXACT on both corpora (PPL 15.6723 ± 4.63200; 5.1400 ±
+  2.51660). Falsifier: /tmp/opencode/se/stage0/ppl_*_{run2,}.log.
+- [x] ISC-70 (sE-0) · **The Stage-0 answer: the drive-informed
+  adaptation is noise on generic text and a small consistently-signed
+  degrading shift on the model's own continuations.** Corpus A
+  (generic): mean PPL(Q)/PPL(base) = 1.002780 ± 0.010918 —
+  indistinguishable from zero; mean KLD 0.004271, median 0.000547,
+  max 0.289815, correlation of log-ratios 99.93%. Corpus B (the
+  model's own high-confidence text): ln(PPL(Q)/PPL(base)) = +0.14895,
+  +0.07446, +0.04904 — **3/3 chunks positive** (conservative claim:
+  direction-consistent; no σ figure is quoted without a mechanical
+  per-token computation); Δp RMS 0.36–0.50%; Same-top-p 100.000% on
+  every chunk (no argmax movement — agrees with the completion
+  judge). Reading, coherent with the deep-dive finding (STDP read
+  the drive schedule; the ±12 μA weight channel was
+  quantization-absorbed at 600 μA): the adaptation acts as a mild,
+  largely directionless perturbation that measurably raises the NLL
+  of the model's own preferred continuations. Stage 1 (amplitude
+  sweep to open the weight→firing channel) proceeds on this
+  baseline. Falsifier: /tmp/opencode/se/stage0/ppl_patched_*.log +
+  STAGE0_SUMMARY.md.
 
 - [x] ISC-51: the 4B's config pinned from the file BEFORE any code —
   probe + full `qwen3.*`/`general.*` KV dump on both tiers, diff in
@@ -707,6 +807,54 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-18 (sE-0) · **The judge upgrades to the KLD instrument; the
+    redesign is staged 0→1→2 (scale last) — the principal's calls.**
+    Deep-dive (read-only audit, pre-Stage-0) found the design flaw
+    that matters: STDP's learning signal is drive-informed, not
+    model-informed — at I_ACTIVE=600 the E-neuron threshold margin is
+    ~450 μA while a recurrent ±12 μA (weight/10, i16-truncated) pulse
+    is integer-mV-quantization-absorbed on the excitatory climb
+    (an 8.6–11.2σ event needed to gate; empirically imported/control/
+    zero all fired 35,157), so Δ-SI 1.0000 measured our DRIVE's
+    correlation structure with the pretrained weights as canvas.
+    Corroborated by mechanical sign analysis of the session-E dumps
+    (5–8/12 positive steps per prompt, binomial p ≈ 0.12–0.23 —
+    directionless at the top-1). Decisions: (a) the fork's
+    llama-perplexity (--save-all-logits + --kl-divergence) becomes
+    the standing sensitive judge, corpora sha-pinned; (b) the staged
+    redesign — stage 0 instrument/control (DONE, ISC-68..70), stage 1
+    amplitude sweep to open the weight→firing channel (grid extended
+    to 100 μA, below the ~150 μA E-threshold, on the audit's
+    arithmetic; I_INH fixed at 600 — single variable; spike-TRAIN
+    comparison, not total counts, with pre-registered A* criterion),
+    stage 2 in-vivo drive (its own design conversation), scale LAST;
+    (c) the drive-domination finding + the sweep curve are themselves
+    publishable figures. An earlier /tmp summary note's loose "~6σ"
+    phrasing on corpus B is SUPERSEDED by ISC-70's conservative
+    claim. The session-E widened-slice plan (rung B) is WITHDRAWN —
+    scaling a signal that is structurally not about the model
+    multiplies noise.
+- 2026-08-18 (sE) · **THE LOOP GATE: CLOSED — and the claim it earns
+    is capability, not quality.** For the first time in the field's
+  record: a shipped quantized LLM's weights, imported bit-exactly into
+  a spiking substrate, adapted under local backprop-free STDP,
+  re-encoded through the format bridge, and RUN by foreign tooling
+  with MEASURABLE behavior change (60/60 judged steps moved; 0/60
+  argmax flips — one attention slice of 36 layers, 0.5% of weights).
+  Recorded decisions: (a) ORIGINAL fp16 scale bits pass through —
+  the substrate adapted structure at γ=125; magnitudes stay the
+  model's own; (b) 512×512 slice for D-2 state continuity (widening
+  ladder pre-declared, did not fire); (c) effect size honestly small
+  — no improvement claim is made or implied anywhere; the loop's
+  value is that it CLOSES, with every attribution link mechanically
+  verified; (d) judge = the pinned fork commit + spec-rewritten dump
+  patch (scratch tools stay in /tmp by policy — numbers banked
+  same-session here and in the commit message when committed);
+  (e) alpha.2 republish (q2_0 layout fix + encode_q2_0) consolidated
+    AFTER this session per the principal's call. All evidence in
+  /tmp/opencode/se/; verdict numbers banked in this entry. Commits
+  held for the principal's review — no commit/push/merge until the
+  working-tree diff is reviewed together.
 - 2026-08-17/18 (s4-D2 recovery) · **Machine died mid-session; session D
     slice 2 recovered from git + this ISA, evidence regenerated by
     re-run.** The shutdown hit between the last D-2 code commit
@@ -1205,6 +1353,23 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Learning
 
+- observed (session E): the hybrid_loop surgery assert
+  `changed_cells == D-2 Hamming` fired on first run — 57,300 vs
+  57,005, 295 phantom changes.
+  refuted by: the assert itself, before any byte reached disk — the
+  adapted-slice reconstruction initialized the DIAGONAL to Zero
+  instead of copying the source trit (the diagonal carries no
+  synapse in the full-minus-diagonal build). The doc comment said
+  "keeps its source trit"; the code didn't do it. 295 = exactly the
+  nonzero diagonal count of the imported slice.
+  learned: a cross-assert between two independently-derived
+  representations of the same quantity (cell-delta count vs synapse
+  Hamming) catches stated-intent-vs-code drift that unit tests on
+  either half alone cannot — the encoder's tests were green, the
+  surgery's logic was green, only their JOIN was wrong.
+  criterion now: whenever two computations claim the same number,
+  assert their equality at the join even when both "pass" their own
+  checks — especially before a write path runs.
 - observed (session D-2 recovery, 2026-08-17/18): the machine died
   mid-session and every evidence log under /tmp/opencode/ died with
   it — yet the session recovered fully in under an hour.
@@ -1264,6 +1429,53 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   criterion now: after any geometry re-pin, grep the new module's
   tests for block counts derived from the OLD geometry before
   running.
+
+## Verification (Session E stage 0 — instrument + attribution package)
+
+- ISC-68: /tmp/opencode/se/stage0/hybrid_loop_control.log — control
+  mode full pipeline on unadapted trits; code 0/65,536 · scale 0/4,096
+  · S1 outside 0 · S2 0 mismatches · CONTROL IDENTITY assert (written
+  file == original, byte for byte) · sha256 4e0bf8b737b0431528b… both
+  files.
+- ISC-69: llama-perplexity @ the pinned build dir; corpora sha
+  18fb5452… (readme lines 1–180) + 781d1e21… (frozen prompts +
+  banked continuations); baseline double-runs Final-exact on both
+  (15.6723 / 5.1400); kld files base_readme.kld + base_prompts.kld.
+- ISC-70: ppl_patched_readme.log — ratio 1.002780 ± 0.010918, mean
+  KLD 0.004271, max 0.289815, cor 99.93%; ppl_patched_prompts.log —
+  chunk ln-ratios +0.14895/+0.07446/+0.04904 (3/3 positive), Δp RMS
+  0.36–0.50%, Same-top-p 100.000% ×3 chunks; conservative reading in
+  the claims section; STAGE0_SUMMARY.md carries the full tables.
+
+## Verification (Session E — the loop-closer, LOOP GATE: CLOSED)
+
+- ISC-65: bridge tests green (27 bridge incl. the 4 new):
+  encode_q2_0_reproduces_known_vector_bytes,
+  encode_q2_0_reproduces_golden_vector_bytes (decode→encode byte
+  identity on both pinned vectors), encode_q2_0_rejects_bad_input
+  (odd length, short out, short SCALES — per-block indexing is
+  load-bearing), prop_q2_0_round_trip (distinct per-block scales,
+  dirty out-buffer).
+- ISC-66: /tmp/opencode/se/hybrid_loop.log (+ .time, run2 +
+  loop-determinism.gguf) — phase-1 D-2 numbers all asserted+reproduced
+  (spikes 35,157 ×3 · events 16,183,885 · flips 321,571 · Hamming
+  57,005 · Δ-SI 1.0000); tensor window abs 112,588,032 +
+  2,785,280 B dims-derived; 512×136 B chunks; code bytes 29,734
+  changed · scale 0 · outside 0; patched file 1,074,969,344 B; S2
+  262,144 trits from disk == adapted, 0 mismatches; wall 12.0 s, RSS
+  2134 MB (loop budget 2560 — two file buffers, header documents it);
+  sha256 87078612… ×2 identical.
+- ISC-67: fork @ 9ca265a (clone HEAD == pin), llama-completion built
+  clean after one API rename (llama_vocab_n_tokens — the C-pre patch
+  spec predates the rename); run_prompts.sh protocol (5 frozen
+  prompts, greedy-forced + `-t 4` `-c 512` `-n 12`, NEURALOS_DUMP=1,
+  double-run per variant): baseline run1==run2 byte-identical ×5;
+  patched run1==run2 ×5; baseline reproduces 4C anchors (p3 step-0
+  7794:14.6527, p2 step-0 4236:13.2278); delta.py mechanical table:
+  60/60 steps moved (max |Δ| 0.534 p2 / 0.452 p0 / 0.124 p3 / 0.093
+  p4 / 0.088 p1), overlap 8–10/10, argmax flips 0/60, continuations
+  byte-identical to baseline on all 5. Working tree left UNCOMMITTED
+  for the principal's review per standing instruction.
 
 ## Verification (Stage 4, session D slice 2 — the hybrid seam, recovered)
 
