@@ -794,6 +794,23 @@ drive (the model's own layer-0 activations as the input the SNN
 adapts to), scale last. The claim tracks the evidence: capability
 closed the loop; model-informed coupling is what opens it wider.
 
+**Stage 1's answer (2026-08-18): amplitude alone cannot couple — an
+honest NO with the curve attached.** The sweep's trains were
+identical at every amplitude; the E population falls off an exact
+cliff (identical 53 Hz firing at 450 μA → exactly zero at 300) into
+a self-consistent silence the recurrent excitation cannot bootstrap
+out of, because the continuously-driven inhibitory wall (~−97 μA)
+holds the effective threshold above the drive. The physics reading:
+at these dynamics the ±12 μA weight channel is either 6–7σ too small
+(above the wall) or the population is silent (below it) — there is
+no amplitude where weights decide spikes. That is a finding, not a
+failure: it redirects the redesign to the coupling itself (the
+substrate's transmission gain, in-vivo drive statistics, or a
+balanced background), recorded as a three-way fork for the
+principal, and it gives the paper its sharpest honest figure yet —
+the measurement that proves what the loop's small effect size
+suggested.
+
 **Remaining sessions (honest slice):** attention + full forward
 (**✓ session 3**) → adversarial review of the whole arc (**✓ session
 3.5**) → tokenizer + generation = the Stage 4 gate (**✓ session 4 —

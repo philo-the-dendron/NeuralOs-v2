@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 70/70
+progress: 71/71
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-18T17:30:00Z
-principal_stated_goal: "Session E stage 0: instrument + attribution package — KLD judge, control identity, the drive-informed verdict"
+updated: 2026-08-18T18:30:00Z
+principal_stated_goal: "Session E stage 1: the amplitude sweep — does the weight→firing channel open? (NO, recorded; redesign fork to the principal)"
 ---
 
 ## Problem
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0 — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1 — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -300,6 +300,31 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   sweep to open the weight→firing channel) proceeds on this
   baseline. Falsifier: /tmp/opencode/se/stage0/ppl_patched_*.log +
   STAGE0_SUMMARY.md.
+
+- [x] ISC-71 (sE-1) · **THE AMPLITUDE SWEEP: honest NO — the
+  weight→firing channel does not open by amplitude alone.** Frozen
+  `examples/hybrid_sweep.rs`: I_ACTIVE ∈ {600, 450, 300, 240, 200,
+  170, 150, 125, 100} μA, I_INH=600 fixed (single variable), 1.5c
+  schedule verbatim, STDP off, imported vs census-matched control vs
+  zero — metrics spike-TRAIN Hamming per pair (not totals) +
+  per-neuron rate L1 + per-population Hz. Result: **zero divergence
+  at every amplitude, every pair** (H = 0, L1 = 0 across the grid).
+  600 μA reproduces D-2 exactly (35,157 ×3); 450 μA fires E at 8.00
+  Hz ×3 (32,294 ×3, still identical); at 300 μA and below the E
+  population is EXACTLY silent (totals 25,750 ×3 = the I population
+  alone, 103 × 125 Hz × 2 s; I Hz 125.00 at every amplitude — I
+  firing never depends on weights at fixed 600 μA drive). The
+  pre-registered prediction (onset ≤ 300 μA) is FALSIFIED — honestly.
+  Mechanism (recorded reading): the continuously-driven I population
+  (125 Hz through ±12 μA synapses) parks a ~−97 μA inhibitory
+  background on every E neuron, raising the effective E threshold
+  from ~150 to ~250 μA; above it (450: margin ~300 μA) the recurrent
+  σ ≈ 40–50 μA + integer-mV quantization still absorbs everything
+  (6–7σ), below it E silence is self-consistent (E→E excitation
+  exists only if E fires — no bootstrap). The channel needs a
+  different coupling, not a different amplitude. Falsifier:
+  /tmp/opencode/se/stage1/sweep.log (full table) contradicting any
+  line; wall 13.2 s, RSS 1050 MB < 1536.
 
 - [x] ISC-51: the 4B's config pinned from the file BEFORE any code —
   probe + full `qwen3.*`/`general.*` KV dump on both tiers, diff in
@@ -807,6 +832,29 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-18 (sE-1) · **The amplitude sweep said NO — the coupling
+    redesign conversation reopens, options to the principal.**
+    The sweep (ISC-71) closed the amplitude road: identical trains at
+    every amplitude, an exact E-silence cliff below ~450 μA
+    (self-consistent — no recurrent bootstrap), and no weight-borne
+    divergence anywhere. Three directions now on the table, none
+    chosen: (a) **coupling constant** — the substrate's weight/10
+    transmission truncation (±125 → ±12 μA) is the actual knob; a
+    stronger recurrent gain (or conductance-based transmission, the
+    bio path the step loop bypasses) would rescale σ vs margin
+    without touching amplitudes — but changes what imported weights
+    MEAN dynamically and must be gated as a substrate change; (b)
+    **in-vivo drive (stage 2 brought forward)** — the model's own
+    layer-0 activations as input currents; coupling then rides on
+    real input statistics rather than a synthetic schedule, but the
+    same transmission gain question decides whether it can matter;
+    (c) **balanced background** — sweep I_INH down with I_ACTIVE (two
+    variables, new experiment class) so the inhibitory wall drops
+    with the margin. All three need the same prerequisite honesty:
+    whatever changes, the 1.5c/D-2 lineage ends and a new pinned
+    state begins. The principal picks the road; the sweep curve rides
+    into the paper either way as the honest measurement that
+    amplitude alone cannot couple a 512-slice at these dynamics.
 - 2026-08-18 (sE-0) · **The judge upgrades to the KLD instrument; the
     redesign is staged 0→1→2 (scale last) — the principal's calls.**
     Deep-dive (read-only audit, pre-Stage-0) found the design flaw
@@ -1429,6 +1477,18 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   criterion now: after any geometry re-pin, grep the new module's
   tests for block counts derived from the OLD geometry before
   running.
+
+## Verification (Session E stage 1 — the amplitude sweep, honest NO)
+
+- ISC-71: /tmp/opencode/se/stage1/sweep.log + sweep.time — the full
+  9-amplitude table (E/I Hz per net, totals, 3 pairwise train
+  Hammings, 3 pairwise rate L1s per row — all zeros across the
+  grid); 600 μA row reproduces D-2's 35,157 ×3; cliff row pair
+  450/300 (32,294 ×3 with E at 8.00 Hz → 25,750 ×3 with E at
+  exactly 0); clippy -D warnings clean on the example; determinism
+  inherited (same seeds/noise as the D-2 lineage; single run
+  suffices for a zero-divergence claim at identical inputs — every
+  pair differs only in weights and produced identical trains).
 
 ## Verification (Session E stage 0 — instrument + attribution package)
 

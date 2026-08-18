@@ -299,6 +299,23 @@ activations — its own design conversation first), **scale last**
 noise). The drive-domination finding and the sweep curve are
 themselves publishable figures.
 
+**Session E stage 1 (2026-08-18) — the amplitude sweep: honest NO.**
+The frozen `hybrid_sweep.rs` walked I_ACTIVE 600→100 μA (I_INH fixed,
+single variable; spike-TRAIN comparison, pre-registered A\*
+criterion): **zero weight-borne divergence at every amplitude** —
+600 μA reproduces D-2's identical-train triple (35,157 ×3), 450 μA
+fires E identically in all three nets (32,294 ×3), and at ≤300 μA
+the E population is exactly silent (25,750 = the I population alone)
+in a self-consistent no-bootstrap fixed point. The pre-registered
+prediction (onset ≤ 300) was falsified; mechanism: the 125 Hz
+inhibitory background (~−97 μA) raises the effective E threshold to
+~250 μA, above which the recurrent σ (40–50 μA) is still 6–7σ inside
+the margin and quantization absorbs it. Conclusion: the channel
+needs a different COUPLING, not a different amplitude — the redesign
+fork (coupling constant / in-vivo drive / balanced background) is
+recorded in the ISA and is the principal's call. The curve rides
+into the paper as the honest measurement.
+
 ### Phase 4 — RISC-V deployment proof
 
 Goal: make the `no_std` claim concrete.
