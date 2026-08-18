@@ -811,6 +811,27 @@ principal, and it gives the paper its sharpest honest figure yet —
 the measurement that proves what the loop's small effect size
 suggested.
 
+**Stage 1c's answer (2026-08-18): the ruler wasn't it either — and
+the falsification found the real cut wire.** The opt-in centi-mV grid
+shipped clean (default bit-identical, dead-zone pairs unit-pinned),
+the frozen sweep re-ran — and the trains were still identical at
+every amplitude, falsifying the second pre-registered prediction in a
+row. That double falsification forced the question both sweeps had
+skipped: is the lever even connected? It is not. `step()` injects
+each recurrent `weight/10` pulse after integration and clears it
+before the next — **synaptic transmission is structurally dead in
+the network orchestrator**, canary-pinned by a 2-neuron probe. In one
+stroke this explains D-2's identical trains, both sweep NOs, and
+corrects the audit's optimistic "one-step delay" reading (it trusted
+the comment over the code). The fork now on the table is honest and
+small-looking: one loop reorder that makes synapses transmit — and
+re-pins every recorded dynamic in the repo's history (1.5c
+selectivity, D-2's adapted state, both sweep curves, the
+visualizer's sustained firing). A spiking network whose synapses
+don't transmit is broken; the recommended path is fix + one
+dedicated re-pin session, but the call — and the lineage break — is
+the principal's.
+
 **Remaining sessions (honest slice):** attention + full forward
 (**✓ session 3**) → adversarial review of the whole arc (**✓ session
 3.5**) → tokenizer + generation = the Stage 4 gate (**✓ session 4 —

@@ -316,6 +316,23 @@ fork (coupling constant / in-vivo drive / balanced background) is
 recorded in the ISA and is the principal's call. The curve rides
 into the paper as the honest measurement.
 
+**Session E stage 1c (2026-08-18) — the finer ruler: another NO, and
+the real blocker found.** After a first-principles pass flagged the 1 mV
+voltage grid's ~200 μA dead zone, the substrate gained an opt-in
+centi-mV grid (`VoltageResolution`, default mV bit-identical — pinned
+trace, dead-zone pairs, 157 tests). The frozen sweep re-ran on the
+finer grid: totals shifted to the centi pinned state (35,975 ×3 at
+600 μA — expected), the E cliff moved down to 150 μA (the grid sees
+smaller drive currents now), and the trains were STILL identical
+everywhere — falsifying the pre-registered divergence prediction. The
+forced code re-read found why, and a 2-neuron canary test pins it:
+**`step()`'s recurrent synaptic current is never integrated at all**
+(Phase 2 injects after Phase 1; the next step clears before Phase 1).
+Every "weights don't shape firing" result in the lineage is this bug;
+the mV grid was a real-but-irrelevant co-blocker. Fix fork recorded in
+the ISA (recommended: fix + one re-pin session for the whole lineage —
+the principal's call).
+
 ### Phase 4 — RISC-V deployment proof
 
 Goal: make the `no_std` claim concrete.

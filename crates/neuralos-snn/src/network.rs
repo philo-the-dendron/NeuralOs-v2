@@ -2241,6 +2241,53 @@ mod tests {
 
     // ----- Voltage resolution propagation (the finer ruler) -----
 
+    /// BUG PINNED (found session E stage 1c, 2026-08-18): the recurrent
+    /// synaptic current injected by `step()` Phase 2 is NEVER integrated.
+    /// Phase 2 adds `weight/10` AFTER Phase 1's integration, and the next
+    /// step's opening loop calls `clear_synaptic_current()` BEFORE Phase 1
+    /// — the pulse is born and destroyed without ever reaching
+    /// `integrate_and_fire`. Consequences already recorded in the ISA: the
+    /// D-2/session-E "all three nets fire identically" result is explained
+    /// by this (weights are structurally silent in `step()`), not only by
+    /// mV-grid quantization. This canary pins the CURRENT behavior so any
+    /// future fix (reordering clear/integrate, or deferring injection to
+    /// the next step's integration) flips this test loudly and re-pins the
+    /// lineage. Until then: honest name, honest finding.
+    #[test]
+    fn recurrent_current_is_never_integrated_in_step_bug_pinned() {
+        let mut net =
+            SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                .expect("constructs");
+        net.build_topology().expect("empty build");
+        for n in &mut net.neurons {
+            n.noise_amplitude_ua = 0;
+        }
+        net.add_synapse(0, 1, 125).expect("edge");
+        net.finalize_synapses();
+        let mut pre_spikes = 0u64;
+        let mut post_ever_moved = false;
+        for t in 0..200 {
+            let inputs: Vec<i16> = if t % 20 < 10 { vec![600, 0] } else { vec![0, 0] };
+            for s in net.step(&inputs).expect("step") {
+                if s.neuron_id == 0 {
+                    pre_spikes += 1;
+                }
+            }
+            // Neuron 1 (I-type, no drive, at rest): any integrated recurrent
+            // current would move it off −70 (even one step, mV grid).
+            if net.neurons[1].membrane_potential != -70 {
+                post_ever_moved = true;
+            }
+        }
+        assert!(pre_spikes > 0, "pre fired — the setup is sound");
+        assert!(
+            !post_ever_moved,
+            "IF THIS FAILS: transmission became live — the bug is fixed; \
+             re-pin the firing lineage (D-2/E numbers) and replace this canary \
+             with a positive transmission test"
+        );
+    }
+
     #[test]
     fn network_propagates_centimillivolt_resolution_to_every_neuron() {
         let mut net = SpikingNeuralNetwork::new_with_voltage_resolution(

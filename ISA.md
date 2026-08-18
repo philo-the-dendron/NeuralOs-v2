@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 71/71
+progress: 72/72
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-18T18:30:00Z
-principal_stated_goal: "Session E stage 1: the amplitude sweep — does the weight→firing channel open? (NO, recorded; redesign fork to the principal)"
+updated: 2026-08-18T21:00:00Z
+principal_stated_goal: "Session E stage 1c: the finer-ruler sweep (NO) — transmission bug found and pinned; fix fork to the principal"
 ---
 
 ## Problem
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1 — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -285,7 +285,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   adaptation is noise on generic text and a small consistently-signed
   degrading shift on the model's own continuations.** Corpus A
   (generic): mean PPL(Q)/PPL(base) = 1.002780 ± 0.010918 —
-  indistinguishable from zero; mean KLD 0.004271, median 0.000547,
+  indistinguishable from zero; mean KLD   0.004271, median 0.000547,
   max 0.289815, correlation of log-ratios 99.93%. Corpus B (the
   model's own high-confidence text): ln(PPL(Q)/PPL(base)) = +0.14895,
   +0.07446, +0.04904 — **3/3 chunks positive** (conservative claim:
@@ -300,6 +300,37 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   sweep to open the weight→firing channel) proceeds on this
   baseline. Falsifier: /tmp/opencode/se/stage0/ppl_patched_*.log +
   STAGE0_SUMMARY.md.
+
+- [x] ISC-72 (sE-1c) · **THE FINER-RULER SWEEP: honest NO — and the
+  probe that found the REAL blocker: recurrent transmission in
+  `step()` is structurally dead.** Frozen
+  `examples/hybrid_sweep_cmv.rs`: the stage-1 protocol verbatim on
+  the new centi-mV grid (VoltageResolution::CentiMillivolt —
+  `fad081f`, dead zone ≈ 2 μA, default mV grid bit-identical, pinned
+  mV trace + the 12 μA pair + the 160 μA pair tests). Result: totals
+  shift to the centi pinned state (600 μA: 35,975 ×3 — expected,
+  drive currents now integrate without mV truncation; E fires at
+  every amplitude down to 170: 12.50/10.00/7.50/5.00/2.50/2.50 Hz,
+  cliff to 0 at 150) but the three nets' TRAINS remain IDENTICAL at
+  every amplitude (Hamming 0, L1 0 across the grid) — my
+  pre-registered prediction (divergence at 600 μA) is FALSIFIED,
+  honestly. The falsification forced the code re-read that found
+  it: `step()` Phase 2 injects `weight/10` into the postsynaptic
+  current AFTER Phase 1's integration, and the next step's opening
+  loop calls `clear_synaptic_current()` BEFORE Phase 1 — the pulse
+  is born and destroyed without ever reaching
+  `integrate_and_fire`. Empirically pinned by
+  `recurrent_current_is_never_integrated_in_step_bug_pinned`
+  (network.rs tests: 2-neuron net, presynaptic fires, postsynaptic
+  membrane NEVER leaves −70). Consequences, now with true mechanism:
+  D-2/session-E's "imported/control/zero fire identically" is
+  explained STRUCTURALLY (weights are silent in step(), full stop) —
+  the mV-grid dead zone (real for input currents, unit-proven) was
+  the co-blocker, but upstream of it the wire is cut. Also refuted:
+  the session-E audit's "pulse integrates with one-step delay"
+  reading — it re-encoded the code COMMENT's intent, not the code's
+  behavior. Falsifier: /tmp/opencode/se/stage1c_sweep.log + the
+  canary test.
 
 - [x] ISC-71 (sE-1) · **THE AMPLITUDE SWEEP: honest NO — the
   weight→firing channel does not open by amplitude alone.** Frozen
@@ -832,6 +863,34 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-18 (sE-1c) · **THE TRANSMISSION BUG: found, pinned, fix fork to
+    the principal.** `step()` Phase 2 injects `weight/10` after
+  integration; the next step clears it before integrating — the
+  recurrent current NEVER reaches `integrate_and_fire` (canary-pinned,
+  ISC-72). This is the true mechanism behind every
+  "weights-don't-matter" result in the lineage (D-2 G2, stage 1, stage
+  1c) and it invalidates the co-blocker framing: the mV grid was real
+  but irrelevant — the wire was cut. The fix is a loop reorder
+  (integrate BEFORE clear, or defer injection to next-step integration
+  — either makes the Phase-2 pulse live with a one-step delay, which
+  the code comment always claimed it had). But the fix RE-PINS
+  EVERYTHING downstream of step(): 1.5b/1.5c/1.5d selectivity numbers,
+  D-2's 35,157/flip/Hamming/Δ-SI set, stage-1/1c curves, the
+  visualizer's sustained-firing behavior — every recorded network
+  dynamic in the repo's history. That is a lineage-wide re-pin and a
+  de-facto substrate-semantics change: THE PRINCIPAL'S CALL, not mine.
+  Options on the table: (a) fix now, re-pin everything in one
+  dedicated session (the canary flips loudly, every pinned suite
+  re-runs, new lineage begins — the honest path to a live channel);
+  (b) fix behind a `transmission_live` opt-in flag (default dead =
+  historical numbers keep, experiments opt in — but then the SUBSTRATE
+  ITSELF stays broken-by-default and the library ships a bug as a
+  feature); (c) accept dead transmission as documented behavior (the
+  "instantaneous-synapse model" reading) — rejected as dishonest: the
+  comment says the pulses CONTRIBUTE; they don't. My recommendation:
+  (a) — a spiking network whose synapses don't transmit is broken, and
+  every future result inherits the break; the re-pin cost is one
+  session, once.
 - 2026-08-18 (sE-1) · **The amplitude sweep said NO — the coupling
     redesign conversation reopens, options to the principal.**
     The sweep (ISC-71) closed the amplitude road: identical trains at
@@ -1401,6 +1460,29 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Learning
 
+- conjectured (stage 1, then stage 1c, twice in one day): first, that
+  lowering the drive amplitude would open the weight→firing channel;
+  then, that the centi-mV grid would.
+  refuted by: two frozen sweeps — zero train divergence at every
+  amplitude on BOTH grids — and finally by a 5-line probe: the
+  recurrent current is never integrated in step() at all (Phase 2
+  injects after integration; the next step clears before integrating).
+  The channel both experiments swept levers on was structurally dead
+  upstream of both levers.
+  learned: when a second lever ALSO produces zero signal, stop
+  modeling the physics and trace the plumbing — two falsified
+  mechanism-models in a row means the mechanism isn't at the layer
+  being swept. Worse: the session-E audit had already READ this code
+  and reported "a pure one-step pulse with delay" — it re-encoded the
+  code comment's INTENT, not the code's BEHAVIOR. Both failures are
+  the same class: an unverified mechanism claim laundering itself as
+  an audited fact.
+  criterion now: before any experiment sweeps a lever, a minimal
+  end-to-end probe must prove the lever is CONNECTED through the
+  actual pipeline (the 2-neuron transmission probe now exists as a
+  permanent canary); and an analysis claim about signal flow cites
+  the executed instruction path or a probe output — never the
+  comment above it.
 - observed (session E): the hybrid_loop surgery assert
   `changed_cells == D-2 Hamming` fired on first run — 57,300 vs
   57,005, 295 phantom changes.
@@ -1477,6 +1559,18 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   criterion now: after any geometry re-pin, grep the new module's
   tests for block counts derived from the OLD geometry before
   running.
+
+## Verification (Session E stage 1c — the finer-ruler sweep + the transmission bug)
+
+- ISC-72: /tmp/opencode/se/stage1c_sweep.log + .time — the centi-grid
+  table (totals 35,975/33,930/31,885/29,840/27,795/27,795/25,750 ×3
+  down the grid; train Hamming 0 and L1 0 at every amplitude, every
+  pair); VoltageResolution shipped in fad081f (149 snn tests at the
+  seam; 150 with the 1c canary — pinned mV trace, dead-zone pairs,
+  network pairs);
+  `recurrent_current_is_never_integrated_in_step_bug_pinned` green
+  (presynaptic fires; postsynaptic membrane never leaves −70);
+  clippy/check/no_std green.
 
 ## Verification (Session E stage 1 — the amplitude sweep, honest NO)
 
