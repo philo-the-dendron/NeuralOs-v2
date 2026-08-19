@@ -850,7 +850,7 @@ mod tests {
     // ----- q2_0 encode (session E: the export inverse) -----
 
     /// The REAL first block of `token_embd.weight` from
-    /// Ternary-Bonsai-4B-Q2_0.gguf (data_start + tensor offset, extracted
+    /// Ternary-Bonsai-4B-Q2_0.gguf (`data_start` + tensor offset, extracted
     /// verbatim — the artifact the session-D re-pin was validated against).
     /// 34 bytes: fp16 scale 0x24C8 (~18.7 milli max|w|) + 32 code bytes
     /// decoding to census +37 / 0×43 / −48 of 128.
