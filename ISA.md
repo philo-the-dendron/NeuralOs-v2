@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 77/77
+progress: 78/78
 started: 2026-08-15T12:55:00Z
 updated: 2026-08-19T02:45:00Z
-principal_stated_goal: "Session F criterion: (i)-amended gates on raw fields; loop un-parked on the live wire — Hebbian ADAPTS verdict"
+principal_stated_goal: "Session G Bank & Verify: label earned (clamp-rectified), evidence banked, push, alpha.2, novelty pass"
 ---
 
 ## Problem
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78 sG — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -414,8 +414,9 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   structural fact (each in-window adjacency on an edge yields one
   post-leads pairing at the pre's step and one pre-leads pairing at
   the post's step; the net Hebbian drift lives in the dt-dependent
-  magnitudes, not the counts — the reviewer's causal-LTP reading
-  now carries counted evidence). hybrid_gate re-run: **HYBRID
+  magnitudes, not the counts). [Session-G correction: the per-class
+  COUNTERS (ISC-78) refuted the simple causal-LTP reading — the
+  realized potentiation is clamp-rectified, not LTP-dominant.] hybrid_gate re-run: **HYBRID
   GATE: ADAPTS** on the live wire, mechanism [Hebbian-carried],
   intra |Δ| 0.1075 PASS. hybrid_loop re-run: D-2 preconditions
   reshaped to THREE totals (35,115/35,136/35,157 · events
@@ -430,6 +431,32 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   300 μA sticks at −59; +12 μA pulse ratchets +1 mV; −12 μA
   absorbed). Falsifier: /tmp/opencode/sf/hybrid_{gate,loop}_
   {criterion,fixed}.log + the sha pair.
+
+- [x] ISC-78 (sG) · **THE MECHANISM LABEL, EARNED — and AMENDED:
+  pairing-selective, clamp-rectified (the inferred "Hebbian-carried"
+  refuted by its own counters).** Fourth-review Finding A, tested
+  before push: `Synapse` gained two cumulative counters
+  (`raw_stdp_delta` = Σ deltas before clamping; `absorbed_delta` =
+  Σ clamped-away remainder), and run_hybrid decomposes them per
+  class. The measured decomposition (live-wire D-2 state, re-run):
+  **raw intra drift −739,295 (mean −17.85/syn — LTD events
+  dominate: same-step 951,578 + post-leads 4,110,289 at −5 vs
+  pre-leads 4,110,289 at +4) · clamp-absorbed −839,029 · APPLIED
+  +99,734 (mean +2.41/syn) · inter exactly 0/0 (no pairings —
+  schedule geometry).** Mechanism, counted: intra co-firing drives
+  a net-NEGATIVE raw drift; the E-class 0-floor absorbs the LTD;
+  the applied residue potentiates → buckets move +0.1075. The
+  class-differential is timing-driven (only co-firing pairs pair
+  at all); the DIRECTION is bounds-driven. The label logic in both
+  examples now COMPUTES the mechanism from the counters (three
+  cases: raw-LTP-dominant = Hebbian-carried; raw-negative +
+  applied-positive = clamp-rectified; applied-negative =
+  LTD-carried); this run prints [PAIRING-SELECTIVE,
+  CLAMP-RECTIFIED]. The ADAPTS verdict is unchanged (the gate is
+  degree-based: intra |mean Δ| 0.1075 ≥ 0.05 PASS); the loop
+  re-exports CLEAN with identical numbers (counters additive,
+  determinism intact). Falsifier: /tmp/opencode/sf/hybrid_gate_
+  mech.log + hybrid_loop_g.log contradicting any line.
 
 - [x] ISC-71 (sE-1) · **THE AMPLITUDE SWEEP: honest NO — the
   weight→firing channel does not open by amplitude alone.** Frozen
@@ -1594,6 +1621,27 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Learning
 
+- conjectured (session F, folded into the criterion commit): the
+  live-wire discrimination was "Hebbian — pre causally drives post
+  one step later → LTP"; the label was printed as computed from the
+  class-mean signs even after the histogram shipped.
+  refuted by: the session-G per-class counters, run BEFORE push —
+  raw intra drift is net NEGATIVE (−739,295; LTD events outnumber
+  LTP ~1.3:1 per event and −5 vs +4 per event), the 0-floor absorbs
+  −839,029, and only the APPLIED residue (+99,734) is positive. The
+  sign of the realized movement was carried by the BOUNDS, not by
+  LTP dominance; "counted, not inferred" had been claimed for the
+  pairing histogram while the LABEL itself was still an inference
+  from two signs.
+  learned: an instrument earns its name only when the claim it
+  guards is computed FROM the instrument's output — a histogram
+  beside an inferred label is decoration. Decompose realized
+  movement into raw / absorbed / applied before naming any
+  plasticity mechanism.
+  criterion now: mechanism labels are computed from per-class
+  decompositions (raw, clamp-absorbed, applied), with the
+  computation visible in the printing code; sign-only label logic
+  is a review flag.
 - conjectured (session F, from the second review's Job-3
   derivation): with transmission live, the mV grid would show
   timing-only divergence (Hamming > 0, rate-L1 ≈ 0) and centi would

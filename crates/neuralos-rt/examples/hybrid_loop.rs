@@ -307,6 +307,15 @@ struct HybridStats {
     pairs_same_step: u64,
     pairs_post_leads: u64,
     pairs_pre_leads: u64,
+    /// Per-class (E→E intra/inter) cumulative RAW STDP deltas and the
+    /// clamp-absorbed remainders (session G): decides whether the realized
+    /// bucket movement was pairing-driven or machinery-driven.
+    raw_intra: i64,
+    raw_inter: i64,
+    absorbed_intra: i64,
+    absorbed_inter: i64,
+    n_intra: u64,
+    n_inter: u64,
     cofire_intra: f64,
     cofire_inter: f64,
 }
@@ -404,6 +413,26 @@ fn run_hybrid(trits: &[Trit], inputs: &[Vec<i16>]) -> HybridStats {
         }
     }
 
+    // Session G mechanism counters: per-class raw STDP drift + clamp
+    // absorption, read from the synapses themselves (E→E pairs only,
+    // matching the selectivity classes).
+    let (mut raw_intra, mut raw_inter) = (0_i64, 0_i64);
+    let (mut absorbed_intra, mut absorbed_inter) = (0_i64, 0_i64);
+    let (mut n_intra, mut n_inter) = (0_u32, 0_u32);
+    for s in net.synapses() {
+        if s.pre_neuron_id < exc && s.post_neuron_id < exc {
+            if group_of(s.pre_neuron_id, exc) == group_of(s.post_neuron_id, exc) {
+                raw_intra += s.raw_stdp_delta;
+                absorbed_intra += s.absorbed_delta;
+                n_intra += 1;
+            } else {
+                raw_inter += s.raw_stdp_delta;
+                absorbed_inter += s.absorbed_delta;
+                n_inter += 1;
+            }
+        }
+    }
+
     let total_learn_spikes: u64 = quarter_spikes.iter().sum();
     let secs = learn.len() as f64 * f64::from(DT_US) / 1e6;
     HybridStats {
@@ -430,6 +459,12 @@ fn run_hybrid(trits: &[Trit], inputs: &[Vec<i16>]) -> HybridStats {
         pairs_same_step: net.stats().stdp_pairs_same_step,
         pairs_post_leads: net.stats().stdp_pairs_post_leads,
         pairs_pre_leads: net.stats().stdp_pairs_pre_leads,
+        raw_intra,
+        raw_inter,
+        absorbed_intra,
+        absorbed_inter,
+        n_intra: n_intra as u64,
+        n_inter: n_inter as u64,
         cofire_intra: if inum > 0 { isum / inum as f64 } else { 0.0 },
         cofire_inter: if enum_ > 0 { esum / enum_ as f64 } else { 0.0 },
     }
@@ -703,6 +738,18 @@ fn main() {
         "  STDP pairing histogram: same-step {} · post-leads {} · pre-leads {} (in-window; the pre-leads share is the Hebbian evidence)",
         h.pairs_same_step, h.pairs_post_leads, h.pairs_pre_leads
     );
+    println!(
+        "  raw STDP drift (E→E): intra {:+} over {} syns (mean {:+.4}/syn) · inter {:+} over {} — the pairing-driven sum BEFORE flips/clamps",
+        h.raw_intra,
+        h.n_intra,
+        h.raw_intra as f64 / h.n_intra as f64,
+        h.raw_inter,
+        h.n_inter
+    );
+    println!(
+        "  clamp-absorbed     : intra {:+} · inter {:+} — bounds-asymmetry evidence",
+        h.absorbed_intra, h.absorbed_inter
+    );
 
     // Bucket-transition census + Hamming vs the imported original.
     let src_iter_order: Vec<Trit> = {
@@ -825,12 +872,22 @@ fn main() {
     // inter pair outside the 20 ms STDP window, so inter Δ ≡ 0 by geometry
     // in every era and |Δ-SI| ≡ 1 whenever any movement exists — it cannot
     // gate on degree. (Second-reviewer finding, adopted.)
-    let mechanism = if din > dit {
-        "Hebbian-carried — intra potentiated more (live-wire LTP: pre causally drives post one step later)"
-    } else if dit > din {
-        "LTD-carried — intra depressed more (dead-wire-era co-fire tie-break mode)"
-    } else {
+    // Session G amendment: the label is COMPUTED from the counters, not
+    // inferred from the sign. Measured decomposition (live-wire D-2): raw
+    // intra drift is NET NEGATIVE (−739,295; LTD events outnumber LTP),
+    // the E-class 0-floor absorbs −839,029 of it, and the APPLIED residue
+    // is positive (+99,734) — the class-differential is timing-driven
+    // (inter pairs never pair: 40 ms gaps), the DIRECTION is bounds-driven.
+    // Simple "Hebbian-carried" was an inference the counters refute.
+    let applied_intra = h.raw_intra - h.absorbed_intra;
+    let mechanism = if din.abs() < f64::EPSILON {
         "none — no differential movement between classes"
+    } else if h.raw_intra > 0 && din > 0.0 {
+        "Hebbian-carried — raw LTP pairings dominate intra drift (counted)"
+    } else if h.raw_intra < 0 && applied_intra > 0 && din > 0.0 {
+        "PAIRING-SELECTIVE, CLAMP-RECTIFIED — intra co-firing drives a net-NEGATIVE raw drift; the 0-floor absorbs the LTD and the applied residue potentiates (class-differential timing-driven; direction bounds-driven)"
+    } else {
+        "LTD-carried — intra depressed more (net applied drift negative)"
     };
     println!(
         "  mean Δ (final − imported): intra {din:+.4}   inter {dit:+.4}"
@@ -906,13 +963,13 @@ fn main() {
     assert_eq!(hamming, D2_HAMMING, "D-2 Hamming count");
     assert!(
         (din - D2_INTRA_DELTA).abs() < 5e-5,
-        "D-2 intra mean Δ was +0.1075 (Hebbian-carried; got {din})"
+        "D-2 intra mean Δ was +0.1075 (clamp-rectified; got {din})"
     );
     assert!(
         dit.abs() < f64::EPSILON,
         "D-2 inter mean Δ was exactly 0.0000 (schedule geometry; got {dit})"
     );
-    println!("  spikes {D2_SPIKES_IMP}/{D2_SPIKES_CTL}/{D2_SPIKES_ZERO} · events {D2_PLASTICITY_EVENTS} · flips {D2_FLIPS} · Hamming {D2_HAMMING} · intra Δ +0.1075 (Hebbian) — all reproduced");
+    println!("  spikes {D2_SPIKES_IMP}/{D2_SPIKES_CTL}/{D2_SPIKES_ZERO} · events {D2_PLASTICITY_EVENTS} · flips {D2_FLIPS} · Hamming {D2_HAMMING} · intra Δ +0.1075 (clamp-rectified) — all reproduced");
 
     // ----- Phase 2: export + surgery -----
     println!();

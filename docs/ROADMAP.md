@@ -373,7 +373,9 @@ pre-leads 4,110,289 — exactly equal LTD/LTP counts (each in-window
 adjacency yields one pairing in each bucket; the Hebbian drift
 lives in dt-magnitudes, not counts — the causal-LTP attribution now
 counted, not inferred). **hybrid_gate: HYBRID GATE: ADAPTS on the
-live wire, [Hebbian-carried]**; hybrid_loop un-parked — LOOP
+live wire** (label initially printed Hebbian-carried; session G's
+per-class counters AMENDED it before push — see below); hybrid_loop
+un-parked — LOOP
 EXPORT: CLEAN with the new pinned asserts (three totals, from the
 re-run, never transcribed), 31,607 code bytes exported, sha-paired
 deterministic. Fork judge ×2: 60/60 steps moved (max |Δ| 0.42),
@@ -382,6 +384,22 @@ unchanged physics (0.5% of one layer). Doc repairs: delay_us
 decorative, climb barrier + rectification documented and PINNED
 (300 μA sticks at −59; +12 μA ratchets, −12 μA absorbed). alpha.2
 manifest: histogram counters.
+
+**Session G leg 1 (2026-08-19) — the label earned: pairing-
+selective, clamp-rectified.** Fourth-review Finding A, tested
+before push: per-synapse cumulative counters (raw delta / clamp-
+absorbed) decomposed per class show raw intra drift −739,295 (LTD
+events dominate), the E-class 0-floor absorbs −839,029, and the
+APPLIED residue (+99,734) potentiates — inter exactly 0/0. The
+class-differential is timing-driven, the direction bounds-driven;
+the label logic now computes the mechanism from the counters
+(three cases) and prints [PAIRING-SELECTIVE, CLAMP-RECTIFIED].
+ADAPTS unchanged (degree gate 0.1075 PASS); loop re-exports CLEAN,
+numbers identical. Also verified: the alpha.1 tag ships NO bridge
+module — the broken q2_0 pin never left the machine; alpha.2 is a
+routine first-bridge release, not a hotfix (the "published wrong
+codec" story was an overclaim, corrected here so the paper never
+inherits it).
 
 ### Phase 4 — RISC-V deployment proof
 

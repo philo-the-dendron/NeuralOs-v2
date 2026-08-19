@@ -871,11 +871,16 @@ could only ever read ±1 — and the gate was reforged on what it
 should always have asserted: raw degree (intra |mean Δ| ≥ 0.05,
 flips, Hamming, sign crossings, sustained firing), with the class
 direction printed as what it truly is — the era's mechanism label.
-A dt-pairing histogram now counts the Hebbian attribution directly
+A dt-pairing histogram now counts the attribution directly
 (post-leads and pre-leads pair exactly 1:1 — the discrimination
 lives in timing magnitudes, a subtler fact than either review
-predicted). Re-run under the amended gate: **HYBRID GATE: ADAPTS,
-[Hebbian-carried]** — and the surgery un-parked, exporting the
+predicted). Re-run under the amended gate: **HYBRID GATE: ADAPTS**
+— and one day later, per-class delta counters deepened the story
+again: the raw intra drift is net NEGATIVE and the E-class 0-floor
+absorbs it, so the realized potentiation is CLAMP-RECTIFIED — the
+class-differential timing-driven, the direction bounds-driven
+("Hebbian" was the inference; the decomposition is the fact).
+The label now computes itself from the counters — and the surgery un-parked, exporting the
 Hebbian-adapted slice bit-exactly into the foreign runtime (60/60
 judged steps moved; 0 flips — one slice of one layer still cannot
 steer argmax, honestly unchanged). The arc now holds both eras'

@@ -106,6 +106,18 @@ pub struct Synapse {
     pub eligibility_trace: i16,
     /// Recent-activity counter — used by plasticity algorithms.
     pub recent_activity: u8,
+
+    /// Cumulative RAW STDP delta applied by `update_weight` (session G
+    /// instrumentation — the mechanism-label evidence): the signed sum of
+    /// every plasticity delta BEFORE clamping. Read it per class (intra vs
+    /// inter assemblies) to decide whether a realized bucket movement was
+    /// pairing-driven or clamp/flip-machinery-driven.
+    pub raw_stdp_delta: i64,
+    /// Cumulative delta ABSORBED by the `[min_weight, max_weight]` clamp:
+    /// `Σ(delta − applied)`. When |absorbed| is large relative to
+    /// [`raw_stdp_delta`], bounds asymmetry — not pairing — shaped the
+    /// trajectory.
+    pub absorbed_delta: i64,
 }
 
 impl Synapse {
@@ -141,6 +153,8 @@ impl Synapse {
             transmission_buffer: 0,
             eligibility_trace: 0,
             recent_activity: 0,
+            raw_stdp_delta: 0,
+            absorbed_delta: 0,
         })
     }
 
@@ -209,11 +223,16 @@ impl Synapse {
     }
 
     /// Apply a plastic weight delta. Clamps to `[min_weight, max_weight]`.
+    /// Tracks the raw delta and the clamp-absorbed remainder (session G).
     pub fn update_weight(&mut self, delta_weight: i16) {
-        self.weight = self
+        let target = self
             .weight
             .saturating_add(delta_weight)
             .clamp(self.min_weight, self.max_weight);
+        let applied = target - self.weight;
+        self.raw_stdp_delta += i64::from(delta_weight);
+        self.absorbed_delta += i64::from(delta_weight) - i64::from(applied);
+        self.weight = target;
     }
 
     /// Weight as a percentage of `max_weight` (for visualization).
@@ -266,6 +285,8 @@ impl Default for Synapse {
             transmission_buffer: 0,
             eligibility_trace: 0,
             recent_activity: 0,
+            raw_stdp_delta: 0,
+            absorbed_delta: 0,
         })
     }
 }
