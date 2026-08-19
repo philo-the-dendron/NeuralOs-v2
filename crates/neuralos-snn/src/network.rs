@@ -123,6 +123,16 @@ pub struct NetworkStats {
     pub total_spikes: u64,
     /// Cumulative plasticity updates applied.
     pub plasticity_events: u64,
+    /// STDP pairing histogram (session F instrumentation): in-window
+    /// pairings by category — the Hebbian-attribution evidence.
+    /// `same_step` = a9a2679 co-fire tie-break (dt = +1, LTD branch);
+    /// `post_leads` = post-before-pre within the window (LTD branch);
+    /// `pre_leads` = pre-before-post within the window (LTP branch —
+    /// the Hebbian channel live transmission opened in session F).
+    /// Out-of-window pairings contribute delta 0 and are not counted.
+    pub stdp_pairs_same_step: u64,
+    pub stdp_pairs_post_leads: u64,
+    pub stdp_pairs_pre_leads: u64,
     /// Mean membrane potential across all neurons (mV). Computed post-step.
     pub avg_membrane_potential_mv: f64,
     /// Mean firing rate per neuron (Hz). Computed post-step.
@@ -136,6 +146,9 @@ impl NetworkStats {
             total_synapses: 0,
             total_spikes: 0,
             plasticity_events: 0,
+            stdp_pairs_same_step: 0,
+            stdp_pairs_post_leads: 0,
+            stdp_pairs_pre_leads: 0,
             avg_membrane_potential_mv: -70.0,
             firing_rate_hz: 0.0,
         }
@@ -806,6 +819,16 @@ impl SpikingNeuralNetwork {
                 let dt_us: i32 = (pre_time as i64 - post_time as i64)
                     .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
                 let delta = self.plasticity_rule.calculate_weight_change(dt_us);
+                if delta != 0 {
+                    // In-window pairing: bucket by dt for the histogram
+                    // (dt = 1 is the same-step tie-break; larger dt is
+                    // post-leads). Out-of-window deltas are 0, uncounted.
+                    if dt_us <= 1 {
+                        self.stats.stdp_pairs_same_step += 1;
+                    } else {
+                        self.stats.stdp_pairs_post_leads += 1;
+                    }
+                }
                 synapse.update_weight(delta);
                 debug_assert!(syn_idx < self.synapse_matrix.len());
                 self.synapse_matrix.set_weight(syn_idx, synapse.weight);
@@ -854,6 +877,7 @@ impl SpikingNeuralNetwork {
             if delta == 0 {
                 continue; // outside the window — no event to count.
             }
+            self.stats.stdp_pairs_pre_leads += 1; // in-window pre-leads (LTP)
             synapse.update_weight(delta);
             debug_assert!(syn_idx < self.synapse_matrix.len());
             self.synapse_matrix.set_weight(syn_idx, synapse.weight);

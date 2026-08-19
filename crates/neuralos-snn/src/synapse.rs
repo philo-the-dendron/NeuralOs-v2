@@ -84,7 +84,11 @@ pub struct Synapse {
     /// Minimum weight (plasticity clamp).
     pub min_weight: i16,
 
-    /// Transmission delay (μs).
+    /// Transmission delay (μs). **DECORATIVE** since session F: `step()`
+    /// transmits with a fixed one-step delay (the network's time step)
+    /// and never reads this field — the actual wire delay is
+    /// `SpikingNeuralNetwork::time_step_us`. Kept for a future
+    /// delay-respecting synapse queue.
     pub delay_us: u16,
     /// Conductance rise time constant (μs) — biological: AMPA 0.5ms, GABA 0.3ms.
     pub tau_rise_us: u16,

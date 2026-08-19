@@ -32,7 +32,14 @@
 //! default exists so every recorded result in the lineage keeps its exact
 //! numbers. (Session F addendum: coherent multi-spike pulse SUMS can cross
 //! a sub-threshold margin even on the mV grid — the dead zone binds single
-//! small currents, not stacked ones; see the post-fix sweep evidence.)
+//! small currents, not stacked ones; see the post-fix sweep evidence. The
+//! operative firing barrier is a CLIMB condition, not the rest dead zone:
+//! the last 1 mV step into threshold needs a ~20 mV gap to `V_ss` (E-type,
+//! dt=1 ms) — sustained effective current ≳ 340 μA — which is why the
+//! sweep's firing cliff sits between 450 and 300 μA. And at a sticking
+//! point truncation RECTIFIES: one +12 μA pulse ratchets the membrane
+//! +1 mV while a −12 μA pulse is absorbed — pinned by
+//! `rectification_at_the_sticking_point`.)
 //!
 //! # `no_std`
 //!
@@ -708,6 +715,39 @@ mod tests {
         m.membrane_potential = -9_999;
         m.integrate_and_fire(-30_000, 1000, 0); // huge hyperpolarizing step
         assert!(m.membrane_potential >= -10_000, "clamped at scaled floor");
+    }
+
+    /// The climb barrier + rectification (session F, review-derived):
+    /// a 300 μA-driven E neuron (mV grid) climbs +1 mV/step only while the
+    /// gap to `V_ss` (−40 mV) is ≥ 20 mV — it STICKS at −59 (gap 19, delta
+    /// truncates to 0), 4 mV short of threshold, forever. At the sticking
+    /// point one +12 μA recurrent pulse ratchets +1 mV (19+1.2 = 20.2 → 1);
+    /// one −12 μA pulse is absorbed (17.8 → 0). Positive excursions bind,
+    /// negative ones are free — the rectifier that lets coherent volleys
+    /// (and even incoherent positive noise) recruit neurons below the
+    /// drive-only cliff.
+    #[test]
+    fn rectification_at_the_sticking_point() {
+        let mut n = quiet_neuron(18, VoltageResolution::Millivolt);
+        // Climb: delta = (leak + 30)/20; ≥1 while leak ≥ −10 (V ≤ −60);
+        // at −59 leak = −11 → 19/20 = 0. Stuck.
+        for t in 0..50 {
+            n.integrate_and_fire(300, 1000, t);
+        }
+        assert_eq!(n.membrane_potential, -59, "sticks 4 mV under threshold");
+        n.integrate_and_fire(300, 1000, 100);
+        assert_eq!(n.membrane_potential, -59, "stays stuck under drive alone");
+
+        // +12 μA pulse (a ternary +γ wire transmitting): +1 mV.
+        n.add_synaptic_current(12);
+        n.integrate_and_fire(300, 1000, 101);
+        assert_eq!(n.membrane_potential, -58, "positive pulse ratchets +1 mV");
+
+        // −12 μA pulse at the NEW sticking point (gap 18 → 18.8/20 → 0):
+        // absorbed, no ratchet down.
+        n.add_synaptic_current(-12);
+        n.integrate_and_fire(300, 1000, 102);
+        assert_eq!(n.membrane_potential, -58, "negative pulse absorbed");
     }
 
     #[test]
