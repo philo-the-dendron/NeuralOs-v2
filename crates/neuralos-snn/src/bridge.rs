@@ -849,6 +849,38 @@ mod tests {
 
     // ----- q2_0 encode (session E: the export inverse) -----
 
+    /// The REAL first block of `token_embd.weight` from
+    /// Ternary-Bonsai-4B-Q2_0.gguf (data_start + tensor offset, extracted
+    /// verbatim — the artifact the session-D re-pin was validated against).
+    /// 34 bytes: fp16 scale 0x24C8 (~18.7 milli max|w|) + 32 code bytes
+    /// decoding to census +37 / 0×43 / −48 of 128.
+    const REAL_Q2_0_FIRST_BLOCK: [u8; 34] = [
+        0xC8, 0x24, 0x14, 0x44, 0x45, 0x1A, 0x18, 0x68, 0x68, 0x61, 0x8A, 0xA8, 0x91, 0x66,
+        0x45, 0x42, 0x91, 0x80, 0x11, 0x62, 0x18, 0x11, 0x29, 0x48, 0x61, 0x00, 0x1A, 0x94,
+        0x81, 0x24, 0x54, 0x0A, 0x86, 0x84,
+    ];
+
+    #[test]
+    fn q2_0_real_artifact_first_block_decodes_and_round_trips() {
+        // Decode the real bytes: exact scale bits + the recorded census.
+        let mut trits = [Trit::Zero; Q2_0_BLOCK];
+        let mut scales = [0u16; 1];
+        decode_q2_0(&REAL_Q2_0_FIRST_BLOCK, &mut trits, &mut scales)
+            .expect("real bytes decode (code 3 would mean the pin is wrong)");
+        assert_eq!(scales[0], 0x24C8);
+        let census = trits.iter().fold((0, 0, 0), |(p, z, m), t| match t {
+            Trit::One => (p + 1, z, m),
+            Trit::Zero => (p, z + 1, m),
+            Trit::MinusOne => (p, z, m + 1),
+        });
+        assert_eq!(census, (37, 43, 48), "recorded probe census: +37 / 0×43 / −48");
+        // The strongest artifact assertion: decode → encode is the IDENTITY
+        // on real bytes — the export codec reproduces the file it came from.
+        let mut back = [0u8; 34];
+        encode_q2_0(&trits, &scales, &mut back).expect("encode real block");
+        assert_eq!(&back[..], &REAL_Q2_0_FIRST_BLOCK[..]);
+    }
+
     #[test]
     fn encode_q2_0_reproduces_known_vector_bytes() {
         // The decode known vector, inverted byte-for-byte: 0x4400 scale +
