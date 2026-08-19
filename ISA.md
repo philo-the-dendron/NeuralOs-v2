@@ -3,7 +3,7 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 78/78
+progress: 79/79
 started: 2026-08-15T12:55:00Z
 updated: 2026-08-19T02:45:00Z
 principal_stated_goal: "Session G Bank & Verify: label earned (clamp-rectified), evidence banked, push, alpha.2, novelty pass"
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78 sG — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..79 sG — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -457,6 +457,23 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   re-exports CLEAN with identical numbers (counters additive,
   determinism intact). Falsifier: /tmp/opencode/sf/hybrid_gate_
   mech.log + hybrid_loop_g.log contradicting any line.
+
+- [x] ISC-79 (sG) · **SESSION G COMPLETE — Bank & Verify, all five
+  legs.** (1) label earned/amended (ISC-78). (2) Evidence banked as
+  evidence: `tools/delta.py` committed beside its claim;
+  `evidence/session-f-judge/` = the fork-judge logs (p0–p4 × 2
+  runs + README), not transcriptions. (3) Pushed BOTH remotes
+  (99e341a..3b512df then the release commit) — the record is
+  durable. (4) **alpha.2 PUBLISHED**: crates.io max_version
+  0.1.0-alpha.2 (verified via API with UA, 01:12:31Z), the bridge
+  + kernel + session-F fixes + the real-artifact vector test
+  (token_embd's true first block 0x24C8, census +37/0×43/−48,
+  encode∘decode = BYTE IDENTITY on real bytes) — and the alpha.1
+  correction recorded: the tag ships no bridge module, the broken
+  pin never left the machine, the "published wrong codec" story
+  was an overclaim. (5) The novelty pass (PAPER_NOVELTY.md) is
+  DELEGATED to the fresh session as independent searches; synthesis
+  here. Falsifier: crates.io API + git remotes + the evidence dir.
 
 - [x] ISC-71 (sE-1) · **THE AMPLITUDE SWEEP: honest NO — the
   weight→firing channel does not open by amplitude alone.** Frozen
