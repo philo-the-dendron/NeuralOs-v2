@@ -1031,6 +1031,65 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-19 (sH2, PRE-REGISTERED AND COMMITTED BEFORE ANY CODE —
+    the new precedence rule's first live use) · **THE H2
+    REGISTRATION v2 + THE NULL-LADDER DECISION RULE v2.** H1's
+    corpus infidelity (the run used the 1,024-byte session-F
+    README, sha 2d64e907…, not the pinned 18fb5452… slice; the
+    code comment claiming identity was FALSE — root cause: the
+    registration's own constraints were mutually unsatisfiable at
+    ~3.5k tokens and were resolved silently in code) is corrected
+    by RE-RUN, not annotation. **Registration v2:** corpus = the
+    TRUE pinned slice (18fb5452…), FIRST 2,000 tokens in order,
+    single truncated pass — no epochs, never wraps by construction;
+    init 400 = the first 400 steps of the same stream (no token
+    driven twice — strictly cleaner than H1's 5–6× re-drive);
+    token-2000 text window printed (truncation context); head-bias
+    (first-2000-of-README ≠ corpus statistics) named, not fixed.
+    All else H1-amended-verbatim (E-dims 0..408, I_INH wall, centi,
+    counter battery). **P1′ (with teeth):** G0 gap H(i,c)−H(i,z) ≥
+    ~25% of H1's 10,974 rate-normalized — else "single-pass
+    weakens G0" AMENDS the coupling story, never silently passes.
+    **P3′ (with teeth):** |Δmargin at p3 step-1| ≥ 0.11 (0.5 ×
+    H1's 0.213), sign recorded. **Confounds named:** H2 vs H1
+    changes text (1KB→12KB), repetition (6×→1×), and k (clamp
+    fraction printed side-by-side H1-vs-H2); the de-confound arm
+    (true corpus head × 6 epochs) is a named follow-on. The
+    "selective" verdict line is relabeled DESCRIPTIVE
+    (drift-liveness — the D-2 contrast is dissolved). **H2b
+    checkpoint flags:** implemented BEFORE the H2 run, quarters of
+    the LEARN phase (400-step increments), dose axis = measured
+    changed-cell count (non-monotonicity handled by recording), the
+    100%-checkpoint sha ASSERTED equal to the plain export sha
+    (invariance proves the machinery did not perturb the artifact);
+    every derivative sha-pinned at write; S2 post-write re-read on
+    EVERY export, nulls included. **The null-ladder decision rule
+    v2 (pre-registered):** (1) margin census → knife-edge set =
+    ALL prompt×step top1−top2 margins < θ = 0.05, published table;
+    (2) siblings rule-fixed BEFORE running (7 weekday-triple
+    rotations + 1 month chain + length-matched off-circuit
+    negatives "red green blue" + digit run), baseline margins
+    first, EVIDENCE-ONLY; (3) random nulls ×10 — census-matched,
+    region-matched i.i.d. — PLUS a position-shuffle rung (H2's
+    changed-cell set, permuted assigned new-values: isolates
+    content-vs-placement while preserving per-row clustering), all
+    with full S2 asserts and the 5-prompt judge; (4) JUDGED
+    in-vivo replicates ×3 (flip-seed variants exported + judged —
+    the in-vivo side becomes n=3); (5) dose-response both arms
+    (H2b checkpoints; random trimmed to measured per-dose counts).
+    **Adjudication (the conjunct):** "steers" survives ONLY IF
+    (a) primary continuous statistic — |Δmargin| at every
+    knife-edge — in-vivo exceeds the max of ALL nulls'; (b) null
+    flip-rate on the knife-edge set ≤ 1/10 (escalation: 0–1/10 →
+    n=20, ≤ 2/20; the rule-of-three CI at n=10 is too wide to
+    carry the claim alone); (c) in-vivo dose curve outside the
+    null band (mean ± 2SD) at every checkpoint; (d) in-vivo
+    effects concentrated on the weekday set vs off-circuit
+    negatives. ANY arm fails → degradation-by-perturbation
+    language, recorded. **Banking upgrades standing:** model-sha +
+    invocation line in every judge log (run_prompts.sh → tools/),
+    both export legs + full p0–p4 ×2 + delta tables in git.
+
 - [x] ISC-82 (sH) · **TIER 2/3: THE IN-VIVO EXPORT STEERS — the
   first continuation change in the project's record.** Export
   (deterministic: sha adcc7feabc82… ×2 independent runs; 67,309
