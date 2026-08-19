@@ -1,0 +1,40 @@
+=== Session H: the in-vivo gate — the model's own activations drive the substrate ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen
+
+decode  : 262144 trits (D-2 slice path)
+corpus  : evidence/session-f-judge/README.md (1024 bytes)
+tokens  : 332 (vocab 151669)
+epochs  : 6 × 332 tokens = 1992 steps (wrap excluded by construction)
+scaling : corpus RMS 0.0463 → k = 9721.41 μA/unit (target 450 μA)
+clamp   : 568644/814728 = 69.796% clamped at ±1000 μA  ⚠ ABOVE 10% — recorded caveat
+          hottest dim 75 railed 1806× (90% of its steps)
+hist    : |I| <100 246084 · 100–150 0 · 150–300 0 · 300–600 0 · >600/railed 568644 (per dim-step)
+
+--- TIER 1: substrate gates (fixed weights, STDP off, in-vivo drive, CENTI grid) ---
+  rates  E Hz (i/c/z): 18.65 / 18.72 / 18.66   I Hz: 125.10 / 125.19 / 125.00
+  totals (i/c/z): 40863 / 40935 / 40851
+  H(i,c)=41190  H(i,z)=30216  H(c,z)=28068   L1(i,c)=1440  L1(i,z)=1040  L1(c,z)=840
+  G2′ wire-liveness tripwire : PASS (weights borne in trains)
+  G0  arrangement-vs-census : H(i,c) > H(i,z) → 41190 > 30216 : PASS — firing reads model arrangement
+
+--- in-vivo adaptation (STDP on, γ=125, counters per the registration) ---
+  learn firing : 43.93 Hz/neuron; quarters 42.90 43.96 43.97 44.87
+  events 25322176 · flips 1125221 · pairing same-step 868892 · post-leads 7025821 · pre-leads 7025821
+  bucket-transition census:
+  −1→−1 ×       0  −1→ 0 ×  193652  −1→+1 ×       0
+   0→−1 ×  173266   0→ 0 ×       0   0→+1 ×  378767
+  +1→−1 ×       0  +1→ 0 ×  379536  +1→+1 ×       0
+  raw drift intra -190630 · inter -4989500   absorbed intra -295812 · inter -6676793   APPLIED intra +105182 · inter +1687293
+  Hamming vs imported: 67309/261632 = 0.2573
+  intra meanΔ +0.0606 (41412) · inter meanΔ +0.0777 (220220) — data-driven classes; |Δ| floor 0.05
+  mechanism label: [PAIRING-SELECTIVE, CLAMP-RECTIFIED — net-negative raw drift, 0-floor absorbs, applied residue potentiates]
+
+--- Verdict (per the frozen registration) ---
+  T1 G2′ tripwire   : PASS
+  T1 G0 arrangement : PASS
+  adaptation alive  : PASS (flips > 0)
+  not collapsed     : PASS
+  selective         : PASS
+wall 2298.6s   peak RSS 2436 MB (budget 1536)
+exit=0

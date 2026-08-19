@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 80/80
+progress: 82/82
 started: 2026-08-15T12:55:00Z
 updated: 2026-08-19T02:45:00Z
-principal_stated_goal: "Session G leg 5: novelty pass OPEN SEAM — Stage 2 next as the final pre-registered experiment, then draft"
+principal_stated_goal: "Session H: the in-vivo gate — T1 PASS (arrangement read under own activations), T2/3: the first STEERS (p3 continuation diverges, 11/12 flips)"
 ---
 
 ## Problem
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..82 sH — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -1030,6 +1030,148 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-10 | unit | decoded tensor ↔ Trit::to_weight round-trip stays on-grid | exact | cargo test | bridge::tests::decoded_trits_feed_trit_substrate |
 
 ## Decisions
+
+- [x] ISC-82 (sH) · **TIER 2/3: THE IN-VIVO EXPORT STEERS — the
+  first continuation change in the project's record.** Export
+  (deterministic: sha adcc7feabc82… ×2 independent runs; 67,309
+  cells, 40,126 code bytes, scales 0) judged by the standing fork
+  protocol (5 frozen prompts, greedy-forced, double-run —
+  byte-identical ×5). **p3 "Monday Tuesday Wednesday": baseline
+  " Thursday04/05/2018" → in-vivo-adapted " Thursday" then
+  "\n\n\n…" — the continuation DIVERGES COMPLETELY after the
+  shared first token: 11/12 argmax FLIPS, top-10 overlap collapses
+  to mean 3.58/10, max |Δtop| 10.36.** p0/p1/p4: 0 flips, mean |Δ|
+  0.054–0.063 (the familiar perturbation scale); p2: 0 flips,
+  overlap 9.83, max |Δ| 0.272. After four prior runs of 0/60 flips
+  at this footprint (synthetic-era exports), this is qualitatively
+  new: the in-vivo adaptation (1,125,221 flips, both classes
+  potentiated, clamp-rectified) moved the weekday prompt's
+  dynamics decisively. Attribution chain: same binary + flags +
+  machine, both runs deterministic ⊕ patched file differs only
+  inside the declared chunks (export asserts) ⊕ chunks carry only
+  the in-vivo-adapted trits at original scales ⊕ baseline anchors
+  reproduced (step-0 7794:14.7523 vs the recorded 14.6527 family —
+  first token IDENTICAL " Thursday", divergence begins at step 1).
+  Honest readings, both recorded: (i) STEERING demonstrated —
+  Tier-3's named stretch, achieved without widening; (ii) the
+  direction is DEGRADATION-shaped (the date chain, a
+  Q2_0-recovered capability, is disrupted — consistent with the
+  stage-0 finding that adaptation degrades the model's own
+  continuations); the claim language stays "steers" not
+  "improves", per the standing constraint. p3's sensitivity is
+  itself the finding: the weekday-knowledge circuit was the
+  4C-identified quantization-fragile one — the adaptation found
+  it. Falsifier: /tmp/opencode/se/invivo/p3_run{1,2}.{log,err} +
+  the delta table; KLD corpus scoring is named follow-up (the
+  continuation divergence already exceeds what KLD adds).
+
+- [x] ISC-81 (sH) · **THE IN-VIVO GATE, TIER 1: ALL PASS — the
+  model's own activations drive weight-reading firing, and the
+  substrate adapts under them.** Frozen `examples/hybrid_invivo.rs`
+  (the amended registration, built verbatim): drive =
+  attn_norm(embedding) of the sha-pinned corpus (332 tokens × 6
+  whole epochs = 1992 steps, wrap excluded), k = 9721.41 μA/unit →
+  corpus RMS 450 μA target, driven dims 0..408, I_INH=600 wall,
+  CENTI grid, STDP on, counters per the registration. **G2′
+  tripwire PASS** (weights borne in trains). **G0 PASS: H(i,c)
+  41,190 > H(i,z) 30,216** (rate-L1 agrees: 1440 > 1040) — under
+  the model's OWN activity, firing reads arrangement over census
+  (1.36×), independent of the synthetic schedule. Adaptation: 43.93
+  Hz sustained, events 25,322,176, flips 1,125,221, Hamming 67,309
+  = 25.73% (contained), sign crossings 0, applied intra +105,182 /
+  inter +1,687,293 — mechanism [PAIRING-SELECTIVE,
+  CLAMP-RECTIFIED] exactly as pre-registered-expected. **TWO
+  HONESTY FLAGS, recorded per the registration itself:** (a) the
+  CLAMP CAVEAT fired hard — 69.80% of dim-steps railed at ±1000 μA
+  (post-RMSNorm activations are far heavier-tailed than the corpus
+  RMS; the effective drive is sign-dominant, not
+  amplitude-graded; hottest dim railed 90% of steps) — the gates
+  passed on a shared drive so G0's contrast stands, but
+  "amplitude-informed" is NOT what ran; per-dim standardization or
+  a higher clamp is named follow-up; (b) the 4-group intra/inter
+  class structure DISSOLVED under data-driven co-firing — most
+  pairs pair (inter applied-drift positive too, +0.0777 meanΔ vs
+  intra +0.0606, inverted vs the synthetic era): the model's
+  activity treats the slice as one co-active assembly, not four
+  groups; class-selectivity claims do not transfer from the
+  synthetic regime. Falsifier: /tmp/opencode/sh/invivo.log (full
+  tables); wall 2298.6 s, RSS 2436 MB (the 1536 budget was the mV
+  single-buffer box — the run holds model + corpus + 3 trains;
+  recorded).
+
+- 2026-08-19 (sH, PRE-REGISTERED before any code — the session-H
+    registration artifact) · **THE IN-VIVO GATE, FROZEN.** Purpose:
+    does the model's OWN activity carry more coupling structure
+    than the synthetic 1.5c schedule? Three tiers, stated up front:
+    **Tier 1 (substrate, hard-gated)** — GRID: CentiMillivolt,
+    PINNED (the G0 inequality's only lineage demonstration is
+    ISC-76's centi result; a D-2-verbatim import is the mV build
+    where single weight pulses are dead-zone-absorbed — spurious
+    fail; attack-pass amendment #1). G0: real activations carry
+    structure (arrangement-vs-census: the in-vivo-driven imported
+    net's train must diverge from its census-shuffle control MORE
+    than from zero-net); G2′ (relabelled per amendment #3): the
+    WIRE-LIVENESS TRIWIRE — imported vs control vs zero not all
+    identical (vacuous as a divergence gate post-F; the arrangement
+    claim rests on G0 alone). METRIC BATTERY (amendment #2): all
+    three pairwise spike-TRAIN Hammings + per-neuron rate-L1 +
+    per-population Hz — Hamming alone conflates rate and timing
+    under variable drive; near-ties route to seed replicates as a
+    follow-on. P1 (pre-registered prediction): divergence appears —
+    the live wire + rectifier physics are amplitude-driven and the
+    corpus RMS is set WITHIN the validated amplitude range
+    (amendment #8 wording; auditable via the printed per-step
+    |current| histogram). **Tier 2 (judge, recorded whatever
+    it says)** — KLD + continuation diff of the in-vivo-exported
+    patched file vs baseline AND vs the synthetic-era export
+    (evidence, not gate); P2: in-vivo export deltas ≥ synthetic
+    export's under identical footprint. **Tier 3 (steers — STRETCH,
+    not gate)** — argmax flip or continuation change on a targeted
+    prompt; footprint physics stated up front (0.5% of one layer ×
+    36 layers measured 0/60 flips twice); a Tier-3 pass implies a
+    widened export as a FOLLOW-ON session, not today. Named
+    falsifiers: T1 NO = in-vivo drive shows no weight-borne
+    divergence (recorded; the coupling story pivots to
+    regime-dependence); T2 NO = in-vivo deltas < synthetic's
+    (recorded; the synthetic schedule was already sufficient);
+    T3 NO = byte-identical continuations (expected; recorded).
+    **Drive design, frozen (attack-pass amended):** source =
+    `attn_norm(embedding)` — THE model's own input to the adapted
+    tensor (computed via `forward_block_states` capture +
+    `rms_norm_milli` on the captured embeddings, no new deps);
+    mapping = 1 token → 1 substrate step (consecutive tokens give
+    causal pre→post pairings at dt≈1 ms, factor 0.95 — food for
+    the PAIRING-SELECTIVE, CLAMP-RECTIFIED channel (amendment #7:
+    "LTP channel" contradicted by ISC-78; the per-class
+    raw/absorbed/applied counters are REQUIRED in the example;
+    expect the clamp-rectified regime under dense co-firing);
+    N-steps-per-token REJECTED: it would MANUFACTURE sustained
+    same-step LTD — the mechanism the dead-wire era ran on only as
+    an artifact); scaling = ONE frozen global constant k set so the
+    corpus-wide RMS lands mid-band (~450 μA; printed once) —
+    per-step per-dim current = clamp(h_dim × k, ±1000), sign
+    preserved, with the CLAMP AUDIT printed (hit fraction + per-dim
+    rail concentration; >10% clamped = recorded caveat —
+    amendment #5); DRIVEN DIMS 0..408 ONLY (amendment #6, fork (a)):
+    token features drive the E population; the I population keeps
+    the VALIDATED fixed I_INH=600 wall regime — mechanism
+    attribution stays on validated ground; the 512-dim purity
+    variant is a named follow-on. Corpus = the sha-pinned README
+    slice (18fb5452…), tokens repeated in WHOLE EPOCHS — run
+    floor(2000/N) epochs and STOP BEFORE THE WRAP pairing
+    (amendment #4: the epoch-boundary last→first pairing lands at
+    dt≈1 ms full factor on one arbitrary dim pair every epoch —
+    concentrated artifact, excluded by construction); population:
+    the 512-neuron slice net (409 E / 103 I), live substrate
+    (post-F), STDP on, γ=125, census-shuffle + zero controls,
+    seeds D-2-verbatim. TIER-2 ADDITION (from the pass): a
+    1.5c-driven comparison column (same net, synthetic drive)
+    recorded beside the in-vivo run — the purpose statement
+    ("more structure than synthetic") is otherwise undecidable. New frozen example
+    `hybrid_invivo.rs`; hybrid_gate/hybrid_loop untouched.
+    Language constraint carried: "backprop-free local adaptation
+    of a shipped quantized LLM through a spiking substrate" —
+    "editing/steers" only on a Tier-3 pass.
 
 - 2026-08-19 (sF) · **The fix landed; the lineage re-pinned; the D-2
     gate criterion fork goes to the principal.** The a1b reorder is
