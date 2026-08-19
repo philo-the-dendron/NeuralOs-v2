@@ -361,6 +361,28 @@ largest gap — the strongest model-informed signal yet). The loop
 surgery is parked at the frozen criterion until the fork is
 called. alpha.2 grows: decay split + field renames.
 
+**Session F criterion (2026-08-19) — (i)-amended gates; the loop
+un-parked.** The third review's degeneracy proof adopted: Δ-SI ≡ ±1
+by schedule geometry (40 ms gaps vs 20 ms window ⇒ inter Δ ≡ 0 in
+every era — the floor gated nothing), so the D-2 gate now asserts
+the raw fields (intra |mean Δ| ≥ 0.05 · flips · Hamming · sign
+crossings · sustained) with the direction PRINTED as the era's
+mechanism label. The dt-pairing histogram shipped (three
+NetworkStats counters): same-step 951,578 · post-leads 4,110,289 ·
+pre-leads 4,110,289 — exactly equal LTD/LTP counts (each in-window
+adjacency yields one pairing in each bucket; the Hebbian drift
+lives in dt-magnitudes, not counts — the causal-LTP attribution now
+counted, not inferred). **hybrid_gate: HYBRID GATE: ADAPTS on the
+live wire, [Hebbian-carried]**; hybrid_loop un-parked — LOOP
+EXPORT: CLEAN with the new pinned asserts (three totals, from the
+re-run, never transcribed), 31,607 code bytes exported, sha-paired
+deterministic. Fork judge ×2: 60/60 steps moved (max |Δ| 0.42),
+0/60 flips — the loop closes on the fixed substrate; effect size
+unchanged physics (0.5% of one layer). Doc repairs: delay_us
+decorative, climb barrier + rectification documented and PINNED
+(300 μA sticks at −59; +12 μA ratchets, −12 μA absorbed). alpha.2
+manifest: histogram counters.
+
 ### Phase 4 — RISC-V deployment proof
 
 Goal: make the `no_std` claim concrete.

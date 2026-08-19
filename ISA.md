@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 76/76
+progress: 77/77
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-19T00:30:00Z
-principal_stated_goal: "Session F: the transmission fix (a1b) + whole-lineage re-pin — synapses transmit; Hebbian reversal found"
+updated: 2026-08-19T02:45:00Z
+principal_stated_goal: "Session F criterion: (i)-amended gates on raw fields; loop un-parked on the live wire — Hebbian ADAPTS verdict"
 ---
 
 ## Problem
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -396,6 +396,40 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   (0.70/0.62/0.00); centi 100 all-silent (no bootstrap). Falsifier:
   /tmp/opencode/sf/sweep_{mv,cmv}_fixed.log — every row. Visualizer
   smoke green (exit 0).
+
+- [x] ISC-77 (sF-c) · **THE CRITERION AMENDMENT ((i)-amended,
+  third-review fork call) + THE LOOP UN-PARKED ON THE LIVE WIRE.**
+  The second review's degeneracy proof, adopted whole: Δ-SI ≡ ±1
+  by schedule geometry (40 ms group gaps vs the 20 ms STDP window ⇒
+  inter Δ ≡ 0 in every era ⇒ the 0.05 floor gated nothing), so the
+  D-2 gate now asserts the RAW, non-degenerate fields — intra
+  |mean Δ| ≥ 0.05 (degree of discrimination) · flips > 0 · Hamming
+  < 0.50 · sign crossings = 0 · sustained firing — with the class
+  direction PRINTED as the era's mechanism label (Hebbian-carried /
+  LTD-carried) and Δ-SI demoted to a supporting label. The stale
+  LTD parenthetical replaced by the computed label; the dt-pairing
+  histogram instrumented (three NetworkStats counters, additive —
+  alpha.2 manifest): **same-step 951,578 · post-leads 4,110,289 ·
+  pre-leads 4,110,289 — EXACTLY equal LTD/LTP counts**, a real
+  structural fact (each in-window adjacency on an edge yields one
+  post-leads pairing at the pre's step and one pre-leads pairing at
+  the post's step; the net Hebbian drift lives in the dt-dependent
+  magnitudes, not the counts — the reviewer's causal-LTP reading
+  now carries counted evidence). hybrid_gate re-run: **HYBRID
+  GATE: ADAPTS** on the live wire, mechanism [Hebbian-carried],
+  intra |Δ| 0.1075 PASS. hybrid_loop re-run: D-2 preconditions
+  reshaped to THREE totals (35,115/35,136/35,157 · events
+  18,817,891 · flips 708,029 · Hamming 64,877 · intra +0.1075 /
+  inter 0.0000 — asserted from the re-run, never transcribed) —
+  **surgery UN-PARKED: LOOP EXPORT: CLEAN**, 64,877 cells exported
+  (31,607 code bytes vs the dead-wire era's 29,734), S1 outside 0,
+  scale 0, S2 0 mismatches, patched files sha256-identical
+  (24ffe5f3…) across double-runs. Doc repairs: delay_us decorative
+  marker (synapse.rs), climb-barrier + rectification documented
+  (lif_neuron) and PINNED (rectification_at_the_sticking_point:
+  300 μA sticks at −59; +12 μA pulse ratchets +1 mV; −12 μA
+  absorbed). Falsifier: /tmp/opencode/sf/hybrid_{gate,loop}_
+  {criterion,fixed}.log + the sha pair.
 
 - [x] ISC-71 (sE-1) · **THE AMPLITUDE SWEEP: honest NO — the
   weight→firing channel does not open by amplitude alone.** Frozen

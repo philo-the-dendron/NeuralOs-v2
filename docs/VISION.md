@@ -864,6 +864,26 @@ from a shuffle of itself. That is the model-informed coupling the
 whole redesign was after, arrived one bug-fix early. The loop
 surgery reopens the moment the criterion fork is called.
 
+**The criterion amendment + the loop, closed twice (2026-08-19).**
+The third review proved the selectivity metric degenerate — inter
+pairs sit outside the STDP window by schedule geometry, so Δ-SI
+could only ever read ±1 — and the gate was reforged on what it
+should always have asserted: raw degree (intra |mean Δ| ≥ 0.05,
+flips, Hamming, sign crossings, sustained firing), with the class
+direction printed as what it truly is — the era's mechanism label.
+A dt-pairing histogram now counts the Hebbian attribution directly
+(post-leads and pre-leads pair exactly 1:1 — the discrimination
+lives in timing magnitudes, a subtler fact than either review
+predicted). Re-run under the amended gate: **HYBRID GATE: ADAPTS,
+[Hebbian-carried]** — and the surgery un-parked, exporting the
+Hebbian-adapted slice bit-exactly into the foreign runtime (60/60
+judged steps moved; 0 flips — one slice of one layer still cannot
+steer argmax, honestly unchanged). The arc now holds both eras'
+verdicts cleanly: the dead-wire era's ADAPTS as history with its
+mechanism labeled, the live-wire era's ADAPTS as the record — same
+claim, opposite mechanism, one fix apart. The next fork is scope,
+not substrate.
+
 **Remaining sessions (honest slice):** attention + full forward
 (**✓ session 3**) → adversarial review of the whole arc (**✓ session
 3.5**) → tokenizer + generation = the Stage 4 gate (**✓ session 4 —

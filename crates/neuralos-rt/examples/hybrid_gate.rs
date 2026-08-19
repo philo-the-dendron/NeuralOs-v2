@@ -64,15 +64,20 @@
 //!   no imported synapse can cross sign under STDP — flips are
 //!   one-directional per class (+γ↔0, −γ↔0, 0→+γ only). That asymmetry is a
 //!   FINDING the census measures, not a defect to repair.
-//! - **Selectivity metric = Δ-SI** (gate-bearing), with the 1.5c level-SI
-//!   printed alongside. 1.5c detected discrimination via final LEVEL
-//!   difference because both classes started equal (+80). Here intra and
-//!   inter start from different pretrained distributions — the structure we
-//!   imported — so levels are confounded; the faithful generalization of the
-//!   falsifier compares per-class CHANGES: Δ-SI = (meanΔ_inter −
-//!   meanΔ_intra)/(|meanΔ_inter| + |meanΔ_intra|), floor 0.05 (the 1.5c
-//!   ternary floor), plus the same directional condition meanΔ_inter >
-//!   meanΔ_intra.
+//! - **Selectivity metric = intra |mean Δ|** (session F amendment; was
+  //!   Δ-SI). The gate asserts the raw, non-degenerate degree field —
+  //!   intra |mean Δ| ≥ 0.05, the 1.5c floor now meaningfully applied —
+  //!   alongside flips > 0, Hamming < 0.50, sign crossings = 0, sustained
+  //!   firing. The DIRECTION of the class difference is printed as the
+  //!   era's mechanism label (Hebbian-carried = intra potentiated more,
+  //!   live-wire LTP; LTD-carried = intra depressed more, the dead-wire
+  //!   era's co-fire mode) and never gated — a metric's sign encodes the
+  //!   mechanism it was written under. Δ-SI is printed as a SUPPORTING
+  //!   LABEL only: the 1.5c schedule's 40 ms group gaps put every inter
+  //!   pair outside the 20 ms STDP window, so inter Δ ≡ 0 by geometry and
+  //!   |Δ-SI| ≡ 1 whenever any movement exists — it cannot gate on degree
+  //!   (second-reviewer finding, adopted). The 1.5c level-SI stays
+  //!   printed, confounded by pretrained levels as before.
 //! - **Schedule = 2000 steps, 1.5c verbatim**: 400-step init cycle (STDP off,
 //!   defeats the last_spike=0 never-fired artifact) + 1600 learning steps.
 //!
@@ -320,6 +325,12 @@ struct HybridStats {
     census: [[u64; 3]; 3],
     final_trits: Vec<Trit>,
     plasticity_events: u64,
+    /// In-window STDP pairing histogram (session F): the Hebbian-
+    /// attribution evidence — same_step (co-fire tie-break, LTD),
+    /// post_leads (LTD), pre_leads (LTP).
+    pairs_same_step: u64,
+    pairs_post_leads: u64,
+    pairs_pre_leads: u64,
     cofire_intra: f64,
     cofire_inter: f64,
 }
@@ -440,6 +451,9 @@ fn run_hybrid(trits: &[Trit], inputs: &[Vec<i16>]) -> HybridStats {
             .map(|s| Trit::from_weight(s.weight, GAMMA))
             .collect(),
         plasticity_events: net.stats().plasticity_events,
+        pairs_same_step: net.stats().stdp_pairs_same_step,
+        pairs_post_leads: net.stats().stdp_pairs_post_leads,
+        pairs_pre_leads: net.stats().stdp_pairs_pre_leads,
         cofire_intra: if inum > 0 { isum / inum as f64 } else { 0.0 },
         cofire_inter: if enum_ > 0 { esum / enum_ as f64 } else { 0.0 },
     }
@@ -697,6 +711,10 @@ fn main() {
         "  plasticity events     : {}   bucket flips: {} (freeze if 0)",
         h.plasticity_events, h.flips
     );
+    println!(
+        "  STDP pairing histogram: same-step {} · post-leads {} · pre-leads {} (in-window; the pre-leads share is the Hebbian evidence)",
+        h.pairs_same_step, h.pairs_post_leads, h.pairs_pre_leads
+    );
 
     // Bucket-transition census + Hamming vs the imported original.
     let src_iter_order: Vec<Trit> = {
@@ -812,13 +830,30 @@ fn main() {
         d_intra.len(),
         d_inter.len()
     );
+    // Session F criterion (amended): the GATE is the raw, non-degenerate
+    // field — intra |mean Δ| (degree of discrimination). The DIRECTION is
+    // the era's mechanism label, printed, never gated. Δ-SI is demoted to
+    // a supporting label: the 1.5c schedule's 40 ms group gaps put every
+    // inter pair outside the 20 ms STDP window, so inter Δ ≡ 0 by geometry
+    // in every era and |Δ-SI| ≡ 1 whenever any movement exists — it cannot
+    // gate on degree. (Second-reviewer finding, adopted.)
+    let mechanism = if din > dit {
+        "Hebbian-carried — intra potentiated more (live-wire LTP: pre causally drives post one step later)"
+    } else if dit > din {
+        "LTD-carried — intra depressed more (dead-wire-era co-fire tie-break mode)"
+    } else {
+        "none — no differential movement between classes"
+    };
     println!(
-        "  mean Δ (final − imported): intra {din:+.4}   inter {dit:+.4}   (LTD-carried discrimination = intra depressed more)"
+        "  mean Δ (final − imported): intra {din:+.4}   inter {dit:+.4}"
+    );
+    println!("  mechanism label : [{mechanism}]");
+    println!(
+        "  intra |mean Δ| (GATE) : {:.4}   (floor {SI_FLOOR:.2} — the non-degenerate degree of discrimination)",
+        din.abs()
     );
     println!(
-        "  Δ-SI (gate)   : {:.4}   (floor {SI_FLOOR:.2}, directional meanΔ_inter > meanΔ_intra: {})",
-        d_si,
-        if dit > din { "yes" } else { "no" }
+        "  Δ-SI (label)    : {d_si:+.4}   (supporting only: inter Δ ≡ 0 by schedule geometry — 40 ms gaps vs 20 ms window — so |Δ-SI| ≡ 1 whenever movement exists)"
     );
     println!(
         "  level-SI (1.5c formula, confounded by pretrained levels — supporting): {:.4} (intra {lin:+.3} / inter {lit:+.3} final mean trit)",
@@ -830,7 +865,7 @@ fn main() {
         && h.learn_rate_hz > 0.0;
     let not_frozen = h.flips > 0;
     let not_collapsed = hamming_frac < HAMMING_BOUND;
-    let selective = d_si >= SI_FLOOR && dit > din;
+    let selective = din.abs() >= SI_FLOOR;
     println!();
     println!("--- Verdict ---");
     println!("  G1 import trit-exact        : {}", if g1_pass { "PASS" } else { "FAIL" });
@@ -843,7 +878,7 @@ fn main() {
         if not_collapsed { "PASS" } else { "FAIL" }
     );
     println!(
-        "  selective (Δ-SI ≥ {:.2})    : {}",
+        "  selective (intra |Δ| ≥ {:.2}) : {}",
         SI_FLOOR,
         if selective { "PASS" } else { "FAIL" }
     );
@@ -860,7 +895,7 @@ fn main() {
     } else if !not_collapsed {
         "COLLAPSES — STDP destroyed the majority of pretrained buckets (Hamming ≥ bound)"
     } else if !selective {
-        "COLLAPSES — uniform/no selectivity: correlated pairs did not modify differently from uncorrelated (Δ-SI below floor)"
+        "COLLAPSES — uniform/no selectivity: correlated pairs did not modify differently from uncorrelated (intra |mean Δ| below floor)"
     } else {
         "ADAPTS — pretrained structure survives AND discriminates under local STDP"
     };

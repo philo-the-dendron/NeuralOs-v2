@@ -71,12 +71,18 @@ const CHUNK_BYTES: usize = (N / 128) * 34; // 4 blocks × 34 B = 136
 /// lengths — the parser infers ends from the NEXT tensor's offset).
 const TENSOR_BYTES: usize = MODEL_ROWS * ROW_BYTES; // 2_785_280
 
-// ----- D-2 recorded numbers (preconditions — the surgery runs only on the
-// exact recorded adapted state) -----
-const D2_SPIKES: u64 = 35_157; // all three G2 comparators, drive-dominated
-const D2_FLIPS: u64 = 321_571; // G3 bucket flips
-const D2_HAMMING: u64 = 57_005; // G3 changed buckets (0.2179 of 261,632)
-const D2_PLASTICITY_EVENTS: u64 = 16_183_885;
+// ----- D-2 pinned state (session F re-run on the live-wire substrate —
+// the surgery runs only on the exact recorded adapted state). The pre-fix
+// dead-wire state (35,157 ×3 · 321,571 · 57,005 · 16,183,885) is ISA
+// history; these are THREE DISTINCT totals now — weights shape firing. -----
+const D2_SPIKES_IMP: u64 = 35_115;
+const D2_SPIKES_CTL: u64 = 35_136;
+const D2_SPIKES_ZERO: u64 = 35_157;
+const D2_FLIPS: u64 = 708_029; // G3 bucket flips
+const D2_HAMMING: u64 = 64_877; // G3 changed buckets (0.2480 of 261,632)
+const D2_PLASTICITY_EVENTS: u64 = 18_817_891;
+/// Intra mean Δ — print precision of the pinned log line (±5e-5).
+const D2_INTRA_DELTA: f64 = 0.1075;
 
 // ----- Drive (1.5c constants, verbatim) -----
 const DT_US: u32 = 1000;
@@ -295,6 +301,12 @@ struct HybridStats {
     census: [[u64; 3]; 3],
     final_trits: Vec<Trit>,
     plasticity_events: u64,
+    /// In-window STDP pairing histogram (session F): the Hebbian-
+    /// attribution evidence — same_step (co-fire tie-break, LTD),
+    /// post_leads (LTD), pre_leads (LTP).
+    pairs_same_step: u64,
+    pairs_post_leads: u64,
+    pairs_pre_leads: u64,
     cofire_intra: f64,
     cofire_inter: f64,
 }
@@ -415,6 +427,9 @@ fn run_hybrid(trits: &[Trit], inputs: &[Vec<i16>]) -> HybridStats {
             .map(|s| Trit::from_weight(s.weight, GAMMA))
             .collect(),
         plasticity_events: net.stats().plasticity_events,
+        pairs_same_step: net.stats().stdp_pairs_same_step,
+        pairs_post_leads: net.stats().stdp_pairs_post_leads,
+        pairs_pre_leads: net.stats().stdp_pairs_pre_leads,
         cofire_intra: if inum > 0 { isum / inum as f64 } else { 0.0 },
         cofire_inter: if enum_ > 0 { esum / enum_ as f64 } else { 0.0 },
     }
@@ -684,6 +699,10 @@ fn main() {
         "  plasticity events     : {}   bucket flips: {} (freeze if 0)",
         h.plasticity_events, h.flips
     );
+    println!(
+        "  STDP pairing histogram: same-step {} · post-leads {} · pre-leads {} (in-window; the pre-leads share is the Hebbian evidence)",
+        h.pairs_same_step, h.pairs_post_leads, h.pairs_pre_leads
+    );
 
     // Bucket-transition census + Hamming vs the imported original.
     let src_iter_order: Vec<Trit> = {
@@ -799,13 +818,30 @@ fn main() {
         d_intra.len(),
         d_inter.len()
     );
+    // Session F criterion (amended): the GATE is the raw, non-degenerate
+    // field — intra |mean Δ| (degree of discrimination). The DIRECTION is
+    // the era's mechanism label, printed, never gated. Δ-SI is demoted to
+    // a supporting label: the 1.5c schedule's 40 ms group gaps put every
+    // inter pair outside the 20 ms STDP window, so inter Δ ≡ 0 by geometry
+    // in every era and |Δ-SI| ≡ 1 whenever any movement exists — it cannot
+    // gate on degree. (Second-reviewer finding, adopted.)
+    let mechanism = if din > dit {
+        "Hebbian-carried — intra potentiated more (live-wire LTP: pre causally drives post one step later)"
+    } else if dit > din {
+        "LTD-carried — intra depressed more (dead-wire-era co-fire tie-break mode)"
+    } else {
+        "none — no differential movement between classes"
+    };
     println!(
-        "  mean Δ (final − imported): intra {din:+.4}   inter {dit:+.4}   (LTD-carried discrimination = intra depressed more)"
+        "  mean Δ (final − imported): intra {din:+.4}   inter {dit:+.4}"
+    );
+    println!("  mechanism label : [{mechanism}]");
+    println!(
+        "  intra |mean Δ| (GATE) : {:.4}   (floor {SI_FLOOR:.2} — the non-degenerate degree of discrimination)",
+        din.abs()
     );
     println!(
-        "  Δ-SI (gate)   : {:.4}   (floor {SI_FLOOR:.2}, directional meanΔ_inter > meanΔ_intra: {})",
-        d_si,
-        if dit > din { "yes" } else { "no" }
+        "  Δ-SI (label)    : {d_si:+.4}   (supporting only: inter Δ ≡ 0 by schedule geometry — 40 ms gaps vs 20 ms window — so |Δ-SI| ≡ 1 whenever movement exists)"
     );
     println!(
         "  level-SI (1.5c formula, confounded by pretrained levels — supporting): {:.4} (intra {lin:+.3} / inter {lit:+.3} final mean trit)",
@@ -817,7 +853,7 @@ fn main() {
         && h.learn_rate_hz > 0.0;
     let not_frozen = h.flips > 0;
     let not_collapsed = hamming_frac < HAMMING_BOUND;
-    let selective = d_si >= SI_FLOOR && dit > din;
+    let selective = din.abs() >= SI_FLOOR;
     println!();
     println!("--- Verdict (phase 1, D-2 gates) ---");
     println!("  G1 import trit-exact        : {}", if g1_pass { "PASS" } else { "FAIL" });
@@ -830,7 +866,7 @@ fn main() {
         if not_collapsed { "PASS" } else { "FAIL" }
     );
     println!(
-        "  selective (Δ-SI ≥ {:.2})    : {}",
+        "  selective (intra |Δ| ≥ {:.2}) : {}",
         SI_FLOOR,
         if selective { "PASS" } else { "FAIL" }
     );
@@ -847,7 +883,7 @@ fn main() {
     } else if !not_collapsed {
         "COLLAPSES — STDP destroyed the majority of pretrained buckets (Hamming ≥ bound)"
     } else if !selective {
-        "COLLAPSES — uniform/no selectivity: correlated pairs did not modify differently from uncorrelated (Δ-SI below floor)"
+        "COLLAPSES — uniform/no selectivity: correlated pairs did not modify differently from uncorrelated (intra |mean Δ| below floor)"
     } else {
         "ADAPTS — pretrained structure survives AND discriminates under local STDP"
     };
@@ -862,17 +898,21 @@ fn main() {
     // ----- D-2 recorded numbers: asserted BEFORE any write -----
     println!();
     println!("--- D-2 preconditions (the surgery operates only on the recorded adapted state) ---");
-    assert_eq!(imported_stats.total_spikes, D2_SPIKES, "D-2 G2 imported spikes");
-    assert_eq!(control_stats.total_spikes, D2_SPIKES, "D-2 G2 control spikes");
-    assert_eq!(zero_stats.total_spikes, D2_SPIKES, "D-2 G2 zero-w spikes");
+    assert_eq!(imported_stats.total_spikes, D2_SPIKES_IMP, "D-2 G2 imported spikes");
+    assert_eq!(control_stats.total_spikes, D2_SPIKES_CTL, "D-2 G2 control spikes");
+    assert_eq!(zero_stats.total_spikes, D2_SPIKES_ZERO, "D-2 G2 zero-w spikes");
     assert_eq!(h.plasticity_events, D2_PLASTICITY_EVENTS, "D-2 plasticity events");
     assert_eq!(h.flips, D2_FLIPS, "D-2 bucket flips");
     assert_eq!(hamming, D2_HAMMING, "D-2 Hamming count");
     assert!(
-        (d_si - 1.0).abs() < 1e-9,
-        "D-2 Δ-SI was 1.0000 exactly (intra {din}, inter {dit})"
+        (din - D2_INTRA_DELTA).abs() < 5e-5,
+        "D-2 intra mean Δ was +0.1075 (Hebbian-carried; got {din})"
     );
-    println!("  spikes {D2_SPIKES} ×3 · events {D2_PLASTICITY_EVENTS} · flips {D2_FLIPS} · Hamming {D2_HAMMING} · Δ-SI 1.0000 — all reproduced");
+    assert!(
+        dit.abs() < f64::EPSILON,
+        "D-2 inter mean Δ was exactly 0.0000 (schedule geometry; got {dit})"
+    );
+    println!("  spikes {D2_SPIKES_IMP}/{D2_SPIKES_CTL}/{D2_SPIKES_ZERO} · events {D2_PLASTICITY_EVENTS} · flips {D2_FLIPS} · Hamming {D2_HAMMING} · intra Δ +0.1075 (Hebbian) — all reproduced");
 
     // ----- Phase 2: export + surgery -----
     println!();
