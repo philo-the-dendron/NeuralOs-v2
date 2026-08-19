@@ -747,7 +747,7 @@ fn main() {
         h.plasticity_events, h.flips
     );
     println!(
-        "  STDP pairing histogram: same-step {} · post-leads {} · pre-leads {} (in-window; the pre-leads share is the Hebbian evidence)",
+        "  STDP pairing histogram: same-step {} · post-leads {} · pre-leads {} (in-window; per-class raw/applied decomposition below decides the mechanism)",
         h.pairs_same_step, h.pairs_post_leads, h.pairs_pre_leads
     );
     println!(

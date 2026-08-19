@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 79/79
+progress: 80/80
 started: 2026-08-15T12:55:00Z
 updated: 2026-08-19T02:45:00Z
-principal_stated_goal: "Session G Bank & Verify: label earned (clamp-rectified), evidence banked, push, alpha.2, novelty pass"
+principal_stated_goal: "Session G leg 5: novelty pass OPEN SEAM — Stage 2 next as the final pre-registered experiment, then draft"
 ---
 
 ## Problem
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..79 sG — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -474,6 +474,31 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   was an overclaim. (5) The novelty pass (PAPER_NOVELTY.md) is
   DELEGATED to the fresh session as independent searches; synthesis
   here. Falsifier: crates.io API + git remotes + the evidence dir.
+
+- [x] ISC-80 (sG-5) · **THE NOVELTY PASS: OPEN SEAM — measured, not
+  asserted.** `docs/PAPER_NOVELTY.md`: the full chain (L1 local
+  plasticity · L2 shipped LLM · L3 quantized re-export · L4 foreign
+  run) verified against a 26-query logged survey (delegated
+  independent session, 2026-08-18, arXiv UI + DDG Lite + direct
+  fetches; every cited ID fetched, one recalled ID caught and
+  discarded) PLUS a this-repo OpenReview spot-check (2026-08-19, V1
+  API, 2 × 1,000 relevance-ranked notes machine-scanned: zero L1+L2
+  candidates; nearest = "Memory-based Hebbian Parameter Adaptation"
+  2021 — few-shot class learning, not shipped-LLM weight
+  adaptation). 16-entry matrix + 3 near-misses with missing links
+  (QES: no L1; Dragon Hatchling: no L2/L3/L4; BitDistill+bitnet.cpp:
+  proves our L3/L4 half, missing L1/L2). Direct seam probe — GGUF ×
+  (STDP | local plasticity | Hebbian) — logged EMPTY. Supporting
+  signal: the field's own survey (2409.02111) lists only conversion
+  + surrogate-BP as paradigms; Rajendran & Simeone (2309.15942) name
+  backprop-free on-device fine-tuning as FUTURE work. Boundaries
+  documented in-doc (no S2 — 429; OpenReview top-slice only) and
+  the PRE-SUBMISSION GATE named: full pass re-run + fresh dated
+  section before submitting. **The fork resolves on this data:
+  Stage 2 (in-vivo drive) runs as the paper's final pre-registered
+  experiment; then the draft.** Falsifier: any paper demonstrating
+  the full chain (→ reframe "first in field's record" to "first in
+  the ternary/no_std/verified-attribution setting").
 
 - [x] ISC-71 (sE-1) · **THE AMPLITUDE SWEEP: honest NO — the
   weight→firing channel does not open by amplitude alone.** Frozen
