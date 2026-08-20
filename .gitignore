@@ -23,3 +23,12 @@ Thumbs.db
 
 # Stage-4 model weights — downloaded, never committed
 models/
+
+# Session/harness tooling locals (autopsy R1)
+.opencode/
+
+# Foreign fork built by tools/build_fork.sh — never committed
+fork-build/
+
+# Paper figure venv (repo-local alternative to system python)
+.figvenv/
