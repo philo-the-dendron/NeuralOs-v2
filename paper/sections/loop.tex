@@ -1,1 +1,67 @@
-% WIP: filled by its own commit on paper-draft.
+\section{The loop: surgery, gates, control identity}
+\label{sec:loop}
+
+The bridge lets tensors out; the loop is the disciplined act of
+putting them back into a shipped file. The surgery exports the
+adapted $512\times512$ slice through \texttt{encode\_q2\_0} with the
+file's \emph{original} fp16 scale bits passed through untouched --- a
+recorded decision: the substrate adapted structure at $\gamma=125$;
+magnitudes stay the model's own --- and splices the encoded blocks
+into a copy of the GGUF as 512 disjoint 136-byte chunks (row $r$
+occupies bytes $[r\cdot 680,\ r\cdot 680 + 136)$ of
+\texttt{blk.0.attn\_q.weight}). Two details carry the safety of the
+whole operation: the rows are \emph{non-contiguous} (680-byte stride,
+136-byte payload --- a layout a pre-session audit caught before any
+write), and the tensor window is computed from the file's dims, never
+from inferred slice ends.
+
+\paragraph{Two gates, asserted in-loop.}
+\textbf{S1 (containment):} every differing code byte lies inside a
+declared chunk --- outside-diffs $= 0$, scale bytes $= 0$, asserted
+per row (synthetic-era run: 29,734 code bytes; in-vivo H2: 48,878).
+\textbf{S2 (disk round-trip):} the written file re-parses as GGUF and
+its 262{,}144 first-slice trits decode to \emph{exactly} the adapted
+slice --- 0 mismatches. Determinism is structural: every double-run
+in the record produced sha-identical patched files
+($87078612\ldots$ synthetic era; $24\mathrm{ffe}5\mathrm{f}3\ldots$
+Hebbian era; $71\mathrm{f}2518\mathrm{a}\ldots$ the in-vivo H2 export
+of Sec.~\ref{sec:invivo}).
+
+\paragraph{Control identity: the surgery is a measured transparent
+transformation.}
+Before any adapted export was judged, the pipeline ran end-to-end in
+control mode --- decode, encode, splice, with \emph{unadapted} trits.
+The written file equals the original, byte for byte (sha
+$4\mathrm{e}0\mathrm{bf}8\mathrm{b}7\ldots$ on both). Whatever the
+judge later measures, file-surgery artifacts are ruled out by
+construction: the only difference between baseline and patched files
+is the declared chunk content.
+
+\paragraph{The judge protocol.}
+The foreign runtime is a pinned fork of llama.cpp (commit
+\texttt{9ca265a}, branch \texttt{prism}, clone HEAD $==$ pin
+verified; the dump patch is env-gated, sits at the completion sample
+site, and prints raw top-10 pre-sampler logits). Protocol: five
+frozen prompts, greedy decoding forced, \texttt{-t 4}, \texttt{-n
+12}, double-run per variant; every double-run in the record is
+byte-identical. Instrument sanity first: the baseline run reproduces
+the fork's previously recorded anchors exactly (p3 step-0 token
+7794 at 14.6527; p2 step-0 token 4236 at 13.2278) --- the judge
+measures the same logits the fork's own history measured.
+
+\paragraph{What the loop showed, era by era.}
+The synthetic-era closure (drive: a structured synthetic schedule):
+\textbf{60/60} generation steps moved their logits (max $|\Delta|$
+0.534 on p2; 0.452/0.124/0.093/0.088 on the others), top-10 overlap
+8--10/10, \textbf{0/60} argmax flips, continuations byte-identical to
+baseline --- at a footprint of $0.5\%$ of one layer across 36
+measured layers. The Hebbian-era export (post transmission-fix,
+Sec.~\ref{sec:substrate}) shifted logits on 60/60 steps again (max
+$|\Delta|$ 0.42, mean 0.057--0.151), 0/60 flips. That is the loop's
+standing sensitivity result at synthetic footprints: the foreign
+runtime \emph{always} feels the substrate's write --- every judged
+export moved logits on 60/60 steps --- while greedy continuations do
+not change. The in-vivo writes (Sec.~\ref{sec:invivo}) break that
+second half on 2 of 5 prompts; whether those changes carry adaptation
+\emph{content} is precisely what Sec.~\ref{sec:adjudication}
+adjudicates.
