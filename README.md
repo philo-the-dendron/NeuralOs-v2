@@ -7,9 +7,9 @@
 
 ## What this repo is
 
-NeuralOS v2 is a pure-Rust workspace centered on one defensible artifact — `crates/neuralos-snn`, a `no_std`-by-default, i16 fixed-point spiking neural network library — with `crates/neuralos-app` as the Slint visualizer that runs it live as a spike-raster + weight-map microscope.
+NeuralOS v2 is a pure-Rust workspace centered on one defensible artifact — `crates/neuralos-snn`, a `no_std`-by-default, i16 fixed-point spiking neural network library — with `crates/neuralos-app` as the Slint visualizer that runs it live as a spike-raster + weight-map microscope, and `crates/neuralos-rt` as the (unpublished) research runtime that proved the ternary bridge. The bridge chapter is closed and honestly recorded: the distilled article lives in `paper/`, the full session history in `docs/RESEARCH_LOG.md` and `ISA.md`.
 
-This is **not** the old “AI OS” pretense from v0.1. It is a serious SNN library, a visualizer that makes it legible, and a forward research direction documented honestly in `docs/VISION.md`.
+This is **not** the old “AI OS” pretense from v0.1. It is a serious SNN library, a visualizer that makes it legible, and a closed, gated research record documented in `docs/VISION.md`.
 
 The active repo is **`NeuralOs-v2`**. The sibling `NeuralOS` repo is the archived v0.1 codebase and should be treated as read-only source material.
 
@@ -26,16 +26,21 @@ The short version:
 
 - the spine is the `neuralos-snn` library
 - the visible artifact is the Slint visualizer
-- the forward chapter is the ternary bridge, explicitly staged and gated
+- the ternary bridge is a **closed research chapter** — record in `docs/RESEARCH_LOG.md`, article in `paper/`
 
 ## Workspace overview
 
 ```text
 NeuralOs-v2/
 ├── crates/
-│   ├── neuralos-snn/   # no_std-by-default SNN library
-│   └── neuralos-app/   # Slint visualizer running the SNN live
-├── docs/               # vision, roadmap, research, landscape
+│   ├── neuralos-snn/   # no_std-by-default SNN library (published, the spine)
+│   ├── neuralos-app/   # Slint visualizer running the SNN live
+│   └── neuralos-rt/    # research runtime (GGUF / Q1_0 / Q2_0 / tokenizer) — publish = false
+├── paper/              # the Branch B article (make / make figs / make gate)
+├── evidence/           # raw judge/experiment logs (INDEX.md)
+├── docs/               # vision, roadmap, research log, format spec, landscape
+├── tools/              # fork build + judge tooling
+├── models/             # gitignored GGUF weights (HF downloads + derived)
 ├── Cargo.toml          # workspace manifest
 ├── rust-toolchain.toml # pinned Rust toolchain
 └── README.md
@@ -45,9 +50,10 @@ NeuralOs-v2/
 
 | Component | State |
 |---|---|
-| `neuralos-snn` | Active and validated. `cargo test -p neuralos-snn`, `cargo check --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass. |
+| `neuralos-snn` | Active and validated. `cargo test -p neuralos-snn`, `cargo check --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass. Published as `0.1.0-alpha.2`. |
 | `neuralos-app` | Active Slint visualizer wired directly to `neuralos-snn`. |
-| Ternary bridge | Planned research direction, documented in `docs/VISION.md`. |
+| `neuralos-rt` | Research runtime that proved the ternary bridge. `publish = false`; kept as the executable record behind `paper/`. |
+| Ternary bridge | **Closed chapter** — gates adjudicated, record in `docs/RESEARCH_LOG.md`, article in `paper/`. Reopening is a recorded fork, not default work. |
 | Distro / crypto / bare-metal deployment | Important longer-term directions, but not the current center of gravity of this workspace slice. |
 
 ## Design principles

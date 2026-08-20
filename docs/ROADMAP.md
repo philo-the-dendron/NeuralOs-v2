@@ -1,465 +1,98 @@
 # NeuralOS v2 — Roadmap
 
 > Execution order for the active repo.
-> `docs/VISION.md` is the north star; this document is the shipping sequence.
-
-*Updated 2026-08-08 to match the active workspace state and the current visualizer-first framing.*
+> `docs/VISION.md` is the north star; this document is the shipping
+> sequence. Re-baselined 2026-08-20 at the project autopsy — the
+> pre-autopsy roadmap (and the session records it had absorbed) is in
+> git history (`pre-autopsy-cleanup` tag) and `docs/RESEARCH_LOG.md`.
 
 ## Priority order
 
 | # | Component | Status |
 |---|---|---|
-| **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine of the repo. Core library, tests, topology/plasticity work, and `no_std` discipline come first. |
-| **2** | `neuralos-app` — Slint visualizer / lab bench | Active visible artifact. Runs the library live and makes spikes / weights / learning legible. |
-| **3** | Ternary bridge — Stage 1 | Planned research direction, gated by substrate health. Starts with ternary SNN only, not full runtime ambition. |
-| 4 | RISC-V deployment proof | Important proof of the `no_std` claim: QEMU first, real silicon after. |
-| 5 | Distro / crypto / broader sovereignty stack | Still relevant to the overall ethos, but no longer the center of gravity of this repo slice. |
+| **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again**. |
+| **2** | `neuralos-app` — Slint visualizer / lab bench | Untouched since 2026-08-08; Phase-2 items re-opened. |
+| **3** | RISC-V deployment proof | QEMU `riscv64gc` first, silicon after. Unstarted. |
+| **4** | Paper track | The Branch B article (in `paper/`) — finish, gate, submit. Must not displace 1–3. |
+| **5** | Bridge follow-ups | **Frozen record.** Reopening is the principal's call on the recorded forks. The one active bridge-adjacent task is R4 (harness extraction) below. |
 
 ## Current validated state
 
-The workspace currently validates the following successfully:
-
 ```bash
-cargo test -p neuralos-snn
-cargo check --workspace --all-targets
+cargo check  --workspace --all-targets
+cargo test   --workspace                          # 157 snn + 83 rt unit tests, offline
 cargo clippy --workspace --all-targets -- -D warnings
+cargo build --no-default-features -p neuralos-snn # the no_std gate
 ```
 
-These checks describe the current repo state more accurately than the older phase notes from the summarizer era.
+Bridge experiments additionally need `models/*.gguf` (gitignored — see
+AGENTS.md § Workspace) and, for judged runs, the foreign fork built by
+`tools/build_fork.sh` into `fork-build/` (gitignored).
 
-## The active phases
+## The 2026-08-20 remediation ladder (post-autopsy)
 
-### Phase 1 — Substrate hardening
+Strict order — nothing new opens until the rung above is 100%.
 
-Goal: make `neuralos-snn` the strongest artifact in the workspace.
+| Rung | What | State |
+|---|---|---|
+| R0 | Recovery tags (`pre-autopsy-cleanup`, `pre-autopsy-cleanup-paper`) | ✅ done |
+| R1 | Delete merged `stage4-ternary-runtime`; ignore `.opencode/`, `fork-build/`, `.figvenv/` | ✅ done |
+| R2 | Docs truth pass: AGENTS/README/VISION rewrite, RESEARCH_LOG split, this re-baseline | ✅ done |
+| R3 | Kill `/tmp` path rot in tools + evidence READMEs; repo-local fork build (`tools/build_fork.sh`) | ✅ done |
+| R4 | Extract the shared hybrid harness; rewrite the 6 hybrid examples on it; re-run pins recorded verdicts | ⬜ **next session** |
+| R5 | `evidence/INDEX.md` — session → claim → files | ✅ done |
+| R6 | Merge `paper-draft` → main; paper builds from main | ✅ done |
+| R7 | Original roadmap work, in order (below) | ⬜ opens after R4 |
 
-Current shape of the substrate:
-
-- `no_std`-by-default library
-- i16 fixed-point hot path
-- LIF neurons
-- STDP rule
-- network orchestration
-- 4 topology builders
-- CSR sparse synapse matrix
-- optional AVX2 SIMD path
-
-Near-term work inside this phase:
+## Phase 1 — Substrate hardening (the starved list, now first)
 
 | Work item | Why it matters |
 |---|---|
-| NIR import/export | Interop with adjacent SNN ecosystems; easiest high-value bridge outward |
+| NIR import/export | Interop with snnTorch/SpikingJelly; the #1 ecosystem recommendation. **First move.** |
 | Lock-free ports from v0.1 archive | Throughput and future concurrency experiments |
-| SIMD follow-up / hardening | Keep the performance path honest and test-backed |
-| Additional regression/property tests | Protect invariants around plasticity, propagation, and topology behavior |
-| `no_std` discipline checks | Preserve the embedded / RISC-V posture |
+| SIMD follow-up / hardening | `simd.rs` untouched since 2026-08-07; keep the performance path honest |
+| Additional regression/property tests | The transmission-wire lesson: no unit test had ever exercised live transmission until session F |
+| `no_std` discipline checks | Preserve the embedded/RISC-V posture (CI gate already green) |
 
-### Phase 2 — Lab bench / visualizer
-
-Goal: make the substrate visible, debuggable, and showable.
-
-The app is now the live SNN visualizer, not the old research summarizer. Its role is to make the library legible.
-
-Current visualizer responsibilities:
-
-- spike raster
-- synaptic weight heatmap
-- STDP learning toggle
-- sustained-firing mode for visible activity
-- worker-thread simulation + Slint UI thread bridge
-
-Near-term work inside this phase:
+## Phase 2 — Lab bench / visualizer
 
 | Work item | Why it matters |
 |---|---|
 | UI/UX refinement for controls and stats | Better debugging and demonstration value |
-| More observability (rates, activity summaries, weight drift) | Makes learning dynamics easier to understand |
+| More observability (rates, activity summaries, weight drift) | Makes learning dynamics legible — including the new VoltageResolution grids |
 | Smoke validation / render verification workflow | Keeps the visualizer trustworthy as a demo artifact |
-| Stability around threading and shutdown behavior | Protects the hardest-won lesson in the app layer |
+| Stability around threading and shutdown | Protects the hardest-won lesson in the app layer |
 
-### Phase 3 — Ternary bridge, Stage 1 → 2 (both gated, both passed)
+## Phase 4 — RISC-V deployment proof
 
-Goal: test the smallest meaningful research gates without overcommitting.
+1. QEMU `riscv64gc`, reproducible path
+2. `neuralos-snn` executing in that environment
+3. Documentation of what is truly `no_std`-portable vs host-only
 
-**Stage 1 (ternary SNN) — PASSED** after the 1.5b/1.5c/1.5d reopen cycle:
+## Phase 5 — Paper + bridge follow-ups (gated, frozen)
 
-- `Trit`-style weight type `{-1, 0, +1}` plus scale — shipped
-- SNN adapted to that representation — spikes 1.00× baseline, learns via
-  stochastic bucket-flips over full pairwise STDP, discriminates by
-  correlation (SI 1.000 = i16 parity)
-- deterministic per-step re-projection ruled out (Stage 1's honest NO)
-
-**Stage 2 (format bridge) — PASSED 2026-08-15:**
-
-- `docs/TERNARY_FORMAT.md` — the wire-format spec, layouts pinned verbatim
-  from microsoft/BitNet and PrismML-Eng/llama.cpp source
-- `neuralos_snn::bridge` — `i2_s` encode/decode (bit-exact round-trip),
-  `q1_0`/`q2_0` import (loud errors, no silent clamping), integer-only
-  fp16 scale plumbing; `no_std`, zero-alloc
-- `examples/ternary_format_gate.rs` — the gate: **YES**
-
-**Stage 3 (shared kernel) — PASSED 2026-08-15:**
-
-- `neuralos_snn::kernel` — the shared `no_std` ternary matmul: sequential
-  2-bit packed trits × Q15 absmax-normalized i16 activations → i32
-  (integer BitNet-analog), zero-alloc, property-tested vs a scalar reference
-- `bridge::repack_i2s_to_kernel` — the wire (`i2_s`) → compute (sequential)
-  seam; `bridge::wire_gamma_to_substrate` — the imported-γ policy (fog №1);
-  `synapse::SCALE` now `pub` with a pinning test
-- `examples/ternary_hybrid_gate.rs` — the gate: SNN layer + dense layer
-  through ONE kernel, dense weights arriving as `i2_s` wire bytes → **4/4
-  classification, YES** (dense weights constructed, not trained —
-  composition was the claim)
-
-Gate question for the phase:
-
-> Does a ternary SNN remain mechanically useful enough to justify the rest
-> of the bridge? **Answer: YES, three times (Stage 1 gate, Stage 2 format
-> gate, Stage 3 kernel gate).**
-
-Stage 4 (full Rust ternary-LLM runtime on Bonsai `Q1_0`) is now the earned
-step — explicitly gated, multi-session research territory.
-
-**Stage 4 — CLOSED 2026-08-16 (gate verdict: NO; branch
-`stage4-ternary-runtime`, merge call deferred to principal):** s1 —
-GGUF container on the real file (310 tensors, all `q1_0` byte-exact).
-s2 — `q1_0_matvec` + integer RMSNorm, first-layer compute (`FORWARD:
-OK`). s3 — **full 28-block Qwen3 forward**: YaRN RoPE + GQA + integer
-softmax + SiLU FFN + tied logits, integer compute path (`FULL: OK`,
-4 tok in 14.2 s release). s3.5 — **adversarial review of the whole
-bridge arc** (10 agents): YaRN ramp window fixed (one octave high),
-softmax exact-sum made true for all n (was false at n=4), f32→milli
-small-exponent decade fixed, hostile-scale saturation, 65-token/OOV
-panics → loud errors, shared round-half-away helper, dims+config
-validated at load, golden lane/byte-order vectors, per-layer health
-gates (`FULL: OK` re-run: 28/28 layers alive). s4 — **tokenizer +
-incremental decode + generation = the gate**: embedded Qwen2 BPE
-(fork-pinned hand-rolled scanner, zero deps), bit-exact KV-cache
-refactor (tolerance 0 vs the reviewed forward, synthetic + real),
-greedy decode 0.22 tok/s (release, 2-core), chat demonstrator coherent
-("Sure! Here's how you can count from 1 to") — but the strict gate
-said **NO: 3/5** (digit counting ×2 and "The capital of France is
-→ Paris" pass; word-sequence continuations fail). Bridge stops with
-shipped artifacts per gate doctrine; Session C's first act is the
-fork-logit reference comparison (ISA Decisions 2026-08-16).
-**C-pre (2026-08-16) — the NO attributed:** the reference fork
-itself (PrismML-Eng/llama.cpp @ 9ca265a, greedy
-forced-by-construction) fails the same two prompts and passes the
-same three, with the digit prompts byte-identical to ours over 24
-greedy steps — the two failures are the 1-bit model's under greedy,
-not the runtime's. Merge case presented to the principal (not
-executed); two Session-C findings recorded: our tokenizer splits
-"France" where the reference reaches the single token, and our
-logits drift beyond rounding vs the f32 reference inside the top-10
-(deltas up to ~5.4) while agreeing at the verdict-step argmax.
-
-**C-core (2026-08-16) — both findings fixed; fidelity past the bar:**
-(1) the tokenizer bug was a stale-rank BPE heap entry firing a grown
-pair out of merge order — fixed with the fork's push-time-rank
-validation (" France" now reaches ĠFrance/9625, CI trap + real-file
-pins); (2) the drift was a **1000x attention-score unit error**
-(milli^2 dot /1e3 instead of /1e6 -> softmax saturated into hard
-argmax — 15.5% error injected at block 0's attention, found by an
-f64 micro-forward that matches the fork to ±0.03), plus exact-gamma
-matvec (fp16 mantissa x 2^shift, integer) kept on faithfulness
-grounds. After: teacher-forced fork comparison argmax-identical
-**36/36 steps**, max |dTop| 0.597 (was 5.407); frozen gate re-run
-**3/5 with fork-byte-identical continuations** — the faithful-runtime
-state. Merge call with the principal (commits local per protocol).
-
-**Session 4B (2026-08-16) — runtime generalized to Bonsai-4B; gate
-NO 4/5, fork-attributed.** Config-driven `rt::model` (geometry from
-the file's own KVs — 36 blocks/emb 2560/32-8 heads/FFN 9728/
-freq_base 5e6, head_dim 128 and vocab 151 669 unchanged; score
-scale derived from head_dim, pinned bit-identical to the 1.7B
-constants; alignment-padded tensor slices handled), refactor
-regression-proven on 1.7B (gate byte-identical, real-file
-incremental≡forward green, e1821be worktree witness). On 4B:
-probe/forward/full green (36/36 layers alive), drift 35/36 argmax
-(France second witness 12/12, |dTop| 0.064), and the frozen gate
-**NO 4/5**: p0/p1/p2/p4 pass with fork-byte-identical continuations
-(" five six seven…" — the 1.7B's failure prompt passes on 4B);
-"Monday Tuesday Wednesday"→" Thursday" fails on BOTH runtimes.
-Per-model record: 1.7B NO 3/5, 4B NO 4/5, both the model's ceiling
-under greedy. 8B-vs-stop + merge are the principal's calls.
-
-**Session 4C (2026-08-17) — p3 coda: quantization severity.**
-Fork-only disambiguation ladder (same greedy flags, raw step-0
-top-10 dumps): F16 base " Thursday" TOP-1 (+3.054); Q2_0 TOP-1
-(+3.083) with the top-10 identical to F16 in order (max |Δ|
-0.0286 — 2-bit ternary near-lossless vs its own base); Q1_0 has
-" Thursday" outside the top-10. Prompt-shape hypothesis falsified
-(the base completes the bare prompt); chat shape buries the weekday
-chain at EVERY width — F16 chat step-0 is Q1_0's twin ("It" top-1
-13.66, no " Thursday" in top-10, top-3 order identical): the
-framing suppresses completion-mode on the base itself. p2's
-" five" margin triples at 2-bit (+0.93 → +2.97). **4/5 is the 1-bit
-4B's cap, not the family's.** 8B-under-1-bit = grounded capacity
-bet; frozen-prompts-on-Q2_0-4B = cheap likely-5/5 sibling. Both the
-principal's calls; no runtime changes.
-
-**Session D slice 1 (2026-08-17) — Q2_0 native: the family's first
-gate YES.** The principal called the sibling. The probe-first
-discipline caught our own Stage-2 q2_0 pin WRONG before any compute
-existed (real layout 128 w / 34 B, re-pinned from the fork source +
-file arithmetic; the 64 w / 18 B spec was a misread that
-self-consistent hand vectors had hidden). Shipped: re-pinned
-`decode_q2_0` eating real bytes, `rt::q2_0` compute (fp16-exact
-max|w| scales, loud code 3, branch-free inner loop), per-tensor
-`QuantData` type routing with Q1_0 structural identity byte-diff
-proven (1.7B gate 43/43, both Q1_0 suites green). **GATE on
-Ternary-Bonsai-4B-Q2_0: YES 5/5** — " Thursday04/05/2018 "
-fork-byte-identical to the 4C greedy; drift vs the fork anchors p3
-12/12 argmax (max |Δtop| 0.289), p2 11/12 with one measured
-0.34-logit near-tie; residuals 6–9% of the rail. Per-model record:
-**1.7B-Q1_0 NO 3/5 · 4B-Q1_0 NO 4/5 · 4B-Q2_0 YES 5/5.** The
-ternary seam Session D slice 2 (Bonsai → Trit → SNN → STDP) builds
-on this. Merge/no-merge: the principal's.
-
-**Session D slice 2 (2026-08-17) — the hybrid seam: Bonsai weights →
-Trit → SNN → STDP. HYBRID GATE: ADAPTS.** The first experiment where
-pretrained LLM structure enters the SNN substrate and is READ BY
-local plasticity. Two commits: `finalize_synapses` (the public
-external-wiring CSR path — before it, reverse-CSR/LTP was only
-reachable via `build_topology`; public `add_synapse` wiring silently
-froze LTP; A/B-tested) and the frozen `examples/hybrid_gate.rs`:
-262,144 trits decoded from the real `blk.0.attn_q.weight` Q2_0 bytes
-(first 512×512 slice, dims [2560,4096] pinned from the file),
-substrate γ=125 (recorded decision — LLM fp16 scales meaningless to
-SNN dynamics), full-minus-diagonal density, 1.5c drive verbatim.
-**G1 import integrity: trit-exact** (0/261,632 round-trip
-mismatches, zero fraction 0.3655 — first real-data census). **G2
-spiking fidelity: drive-dominated** — imported, census-matched
-control, and zero-weight comparator ALL spike identically (35,157
-spikes; recurrent ±12 μA never gates a spike at I_ACTIVE=600), so G2
-carries non-degeneracy + sustain + containment and the structure
-claim lives in G3. **G3 selective adaptation: Δ-SI 1.0000** — intra
-mean Δ −0.3133 vs inter +0.0000 under pairwise STDP, 321,571 bucket
-flips (not frozen), Hamming 21.79% < 50% (not collapsed), sign
-crossings exactly 0. Deterministic (two runs byte-identical modulo
-wall); 20.5 s, 1050 MB < 1536 budget. **Verdict: pretrained
-structure survives AND discriminates under local STDP.**
-Post-session: machine died before the docs leg; recovered from git +
-ISA, all evidence regenerated by re-run and cross-checked
-number-for-number (ISA Decision + Learning entries record it).
-
-**Session E (2026-08-18) — the loop-closer: LOOP GATE: CLOSED.** The
-arc's destination, one session after the hybrid seam: substrate-adapted
-weights exported BACK into the foreign runtime with measurable effect.
-Shipped: `bridge::encode_q2_0` (the export codec — Q2_0 becomes a
-two-way format; byte-identity on both pinned golden vectors, code 3
-unconstructible by construction) and the frozen
-`examples/hybrid_loop.rs`: D-2 re-run with its recorded numbers
-ASSERTED as preconditions (spikes/flips/Hamming/Δ-SI all reproduced —
-the surgery runs only on the exact recorded adapted state), export
-with ORIGINAL fp16 scale bits (magnitudes stay the model's own —
-recorded), chunked GGUF surgery (512 disjoint 136 B chunks — the
-pre-session audit's contiguity catch, honored), S1 containment
-(29,734 code bytes changed, outside 0, scales 0) + S2 disk
-round-trip (262,144 trits from the written file == adapted slice, 0
-mismatches), deterministic (sha256-identical patched files). Judge:
-the fork rebuilt at the pinned 9ca265a + the NEURALOS_DUMP patch
-rewritten to spec; baseline reproduces the 4C anchors exactly; both
-variants double-run byte-identical. **Result (mechanical table): 60/60
-judged steps across all 5 frozen prompts show logit deltas (max
-|Δ| 0.534 on p2), top-10 overlap dips to 8/10 — 0/60 argmax flips.**
-The widening ladder did not fire. Honest effect size: 0.5% of weights,
-one attention slice, layer 0 of 36 — the claim is the CLOSED LOOP
-(capability: local backprop-free adaptation of a shipped quantized
-model, visible in foreign tooling, every attribution link mechanically
-verified), never quality. Commits held for the principal's review;
-alpha.2 (q2_0 fix + encode) consolidated after, per the principal's
-call. The paper-prep session now carries: 3 gate rows + hybrid
-Δ-SI 1.0000 + the closed loop.
-
-**Session E stage 0 (2026-08-18) — instrument + attribution package.**
-The post-loop deep-dive found the design flaw that matters: the
-adaptation is drive-informed, not model-informed (at 600 μA drive the
-recurrent ±12 μA weight channel is quantization-absorbed — 8.6–11.2σ
-from gating; imported/control/zero fired exactly alike), so the loop
-closed on a signal that was structurally not about the model, and the
-completion-judge deltas were directionless noise. Fixes, in order:
-(1) **control identity** — the surgery run on unadapted trits wrote a
-file BYTE-IDENTICAL to the original (sha-pinned): the codec+surgery
-path is a measured transparent transformation, every adapted-file
-delta attributable to the STDP trits alone; (2) **the KLD judge** —
-the fork's llama-perplexity (--save-all-logits / --kl-divergence),
-deterministic double-run, on two sha-pinned corpora (fork README
-slice + the frozen prompts teacher-forced); (3) **the Stage-0
-answer** — generic text: PPL ratio 1.00278 ± 0.01092, noise; the
-model's own continuations: ln-ratio positive on 3/3 chunks, a small
-consistent degrading shift with Same-top-p 100% (no flips). The
-redesign is staged: **stage 1** = amplitude sweep to open the
-weight→firing channel (grid 600→100 μA — below the ~150 μA
-E-threshold, where recurrent input becomes the only path to spike —
-I_INH fixed, spike-TRAIN comparison with pre-registered A*
-criterion), **stage 2** = in-vivo drive (the model's own layer-0
-activations — its own design conversation first), **scale last**
-(rung B withdrawn: multiplying a model-blind signal multiplies
-noise). The drive-domination finding and the sweep curve are
-themselves publishable figures.
-
-**Session E stage 1 (2026-08-18) — the amplitude sweep: honest NO.**
-The frozen `hybrid_sweep.rs` walked I_ACTIVE 600→100 μA (I_INH fixed,
-single variable; spike-TRAIN comparison, pre-registered A\*
-criterion): **zero weight-borne divergence at every amplitude** —
-600 μA reproduces D-2's identical-train triple (35,157 ×3), 450 μA
-fires E identically in all three nets (32,294 ×3), and at ≤300 μA
-the E population is exactly silent (25,750 = the I population alone)
-in a self-consistent no-bootstrap fixed point. The pre-registered
-prediction (onset ≤ 300) was falsified; mechanism: the 125 Hz
-inhibitory background (~−97 μA) raises the effective E threshold to
-~250 μA, above which the recurrent σ (40–50 μA) is still 6–7σ inside
-the margin and quantization absorbs it. Conclusion: the channel
-needs a different COUPLING, not a different amplitude — the redesign
-fork (coupling constant / in-vivo drive / balanced background) is
-recorded in the ISA and is the principal's call. The curve rides
-into the paper as the honest measurement.
-
-**Session E stage 1c (2026-08-18) — the finer ruler: another NO, and
-the real blocker found.** After a first-principles pass flagged the 1 mV
-voltage grid's ~200 μA dead zone, the substrate gained an opt-in
-centi-mV grid (`VoltageResolution`, default mV bit-identical — pinned
-trace, dead-zone pairs, 157 tests). The frozen sweep re-ran on the
-finer grid: totals shifted to the centi pinned state (35,975 ×3 at
-600 μA — expected), the E cliff moved down to 150 μA (the grid sees
-smaller drive currents now), and the trains were STILL identical
-everywhere — falsifying the pre-registered divergence prediction. The
-forced code re-read found why, and a 2-neuron canary test pins it:
-**`step()`'s recurrent synaptic current is never integrated at all**
-(Phase 2 injects after Phase 1; the next step clears before Phase 1).
-Every "weights don't shape firing" result in the lineage is this bug;
-the mV grid was a real-but-irrelevant co-blocker. Fix fork recorded in
-the ISA (recommended: fix + one re-pin session for the whole lineage —
-the principal's call).
-
-**Session F (2026-08-18/19) — the transmission fix (a1b) + lineage
-re-pin: synapses transmit; the Hebbian reversal.** The reviewed
-split landed: adaptation decay (phase-identical, the a1b invariant
-— transmission-live stays the only variable) → integrate (reads
-last step's pulses, the one-step delay the code always claimed) →
-clear-after-read → propagate. Three exact-value transmission tests
-pin it on both grids; the old combined decay fn removed (alpha.2
-manifest); tau_synapse_us/delay_us marked decorative. The library
-suite survived green — zero unit pins had ever exercised live
-transmission — and the 1.5 examples reproduce identically (small
-weights, mV absorption; per-type dead zones documented). The D-2
-re-run found a NEW pinned state with the headline **Hebbian
-reversal**: G2's three nets fire differently for the first time
-(35,115/35,136/35,157), and G3's discrimination flipped sign —
-intra pairs now POTENTIATE (+0.1075, pre causally drives post one
-step later → LTP) instead of the dead-wire era's co-fire LTD;
-|Δ-SI| = 1.0000 both eras, the sign is the mechanism label. The
-frozen gate's directional condition reads this as COLLAPSES —
-recorded honestly; the criterion fork (|Δ-SI| with named direction
-vs frozen direction vs dual-report) is the principal's. Post-fix
-sweeps: A\* = 600 μA on BOTH grids — mV shows timing-tipping AND
-sub-cliff recruitment (coherent group bursts stack past margins
-random σ cannot; prediction under-called), centi shows weight
-ARRANGEMENT out-carrying census content (imported-vs-shuffle the
-largest gap — the strongest model-informed signal yet). The loop
-surgery is parked at the frozen criterion until the fork is
-called. alpha.2 grows: decay split + field renames.
-
-**Session F criterion (2026-08-19) — (i)-amended gates; the loop
-un-parked.** The third review's degeneracy proof adopted: Δ-SI ≡ ±1
-by schedule geometry (40 ms gaps vs 20 ms window ⇒ inter Δ ≡ 0 in
-every era — the floor gated nothing), so the D-2 gate now asserts
-the raw fields (intra |mean Δ| ≥ 0.05 · flips · Hamming · sign
-crossings · sustained) with the direction PRINTED as the era's
-mechanism label. The dt-pairing histogram shipped (three
-NetworkStats counters): same-step 951,578 · post-leads 4,110,289 ·
-pre-leads 4,110,289 — exactly equal LTD/LTP counts (each in-window
-adjacency yields one pairing in each bucket; the Hebbian drift
-lives in dt-magnitudes, not counts — the causal-LTP attribution now
-counted, not inferred). **hybrid_gate: HYBRID GATE: ADAPTS on the
-live wire** (label initially printed Hebbian-carried; session G's
-per-class counters AMENDED it before push — see below); hybrid_loop
-un-parked — LOOP
-EXPORT: CLEAN with the new pinned asserts (three totals, from the
-re-run, never transcribed), 31,607 code bytes exported, sha-paired
-deterministic. Fork judge ×2: 60/60 steps moved (max |Δ| 0.42),
-0/60 flips — the loop closes on the fixed substrate; effect size
-unchanged physics (0.5% of one layer). Doc repairs: delay_us
-decorative, climb barrier + rectification documented and PINNED
-(300 μA sticks at −59; +12 μA ratchets, −12 μA absorbed). alpha.2
-manifest: histogram counters.
-
-**Session G leg 1 (2026-08-19) — the label earned: pairing-
-selective, clamp-rectified.** Fourth-review Finding A, tested
-before push: per-synapse cumulative counters (raw delta / clamp-
-absorbed) decomposed per class show raw intra drift −739,295 (LTD
-events dominate), the E-class 0-floor absorbs −839,029, and the
-APPLIED residue (+99,734) potentiates — inter exactly 0/0. The
-class-differential is timing-driven, the direction bounds-driven;
-the label logic now computes the mechanism from the counters
-(three cases) and prints [PAIRING-SELECTIVE, CLAMP-RECTIFIED].
-ADAPTS unchanged (degree gate 0.1075 PASS); loop re-exports CLEAN,
-numbers identical. Also verified: the alpha.1 tag ships NO bridge
-module — the broken q2_0 pin never left the machine; alpha.2 is a
-routine first-bridge release, not a hotfix (the "published wrong
-codec" story was an overclaim, corrected here so the paper never
-inherits it).
-
-### Phase 4 — RISC-V deployment proof
-
-Goal: make the `no_std` claim concrete.
-
-Order of attack:
-
-1. QEMU `riscv64gc`
-2. run `neuralos-snn` in that environment
-3. real silicon when budget/hardware permits
-
-Deliverables for this phase:
-
-- a reproducible QEMU path
-- successful `neuralos-snn` execution in a RISC-V setting
-- documentation showing what is truly `no_std`-portable vs host-only
-
-### Phase 5 — Bridge stages 2+
-
-These are explicitly gated by the success of Phase 3.
-
-Potential later work:
-
-- ternary format bridge
-- shared `no_std` ternary kernel
-- tiny hybrid SNN/LLM proof
-- only then, possibly, a larger ternary runtime effort
-
-This is research territory and should stay honestly labeled as such.
+- **Paper:** build/figure/language gates green from main (`make`,
+  `make figs`, `make gate` in `paper/`); then submission. Paper work
+  never displaces an open Phase-1/2 item (AGENTS.md § Session
+  discipline).
+- **Bridge record:** frozen. Any reopening (criterion forks, 8B/Q2_0
+  capacity bets, model-informed coupling) is a recorded fork in the
+  ISA — the principal's call, scoped before any session opens.
+- **R4 harness extraction** is the one active task: dedupe
+  `hybrid_*`/`null_patches` (~1,100 duplicate lines) into a shared rt
+  harness module; acceptance = deterministic re-runs reproduce the
+  recorded verdicts; tag `examples-pre-extraction` first.
 
 ## What is no longer the center of gravity
 
-The following areas still matter, but they are no longer the active core of the repo roadmap:
-
-- Debian distro work
-- crypto wrapper work
-- broader “sovereignty stack” seasoning
-- old summarizer-app plans
-
-They can return later, but they should not displace the substrate + visualizer + gated bridge sequence.
-
-## Relation to v0.1 and prior roadmap language
-
-The archived v0.1 repo remains useful as:
-
-- a mine for tested ports
-- a source of audit findings
-- a reminder of what not to reintroduce
-
-This roadmap intentionally drops the old summarizer-first execution order. The current repo and `docs/VISION.md` make the real structure clear:
-
-1. substrate
-2. lab bench
-3. gated ternary research
+Distro work, crypto wrappers, sovereignty seasoning, old summarizer
+plans — unchanged from the pre-arc roadmap. They can return, but never
+displace substrate + lab bench + gated research.
 
 ## Practical next moves
 
-If working from this roadmap today, the best near-term sequence is:
-
-1. continue hardening `neuralos-snn`
-2. improve the visualizer as the lab bench over that library
-3. only then begin ternary Stage 1 experiments
-4. prove the `no_std` claim on QEMU RISC-V
+1. R4 (harness extraction) — closes the crust mechanism for good
+2. NIR import/export — smallest highest-value spine item
+3. QEMU proof — makes the `no_std` claim concrete
+4. Visualizer Phase-2 — the lab bench catches up to the substrate the
+   bridge arc hardened
