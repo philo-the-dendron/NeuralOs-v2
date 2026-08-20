@@ -22,6 +22,7 @@
 //! I/O of its own, so a `no_std` edge story remains open. No `unsafe`.
 
 pub mod gguf;
+pub mod harness;
 pub mod math;
 pub mod model;
 pub mod norm;
