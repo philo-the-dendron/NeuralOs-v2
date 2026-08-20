@@ -1,1 +1,127 @@
-% WIP: filled by its own commit on paper-draft.
+\section{In-vivo drive: the model's own activations}
+\label{sec:invivo}
+
+Everything up to here drove the substrate with synthetic schedules. The
+question this section answers is whether the substrate still
+\emph{reads} --- and adapts under --- the shipped model's own activity:
+the drive is $\mathrm{attn\_norm}(\mathrm{embedding})$ of a
+sha-pinned corpus slice, captured from the model's own forward pass
+(RMS-norm applied to the captured embeddings; no new dependencies).%
+\footnote{Corpus: \texttt{evidence/corpus\_readme\_pinned.txt}, sha
+$18\mathrm{fb}5452\ldots$ (12{,}148 bytes, 4{,}411 tokens). The
+registration froze the entire drive protocol before any code ran
+(ISA, session-H decision, 2026-08-19).}
+
+\paragraph{Drive design (frozen pre-run).}
+One token maps to one substrate step, so consecutive tokens present
+causal pre$\to$post pairings at $\mathrm{dt}\approx1$\,ms (STDP factor
+0.95). A per-step, per-dimension current
+$I = \mathrm{clamp}(h_{\mathrm{dim}} \cdot k, \pm1000\,\mu\mathrm{A})$
+injects into dimensions $0..408$ of the E population; the I population
+keeps its validated fixed $I_{\mathrm{INH}}=600$ wall, so mechanism
+attribution stays on validated ground. The single global gain $k$ is
+set so corpus-wide RMS current lands mid-band
+($\approx450\,\mu\mathrm{A}$). Deliberately rejected: an
+$N$-steps-per-token mapping, which would manufacture sustained
+same-step LTD --- the very mechanism the dead-wire era had run on only
+as an artifact (Sec.~\ref{sec:substrate}). The grid is CENTI: the
+arrangement-reading result's only lineage is on that grid, and a
+verbatim re-import on the mV build would absorb single weight pulses in
+the dead zone and fail spuriously.
+
+\paragraph{Two runs, one correction.}
+The first run (H1) drove 6 whole epochs of the corpus head; its judge
+results triggered a full audit that found a corpus infidelity --- the
+run had consumed a 1{,}024-byte slice, not the pinned 12{,}148-byte
+slice, because the registration's own constraints were mutually
+unsatisfiable at the intended length and had been resolved silently in
+code. The correction was a re-run (H2: first 2{,}000 of 4{,}411 tokens
+in order, single truncated pass, no epochs, no wrap by construction),
+not an annotation. We report both where they contrast, because H1 vs
+H2 varies text, repetition, and gain together --- a confound by design
+of the correction, with the de-confound arm (true corpus head $\times$
+6 epochs) named as follow-on work. The head-bias this admits
+(first-2{,}000 tokens of a README are not corpus statistics) is stated,
+not hidden.
+
+\begin{table}[t]
+\centering
+\caption{Tier-1 substrate gates under the in-vivo drive. $H(i,c)$:
+spike-train Hamming between the imported-weights net and its
+census-shuffle control; $H(i,z)$: imported vs zero-weights net.
+G0 passes iff firing diverges from the arrangement-destroyed control
+more than from the arrangement-free floor. Rate-L1 agrees in both
+runs.}
+\label{tab:t1gates}
+\begin{tabular}{lcccc}
+\toprule
+ & $H(i,c)$ & $H(i,z)$ & ratio & rate-L1 ($i,c$ vs $i,z$) \\
+\midrule
+H1 (6 epochs) & 41{,}190 & 30{,}216 & 1.36$\times$ & 1{,}440 vs 1{,}040 \\
+H2 (single pass) & 41{,}555 & 30{,}724 & 1.35$\times$ & 1{,}309 vs 950 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Tier 1: the substrate reads arrangement under the model's
+own drive.}
+Table~\ref{tab:t1gates} gives the gate results. G0 --- firing reads
+model arrangement over census --- passes in both runs, with the
+metric battery (pairwise train Hammings, per-neuron rate-L1,
+per-population Hz) agreeing throughout; the wire-liveness tripwire
+(weights borne in spike trains) also passes. The pre-registered
+prediction P1$'$ had teeth: if the single-pass correction weakened the
+arrangement signal, the H2 gap $H(i,c)-H(i,z)$ had to stay above
+$\approx$25\% of H1's 10{,}974 (floor 2{,}744). Observed: 10{,}831
+--- 98.9\% of H1's gap. Single-pass does not weaken G0. We note the
+boundary honestly: this is one slice of one model under one seed, a
+sensitivity result on the centi grid, not a population claim.
+
+\paragraph{The clamp caveat (stated in-text, per the registration).}
+The registration demanded a clamp audit, and it fired hard:
+69.80\% of dim-steps (H1) and 69.48\% (H2: 568{,}321 of 818{,}000)
+railed at $\pm1000\,\mu\mathrm{A}$; the hottest dimension (dim 199)
+railed on 89\% of its steps (H2) / 90\% (H1). Post-RMSNorm activations
+are far heavier-tailed than the corpus RMS, so the \emph{effective}
+drive is sign-dominant, not amplitude-graded --- ``amplitude-informed''
+is not what ran. The gates above pass on a \emph{shared} drive (both
+the imported and control nets see the same railed currents), so the G0
+contrast stands; but any claim that the substrate exploited
+fine-grained activation \emph{magnitudes} would overstate the
+protocol. Per-dimension standardization is the named fix, not applied
+here.
+
+\paragraph{The class structure dissolves under real co-firing.}
+Second honesty flag, recorded per the registration itself: the
+4-group intra/inter class structure that the synthetic schedule
+produced \emph{dissolved} under data-driven co-firing. In H1,
+inter-class applied drift went \emph{positive} too (mean $\Delta$
++0.0777 inter vs +0.0606 intra --- inverted against the synthetic
+era); in H2 both classes potentiate (intra +0.0805 over 41{,}412
+pairs, inter +0.0976 over 220{,}220). The model's own activity treats
+the slice as one co-active assembly, not four groups:
+class-selectivity observations from the synthetic regime do not
+transfer.
+
+\paragraph{Adaptation under in-vivo drive.}
+With STDP on ($\gamma=125$), firing sustains at 43.93\,Hz (H1) /
+43.65\,Hz (H2); H2 logs 25{,}302{,}899 events and 1{,}112{,}771 weight
+flips, Hamming distance to the imported state: 87{,}119 of 261{,}632
+(33.30\%; H1: 25.73\% on 6$\times$-repeated text ---
+more text diversity, more drift). Pairing was perfectly symmetric
+(post-leads $=$ pre-leads $=$ 7{,}030{,}561), and the mechanism label
+--- \textsc{pairing-selective, clamp-rectified}, exactly as
+pre-registered-expected --- matches the post-fix substrate physics:
+net-negative raw drift, zero-floor absorption, applied residue
+potentiates (Sec.~\ref{sec:substrate}). Export checkpoints are
+monotone in dose (61{,}210 $\to$ 71{,}381 $\to$ 80{,}391 $\to$ 87{,}119
+changed cells), every export re-reads clean through the format bridge,
+and the 100\%-checkpoint export is asserted byte-identical to the plain
+export (sha $71\mathrm{f}2518\mathrm{a}\ldots$) --- the checkpointing
+machinery itself perturbs nothing. Both runs are deterministic:
+independent double-runs produce byte-identical exports.
+
+The artifact that exits this section --- a shipped-quantized LLM whose
+declared chunk was re-written by the model's own activity flowing
+through a spiking substrate --- is exactly the artifact whose
+downstream behavioral fate the next section adjudicates.

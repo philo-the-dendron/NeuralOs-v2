@@ -13,9 +13,10 @@ cd "$(dirname "$0")/.."
 PATTERN='\<(steers?|steering|steered|editing|edited|editor|edit|verified-attribution)\>'
 STATUS=0
 for f in sections/*.tex main.tex; do
-  # strip %%ALLOW%%-marked lines before matching
-  offenders=$(grep -v '%%ALLOW%%' "$f" | grep -inE "$PATTERN" /dev/stdin \
-    | sed "s|/dev/stdin|$f|")
+  # strip comments (% ...) and %%ALLOW%%-marked lines before matching —
+  # only rendered prose is gated
+  offenders=$(grep -v '%%ALLOW%%' "$f" | sed 's/%.*$//' \
+    | grep -inE "$PATTERN" /dev/stdin | sed "s|/dev/stdin|$f|")
   if [ -n "$offenders" ]; then
     echo "LANGUAGE VIOLATION in $f:"
     echo "$offenders"
