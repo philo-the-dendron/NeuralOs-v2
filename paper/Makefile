@@ -1,5 +1,7 @@
 # NeuralOS v2 paper — build, figures, gates.
-FIGPYTHON ?= $(shell if [ -x /tmp/opencode/figvenv/bin/python ]; then echo /tmp/opencode/figvenv/bin/python; else echo python3; fi)
+# Figures python: repo-local venv if present (python3 -m venv .figvenv &&
+# .figvenv/bin/pip install matplotlib), else system python3.
+FIGPYTHON ?= $(shell if [ -x ./.figvenv/bin/python ]; then echo ./.figvenv/bin/python; else echo python3; fi)
 TEX := $(shell if command -v tectonic >/dev/null; then echo tectonic; \
         elif command -v latexmk >/dev/null; then echo latexmk -pdf; \
         elif command -v pdflatex >/dev/null; then echo pdflatex; \
