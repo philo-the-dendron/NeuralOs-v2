@@ -1031,6 +1031,33 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-20 (sI-v4, THREE SEALS COMMITTED BEFORE THE PRIMARY CHAIN'S
+    TABLES ARE READ — chain ETA ~2.5 h; these eliminate every remaining
+    discretionary surface) · **Seal 1 — VOID PROTOCOL for the primary
+    family:** void = mechanical evidence only (exit ≠ 0 / empty dump;
+    cause recorded as SUSPECTED memory pressure, hypothesis not fact —
+    the r10 stress precedent). Re-run once (the judge is deterministic
+    per file — a re-run after pressure clears is legitimate). Voids
+    twice → excluded, denominator adjusted and noted. No discretionary
+    calls with the verdict visible. **Seal 2 — p4 BANDS:** thresholded
+    = 0–1/10 dose-matched p4 flips · content-evidence = ≥5/10 · 2–4/10
+    = MIXED — reported, no p4 claim either way. **Seal 3 — LANGUAGE
+    PRE-ADJUSTMENT:** "steers" is pre-weakened to REACH/PRECIPITATION
+    language in the P5 skeleton, BOTH branches. Strongest honest
+    Branch-A claim: "the adaptation's content carries the reach — H2's
+    87,119 cells enter basins that equal-dose random cells don't."
+    The branches partially MERGE: even full Branch A is about which
+    doors open, not where the model walks. FOOTPRINT-MATCH becomes a
+    named adjudication row (H2 = {p2, p3} · stress = {p2, p3, p4} —
+    per-prompt footprint is the cleanest content signature in the
+    record). Banking note honored: the BASINS FINDING (stereotyped
+    destinations at 2× dose — p3 8/8 and p2 3/3 stress flips land the
+    identical continuations; flip-counts alone would have misread
+    "reproduces the signature" when the truth is "reproduces the
+    basin") enters P5's METHODOLOGY as the ladder working, not merely
+    limitations. Also recorded: stress r10-p3 was VOID (warmup death),
+    correcting the banked table to 8/9 valid.
+
 - 2026-08-20 (sI-v3, AMENDMENT COMMITTED BEFORE THE STRESS CHAIN'S
     TABLES ARE READ) · **THE SHUFFLE RUNG IS STRUCTURALLY IMPOSSIBLE
     FOR THIS PATCH — redefined as VALUE-FLIP ×3, with the uniqueness
