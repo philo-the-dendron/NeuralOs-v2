@@ -8,5 +8,6 @@ divergence under the in-vivo-adapted file (sha adcc7feabc82…), double-run.
 - invivo.log: the full Tier-1 run (G0 PASS tables, clamp caveat 69.8%,
   class-dissolution finding, counters).
 - invivo_export.log: the export (67,309 cells, 40,126 code bytes, scales 0).
-Baseline: evidence/session-f-judge + ISA ISC-67/82. Full p0–p4 × 2 runs:
-/tmp/opencode/se/invivo/ (cache; verdicts in the ISA).
+Baseline: evidence/session-f-judge + ISA ISC-67/82. Full p0–p4 × 2 runs
+were a /tmp cache, since expired — verdicts live in the ISA;
+regenerate the judge with `bash tools/build_fork.sh` + the flags above.

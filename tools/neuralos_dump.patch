@@ -1,0 +1,34 @@
+--- a/tools/completion/completion.cpp
++++ b/tools/completion/completion.cpp
+@@ -706,6 +706,31 @@
+ 
+         if ((int) embd_inp.size() <= n_consumed && !is_interacting) {
+ 
++            // NEURALOS_DUMP: raw top-10 pre-sampler logits (judge instrument).
++            static const bool neuralos_dump = (getenv("NEURALOS_DUMP") != nullptr);
++            if (neuralos_dump) {
++                const float * lg = llama_get_logits_ith(ctx, -1);
++                const int32_t n_v = llama_vocab_n_tokens(vocab);
++                struct neuralos_pair { llama_token id; float v; };
++                neuralos_pair top[10]; int n_top = 0;
++                for (int32_t t = 0; t < n_v; ++t) {
++                    const float v = lg[t];
++                    if (n_top < 10 || v > top[n_top - 1].v) {
++                        int pos = (n_top < 10) ? n_top++ : 9;
++                        while (pos > 0 && top[pos - 1].v < v) { top[pos] = top[pos - 1]; --pos; }
++                        top[pos] = { (llama_token) t, v };
++                    }
++                }
++                static int neuralos_step = 0;
++                fprintf(stderr, "NEURALOS_DUMP step=%d n_out=%d:", neuralos_step++, n_top);
++                for (int k = 0; k < n_top; ++k) {
++                    char buf[32]; snprintf(buf, sizeof(buf), "%.4f", top[k].v);
++                    for (char * c = buf; *c; ++c) { if (*c == '.') *c = ','; }
++                    fprintf(stderr, " %d:%s", (int) top[k].id, buf);
++                }
++                fprintf(stderr, "\n");
++            }
++
+             const llama_token id = common_sampler_sample(smpl, ctx, -1);
+ 
+             common_sampler_accept(smpl, id, /* accept_grammar= */ true);
