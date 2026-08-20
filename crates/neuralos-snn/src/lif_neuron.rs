@@ -26,7 +26,7 @@
 //! steady total current at rest below ~**200 μA (E, τ=20 ms)** or ~**100 μA
 //! (I, τ=10 ms)** — the dead zone scales as `τ`/`dt_over_tau` — moves the
 //! membrane exactly zero, forever. The ternary substrate's recurrent pulses
-//! (weight/10 = ±12 μA at γ=125) sit deep inside that blindness.
+//! (weight/divisor, default 10 = ±12 μA at γ=125) sit deep inside that blindness.
 //! [`VoltageResolution::CentiMillivolt`] shrinks both dead zones 100× with
 //! the same `i16`, no float, and bit-identical arithmetic shape; the mV
 //! default exists so every recorded result in the lineage keeps its exact

@@ -11,6 +11,10 @@ pub mod synapse;
 pub mod trit;
 #[cfg(feature = "std")]
 pub mod network;
+#[cfg(feature = "std")]
+pub mod csr;
+#[cfg(feature = "std")]
+pub mod stats;
 #[cfg(feature = "simd")]
 pub mod simd;
 
