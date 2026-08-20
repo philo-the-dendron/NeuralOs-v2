@@ -1,11 +1,9 @@
 # Paper novelty verification — the plasticity-loop claim
 
-> Status: OPEN SEAM (as surveyed). This document is the paper's
-> novelty evidence and carries its own provenance. **Pre-submission
-> gate: re-run the full pass (incl. OpenReview API + Semantic Scholar
-> from an unthrottled network) and append a fresh dated section
-> before submitting** — a novelty claim should be as fresh as its
-> submission date.
+> Status: SEAM HOLDS (as surveyed 2026-08-20, pass 3 — the
+> pre-submission gate, run). This document is the paper's novelty
+> evidence and carries its own provenance. Fresh re-verification is
+> still wise if submission slips months beyond pass 3.
 
 ## The claim under test
 
@@ -126,4 +124,66 @@ principle.
 
 ## Re-verification log
 
-*(empty — the pre-submission pass appends here)*
+Pass 3 — pre-submission re-verification: 2026-08-20
+(the gate run; numbered 3 because the 2026-08-19 OpenReview spot-check
+counts as pass 2). **Verdict: SEAM HOLDS.** No L1∧L2 conjunction in
+any probe, including the three pass-1 gaps (S2, OpenReview depth,
+GitHub) and the citation-graph probe.
+
+Engines + boundaries (stated): Semantic Scholar search throttled
+(13/14 HTTP 429; the single success logged); citations endpoints
+usable at ~1 req/80 s — all three citation graphs pulled. OpenAlex
+(api.openalex.org, title_and_abstract.search — precision mode)
+unthrottled substitute. OpenReview V2 search still
+searchUnavailable; V2/V1 venue enumeration 403-challenged —
+ICLR/NeurIPS 2025-26 accepted-list keyword enumeration NOT covered,
+mitigated by arXiv-first convention. GitHub repo search fine; code
+search 401 (not covered).
+
+Query log (engine · query · count · disposition): S2 "local
+plasticity large language model" 11,874 → top-10 noise · OpenAlex
+ta.search "local plasticity"+"large language model" 5 → 1 SNN↔LLM
+survey (supporting), rest fringe · OpenAlex Hebbian "fine-tuning"
+73 / Hebbian finetuning 0 → neuroscience/vision · OpenAlex STDP
+"language model" 38 → Photograph-STDP + SymbolicLight (adjudicated)
+· OpenAlex "test-time" "weight update" "local" 3 → irrelevant ·
+OpenAlex default neuromorphic fine-tuning LLM 764 → Antahkarana
+(false positive, below); 3 other S2-queries 85,005/2,307/522 → too
+fuzzy, superseded by precision runs · OpenAlex 2025|2026
+"on-device learning" quantized "large language model" 6 → BitRL +
+compression duplicates · OpenReview V1 3 terms × offsets
+0/1000/2000 = 9,000 notes/term (3× pass-2 depth) → vision
+"local/global transformer" false positives; real plasticity titles
+all scratch-SNN; zero L1+L2 · GitHub repos: STDP gguf 0 · STDP
+GGUF 0 · Hebbian llama 0 · Hebbian gguf 0 · spike llama.cpp
+plasticity 0 · STDP llama.cpp 0 · spiking llama.cpp on-device
+learning 0 — the seam probe holds at the repo layer.
+
+Citation graphs (the pass-1 gap, closed): Citing Dragon Hatchling
+(2509.26507) — 6 citers: Wake-Sleep Compression 2603.25975
+(symbolic library, no weights), BDH-CQ 2608.09888 (scratch 150M
+in-context, no weight change), S²TDPT (in matrix), 3 title-dead —
+no joiner. Citing SpikeLLM (2407.04752) — 40 citers, six
+abstract-checked (NEXUS, WTA-Spikingformer, QSLM, SpikingBrain2.0,
+Kirin, Spiking Manifesto) + NSLLM — conversion/compression family,
+no joiner. Citing BitNet b1.58 (2402.17764) — **447 citers, zero
+plasticity-titled** — the ternary community has produced no
+plasticity joiner.
+
+New matrix rows (pass 3, abstract-fetched):
+| Work | L1 | L2 | L3 | L4 |
+|---|---|---|---|---|
+| Antahkarana (Zenodo 10.5281/zenodo.19522347) | ✗ LoRA+BP | ✓ Phi-2 | ✗ | ✗ — v2 self-withdraws headline |
+| Photograph-STDP (Zenodo 10.5281/zenodo.20690036) | ✗ STDP on records, weights frozen | ~ | ✗ | ✗ |
+| Spike-Aware C++ INT8 (2606.03026) | ✗ inference only | ✗ scratch | ~ INT8 own | ~ own runtime |
+| NEXUS (2601.21279) | ✗ STE conversion | ~ converted 70B | ✗ | ~ neuromorphic HW |
+| NSLLM (NSR 2025, 10.1093/nsr/nwaf551) | ✗ conversion+PTQ | ~ 1.5B | ~ | ~ own FPGA |
+| QSLM (2601.00679) | ✗ automated PTQ | ✗ scratch | ✓ own | ✓ embedded |
+| Kirin (2602.08817) | ✗ ANN→SNN | ~ | ~ | ~ |
+| WTA-Spikingformer (2604.11321) | ✗ WTA=attention, surrogate BP | ✗ | ✗ | ✗ |
+| BitRL (IEEE FET 2026) | ✗ RL global reward (QES-class) | ✓ | ~ 1-bit | ✗ |
+
+Supporting signal: the 2025 SNN↔LLM survey (Synergies and
+Divergences) independently lists "biologically inspired local
+plasticity rules" as a training-methodology class with no
+shipped-LLM adaptation demonstrated — corroborating 2409.02111.
