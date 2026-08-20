@@ -1031,6 +1031,38 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-20 (sI, AMENDMENT COMMITTED BEFORE THE STRESS CHAIN'S
+    RESULTS ARE READ — the pre-registration discipline itself) ·
+    **NULL FAMILY v2: dose-matched primary + stress arm + shuffle
+    rung.** The pre-mortem found the category error: the running
+    null_patches census-matched TRANSITION totals (1,112,771 flips)
+    as CELL placements — flips ≠ cells (H2 averaged ~12.8
+    flips/cell; terminal patch 87,119 cells; the running family
+    landed ~178k). That family is RELABELED THE STRESS ARM,
+    report-only: stress flips contextualize, NEVER adjudicate.
+    **PRIMARY FAMILY v2:** dose-matched ×10 — exactly 87,119
+    changed cells, composition from the H2 TERMINAL DIFF (decode
+    the H2 patched GGUF's 512×512 slice vs the original; positions
+    AND values from the artifact, never re-run). **Adjudication:**
+    the sH2 conjunct (a)–(d) binds on the PRIMARY family;
+    escalation 0–1/10 → n=20, seeds 11–20 pre-generated now.
+    **Census keying (clarification):** the knife-edge set is θ=0.05
+    on BASELINE margins (model properties before perturbation);
+    the patched side is an outcome, never a key. **Shuffle ×3 bar
+    (pre-stated):** "reproduces the signature" = ≥10/12 p3 flips OR
+    the p3 step-1 knife-edge crossing; anything less = does NOT
+    reproduce. **Shuffle gotcha:** the value permutation is
+    conditioned on new ≠ source (re-draw); a shrunk dose ABORTS
+    loudly, never silently. **Tables:** knife-edge flips AND total
+    flips per prompt, side by side — a primary-null p2 flip kills
+    "nulls quiet" even off the baseline knife-edge set. **Replicates
+    parity gate:** the embeddings-only capture path must first
+    re-run H2 and match export sha 71f2518a… (or the recorded drive
+    stats: RMS 0.0447, k=10060.46, clamp 69.477%, dim-199 1786×)
+    before any rung-4 replicate counts as a replicate. **Scope
+    trim:** KLD breadth is the first drop if morning tables demand
+    any re-run.
+
 - 2026-08-19 (sH2, PRE-REGISTERED AND COMMITTED BEFORE ANY CODE —
     the new precedence rule's first live use) · **THE H2
     REGISTRATION v2 + THE NULL-LADDER DECISION RULE v2.** H1's
