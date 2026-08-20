@@ -1,1 +1,105 @@
-% WIP: filled by its own commit on paper-draft.
+\section{Related work}
+\label{sec:related}
+
+The novel intersection this paper occupies is the conjunction
+L1$\wedge$L2: \emph{local, online plasticity} (STDP/Hebbian class ---
+no backpropagation, no gradient, no loss-guided search) applied to
+\emph{a pretrained production LLM's weights}. The export (L3) and
+foreign-execution (L4) links are presented as closure of a chain, not
+as novelty: the ternary ecosystem ships both natively. The field's
+own literature marks the seam open: the large-SNN survey
+\citep{surveylargesnn} lists only ANN$\to$SNN conversion and
+surrogate-gradient backpropagation as training paradigms, and
+\citet{rajendran2023future} name backprop-free on-device learning as
+a \emph{future} neuromorphic principle; a 2025 SNN--LLM survey
+reaches the same gap independently.
+
+We verified the seam with three survey passes (2026-08-18/19/20:
+arXiv, DuckDuckGo, direct fetches; OpenReview V1 API at
+3$\times$1{,}000-note depth; OpenAlex precision queries; Semantic
+Scholar citation graphs on the three nearest anchors; GitHub repo
+search). Full query logs and boundaries are in the repository's
+novelty document; the pass-3 verdict --- \emph{no L1$\wedge$L2
+conjunction found} --- is the pre-submission gate this paper's
+timestamp claim rests on. Table~\ref{tab:matrix} is the resulting
+matrix, every entry fetched at the source.
+
+\begin{table*}[t]
+\centering
+\caption{The L1--L4 matrix (pass 1: 2026-08-18, entries 1--16;
+pass 3: 2026-08-20, entries 17--25). Every entry was fetched and read
+at its source. \checkmark$=$ link present, $\sim$ $=$ partial, 
+$\times$ $=$ absent. No entry satisfies L1$\wedge$L2.}
+\label{tab:matrix}
+\small
+\begin{tabular}{clcccc}
+\toprule
+\# & Work & L1 local plasticity & L2 shipped LLM & L3 quant re-export & L4 foreign run \\
+\midrule
+1 & SpikeGPT \citep{spikegpt} & $\times$ (BPTT, self-described) & $\times$ scratch & $\times$ & $\times$ \\
+2 & SpikeLLM \citep{spikellm} & $\times$ (conversion in OmniQuant/GPTQ) & \checkmark\ 7--70B & $\times$ W4A4 own & $\times$ \\
+3 & SpikingBERT \citep{spikingbert} & $\times$ (implicit diff + distill.) & $\times$ & $\times$ & $\times$ \\
+4 & Bal et al.\ \citep{bal2024sparsellm} & $\times$ distillation & $\times$ & $\sim$ own 1/1.58-bit, GLUE-scale & $\times$ \\
+5 & Dragon Hatchling \citep{dragonhatchling} & \checkmark\ Hebbian spiking & $\times$ scratch GPT-2-class & $\times$ & $\times$ \\
+6 & Chaudhary \citep{chaudary2025} & \checkmark\ neuromod.\ Hebbian fast weights & $\times$ toy scratch & $\times$ & $\times$ \\
+7 & Bio-Inspired Mamba \citep{biomamba} & $\sim$ STDP-like + RTRL & $\times$ & $\times$ & $\times$ \\
+8 & S$^2$TDPT \citep{s2tdpt} & \checkmark\ STDP attention & $\times$ CIFAR vision & $\times$ & $\times$ \\
+9 & EMBER \citep{ember} & \checkmark\ STDP+reward SNN & $\times$ LLM frozen, untouched & $\times$ & $\times$ \\
+10 & AlphaEdit \citep{alphaedit} & $\times$ offline null-space LSQ %%ALLOW%% (field's own name; not our term)
+  & \checkmark & $\times$ fp & $\times$ \\
+11 & In-Place TTT \citep{inplacettt} & $\times$ gradient inner loops & \checkmark & $\times$ & $\times$ \\
+12 & MeZO-class ZO tuning \citep{mezocluster} & $\times$ global loss-guided search & \checkmark & $\times$ & $\times$ \\
+13 & QES \citep{qes} & $\times$ evolution strategies & \checkmark & $\sim$ PTQ INT4/8, in-place & $\sim$ vLLM via own harness \\
+14 & CAT-Q \citep{catq} & $\times$ calibration PTQ & \checkmark\ 14B--235B$\to$ternary & $\sim$ no GGUF/i2\_s bridge & $\times$ \\
+15 & BitDistill \citep{bitdistill} & $\times$ BP distillation & $\sim$ converts FP$\to$1.58-bit & $\sim$ bitnet.cpp-class & $\sim$ bitnet.cpp \\
+16 & llama.cpp finetune \citep{llamacpp} & $\times$ ggml autodiff $=$ BP & $\sim$ & \checkmark\ in-GGUF & $\times$ same toolchain \\
+\midrule
+17 & Antahkarana \citep{antahkarana} & $\times$ LoRA+BP & \checkmark\ Phi-2 & $\times$ & $\times$ \\
+18 & Photograph-STDP \citep{photographstdp} & $\times$ STDP on records, weights frozen & $\sim$ & $\times$ & $\times$ \\
+19 & Spike-Aware C++ INT8 \citep{spikeaware} & $\times$ inference only & $\times$ scratch & $\sim$ INT8 own & $\sim$ own runtime \\
+20 & NEXUS \citep{nexus} & $\times$ STE conversion & $\sim$ converted 70B & $\times$ & $\sim$ neuromorphic HW \\
+21 & NSLLM \citep{nsllm} & $\times$ conversion+PTQ & $\sim$ 1.5B & $\sim$ & $\sim$ own FPGA \\
+22 & QSLM \citep{qslm} & $\times$ automated PTQ & $\times$ scratch & \checkmark\ own & \checkmark\ embedded \\
+23 & Kirin \citep{kirin} & $\times$ ANN$\to$SNN & $\sim$ & $\sim$ & $\sim$ \\
+24 & WTA-Spikingformer \citep{wtaspikingformer} & $\times$ WTA$=$attention, surrogate BP & $\times$ & $\times$ & $\times$ \\
+25 & BitRL \citep{bitrl} & $\times$ RL global reward (QES-class) & \checkmark & $\sim$ 1-bit & $\times$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\paragraph{The three nearest neighbors.}
+\textbf{QES} \citep{qes} holds L2 and half of L3/L4 --- quantized-space
+adaptation of PTQ models with vLLM serving --- but its search is a
+global evolutionary loss loop, not local online plasticity, and the
+portable GGUF-class export is absent. \textbf{Dragon Hatchling}
+\citep{dragonhatchling} holds L1 --- Hebbian spiking plasticity inside
+an LLM --- on a scratch GPT-2-class model where plasticity acts as
+transient working memory, not weight adaptation. \textbf{BitDistill +
+bitnet.cpp} \citep{bitdistill,bitnnetcpp} proves our L3/L4 half
+exists natively for ternary weights ($i2_s$, foreign CPU runtime);
+its adaptation is BP distillation/QAT throughout. The nearest
+knowledge-modification lines --- the locate-then-modify family
+\citep{alphaedit}, test-time training \citep{inplacettt}, zeroth-order
+tuning \citep{mezocluster} --- are gradient- or search-driven by
+construction and stop before portable re-export; they are the ladder's
+natural comparison class for adjudication design, not competitors on
+the seam.
+
+\paragraph{Supporting signal.}
+The 447-citation graph of BitNet b1.58 \citep{bitnet158} contains
+zero plasticity-titled successors; the large-SNN survey
+\citep{surveylargesnn} lists no local-plasticity training paradigm at
+LLM scale; \citet{rajendran2023future} mark the capability as future
+work. The seam is open in the field's own record, independently of
+this survey.
+
+\paragraph{Boundaries of the survey, stated.}
+Semantic Scholar search was throttled (13/14 requests 429; one
+success logged; citation endpoints usable at $\sim$1
+request/80\,s); OpenReview V2 search was unavailable (V1 covered at
+3$\times$1{,}000 relevance depth per term); GitHub \emph{code}
+search returned 401. A paper with no arXiv mirror at a closed venue
+could escape this net --- priced low under the arXiv-first
+convention, but nonzero. The seam claim is ``first as surveyed,
+2026-08-20, boundaries stated,'' and the pre-submission re-pass is a
+standing gate.
