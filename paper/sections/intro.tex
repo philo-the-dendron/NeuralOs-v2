@@ -1,0 +1,92 @@
+\section{Introduction}
+\label{sec:intro}
+
+Two research communities have arrived, independently, at the same
+weight alphabet. Ternary large language models --- BitNet-class
+systems shipped in $\{-1, 0, +1\}$ quantizations with integer
+runtimes \citep{bitnet158,bitnnetcpp} --- put a three-symbol weight
+world into production. Spiking neural networks compute natively in
+that same integer regime, and their local, online plasticity rules
+(STDP, Hebbian learning) update weights without backpropagation,
+gradients, or loss-guided search. The literatures do not cite each
+other, and --- as of this paper's surveyed date, with the field's own
+surveys marking the gap open \citep{surveylargesnn,rajendran2023future} ---
+no work has joined them: no published system applies local plasticity
+to a shipped production LLM's weights.
+
+This paper is the record of joining them, with the honesty that
+turned out to require. We present \system{}, a
+\texttt{no\_std} \texttt{i16} fixed-point spiking substrate whose
+format bridge speaks the shipped ternary formats byte-exactly
+(Sec.~\ref{sec:substrate}--\ref{sec:bridge}), and the closed loop it
+enables (Sec.~\ref{sec:loop}): import a real 4B Q2\_0 LLM's weight
+tensor into the spiking substrate, drive the substrate with
+\emph{the model's own activations} (Sec.~\ref{sec:invivo}), let local
+plasticity adapt the imported weights, re-export through the bridge
+byte-exactly into a copy of the shipped file, and hand that file to a
+pinned foreign runtime --- a llama.cpp fork --- which executes it.
+Every step is deterministic and byte-audited; a control export
+carries unadapted trits through the identical machinery and comes out
+byte-identical to the original.
+
+The loop closes. The adapted file measurably shifts the foreign
+runtime's logits (60/60 generation steps at every judged footprint),
+and the in-vivo-adapted file changes greedy continuations on 2 of 5
+frozen prompts. The question that decides whether any of that is a
+\emph{capability} is: do those changes carry the adaptation's
+content, or would equal-dose random perturbation do the same? We
+answered it with a pre-registered null ladder --- margin census,
+dose-matched random families, a value-flip family, sibling prompts, a
+report-only stress arm, three sealed rules --- committed in full
+before any null table was read (Sec.~\ref{sec:adjudication}). The
+verdict, by rule: the changes failed every pre-registered criterion.
+Eight of ten equal-dose random perturbations land the in-vivo run's
+exact destination. The term of record is \unattrib{}.
+
+We report that negative as a first-class result for three reasons.
+First, it was \emph{our} false positive to catch: the project's own
+ledger, pre-adjudication, recorded the continuation change as a
+capability demonstration (quoted verbatim in
+Sec.~\ref{sec:averted}); only the pre-committed rule reversed the
+authors' first reading. Flip-count evidence in this regime publishes
+false positives. Second, the negative is structurally informative:
+the model has generic destination basins that equal-dose noise
+reaches at high probability, its knife-edges are fragile to
+perturbation magnitude, and --- by a theorem this paper proves from
+the terminal diff's composition --- content and placement are
+formally entangled at this composition, so the natural control rung
+does not exist (Sec.~\ref{sec:discussion}). Third, what survives is
+exactly the infrastructure claim the title makes: a spiking substrate
+that reads a shipped quantized LLM's arrangement, adapts under its
+own activations, and round-trips its weights through the production
+format into foreign tooling --- first as surveyed, with the survey's
+boundaries stated and the pre-submission re-verification standing as
+a gate (Sec.~\ref{sec:related}).
+
+\paragraph{Contributions.}
+\begin{itemize}
+\item \textbf{The substrate and bridge} (Sec.~\ref{sec:substrate},
+  \ref{sec:bridge}): a published, \texttt{no\_std}, integer-only SNN
+  library with byte-exact two-way ternary format bridges, and the
+  falsification-driven discovery of a structural transmission bug
+  whose fix reversed the substrate's plasticity mechanism ---
+  a case study in pre-registered debugging inside infrastructure.
+\item \textbf{The loop} (Sec.~\ref{sec:loop}--\ref{sec:invivo}): the
+  L1--L4 chain closed on a shipped 4B Q2\_0 LLM --- local plasticity
+  under the model's own drive, byte-audited re-export, foreign
+  execution, control identity --- with the substrate's
+  arrangement-reading result under both synthetic and in-vivo drives
+  (n=1, caveats in-text).
+\item \textbf{The adjudication} (Sec.~\ref{sec:adjudication}): a
+  pre-registered null ladder that refutes content-attribution at this
+  composition and reports \unattrib{} --- including the two rungs we
+  believe are novel: a composition-specific null-feasibility theorem,
+  and destination-basin analysis, which together caught the false
+  positive the authors' own first reading had become.
+\end{itemize}
+
+The remainder of the paper: Discussion of what would have counted and
+why the negative informs (Sec.~\ref{sec:discussion}); related work and
+the survey matrix (Sec.~\ref{sec:related}); limitations, pre-registered
+(Sec.~\ref{sec:limitations}); destination transcripts and full
+reproducibility material in the appendices.

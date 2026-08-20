@@ -1,0 +1,55 @@
+\section{Limitations}
+\label{sec:limitations}
+
+The boundaries below were written before, during, and after the
+adjudication as standing armor --- most pre-date the results they
+bound.
+
+\paragraph{Sample size.} One slice (512$\times$512 of one tensor), one
+model (a 4B Q2\_0 LLM), one seed per run. The substrate's
+arrangement-reading claim is a sensitivity result on that single
+configuration; replicates $\times$3 were scoped ($\sim$25\,h wall),
+deferred, and would upgrade the substrate and sensitivity claims
+without being able to resurrect the adjudicated one. The n=1 caveat
+is load-bearing for every measured claim in this paper.
+
+\paragraph{The confounded correction.} H1 vs.\ H2 varies text
+(1\,KB$\to$12\,KB corpus), repetition (6$\times\to$1$\times$), and
+gain together --- by design of the corpus-infidelity correction, not
+by accident. The de-confound arm (true corpus head $\times$ 6 epochs)
+is named and unrun.
+
+\paragraph{Sign-dominant drive.} 69.5--69.8\% of dim-steps railed at
+the clamp (Sec.~\ref{sec:invivo}); the effective drive is
+sign-dominant. Per-dimension standardization is the named, unapplied
+fix; amplitude-graded claims are not available on this protocol.
+
+\paragraph{Null-family boundaries.} The value-flip family changes the
+terminal diff's value multiset \emph{by design} (reflection where
+legal) --- it tests value-sensitivity, not a uniform permutation; the
+uniform-permutation rung does not exist at this composition
+(Thm.~\ref{thm:shuffle}). The stress arm's $\approx$2$\times$ dose is
+census-matched approximation, report-only by pre-registration.
+
+\paragraph{Judge scope.} Greedy decoding only, 12 generated tokens,
+five frozen prompts, one pinned foreign runtime (fork commit
+\texttt{9ca265a}; version-bump robustness untested --- named
+follow-up). KLD breadth across corpora was scoped and dropped.
+Continuation-level claims are bounded by exactly this protocol.
+
+\paragraph{Footprint.} The declared chunk is $0.5\%$ of one layer of
+36; wider exports were a named follow-on contingent on a capability
+verdict, which the adjudication refused --- the widening question is
+now moot for this paper and open for whoever resumes it.
+
+\paragraph{Survey boundaries.} The seam claim is ``first as
+surveyed,'' with the engine gaps stated in
+Sec.~\ref{sec:related}; the re-verification gate stands.
+
+\paragraph{What the negative does not mean.} The adjudication refutes
+content-attribution \emph{at this composition, dose, and protocol} ---
+it does not establish that local plasticity cannot carry content in a
+quantized LLM, and the entanglement theorem shows this artifact
+cannot even pose the placement-vs-content question without exiting
+its composition. Both boundary statements are the pre-registered
+armor, applied verbatim.

@@ -1,0 +1,74 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{What would have counted as content.}
+The ruling of Sec.~\ref{sec:adjudication} is only as meaningful as
+the result it refused, so we state the conjunct's positive side
+concretely. Content-attribution would have required all four arms at
+once: the in-vivo file's margin shift at every knife-edge exceeding
+the worst null (here $0.0798$ vs.\ $0.2254$); the null family quiet on
+the knife-edge set at $\le 1/10$ (here $8/10$); the in-vivo dose
+response leaving the null band at every checkpoint; and effects
+concentrated on the weekday circuit against off-circuit negatives.
+The design could have produced that outcome --- the arms are
+contingent facts about basins, not tautologies --- which is what makes
+the negative informative rather than vacuous.
+
+\paragraph{Why the negative is informative: three structural facts.}
+First, \emph{basins}. The model's prompt-neighborhood has stereotyped
+destinations, and an equal-dose random walk lands in them at high
+probability (8/10 into H2's exact p3 continuation). Continuation
+changes at this dose are therefore weak evidence about \emph{what}
+caused them; only a destination (or statistic) that noise cannot reach
+would be. Flip-counts read ``reproduces the signature'' where the
+truth is ``reproduces the basin'' --- the distinction our own first
+reading missed (Sec.~\ref{sec:averted}).
+
+Second, \emph{dose}. The stress arm shows the p3 knife-edge is
+fragile to perturbation \emph{magnitude}: at $\approx$2$\times$ dose,
+i.i.d.\ noise of this composition flips it 8/9 (with the ninth void).
+Attribution questions at one dose sit inside a landscape where
+magnitude alone moves the observed quantity substantially.
+
+Third, \emph{entanglement}. Theorem~\ref{thm:shuffle} is not a
+technicality: at this terminal-diff composition, content and placement
+are formally inseparable --- no value-permutation null exists, so
+``the same cells, different values'' is not even definable without
+exiting the composition (a terminal diff containing $-1$s, or scale-bit
+changes, would restore the rung). Any future content claim on this
+artifact class must either face that or engineer around it.
+
+\paragraph{One quantified footprint sentence --- and its boundary.}
+Pooling the primary family's per-prompt flip rates, a single
+equal-dose noise draw opens at least H2's footprint $\{p2, p3\}$ ---
+and p4 besides --- with probability $0.4 \times 0.8 \times 0.6 \approx
+19\%$. We present this as context, not a claim: the per-prompt rates
+come from pooling ten draws, so the product prices a single draw
+against a union of ten --- the comparison that motivated cutting the
+stronger ``noise reaches more doors'' reading from this paper's claims.
+
+\paragraph{The honest boundary of the capability claim.}
+What stands after the adjudication is exactly the outline of
+Sec.~\ref{sec:invivo}--\ref{sec:loop}: a closed, deterministic,
+byte-audited pipeline in which a shipped quantized LLM's declared
+weight chunk is re-written by local plasticity under the model's own
+activations and re-executed by foreign tooling, with control identity
+and containment asserted in-loop --- and in which the resulting
+behavioral changes are, by pre-registered rule, \unattrib{}. The
+substrate's arrangement-reading result (one slice, one model, one
+seed) and the loop's 60/60 logit sensitivity are measured facts. What
+we do \emph{not} have is evidence that the adaptation's content ---
+as opposed to its dose --- drives anything the judge can see.
+
+\paragraph{What the method costs, and buys.}
+Pre-registering the ladder before the authors could see the null
+tables is clinical-trial practice, imported whole: sealed void
+protocol, pre-stated bands, pre-weakened language, a mechanical
+ruling. The cost was real (the capability reading died by our own
+rule). The buy is the paper's sharpest result: the demonstration,
+on ourselves, that flip-count evidence in this regime publishes false
+positives, and that a two-rung null ladder --- feasibility first,
+destination basins second --- catches what neither intuition nor
+counts catch. We suspect this regime property is not specific to
+spiking substrates; any local, dose-heavy adaptation of a fragile
+quantized model faces the same basin statistics.

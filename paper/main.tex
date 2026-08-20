@@ -1,0 +1,66 @@
+% NeuralOS v2 — Branch B paper. arXiv-ready article class.
+% Build:  make            (tectonic, or latexmk/pdflatex if installed)
+% Figs:   make figs       (python3 + matplotlib; see figs/README.md)
+% Gate:   make gate       (language rules of record — must pass)
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+\usepackage{url}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{remark}{Remark}
+
+% Term of record (seal 3 + the adjudication ruling): the adaptation's
+% downstream effects are UNATTRIBUTED PERTURBATION. The words "steers"
+% and "editing" are banned everywhere except (i) the verbatim ISC-82
+% quotation in Sec. 6 and (ii) the literature's own names in Sec. 8.
+% Enforced by `make gate`.
+
+\newcommand{\system}{\textsc{NeuralOS}}
+\newcommand{\unattrib}{\emph{unattributed perturbation}}
+
+\title{A Spiking Substrate That Reads and Round-Trips a Shipped
+  Quantized LLM's Weights}
+
+\author{%
+  Caramoussin\thanks{Independent. Code and evidence:
+  \url{https://gitea.com/Caramoussin/NeuralOs-v2} (AGPL-3.0).}%
+}
+\date{Draft of 2026-08-20\quad---\quad Branch B (paper-draft)}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+% ABSTRACT-LAST: written in the final commit, once body language has
+% settled. Skeleton (docs/PAPER_OUTLINE.md): substrate bullet carries
+% the clamp caveat; adjudication is bullet 2; loop; surviving findings;
+% method rungs.
+\input{sections/abstract}
+\end{abstract}
+
+\input{sections/intro}
+\input{sections/substrate}
+\input{sections/bridge}
+\input{sections/loop}
+\input{sections/invivo}
+\input{sections/adjudication}
+\input{sections/discussion}
+\input{sections/related}
+\input{sections/limitations}
+
+\appendix
+\input{sections/app-transcripts}
+\input{sections/app-repro}
+
+\bibliographystyle{unsrtnat}
+\bibliography{refs}
+
+\end{document}

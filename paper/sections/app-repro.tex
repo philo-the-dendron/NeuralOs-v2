@@ -1,0 +1,58 @@
+\section{Reproducibility}
+\label{app:repro}
+
+\paragraph{Source and license.} All code, evidence logs, and the ISA
+experiment ledger are in the repository
+(\url{https://gitea.com/Caramoussin/NeuralOs-v2}, AGPL-3.0-or-later).
+The substrate library is published as \texttt{neuralos-snn}
+\texttt{0.1.0-alpha.2} on crates.io (\texttt{no\_std} by default;
+the paper's runs used the workspace path dependency). Experiments are
+frozen executables (\texttt{crates/neuralos-rt/examples/}:
+\texttt{hybrid\_gate}, \texttt{hybrid\_loop}, \texttt{hybrid\_invivo},
+\texttt{hybrid\_sweep}, \texttt{hybrid\_sweep\_cmv},
+\texttt{null\_patches}); every run in this paper is reproducible by
+running them unmodified.
+
+\paragraph{Foreign runtime.} llama.cpp fork
+\texttt{PrismML-Eng/llama.cpp} pinned at commit \texttt{9ca265a}
+(branch \texttt{prism}; clone HEAD $==$ pin verified at build), plus
+the \texttt{NEURALOS\_DUMP} patch: env-gated, hook at the completion
+sample site, printing raw top-10 pre-sampler logits (one API rename,
+\texttt{llama\_vocab\_n\_tokens}). Built CPU-only (cmake 4.4.2);
+judge flags: greedy forced, \texttt{-t 4 -c 512 -n 12}, double-run
+per variant. Version-bump robustness is a named follow-up, untested.
+
+\paragraph{Seeds.} Census-matched control shuffle:
+\texttt{0x5EED\_C0DE\_0000\_0002} (Fisher--Yates). Primary dose
+nulls: \texttt{0xD05E\_0000\_0000\_0001 XOR seed}, seed $= 1..10$
+(escalation seeds 11--20 pre-generated, unused --- the conjunct
+failed decisively). All pinned as constants in the frozen examples.
+
+\paragraph{Artifacts and shas (sha256, prefixes as recorded).}
+\begin{itemize}
+\item Corpus: \texttt{evidence/corpus\_readme\_pinned.txt} ---
+  $18\mathrm{fb}5452\ldots$ (12{,}148 bytes, 4{,}411 tokens; first
+  2{,}000 driven, single truncated pass).
+\item Baseline model: \texttt{models/Ternary-Bonsai-4B-Q2\_0.gguf}
+  (4B Q2\_0; the 512$\times$512 slice of
+  \texttt{blk.0.attn\_q.weight} is the declared chunk).
+\item Control-mode export (unadapted trits): $4\mathrm{e}0
+  \mathrm{bf}8\mathrm{b}7\ldots$ --- byte-identical to the original.
+\item Synthetic-era patched export: $87078612\ldots$
+\item Hebbian-era patched export: $24\mathrm{ffe}5\mathrm{f}3\ldots$
+\item In-vivo H1 export: $\mathrm{adcc}7\mathrm{feabc}82\ldots$
+\item In-vivo H2 export: \texttt{71f2518a2d783cb409a3c06907a20bed
+  1f1b5688378fc7ea7e8a0f6e16d9749b} (dose checkpoints 61{,}210 / 71{,}381 /
+  80{,}391 / 87{,}119 cells; every export S2-clean).
+\item Null families: \texttt{evidence/session-i-primary/}
+  (dose $\times$10, value-flip $\times$3) and
+  \texttt{evidence/session-i-stress/} ($\approx$2$\times$ arm) ---
+  full judge logs, every draw.
+\end{itemize}
+
+\paragraph{Machine.} Intel Core i5-6200U (2 cores / 4 threads,
+2.30--2.80\,GHz), 15\,GiB RAM, Linux 6.8. Representative walls/peaks:
+H2 adaptation run 29{,}668\,s / 6{,}593\,MB; H1 2{,}298.6\,s /
+2{,}436\,MB; loop surgery 12.0\,s / 2{,}134\,MB. Determinism is
+asserted, not assumed: every double-run in the record is
+byte-identical (exports sha-compared; judge outputs diffed).

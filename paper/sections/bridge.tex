@@ -1,0 +1,67 @@
+\section{The format bridge}
+\label{sec:bridge}
+
+A substrate that cannot speak the shipping formats of the ternary
+world is a simulation; this section is the part that makes it an
+infrastructure claim. The bridge implements three wire formats, with
+layouts pinned \emph{verbatim from reference source code} --- not
+blogs, not model cards: BitNet \texttt{i2\_s} from
+\texttt{microsoft/BitNet}'s conversion script (import and export),
+and Prism \texttt{q1\_0}/\texttt{q2\_0} from the fork's
+\texttt{ggml-common.h} and \texttt{ggml-quants.c} (import;
+\texttt{q2\_0} two-way since the export codec landed). The
+\texttt{q2\_0} layout was re-pinned from the fork source plus the
+first real \texttt{q2\_0} file when the initial pin proved
+incomplete --- layouts earn their pinning the hard way here.
+
+\paragraph{One code table, three scale conventions.}
+All three formats encode a trit in 2 bits with the same table
+($00 \to -1$, $01 \to 0$, $10 \to +1$; $11$ unreachable-by-law,
+below), LSB-first within each byte. The scales differ and travel as
+\emph{raw bits}: \texttt{i2\_s} stores an f32's bits as a 32-byte row
+tail (BitNet-Round $\gamma = \mathrm{mean}|w|$); \texttt{q1\_0}
+stores fp16 bits per 128-weight block (the same $\gamma$ convention);
+\texttt{q2\_0} stores fp16 bits with $d = \max|w|$ (TWN-style). The
+library is integer-only, so fp16 scales are widened by
+\texttt{half\_to\_f32\_bits} --- a pure-integer, bit-exact widening
+--- and viewed in fixed point by \texttt{half\_to\_milli}
+($\mathrm{round}(v \times 1000)$, saturating, NaN $\to$ 0, all
+documented and tested).
+
+\paragraph{The transposed packing.}
+\texttt{i2\_s} does \emph{not} pack 4 sequential trits per byte. The
+reference reshapes a 128-block into $4 \times 32$ lanes and packs lane
+0 at bits 7--6, lane 1 at 5--4, lane 2 at 3--2, lane 3 at 1--0 of the
+same 32 bytes: element $i$ lives at byte
+$(i/128)\cdot 32 + (i \bmod 32)$, shift $6 - 2\lfloor (i \bmod
+128)/32 \rfloor$. This trips up every hand-rolled decoder; it is
+pinned here because it tripped up ours. The worked example in the
+format spec is byte-identical to the crate's unit-test vector.
+
+\paragraph{Byte identity, not almost.}
+The round-trip claims are byte-level and tested against real
+artifacts, not synthetic self-agreement:
+
+\begin{itemize}
+\item \texttt{i2\_s}: encode and decode are exact inverses; round-trip
+  property tests over random tensors, plus the known-vector and
+  golden-vector pins (decode$\,\circ\,$encode reproduces the pinned
+  reference bytes).
+\item \texttt{q2\_0} import on the real shipped file: a 253-block
+  probe decodes byte-exactly against the fork's own reader
+  (253/253), first block scale $0\mathrm{x}24\mathrm{c}8$ $=$ 18.68
+  milli $\max|w|$, trit census $+37 / 0{\times}43 / -48$ of 128 ---
+  the census the crate's tests still pin.
+\item \texttt{q2\_0} export: the exact byte-level inverse of the
+  decoder, re-using the file's original fp16 scale bits untouched
+  (Sec.~\ref{sec:loop}); decode$\circ$encode $=$ byte identity on
+  both pinned vectors, and code 3 (the value the reference quantizer
+  cannot produce) is \emph{unconstructible} --- every lane is written
+  from a \texttt{Trit}, so the encoder cannot emit the code the
+  ecosystem would reject.
+\end{itemize}
+
+The bridge's discipline is the paper's in miniature: every layout is
+pinned to a fetched reference source, every vector is real bytes from
+a real shipped model, and every claim of exactness is a test that
+would catch a one-bit drift.
