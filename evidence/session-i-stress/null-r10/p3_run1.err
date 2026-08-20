@@ -1,0 +1,8 @@
+0.00.005.827 I llama_completion: llama backend init
+0.00.005.858 I llama_completion: load the model and apply lora adapter, if any
+0.00.005.864 I common_init_result: fitting params to device memory ...
+0.00.005.865 I common_init_result: (for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on)
+0.00.743.446 I common_params_fit_impl: projected to use 1397 MiB of host memory vs. 15413 MiB of total host memory
+0.01.214.870 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+0.01.480.674 W llama_context: n_ctx_seq (512) < n_ctx_train (32768) -- the full capacity of the model will not be utilized
+0.01.561.334 I common_init_from_params: warming up the model with an empty run - please wait ... (--no-warmup to disable)
