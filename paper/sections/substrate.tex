@@ -147,5 +147,19 @@ potentiates. The examples compute the label from the counters (three
 cases: raw-LTP-dominant $=$ Hebbian-carried; raw-negative with
 applied-positive $=$ clamp-rectified; applied-negative $=$
 LTD-carried); this is the decomposition the in-vivo runs of
-Sec.~\ref{sec:invivo} inherit, and Fig.~\ref{fig:mechanism}
-(Sec.~\ref{sec:loop}) sketches its two rectification stages.
+Sec.~\ref{sec:invivo} inherit. Figure~\ref{fig:mechanism} sketches
+the two rectification stages: the weight clamp (raw drift
+net-negative, realized drift positive --- in both the synthetic and
+the in-vivo regime, with the counter arithmetic reconciling exactly)
+and the membrane's asymmetric climb barrier at the sticking point.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/mechanism.pdf}
+\caption{The two rectifiers behind the \textsc{clamp-rectified}
+mechanism. Left: counter waterfalls (thousands of cumulative
+plasticity delta); raw $-$ absorbed $=$ applied holds exactly in both
+regimes (asserted at render time from the recorded counters). Right:
+the pinned sticking-point physics.}
+\label{fig:mechanism}
+\end{figure}
