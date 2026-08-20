@@ -71,6 +71,16 @@ mod types {
 /// A metadata value — one of the 13 GGUF value types. Parse-edge data
 /// only: `F32`/`F64` variants carry file metadata as-parsed and never
 /// enter the compute path (the crate's integer-only doctrine).
+///
+/// # Array-of-u8 memory discipline (Session C item (c))
+///
+/// `Array(Vec<MetadataValue>)` costs ~32 bytes of heap per 1-byte
+/// element — a hostile `array of u8` blob inside a small file could
+/// legally demand ~32× the file size in RAM. The typed variant
+/// [`MetadataValue::ByteArray`] stores raw bytes (1 byte per element)
+/// and is what the parser now produces for u8 arrays. Consumers that
+/// need per-element access use `.as_byte_array()`; value-type checks
+/// stay loud.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetadataValue {
     U8(u8),
@@ -82,10 +92,26 @@ pub enum MetadataValue {
     F32(f32),
     Bool(bool),
     String(String),
+    /// Typed array (non-u8 element types — the compact representation
+    /// for these is bounded by their per-element cost already).
     Array(Vec<MetadataValue>),
+    /// `array of u8` — the memory-discipline variant (Session C (c)):
+    /// raw bytes, no per-element enum overhead.
+    ByteArray(Vec<u8>),
     U64(u64),
     I64(i64),
     F64(f64),
+}
+
+impl MetadataValue {
+    /// Byte view of a [`MetadataValue::ByteArray`] (empty otherwise).
+    #[must_use]
+    pub fn as_byte_array(&self) -> &[u8] {
+        match self {
+            Self::ByteArray(b) => b,
+            _ => &[],
+        }
+    }
 }
 
 /// One tensor's header info. `dims` holds `n_dims` entries (ggml row-major
@@ -407,6 +433,46 @@ impl<'a> GgufFile<'a> {
         Ok(&self.buf[start..end])
     }
 
+    /// Validate tensor-layout CONTIGUITY (Session C item (d)): tensor
+    /// offsets strictly increasing by header order, each offset aligned
+    /// to the file's alignment, and no gaps (each tensor's data runs
+    /// exactly into the next). The REAL model files we pin satisfy this
+    /// (the reference writer emits gapless aligned layouts, modulo
+    /// documented alignment padding on the LAST tensor's tail). This is
+    /// an OPT-IN check for callers that want the stronger guarantee
+    /// `tensor_data`'s inferred-end logic relies on for exactness —
+    /// hostile or unusual files fail loudly here instead of feeding
+    /// consumers gap-contaminated inferred slices.
+    ///
+    /// Returns the list of violations (empty = contiguous). Each entry:
+    /// (index, name, kind) where kind describes the breach.
+    pub fn contiguity_violations(&self) -> Vec<(usize, &str, &'static str)> {
+        let mut out = Vec::new();
+        let align = self.alignment.max(1);
+        let mut cursor = 0_u64; // expected next offset (relative)
+        for (i, t) in self.tensors.iter().enumerate() {
+            if t.offset % align != 0 {
+                out.push((i, t.name.as_str(), "offset not aligned"));
+            }
+            if t.offset <= cursor && i > 0 {
+                out.push((i, t.name.as_str(), "offset goes backwards (overlap)"));
+            } else if t.offset > cursor && i > 0 {
+                out.push((i, t.name.as_str(), "gap before tensor"));
+            }
+            cursor = t.offset;
+            // advance by the dims-derived size is the consumer's job
+            // (types vary); contiguity here checks ORDER+ALIGNMENT, the
+            // properties tensor_data's inference needs.
+        }
+        out
+    }
+
+    /// True when [`contiguity_violations`] is empty.
+    #[must_use]
+    pub fn is_contiguous(&self) -> bool {
+        self.contiguity_violations().is_empty()
+    }
+
     /// Look up a tensor by name.
     #[must_use]
     pub fn tensor(&self, name: &str) -> Option<&TensorInfo> {
@@ -451,6 +517,16 @@ fn read_value(r: &mut Reader<'_>, ty: u32, buf: &[u8]) -> Result<MetadataValue, 
                 return Err(GgufError::NestedArray);
             }
             let n = count(r, buf)?;
+            // Session C (c): u8 arrays parse into the compact ByteArray
+            // variant — a hostile blob can no longer demand ~32× the
+            // file size in per-element enum overhead.
+            if elem_ty == types::UINT8 {
+                let mut bytes = Vec::with_capacity(usize::try_from(n).map_err(|_| GgufError::BadCount(n))?);
+                for _ in 0..n {
+                    bytes.push(r.u8()?);
+                }
+                return Ok(V::ByteArray(bytes));
+            }
             let mut items = Vec::new();
             for _ in 0..n {
                 items.push(read_value(r, elem_ty, buf)?);
@@ -487,6 +563,9 @@ mod tests {
         fn u32(&mut self, v: u32) {
             self.0.extend_from_slice(&v.to_le_bytes());
         }
+        fn u8(&mut self, v: u8) {
+            self.0.push(v);
+        }
         fn u64(&mut self, v: u64) {
             self.0.extend_from_slice(&v.to_le_bytes());
         }
@@ -511,6 +590,16 @@ mod tests {
             self.u64(vals.len() as u64);
             for v in vals {
                 self.u32(*v);
+            }
+        }
+        /// `array of u8` KV — exercises the ByteArray parse path.
+        fn kv_arr_u8(&mut self, k: &str, vals: &[u8]) {
+            self.str(k);
+            self.u32(types::ARRAY);
+            self.u32(types::UINT8);
+            self.u64(vals.len() as u64);
+            for v in vals {
+                self.u8(*v);
             }
         }
         fn tensor(&mut self, name: &str, dims: &[u64], ty: u32, offset: u64) {
@@ -572,6 +661,69 @@ mod tests {
         let data = f.tensor_data(t).expect("slice");
         assert_eq!(data.len(), 18);
         assert_eq!(&data[..2], &0x3C00_u16.to_le_bytes());
+    }
+
+    /// Session C (c): u8 arrays parse into the compact ByteArray variant
+    /// (a hostile `array of u8` blob can no longer demand ~32× the file
+    /// size in per-element enum overhead).
+    #[test]
+    fn u8_arrays_parse_to_compact_bytearray() {
+        let mut w = W::new();
+        w.kv_str("general.architecture", "qwen3");
+        w.kv_arr_u8("tokenizer.ggml.tokens.hashes", &[0xAB; 512]);
+        w.counts(0, 2);
+        let bytes = w.finish(32, &[]);
+        let f = GgufFile::parse(&bytes).expect("parse");
+        match f.value("tokenizer.ggml.tokens.hashes") {
+            Some(MetadataValue::ByteArray(b)) => {
+                assert_eq!(b.len(), 512);
+                assert!(b.iter().all(|&x| x == 0xAB));
+            }
+            other => panic!("expected ByteArray, got {other:?}"),
+        }
+        // The view helper works; non-byte arrays still use the typed path.
+        assert_eq!(f.value("tokenizer.ggml.tokens.hashes").unwrap().as_byte_array().len(), 512);
+    }
+
+    /// Session C (d): contiguity validation — the sample file (one
+    /// aligned tensor at offset 0) is contiguous; crafted violations
+    /// (backwards offset, misalignment, gap) are named loudly.
+    #[test]
+    fn contiguity_validation_names_violations() {
+        let bytes = sample_file();
+        let f = GgufFile::parse(&bytes).expect("parse");
+        assert!(f.is_contiguous(), "single aligned tensor is contiguous");
+
+        // Gap + backwards: two tensors with offsets 0 then 0 → overlap.
+        let mut w = W::new();
+        w.kv_str("general.architecture", "qwen3");
+        w.kv_u32("general.alignment", 32);
+        w.counts(2, 2);
+        w.tensor("a.weight", &[128, 1], GGML_TYPE_Q1_0, 0);
+        w.tensor("b.weight", &[128, 1], GGML_TYPE_Q1_0, 0);
+        let block = vec![0u8; 36];
+        let bytes2 = w.finish(32, &block);
+        let f2 = GgufFile::parse(&bytes2).expect("parse");
+        assert!(!f2.is_contiguous());
+        let v = f2.contiguity_violations();
+        assert!(
+            v.iter().any(|(i, _, kind)| *i == 1 && kind.contains("backwards")),
+            "overlap flagged: {v:?}"
+        );
+
+        // Misalignment: offset 5 (not a multiple of 32).
+        let mut w3 = W::new();
+        w3.kv_str("general.architecture", "qwen3");
+        w3.kv_u32("general.alignment", 32);
+        w3.counts(1, 2);
+        w3.tensor("c.weight", &[128, 1], GGML_TYPE_Q1_0, 5);
+        let bytes3 = w3.finish(32, &[0u8; 64]);
+        let f3 = GgufFile::parse(&bytes3).expect("parse");
+        assert!(!f3.is_contiguous());
+        assert!(
+            f3.contiguity_violations().iter().any(|(_, _, k)| k.contains("aligned")),
+            "misalignment flagged"
+        );
     }
 
     #[test]
