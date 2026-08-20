@@ -1,1 +1,51 @@
-% WIP: filled by its own commit on paper-draft.
+\section{Destination transcripts (p2, p3)}
+\label{app:transcripts}
+
+Verbatim continuations (12 tokens, greedy, final newline rendered as
+$\langle\backslash$n$\rangle$), byte-identical across double-runs.
+Source files: \texttt{evidence/…/*\_run1.log} in the repository.
+
+\paragraph{p3 --- the generic basin.}
+\begin{tabular}{@{}ll@{}}
+\toprule
+baseline & Monday Tuesday Wednesday Thursday04/05/2018 \\
+H2 (in-vivo) & Monday Tuesday Wednesday Thursday
+$\langle\backslash$n$\rangle^{\times10}$ \\
+dose nulls d1/d2/d3/d5/d6/d8/d9/d10 & Monday Tuesday Wednesday
+Thursday $\langle\backslash$n$\rangle^{\times10}$ \\
+dose nulls d4/d7 & Monday Tuesday Wednesday Thursday04/05/2018 \\
+value-flips f1/f3 & Monday Tuesday Wednesday Thursday04:00~PM
+$\langle\backslash$n$\rangle$The following is a \\
+value-flip f2 & Monday Tuesday Wednesday Thursday04:00~PM 10:0 \\
+stress arm (8/9 valid) & Monday Tuesday Wednesday Thursday
+$\langle\backslash$n$\rangle^{\times10}$ \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\paragraph{p2 --- the full denominator of the 4/10 dose flips.}
+\begin{tabular}{@{}ll@{}}
+\toprule
+baseline & one two three four five six seven eight nine ten eleven
+twelve thirteen fifteen fifteen seventeen \\
+H2 (in-vivo) & one two three four five six seven eight nine ten
+eleven twelve fifteen seventeen seventeen eighteen \\
+dose null d3 & one two three four five six seven eight nine ten eleven
+twelve fifteen seventeen \textbf{twenty one} \\
+dose nulls d4/d6/d8 & one two three four five six seven eight nine ten
+$\langle\backslash$n$\rangle$What is the sum of \\
+value-flip f1 & one two three four five six
+$\langle\backslash$n$\rangle$1.\ 2.\ 3. \\
+value-flip f2 & one two three four five five six seven eight nine ten
+eleven twelve thirteen fourteen \\
+value-flip f3 & one two three four five six six seven eight nine ten
+eleven twelve thirteen fifteen fifteen \\
+\bottomrule
+\end{tabular}
+
+\medskip
+d3 is the load-bearing transcript: a \emph{different coherent odd
+chain}, produced by equal-dose random perturbation --- the reason
+``degradation'' is refused as the umbrella term
+(Sec.~\ref{sec:ruling}). d4/d6/d8 land the prompt's own trained
+continuation (the dead-wire-era basin).
