@@ -1263,7 +1263,10 @@ pub fn run_amplitude_sweep(
     println!("--- Verdict (criterion pre-registered: A* = highest amplitude with any pairwise train Hamming > 0) ---");
     match a_star {
         Some(a) => {
-            println!("A* = {a} μA — the weight→firing channel OPENS at this amplitude.");
+            match resolution {
+                VoltageResolution::CentiMillivolt => println!("A* = {a} μA — on the centi grid the weight→firing channel OPENS at this amplitude."),
+                VoltageResolution::Millivolt => println!("A* = {a} μA — the weight→firing channel OPENS at this amplitude."),
+            }
             println!("first-divergence row: {first_divergence}");
         }
         None => {
