@@ -17,7 +17,7 @@ build: $(FIGS)
 figs: $(FIGS)
 
 figs/%.pdf: figs/%.py
-	cd figs && $(FIGPYTHON) $<
+	cd figs && $(FIGPYTHON) $(notdir $<)
 
 gate:
 	sh tools/check_language.sh
