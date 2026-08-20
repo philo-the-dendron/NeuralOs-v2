@@ -1031,6 +1031,32 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-20 (sI-v3, AMENDMENT COMMITTED BEFORE THE STRESS CHAIN'S
+    TABLES ARE READ) · **THE SHUFFLE RUNG IS STRUCTURALLY IMPOSSIBLE
+    FOR THIS PATCH — redefined as VALUE-FLIP ×3, with the uniqueness
+    theorem banked.** Build-time finding: H2's terminal-diff value
+    multiset contains NO −1s ({0×57,170, +1×29,949}), and under the
+    no-same-source constraint the feasible assignment polytope is a
+    SINGLE POINT: 0-sourced demand (29,949) equals the ENTIRE +1
+    pool → x[0→+1] = 29,949 forced → the +1 pool exhausts → −1-src
+    can only take 0s (26,027 forced) → +1-src takes the remaining
+    0s (31,143 forced) — H2's own mapping is the UNIQUE legal
+    assignment. Proof: pairwise-exchange search returns 0 legal
+    swaps; two shuffle implementations confirmed empirically (greedy
+    produced a byte-identical-to-H2 file — caught by sha before
+    judging; the randomizer grinds forever on dead-end restarts).
+    **Consequence, banked as a finding:** at this composition,
+    content and placement are FORMALLY ENTANGLED — no
+    value-permutation null exists. **Redefinition (pre-registered
+    before reading any null tables):** shuffle ×3 → VALUE-FLIP ×3 —
+    the REAL changed positions, exact dose, each new-value REFLECTED
+    where legal (−1→0 becomes −1→+1; +1→0 becomes +1→−1; 0→+1 has no
+    legal reflection at these sources and stays — the flip family
+    changes the value multiset by design, recorded). Tests "the
+    specific values matter" rather than uniform permutation. The
+    adjudication conjunct (a)–(d) is unchanged; the value-flips join
+    the PRIMARY family's interpretation alongside dose ×10.
+
 - 2026-08-20 (sI, AMENDMENT COMMITTED BEFORE THE STRESS CHAIN'S
     RESULTS ARE READ — the pre-registration discipline itself) ·
     **NULL FAMILY v2: dose-matched primary + stress arm + shuffle
