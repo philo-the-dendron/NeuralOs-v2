@@ -20,7 +20,7 @@
 //!
 //! Usage: `cargo run -p neuralos-rt --release --example null_patches --
 //! [orig.gguf] [h2-patched.gguf]` — writes models/null-dose-<s>.gguf and
-//! models/null-shuffle-<s>.gguf, all S2-asserted.
+//! models/null-flip-<s>.gguf, all S2-asserted.
 
 use neuralos_rt::{GgufFile, GGML_TYPE_Q2_0};
 use neuralos_snn::{decode_q2_0, encode_q2_0, Trit};

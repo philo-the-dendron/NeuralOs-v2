@@ -1,42 +1,78 @@
 # neuralos-snn
 
-> Spiking Neural Network library — `no_std`, `i16` fixed-point, capacity-boundée.
-> Cœur de la sovereignty stack NeuralOS.
+> `no_std`, i16 fixed-point spiking neural networks for edge and RISC-V
+> silicon — LIF neurons, pairwise STDP, CSR synapses, ternary weight
+> codecs, and an AVX2 batch kernel.
 
-## Scope
+Published on crates.io as `0.1.0-alpha.2` (AGPL-3.0-or-later).
 
-### Ce que la crate fait (planned, Phase 0+)
+## What this crate is
 
-- **LIF neurons** — Leaky-Integrate-and-Fire en math entières `i16` (millivolts) / `u32` (microsecondes). Pas de floating-point dans le hot path.
-- **STDP learning** — Spike-Timing-Dependent Plasticity, pair-based, avec historique de spikes par neurone.
-- **Synapse matrix** — CSR sparse format, capacité fixe, itération O(1) par neurone pré-synaptique.
-- **Topology builders** — Random, Small-World (Watts-Strogatz), Feedforward, Balanced (80/20 E/I).
+A spiking-neural-network **substrate**: the neuron/synapse/network core
+you can run bare-metal. Integer-only hot path (i16 millivolts, i16
+microamps, u32 microseconds) — no floating point, no allocator in the
+core, `no_std` by default. Designed for FPU-less edge targets
+(ESP32-C3, `HiFive`, QEMU `riscv64gc`) and validated against the IEEE 2025
+"Full-Integer SNN Inference with RISC-V ISA" design axis.
 
-### Ce que la crate NE fait PAS (anti-scope)
+## Modules
 
-- Pas de hardware acceleration. La library fait du compute pur. L'accélération (DMA, SIMD, NPU) vit dans d'autres crates si nécessaire.
-- Pas de I/O réseau. Pas de persistence. Pas de UI.
-- Pas de drivers. Pas de "OS". La library est une library.
-- Pas de crypto. La crypto vit dans `neuralos-crypto` (à venir).
-- Pas de modèles LLM. Le ML "conventionnel" (BERT, `DistilBERT`) vit dans `neuralos-ml` (à venir).
-
-## Design constraints
-
-| Constraint | Pourquoi |
+| Module | What it holds |
 |---|---|
-| `no_std` par défaut | Permet le déploiement bare-metal RISC-V (ESP32-C3, `HiFive`, QEMU) |
-| `i16` fixed-point | Pas de FPU requis — tourne sur microcontrôleurs sans unité flottante |
-| Capacité fixe (pas d'alloc) | Prévisible en mémoire — critique pour embedded |
-| Une seule impl par concept | Leçon v0.1: 3 copies parallèles du SNN dans le repo original |
+| `lif_neuron` | Leaky-Integrate-and-Fire neuron, fixed-point, per-neuron voltage grid (`VoltageResolution`: mV default, opt-in centi-mV), bounded spike history |
+| `synapse` | Synapse + pairwise STDP rule (a₊ 50 / a₋ −53 / lr 100), weight scale `SCALE = 1000` |
+| `network` *(std)* | `SpikingNeuralNetwork` orchestration (`step()`), CSR `SparseSynapseMatrix` with forward + reverse iteration, 4 topology builders (Random, Small-World, Feedforward, Balanced E/I), plasticity passes (LTD + LTP), per-step stats |
+| `trit` | Ternary weight type `{-1, 0, +1}` + scale, ternarizer, stochastic bucket-flip (LFSR, integer-only) |
+| `bridge` | `BitNet` `i2_s` encode/decode (bit-exact round-trip), Prism `q1_0`/`q2_0` import + `q2_0` export, integer fp16 widening — layouts pinned from reference sources, loud errors on impossible input |
+| `kernel` | Shared `no_std` ternary matvec: sequential 2-bit packed trits × Q15 activations → i32, absmax normalization, wire→compute repack seam |
+| `simd` *(feature)* | AVX2 batch LIF integration (`x86_64`, ~1.6–2.2× vs scalar, ±2 mV tolerance) |
+
+## The voltage grid story
+
+`delta_v = dt_over_tau · (leak + R·I/1000) / 1000` truncates to whole
+quanta. On the default mV grid a steady sub-threshold current inside the
+~200 μA dead zone moves the membrane exactly zero — recorded, tested,
+and the reason `VoltageResolution::CentiMillivolt` exists (100× finer
+dead zone, same i16, bit-identical arithmetic shape). The mV default
+keeps every historically recorded result bit-exact.
+
+## Features
+
+- `std` *(default)* — enables the `network` orchestration module
+- `simd` — implies `std`, x86_64-only AVX2 batch kernel
+
+Without `std` the crate builds `no_std` (neurons, synapses, trit,
+bridge, kernel) — the embedded posture CI enforces.
+
+## Usage sketch
+
+```text
+use neuralos_snn::{SpikingNeuralNetwork, NetworkTopology};
+
+let mut net = SpikingNeuralNetwork::new_with_voltage_resolution(
+    128, 1_000, NetworkTopology::Balanced { excitatory_ratio: 0.8 },
+    Default::default(),
+)?;
+net.build_topology()?;
+loop {
+    let spikes = net.step(&inputs)?;   // decay → integrate → clear → propagate
+    // spikes: Vec<Spike>; plasticity applies pairwise STDP when enabled
+}
+```
+
+## Anti-scope
+
+No I/O, no persistence, no UI, no drivers, no "OS", no crypto, no LLM
+runtime — the library is a library. (The research runtime that proved a
+ternary SNN↔LLM bridge on this substrate lives in the workspace's
+`neuralos-rt`, `publish = false`.)
 
 ## Status
 
-**Scaffold.** Le code réel arrive Phase 0 (prochaine session):
-
-1. Port du LIF neuron depuis `NeuralOS/libneuralos/src/core/neural_processing/lif_neuron.rs` (v0.1)
-2. Tests property-based (proptest)
-3. Fix du bug `current_time()` identifié dans l'audit (lif_neuron.rs:278-281)
+`0.1.0-alpha.2` — the bridge release (codecs, kernel, live-transmission
+fix). 154 offline unit/property tests + 3 simd-gated; the API may still
+move within alpha semver.
 
 ## License
 
-AGPL-3.0-or-later. Voir `LICENSE` à la racine du workspace.
+AGPL-3.0-or-later — see the workspace root `LICENSE`.

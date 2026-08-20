@@ -946,4 +946,46 @@ mod tests {
             prop_assert!(n.spike_count() <= MAX_SPIKE_HISTORY);
         }
     }
+
+    // ----- 2026-08-20 substrate-audit pins (F1): the adaptation-decay
+    // contract and leak convergence, previously claimed-but-untested. -----
+
+    #[test]
+    fn adaptation_decay_is_exact_minus_one_with_floor_zero() {
+        let mut n = quiet_neuron(21, VoltageResolution::Millivolt);
+        n.adaptation_current_ua = 3;
+        n.decay_adaptation_current();
+        assert_eq!(n.adaptation_current_ua, 2);
+        n.decay_adaptation_current();
+        assert_eq!(n.adaptation_current_ua, 1);
+        n.decay_adaptation_current();
+        assert_eq!(n.adaptation_current_ua, 0);
+        n.decay_adaptation_current();
+        assert_eq!(n.adaptation_current_ua, 0, "floors at zero, never negative");
+    }
+
+    #[test]
+    fn spike_adds_exactly_two_adaptation_quanta() {
+        let mut n = quiet_neuron(22, VoltageResolution::Millivolt);
+        n.threshold = -100; // force a spike this step
+        let spiked = n.integrate_and_fire(1000, 1000, 0);
+        assert!(spiked);
+        assert_eq!(n.adaptation_current_ua, 2, "+2 per spike");
+    }
+
+    #[test]
+    fn leak_convergence_large_dt_lands_on_rest_exactly() {
+        // The module-doc invariant: zero input + large dt (dt = tau) gives
+        // delta_v = leak exactly (1000·leak/1000 — no truncation), so the
+        // membrane lands ON rest in one step, from either side, mV grid.
+        let mut n = quiet_neuron(23, VoltageResolution::Millivolt);
+        n.membrane_potential = -90;
+        let _ = n.integrate_and_fire(0, 20_000, 20_000);
+        assert_eq!(n.membrane_potential, n.resting_potential, "from below");
+        n.membrane_potential = -20;
+        let _ = n.integrate_and_fire(0, 20_000, 40_000);
+        assert_eq!(n.membrane_potential, n.resting_potential, "from above");
+        let _ = n.integrate_and_fire(0, 20_000, 60_000);
+        assert_eq!(n.membrane_potential, n.resting_potential, "stays at rest");
+    }
 }

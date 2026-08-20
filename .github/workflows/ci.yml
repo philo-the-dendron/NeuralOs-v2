@@ -44,3 +44,7 @@ jobs:
       # The SNN core stays no_std (the embedded/RISC-V posture).
       - name: no_std gate (neuralos-snn)
         run: cargo build --no-default-features -p neuralos-snn
+
+      # SIMD kernel equivalence vs scalar (AVX2, x86_64, behind `simd`).
+      - name: simd gate (neuralos-snn)
+        run: cargo test -p neuralos-snn --features simd

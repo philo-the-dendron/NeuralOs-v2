@@ -2555,4 +2555,42 @@ mod tests {
             }),
         ]
     }
+
+    // ----- 2026-08-20 substrate-audit live pin (F1): the per-step decay
+    // contract. Without `decay_adaptation_current` inside `step()`,
+    // adaptation (+2/spike) grows monotonically until it exceeds the drive
+    // and the network falls permanently silent. With it, adaptation
+    // equilibrates and a driven net cycles forever. Both halves asserted
+    // through the public orchestration, noise off, mV grid. -----
+    #[test]
+    fn adaptation_decay_each_step_keeps_a_driven_net_alive() {
+        let mut net = SpikingNeuralNetwork::new_with_voltage_resolution(
+            2,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+            VoltageResolution::Millivolt,
+        )
+        .expect("constructs");
+        net.build_topology().expect("empty build");
+        for n in &mut net.neurons {
+            n.noise_amplitude_ua = 0;
+        }
+        let (mut max_adaptation, mut late_spikes) = (0_i16, 0_usize);
+        for step in 0..6_000 {
+            let spikes = net.step(&[600, 0]).expect("step");
+            max_adaptation = max_adaptation.max(net.neurons[0].adaptation_current_ua);
+            if step >= 5_000 {
+                late_spikes += spikes.len();
+            }
+        }
+        assert!(
+            late_spikes > 0,
+            "a decay-less adaptation term silences the net forever; the live \
+             net must still fire late (got {late_spikes} late spikes)"
+        );
+        assert!(
+            max_adaptation < 500,
+            "adaptation must equilibrate under the 600 μA drive (peaked at {max_adaptation})"
+        );
+    }
 }

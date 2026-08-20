@@ -20,7 +20,7 @@
 
 ```bash
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; 240 green: 154 snn + 3 simd-gated, 83 rt incl. 5 model-gated #[ignore]
+cargo test   --workspace                          # offline; 235 executed green (3 app, 154 snn, 78 rt) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate
 ```
@@ -79,9 +79,9 @@ Strict order — nothing new opens until the rung above is 100%.
   capacity bets, model-informed coupling) is a recorded fork in the
   ISA — the principal's call, scoped before any session opens.
 - **R4 harness extraction** is the one active task: dedupe
-  `hybrid_*`/`null_patches` (~1,100 duplicate lines) into a shared rt
-  harness module; acceptance = deterministic re-runs reproduce the
-  recorded verdicts; tag `examples-pre-extraction` first.
+  `hybrid_*`/`null_patches` (~1,864 duplicated lines, measured pairwise)
+  into a shared rt harness module; acceptance = deterministic re-runs
+  reproduce the recorded verdicts; tag `examples-pre-extraction` first.
 
 ## What is no longer the center of gravity
 

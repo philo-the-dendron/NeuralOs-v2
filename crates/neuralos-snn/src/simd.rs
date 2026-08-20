@@ -28,6 +28,15 @@
 //! [`crate::LIFNeuron::integrate_and_fire`]). The correctness test asserts the
 //! two agree within ±2 mV per neuron, not bit-exact.
 //!
+//! # Grid limitation — mV only
+//!
+//! The batch kernel (and its scalar reference) operate on the **default mV
+//! grid only**: the reference clamps to `−100..50` and ignores
+//! [`crate::VoltageResolution`] scale (`integrate_batch_scalar`, below). A
+//! centi-mV consumer would get silently wrong membranes. Until the kernel
+//! takes a scale parameter, do not route `CentiMillivolt` state through it
+//! (no in-tree consumer does — verified 2026-08-20 audit).
+//!
 //! # `BUG_FIXES` vs v0.1
 //!
 //! - **Widen-both-halves.** v0.1's `integrate_neurons_avx2` (`simd_vectorization.rs:237-240`)

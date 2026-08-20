@@ -96,15 +96,27 @@ pub struct Synapse {
     pub tau_decay_us: u16,
 
     /// Current conductance — decays exponentially between spikes.
+    /// **DECORATIVE** in orchestration (2026-08-20 audit): `step()`
+    /// propagates via the CSR `weight/divisor` pulse directly and never
+    /// calls `receive_spike`/`transmit` — this field is only touched by
+    /// the dead transmission machinery below.
     pub conductance: i16,
-    /// Timestamp of the last presynaptic spike (μs).
+    /// Timestamp of the last presynaptic spike (μs). **DECORATIVE** in
+    /// orchestration: the network tracks its own `last_spike_time_us` for
+    /// STDP pairing; this synapse-side copy is only written by the dead
+    /// `receive_spike` path.
     pub last_spike_time_us: u32,
     /// Buffered transmission value awaiting pickup by `transmit()`.
+    /// **DECORATIVE** in orchestration (see `conductance`).
     pub transmission_buffer: i16,
 
     /// STDP eligibility trace — decays with `TAU_TRACE_US`, jumps on spike.
+    /// **DECORATIVE** in orchestration: plasticity reads spike-timing
+    /// directly; nothing reads this trace.
     pub eligibility_trace: i16,
     /// Recent-activity counter — used by plasticity algorithms.
+    /// **DECORATIVE** in orchestration: nothing reads it; slated for
+    /// removal at alpha.3.
     pub recent_activity: u8,
 
     /// Cumulative RAW STDP delta applied by `update_weight` (session G
@@ -161,6 +173,9 @@ impl Synapse {
     /// Process one transmission step: decay conductance, drain buffer, decay trace.
     ///
     /// Returns the synaptic current (μA) to inject into the postsynaptic neuron.
+    ///
+    /// **DECORATIVE** in orchestration (2026-08-20 audit): `step()`
+    /// transmits via the CSR `weight/divisor` pulse and never calls this.
     pub fn transmit(&mut self, dt_us: u32) -> i16 {
         self.decay_conductance(dt_us);
         let current = self.transmission_buffer;
@@ -171,6 +186,9 @@ impl Synapse {
 
     /// Receive a presynaptic spike at `spike_time_us`. Updates conductance,
     /// transmission buffer, eligibility trace, and activity counter.
+    ///
+    /// **DECORATIVE** in orchestration (2026-08-20 audit): `step()` never
+    /// calls this; the CSR path drives transmission directly.
     pub fn receive_spike(&mut self, spike_time_us: u32) {
         self.last_spike_time_us = spike_time_us;
 
@@ -199,6 +217,7 @@ impl Synapse {
 
     /// Exponential-decay approximation of conductance: `g[n+1] = g[n] · (1 − dt/τ)`.
     /// Snaps to zero below `CONDUCTANCE_FLOOR` to avoid noisy tiny values.
+    /// **DECORATIVE** in orchestration: only called by `transmit` (dead path).
     fn decay_conductance(&mut self, dt_us: u32) {
         if self.conductance > 0 && self.tau_decay_us > 0 {
             let decay_num = SCALE - (((dt_us as i32) * SCALE) / i32::from(self.tau_decay_us));

@@ -67,9 +67,10 @@ MSRV — don't bump without checking).
 ```bash
 # Quality gates (what CI runs, .github/workflows/ci.yml):
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; 240 green: 154 snn + 3 simd-gated, 83 rt incl. 5 model-gated #[ignore]
+cargo test   --workspace                          # offline; 235 executed green (3 app, 154 snn, 78 rt) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
+cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
 
 # Run the visualizer (DISPLAY required, e.g. :0):
 cargo run -p neuralos-app --release               # ~2–9 min link on a 2-core CPU; binary cached after
@@ -125,8 +126,9 @@ exist because careful per-session process still produced drift.
 - **Freeze evidence, never source.** What makes a result reproducible is
   the sha-pinned output + the commit, not an untouched `.rs` file.
   Refactor experiment code freely; prove the refactor by re-running and
-  matching the recorded verdict. (The freeze doctrine produced ~1,100
-  lines of cloned example code and was still violated 4 times.)
+  matching the recorded verdict. (The freeze doctrine produced ~1,864
+  duplicated lines across the example family — measured pairwise,
+  2026-08-20 audit — and was still violated 4 times.)
 - **Consolidation cadence.** After at most 3 additive research
   sessions, one consolidation session (dedupe, delete, re-pin, docs
   truth) before any new direction opens. The dead transmission wire
@@ -148,7 +150,8 @@ exist because careful per-session process still produced drift.
   never into VISION/ROADMAP.** Direction docs describe the present
   tense.
 - **No new example by cloning.** The 6 `hybrid_*`/`null_patches`
-  examples share ~1,100 duplicated lines. Until R4 (harness
+  examples share ~1,864 duplicated lines (measured pairwise, 2026-08-20
+  audit). Until R4 (harness
   extraction) lands, a new experiment extends the pending-extraction
   list — it does not copy `hybrid_gate.rs` again.
 
