@@ -1,0 +1,25 @@
+=== Session E stage 1c: the finer-ruler sweep — centi-mV grid, same protocol ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+slice   : blk.0.attn_q.weight, first 512×512, γ=125, full-minus-diagonal, STDP OFF (fixed weights)
+grid    : VoltageResolution::CentiMillivolt (0.01 mV quanta, dead zone ≈ 2 μA)
+drive   : 1.5c schedule verbatim; I_INH=600 FIXED; I_ACTIVE swept over [600, 450, 300, 240, 200, 170, 150, 125, 100]
+nets    : imported / census-matched control (seed 0x5eedc0de00000002) / zero — shared drive + noise; only weights differ
+metric  : spike-TRAIN Hamming per pair (not totals) + per-neuron rate L1 + per-population Hz
+note    : centi pinned state — totals shift from the mV lineage (35,157) by design
+
+amp(μA) | E Hz (imp/ctl/zero)      | I Hz (imp/ctl/zero) | totals (i/c/z)   | H(i,c)  H(i,z)  H(c,z) | L1(i,c) L1(i,z) L1(c,z)
+--------+---------------------------+---------------------+------------------+-------------------------+------------------------
+    600 | +12.83 +12.78 +12.50 | +125.13 +125.21 +125.00 |  36274  36247  35975 |  39011  23907  23958 |    535    301    280
+    450 | +10.01 +10.01 +10.00 | +125.09 +125.13 +125.00 |  33957  33961  33930 |  35844  24863  24181 |     52     27     35
+    300 | +6.97 +6.91 +7.50 | +125.05 +125.04 +125.00 |  31466  31410  31885 |  26714  19765  18195 |    768    441    491
+    240 | +4.97 +4.98 +5.00 | +125.01 +125.00 +125.00 |  29820  29821  29840 |  13119  10842   9119 |     45     24     21
+    200 | +3.21 +3.13 +2.50 | +125.00 +125.00 +125.00 |  28377  28309  27795 |   5426   4808   4300 |    838    582    514
+    170 | +2.09 +2.08 +2.50 | +125.00 +125.00 +125.00 |  27463  27452  27795 |   3277   3634   3599 |    591    340    343
+    150 | +0.70 +0.62 +0.00 | +125.00 +125.00 +125.00 |  26326  26256  25750 |   1044    576    506 |    846    576    506
+    125 | +0.04 +0.02 +0.00 | +125.00 +125.00 +125.00 |  25779  25770  25750 |     49     29     20 |     49     29     20
+    100 | +0.00 +0.00 +0.00 | +125.00 +125.00 +125.00 |  25750  25750  25750 |      0      0      0 |      0      0      0
+
+--- Verdict (criterion pre-registered: A* = highest amplitude with any pairwise train Hamming > 0) ---
+A* = 600 μA — on the centi grid the weight→firing channel OPENS at this amplitude.
+first-divergence row: H(i,c)=39011 H(i,z)=23907 H(c,z)=23958 L1(i,c)=535 L1(i,z)=301 L1(c,z)=280
+wall 10.0s   peak RSS 1050 MB (budget 1536)

@@ -1,0 +1,23 @@
+=== Session E stage 1: the amplitude sweep — where do weights begin to shape firing? ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+slice   : blk.0.attn_q.weight, first 512×512, γ=125, full-minus-diagonal, STDP OFF (fixed weights)
+drive   : 1.5c schedule verbatim; I_INH=600 FIXED; I_ACTIVE swept over [600, 450, 300, 240, 200, 170, 150, 125, 100]
+nets    : imported / census-matched control (seed 0x5eedc0de00000002) / zero — shared drive + noise; only weights differ
+metric  : spike-TRAIN Hamming per pair (not totals) + per-neuron rate L1 + per-population Hz
+
+amp(μA) | E Hz (imp/ctl/zero)      | I Hz (imp/ctl/zero) | totals (i/c/z)   | H(i,c)  H(i,z)  H(c,z) | L1(i,c) L1(i,z) L1(c,z)
+--------+---------------------------+---------------------+------------------+-------------------------+------------------------
+    600 | +11.78 +11.75 +11.50 | +123.67 +123.92 +125.00 |  35115  35136  35157 |  58779  55500  53441 |    689    556    497
+    450 | +8.06 +8.03 +8.00 | +123.87 +124.04 +125.00 |  32108  32120  32294 |  52220  51822  48802 |    644    508    464
+    300 | +1.14 +0.99 +0.00 | +125.00 +125.00 +125.00 |  26685  26561  25750 |   1444    935    811 |   1194    935    811
+    240 | +0.27 +0.22 +0.00 | +125.00 +125.00 +125.00 |  25967  25934  25750 |    381    217    184 |    363    217    184
+    200 | +0.07 +0.06 +0.00 | +125.00 +125.00 +125.00 |  25805  25799  25750 |    104     55     49 |    104     55     49
+    170 | +0.04 +0.04 +0.00 | +125.00 +125.00 +125.00 |  25783  25783  25750 |     66     33     33 |     66     33     33
+    150 | +0.03 +0.02 +0.00 | +125.00 +125.00 +125.00 |  25776  25769  25750 |     45     26     19 |     45     26     19
+    125 | +0.02 +0.01 +0.00 | +125.00 +125.00 +125.00 |  25763  25761  25750 |     24     13     11 |     24     13     11
+    100 | +0.01 +0.01 +0.00 | +125.00 +125.00 +125.00 |  25756  25759  25750 |     15      6      9 |     15      6      9
+
+--- Verdict (criterion pre-registered: A* = highest amplitude with any pairwise train Hamming > 0) ---
+A* = 600 μA — the weight→firing channel OPENS at this amplitude.
+first-divergence row: H(i,c)=58779 H(i,z)=55500 H(c,z)=53441 L1(i,c)=689 L1(i,z)=556 L1(c,z)=497
+wall 9.9s   peak RSS 1050 MB (budget 1536)

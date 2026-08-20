@@ -1,0 +1,67 @@
+=== Session D slice 2: the hybrid experiment — Bonsai Q2_0 → Trit → SNN → STDP ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+host    : blk.0.attn_q.weight, first 512×512 slice (col j = pre → row i = post, matvec dataflow)
+substrate: γ=125 (the proven 1.5x constant; LLM fp16 block scales unused — recorded), full-minus-diagonal density, 1.5c drive verbatim
+
+decode  : 262144 trits from real Q2_0 bytes (peak RSS so far is the file buffer)
+
+--- G1: IMPORT INTEGRITY (trit-preserving by construction) ---
+  census (real pretrained slice, first measurement): +1 × 83089   0 × 95802   −1 × 83253   (of 262144)
+  zero fraction: 0.3655   nonzero: 0.6345
+  substrate bounds census: Excitatory-clamped (0,+γ) × 178533   Inhibitory-clamped (−γ) × 83099
+  → one-directional flips per class: +γ↔0, −γ↔0, 0→+γ only (no sign crossing — measured in G3)
+  round-trip: substrate weight → Trit::from_weight(125) vs source — 0 mismatches / 261632 synapses
+  [G1: PASS — import is trit-exact]
+
+--- G2: SPIKING FIDELITY (fixed weights, STDP off, identical 1.5c drive) ---
+  DENSITY NOTE: full-minus-diagonal (261632 synapses), not the balanced-0.8 sparse shape
+                the 1.5c constants were proven on — absolute rates compare ONLY
+                within this experiment (imported vs control vs floor).
+  control: census-matched shuffle (same +/0/− multiset), seed 0x5eedc0de00000002, STDP off
+  interpretation matrix (stated up front):
+    both above floor      → density suffices to spike; the structure claim lives in G3
+    only pretrained above → G2 passes with the stronger structural claim
+    neither above floor   → degenerate under this drive
+  imported (pretrained): 34.29 Hz/neuron (35115 spikes)
+  control (random)     : 34.31 Hz/neuron (35136 spikes)
+  zero-w (no structure): 34.33 Hz/neuron (35157 spikes)
+  absolute floor       : 0.10 Hz/neuron
+  (a) pretrained vs control : 1.00× (ratio floor 0.10×)
+  (b) imported vs floor : PASS   control vs floor: PASS
+  [observed: BOTH above floor — density suffices to spike; the structure claim lives in G3]
+  quench (imported, Hz/neuron by quarter): 34.50 34.07 34.35 34.24 — last quarter > 0 PASS (no self-quench)
+  containment (imported): own-active 78.5 Hz vs own-idle 0.0 Hz (inf×)
+  containment (control) : own-active 78.3 Hz vs own-idle 0.0 Hz (inf×)
+  [G2: PASS — imported ≥ floor: yes, ≥ 0.10× control: yes, sustained: yes]
+
+--- G3: SELECTIVE ADAPTATION (STDP on + stochastic flips, γ=125, 1.5c schedule) ---
+  input structure (learn phase): co-fire intra=0.0019 inter=0.0000 (inf×); drive containment own-active 81.7 Hz vs own-idle 0.0 Hz
+  firing (learn phase)  : 35.13 Hz/neuron (vs control 34.31 — floor 0.10×); quarters 34.85 35.03 35.29 35.37
+  plasticity events     : 18817891   bucket flips: 708029 (freeze if 0)
+  STDP pairing histogram: same-step 951578 · post-leads 4110289 · pre-leads 4110289 (in-window; per-class raw/applied decomposition below decides the mechanism)
+  raw STDP drift (E→E): intra -739295 over 41412 syns (mean -17.8522/syn) · inter +0 over 125460 — the pairing-driven sum BEFORE flips/clamps
+  clamp-absorbed     : intra -839029 · inter +0 — bounds-asymmetry evidence
+  bucket-transition census (learn phase):
+  −1→−1 ×       0  −1→ 0 ×  123374  −1→+1 ×       0
+   0→−1 ×  104551   0→ 0 ×       0   0→+1 ×  238706
+  +1→−1 ×       0  +1→ 0 ×  241398  +1→+1 ×       0
+  Hamming vs imported   : 64877/261632 = 0.2480 changed buckets (bound < 0.50 — majority intact)
+  retention by source class: −1 77.3%   0 77.3%   +1 70.6% intact
+  sign-crossing transitions (+1↔−1): 0 — the bounds asymmetry held exactly
+  E→E map: 41412 intra / 125460 inter pairs
+  mean Δ (final − imported): intra +0.1075   inter +0.0000
+  mechanism label : [PAIRING-SELECTIVE, CLAMP-RECTIFIED — intra co-firing drives a net-NEGATIVE raw drift; the 0-floor absorbs the LTD and the applied residue potentiates (class-differential timing-driven; direction bounds-driven)]
+  intra |mean Δ| (GATE) : 0.1075   (floor 0.05 — the non-degenerate degree of discrimination)
+  Δ-SI (label)    : -1.0000   (supporting only: inter Δ ≡ 0 by schedule geometry — 40 ms gaps vs 20 ms window — so |Δ-SI| ≡ 1 whenever movement exists)
+  level-SI (1.5c formula, confounded by pretrained levels — supporting): -1.0029 (intra +0.106 / inter -0.000 final mean trit)
+
+--- Verdict ---
+  G1 import trit-exact        : PASS
+  G2 non-degenerate sustained : PASS
+  firing under STDP sustained : PASS
+  not frozen (flips > 0)      : PASS
+  not collapsed (Hamming < 0.50) : PASS
+  selective (intra |Δ| ≥ 0.05) : PASS
+
+HYBRID GATE: ADAPTS — pretrained structure survives AND discriminates under local STDP
+wall 11.6s   peak RSS 1050 MB (budget 1536)
