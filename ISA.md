@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 82/82
+progress: 83/83
 started: 2026-08-15T12:55:00Z
 updated: 2026-08-19T02:45:00Z
-principal_stated_goal: "Session H: the in-vivo gate — T1 PASS (arrangement read under own activations), T2/3: the first STEERS (p3 continuation diverges, 11/12 flips)"
+principal_stated_goal: "Session H2: corrected-corpus re-run — T1 PASS, P1\u2032 PASS (98.9% gap), P3\u2032 magnitude FAIL (crossed but 0.0798 < 0.11), p2 SECOND continuation change; null ladder next"
 ---
 
 ## Problem
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..82 sH — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..83 sH+H2 — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -1123,6 +1123,33 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   it. Falsifier: /tmp/opencode/se/invivo/p3_run{1,2}.{log,err} +
   the delta table; KLD corpus scoring is named follow-up (the
   continuation divergence already exceeds what KLD adds).
+
+- [x] ISC-83 (sH2) · **THE CORRECTED-CORPUS RUN: T1 ALL PASS,
+  P1′ PASS with teeth, P3′ magnitude FAILS (split verdict), and a
+  SECOND continuation change.** True pinned corpus (18fb5452…),
+  first 2000 of 4411 tokens, single truncated pass (cut context
+  printed; head-bias named). **P1′ PASS: G0 gap 41,555 − 30,724 =
+  10,831 = 98.9% of H1's 10,974** (floor 2,744) — single-pass does
+  NOT weaken the arrangement signal. Clamp 69.48% vs H1's 69.80%
+  (confound bounded). Adaptation: 43.65 Hz, flips 1,112,771,
+  Hamming 33.30% (higher than H1's 25.7% — more text diversity),
+  mechanism [CLAMP-RECTIFIED] (pairing perfectly symmetric again:
+  7,030,561 = 7,030,561). Dose checkpoints monotone: 61,210 →
+  71,381 → 80,391 → 87,119 cells; every export S2-clean; final sha
+  71f2518a… **Judge (×2 deterministic): p3 steers AGAIN** — 11/12
+  flips, " Thursday"+newline-run, the knife-edge CROSSED (margin
+  +0.0091 → −0.0707) — **but |Δmargin| = 0.0798 < the
+  pre-registered 0.11 bar: P3′ magnitude FAILS, both outcomes
+  pre-accepted, the corrected one-flip language stands.** **NEW: p2
+  flips 4/12** — "…twelve fifteen seventeen seventeen eighteen" vs
+  baseline "…thirteen fifteen fifteen seventeen" — the project's
+  second continuation change, on the counting prompt (divergence at
+  " thirteen"→" fifteen", step 5). p0/p1/p4 quiet (0 flips, mean
+  |Δ| 0.04–0.11). Wall 8.24 h — the embeddings-only capture ran the
+  FULL 36-layer forward (only states[0] is used): an
+  embeddings-only public path is named follow-up (would cut ~90% of
+  the wall). RSS 6593 MB (recorded). Falsifier:
+  evidence/session-h2/ (run.log + judge ×2) + the census table.
 
 - [x] ISC-81 (sH) · **THE IN-VIVO GATE, TIER 1: ALL PASS — the
   model's own activations drive weight-reading firing, and the

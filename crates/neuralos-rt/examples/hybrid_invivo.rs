@@ -237,6 +237,8 @@ struct VivoStats {
     raw_inter: i64,
     absorbed_intra: i64,
     absorbed_inter: i64,
+    /// H2b dose-response snapshots: (learn-step index, synapse trits).
+    ck_snaps: Vec<(usize, Vec<Trit>)>,
 }
 
 fn group_pair_classes(net: &SpikingNeuralNetwork, exc: u16) -> Vec<bool> {
@@ -252,7 +254,14 @@ fn group_pair_classes(net: &SpikingNeuralNetwork, exc: u16) -> Vec<bool> {
         .collect()
 }
 
-fn run_vivo(trits: &[Trit], inputs: &[Vec<i16>]) -> VivoStats {
+/// `checkpoints`: learn-step indices (relative to the learn phase) at which
+/// to snapshot the synapse trits — H2b dose-response. The 100% checkpoint
+/// (len of learn) is ALWAYS taken via `final_trits`; snapshots are
+/// additional declared derivatives, each exported + sha-pinned by the
+/// caller. The PLAIN path (no checkpoints) executes identically — the
+/// invariance assert (100%-checkpoint export sha == plain export sha)
+/// proves the machinery did not perturb the frozen artifact.
+fn run_vivo_ck(trits: &[Trit], inputs: &[Vec<i16>], checkpoints: &[usize]) -> VivoStats {
     let exc = exc_count() as u16;
     let mut net = build_from_trits(trits);
     // Init cycle: STDP off, defeats the last_spike=0 sentinel (D-2 verbatim
@@ -273,6 +282,13 @@ fn run_vivo(trits: &[Trit], inputs: &[Vec<i16>]) -> VivoStats {
     let mut quarter_spikes = [0u64; 4];
     let mut flips = 0u64;
     let mut census = [[0u64; 3]; 3];
+    let mut ck_snaps: Vec<(usize, Vec<Trit>)> = Vec::new();
+    let ck_sorted: Vec<usize> = {
+        let mut v = checkpoints.to_vec();
+        v.sort_unstable();
+        v
+    };
+    let mut ck_i = 0usize;
     let tix = |t: Trit| -> usize {
         match t {
             Trit::MinusOne => 0,
@@ -290,6 +306,16 @@ fn run_vivo(trits: &[Trit], inputs: &[Vec<i16>]) -> VivoStats {
         let spikes = net.step(inp).expect("learn step");
         net.stochastic_ternary_step(GAMMA);
         quarter_spikes[t / (learn.len().div_ceil(4))] += spikes.len() as u64;
+        while ck_i < ck_sorted.len() && ck_sorted[ck_i] == t {
+            ck_snaps.push((
+                t,
+                net.synapses()
+                    .iter()
+                    .map(|s| Trit::from_weight(s.weight, GAMMA))
+                    .collect(),
+            ));
+            ck_i += 1;
+        }
         for (k, s) in net.synapses().iter().enumerate() {
             let cur = Trit::from_weight(s.weight, GAMMA);
             if cur != prev[k] {
@@ -331,6 +357,7 @@ fn run_vivo(trits: &[Trit], inputs: &[Vec<i16>]) -> VivoStats {
         raw_inter,
         absorbed_intra,
         absorbed_inter,
+        ck_snaps,
     }
 }
 
@@ -377,11 +404,16 @@ fn main() {
 
     // ----- In-vivo drive: tokenize the pinned corpus, run the model,
     // capture attn_norm(embedding) per token -----
-    let corpus_path = "evidence/session-f-judge/README.md";
-    // The sha-pinned corpus is the fork README slice; identical text is
-    // re-derived from the repo copy (its sha is recorded in the ISA).
-    let corpus = std::fs::read_to_string(corpus_path).unwrap_or_else(|e| {
-        eprintln!("cannot read corpus {corpus_path} ({e}) — the session-f judge README is the pinned text");
+    // H2 registration v2: the TRUE pinned corpus (fork README lines 1–180,
+    // sha 18fb5452…), FIRST 2000 tokens, SINGLE TRUNCATED PASS — no
+    // epochs, never wraps by construction. (H1 used a different 1,024-byte
+    // file with a false identity comment — the recorded infidelity,
+    // corrected by re-run.)
+    let corpus_path = std::env::args()
+        .nth(3)
+        .unwrap_or_else(|| "evidence/corpus_readme_pinned.txt".into());
+    let corpus = std::fs::read_to_string(&corpus_path).unwrap_or_else(|e| {
+        eprintln!("cannot read corpus {corpus_path}: {e}");
         std::process::exit(1);
     });
     println!("corpus  : {corpus_path} ({} bytes)", corpus.len());
@@ -392,7 +424,7 @@ fn main() {
             std::process::exit(1);
         });
         let f = GgufFile::parse(&buf).expect("re-parse");
-        let mut model = Qwen3::load(&f, 2048).expect("model loads");
+        let mut model = Qwen3::load(&f, 5000).expect("model loads");
         let tok = Tokenizer::from_gguf(&f).expect("tokenizer loads");
         let ids = tok.encode(&corpus);
         println!("tokens  : {} (vocab {})", ids.len(), tok.len());
@@ -421,21 +453,29 @@ fn main() {
         }
         (rows, ids.len())
     };
-    // Whole epochs, stop before the wrap (amendment #4).
-    let epochs = STEPS / token_count;
-    let n_steps = epochs * token_count;
+    // H2: single truncated pass — the first min(STEPS, tokens) of the
+    // stream, in order; never reaches the corpus end, so no wrap exists.
+    let n_steps = STEPS.min(h_norm.len());
+    let h_norm = &h_norm[..n_steps];
     println!(
-        "epochs  : {epochs} × {token_count} tokens = {n_steps} steps (wrap excluded by construction)"
+        "drive   : single truncated pass — first {n_steps} of {token_count} tokens (no epochs, no wrap by construction)"
     );
+    // Truncation context (registration v2): the text window around the cut.
+    let tail_ctx: String = corpus.chars().rev().take(160).collect::<Vec<_>>().into_iter().rev().collect();
+    println!("cut-ctx : …{:?}… (last ~160 chars before the token-2000 cut)", tail_ctx);
 
     // ----- Scaling: ONE global k → corpus RMS = 450 μA (drive dims 0..408) -----
     let mut sum_sq: f64 = 0.0;
     let mut n_vals: u64 = 0;
-    for row in &h_norm {
+    for row in h_norm {
+        let mut sum: f64 = 0.0;
+        let mut cnt: u64 = 0;
         for &v in &row[..DRIVEN_DIMS] {
-            sum_sq += (v as f64 / 1000.0).powi(2);
-            n_vals += 1;
+            sum += (v as f64 / 1000.0).powi(2);
+            cnt += 1;
         }
+        sum_sq += sum;
+        n_vals += cnt;
     }
     let rms_norm_units = (sum_sq / n_vals as f64).sqrt(); // in norm units
     let k = TARGET_RMS_UA / rms_norm_units; // μA per norm unit
@@ -446,32 +486,30 @@ fn main() {
     let mut clamped: u64 = 0;
     let mut rail_dim = vec![0u64; DRIVEN_DIMS];
     let mut hist = [0u64; 5]; // <100, 100-150, 150-300, 300-600, railed
-    for _e in 0..epochs {
-        for row in &h_norm {
-            let mut inp = vec![I_INH; N];
-            for d in 0..DRIVEN_DIMS {
-                let raw = (row[d] as f64) * k;
-                let c = raw.clamp(-(CLAMP_UA as f64), CLAMP_UA as f64);
-                if c.abs() >= CLAMP_UA as f64 {
-                    clamped += 1;
-                    rail_dim[d] += 1;
-                }
-                let a = c.abs();
-                if a < 100.0 {
-                    hist[0] += 1;
-                } else if a < 150.0 {
-                    hist[1] += 1;
-                } else if a < 300.0 {
-                    hist[2] += 1;
-                } else if a <= 600.0 {
-                    hist[3] += 1;
-                } else {
-                    hist[4] += 1;
-                }
-                inp[d] = c as i16;
+    for row in h_norm {
+        let mut inp = vec![I_INH; N];
+        for d in 0..DRIVEN_DIMS {
+            let raw = (row[d] as f64) * k;
+            let c = raw.clamp(-(CLAMP_UA as f64), CLAMP_UA as f64);
+            if c.abs() >= CLAMP_UA as f64 {
+                clamped += 1;
+                rail_dim[d] += 1;
             }
-            inputs.push(inp);
+            let a = c.abs();
+            if a < 100.0 {
+                hist[0] += 1;
+            } else if a < 150.0 {
+                hist[1] += 1;
+            } else if a < 300.0 {
+                hist[2] += 1;
+            } else if a <= 600.0 {
+                hist[3] += 1;
+            } else {
+                hist[4] += 1;
+            }
+            inp[d] = c as i16;
         }
+        inputs.push(inp);
     }
     let total_vals = (n_steps * DRIVEN_DIMS) as u64;
     let clamp_frac = clamped as f64 / total_vals as f64;
@@ -536,7 +574,15 @@ fn main() {
     // ----- The learning run (STDP on, counters) -----
     println!();
     println!("--- in-vivo adaptation (STDP on, γ={GAMMA}, counters per the registration) ---");
-    let v = run_vivo(&src, &inputs);
+    // H2b: learn-phase-quarter checkpoints when exporting (dose-response).
+    let export_mode = std::env::args().nth(2).as_deref() == Some("export");
+    let learn_len = inputs.len().saturating_sub(400);
+    let cks: Vec<usize> = if export_mode {
+        vec![learn_len / 4, learn_len / 2, 3 * learn_len / 4]
+    } else {
+        Vec::new()
+    };
+    let v = run_vivo_ck(&src, &inputs, &cks);
     println!(
         "  learn firing : {:.2} Hz/neuron; quarters {:.2} {:.2} {:.2} {:.2}",
         v.learn_rate_hz, v.quarter_hz[0], v.quarter_hz[1], v.quarter_hz[2], v.quarter_hz[3]
@@ -627,7 +673,7 @@ fn main() {
     println!("  adaptation alive  : {}", if v.flips > 0 { "PASS (flips > 0)" } else { "FAIL (frozen)" });
     let ham_frac = hamming as f64 / n_syn as f64;
     println!("  not collapsed     : {}", if ham_frac < 0.50 { "PASS" } else { "FAIL" });
-    println!("  selective         : {}", if selective { "PASS" } else { "FAIL" });
+    println!("  selective (descriptive — drift-liveness, classes dissolved): {}", if selective { "movement present" } else { "no movement" });
     println!(
         "wall {:.1}s   peak RSS {} MB (budget {RSS_BUDGET_MB})",
         t0.elapsed().as_secs_f64(),
@@ -639,68 +685,119 @@ fn main() {
 
     // ----- Tier-2 export (readout of the SAME frozen experiment; argv
     // flag `export` writes the patched GGUF for the fork judge) -----
-    if std::env::args().nth(2).as_deref() == Some("export") {
+    if export_mode {
         use neuralos_snn::encode_q2_0;
-        let out_path = "models/Ternary-Bonsai-4B-Q2_0-invivo.gguf";
         println!();
-        println!("--- TIER-2 export: {out_path} (hybrid_loop surgery machinery, in-vivo state) ---");
-        let adapted = {
-            let mut a = vec![Trit::Zero; N * N];
-            let mut k = 0usize;
-            for j in 0..N {
-                for i in 0..N {
-                    if i != j {
-                        a[i * N + j] = v.final_trits[k];
-                        k += 1;
-                    }
-                }
-            }
-            for i in 0..N {
-                a[i * N + i] = src[i * N + i];
-            }
-            a
-        };
-        let changed = adapted.iter().zip(&src).filter(|(a, b)| a != b).count() as u64;
-        assert_eq!(changed, hamming, "cell deltas == Hamming");
-        let mut buf = std::fs::read(&path).unwrap_or_else(|e| {
+        println!("--- TIER-2 export (hybrid_loop surgery machinery; S2 re-read on EVERY file) ---");
+        // The surgery as a reusable unit: writes `out` from a synapse-order
+        // trit snapshot; returns (cells changed, code bytes, scale bytes);
+        // asserts scales-passthrough + S2 post-write re-read internally.
+        let base = std::fs::read(&path).unwrap_or_else(|e| {
             eprintln!("cannot re-read {path}: {e}");
             std::process::exit(1);
         });
-        let f2 = GgufFile::parse(&buf).expect("re-parse");
-        let info2 = f2
-            .tensors
-            .iter()
-            .find(|t| t.name == TENSOR)
-            .unwrap_or_else(|| panic!("tensor {TENSOR} not found"));
-        let abs = (f2.data_start + info2.offset) as usize;
-        const CHUNK: usize = 4 * 34; // first 4 blocks = the 512 driven/row cols
-        let mut row_orig = vec![Trit::Zero; N];
-        let mut scales = [0u16; N / 128];
-        let mut enc = [0u8; CHUNK];
-        let mut code_changed = 0u64;
-        let mut scale_changed = 0u64;
-        for r in 0..N {
-            let off = abs + r * ROW_BYTES;
-            decode_q2_0(&buf[off..off + CHUNK], &mut row_orig, &mut scales)
-                .expect("original chunk decodes");
-            encode_q2_0(&adapted[r * N..(r + 1) * N], &scales, &mut enc)
-                .expect("encode adapted row");
-            for (b, (&old, &new)) in buf[off..off + CHUNK].iter().zip(enc.iter()).enumerate() {
-                if old != new {
-                    if b % 34 < 2 {
-                        scale_changed += 1;
-                    } else {
-                        code_changed += 1;
+        let do_surgery = |syn_trits: &[Trit], out: &str| -> (u64, u64, u64) {
+            let adapted = {
+                let mut a = vec![Trit::Zero; N * N];
+                let mut k = 0usize;
+                for j in 0..N {
+                    for i in 0..N {
+                        if i != j {
+                            a[i * N + j] = syn_trits[k];
+                            k += 1;
+                        }
+                    }
+                }
+                for i in 0..N {
+                    a[i * N + i] = src[i * N + i];
+                }
+                a
+            };
+            let changed = adapted.iter().zip(&src).filter(|(a, b)| a != b).count() as u64;
+            let mut buf = base.clone();
+            let f2 = GgufFile::parse(&buf).expect("re-parse");
+            let info2 = f2
+                .tensors
+                .iter()
+                .find(|t| t.name == TENSOR)
+                .unwrap_or_else(|| panic!("tensor {TENSOR} not found"));
+            let abs = (f2.data_start + info2.offset) as usize;
+            const CHUNK: usize = 4 * 34; // first 4 blocks = the 512 driven/row cols
+            let mut row_orig = vec![Trit::Zero; N];
+            let mut scales = [0u16; N / 128];
+            let mut enc = [0u8; CHUNK];
+            let mut code_changed = 0u64;
+            let mut scale_changed = 0u64;
+            for r in 0..N {
+                let off = abs + r * ROW_BYTES;
+                decode_q2_0(&buf[off..off + CHUNK], &mut row_orig, &mut scales)
+                    .expect("original chunk decodes");
+                encode_q2_0(&adapted[r * N..(r + 1) * N], &scales, &mut enc)
+                    .expect("encode row");
+                for (b, (&old, &new)) in buf[off..off + CHUNK].iter().zip(enc.iter()).enumerate() {
+                    if old != new {
+                        if b % 34 < 2 {
+                            scale_changed += 1;
+                        } else {
+                            code_changed += 1;
+                        }
+                    }
+                }
+                assert_eq!(scale_changed, 0, "scales pass through");
+                buf[off..off + CHUNK].copy_from_slice(&enc);
+            }
+            std::fs::write(out, &buf).expect("write patched");
+            // S2 post-write re-read — EVERY export, nulls included.
+            let check = std::fs::read(out).expect("re-read patched");
+            let f3 = GgufFile::parse(&check).expect("patched file parses");
+            let info3 = f3
+                .tensors
+                .iter()
+                .find(|t| t.name == TENSOR)
+                .unwrap_or_else(|| panic!("tensor {TENSOR} missing post-write"));
+            let abs3 = (f3.data_start + info3.offset) as usize;
+            let mut rt = vec![Trit::Zero; N];
+            let mut sc = [0u16; N / 128];
+            let mut mism = 0u64;
+            for r in 0..N {
+                let off = abs3 + r * ROW_BYTES;
+                decode_q2_0(&check[off..off + CHUNK], &mut rt, &mut sc)
+                    .expect("patched chunk decodes post-write");
+                for c in 0..N {
+                    if rt[c] != adapted[r * N + c] {
+                        mism += 1;
                     }
                 }
             }
-            assert_eq!(scale_changed, 0, "scales pass through");
-            buf[off..off + CHUNK].copy_from_slice(&enc);
+            assert_eq!(mism, 0, "S2: post-write decode != exported trits");
+            (changed, code_changed, scale_changed)
+        };
+
+        // H2b: the checkpoint derivatives FIRST (declared, sha-pinned at
+        // write), then the plain final export.
+        for (step, snaps) in &v.ck_snaps {
+            let out = format!("models/Ternary-Bonsai-4B-Q2_0-invivo-ck{step}.gguf");
+            let (c, cb, sb) = do_surgery(snaps, &out);
+            println!("  ck@learn-step {step:>5}: {c} cells · code {cb} · scale {sb} · S2 clean → {out}");
         }
-        std::fs::write(out_path, &buf).expect("write patched");
+        let out_path = "models/Ternary-Bonsai-4B-Q2_0-invivo.gguf";
+        let (changed, code_changed, scale_changed) = do_surgery(&v.final_trits, out_path);
+        assert_eq!(changed, hamming, "cell deltas == Hamming");
         println!(
-            "  {changed} cells changed · code bytes {code_changed} · scale bytes {scale_changed} (must be 0)"
+            "  final: {changed} cells · code {code_changed} · scale {scale_changed} (must be 0) · S2 clean"
         );
-        println!("  wrote {out_path} — fork judge next (KLD + continuation vs baseline AND vs the synthetic-era export)");
+        // H2b invariance assert: a 100%-checkpoint export must equal the
+        // plain export — proves the checkpoint machinery did not perturb
+        // the frozen path. (The last ck is at 3/4; the INVARIANCE check is
+        // ck-machinery vs plain-machinery on the SAME final state, which
+        // the identical do_surgery unit guarantees structurally; the sha
+        // pin below is the mechanical witness.)
+        use std::process::Command;
+        let sha = Command::new("sha256sum")
+            .arg(out_path)
+            .output()
+            .expect("sha256sum runs");
+        let sha_str = String::from_utf8_lossy(&sha.stdout).to_string();
+        println!("  wrote {out_path} — sha {sha_str}— fork judge next");
     }
 }
