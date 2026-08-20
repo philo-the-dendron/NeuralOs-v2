@@ -3,10 +3,10 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 83/83
+progress: 84/84
 started: 2026-08-15T12:55:00Z
 updated: 2026-08-19T02:45:00Z
-principal_stated_goal: "Session H2: corrected-corpus re-run — T1 PASS, P1\u2032 PASS (98.9% gap), P3\u2032 magnitude FAIL (crossed but 0.0798 < 0.11), p2 SECOND continuation change; null ladder next"
+principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
 ## Problem
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..83 sH+H2 — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..84 sH+H2+sI — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -1031,6 +1031,30 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Decisions
 
+- 2026-08-21 (sI-ADJUDICATION, by rule, zero discretionary calls) ·
+    **BRANCH B: the in-vivo continuation changes are statistically
+    indistinguishable from equal-dose random perturbation — term of
+    record: UNATTRIBUTED PERTURBATION.** Primary family (exact-dose
+    87,119-cell randoms ×10 + value-flips ×3, zero voids): p3 flips
+    8/10 with ALL EIGHT landing H2's exact destination (the basin is
+    generic); p2 4/10 with d3 producing a DIFFERENT coherent odd
+    chain ("…fifteen seventeen twenty one") — killing "degradation"
+    as the umbrella term; p4 4/10 (MIXED band, seal 2, no claim) all
+    in the stress basin — noise reaches MORE doors than the
+    adaptation ({p2,p3} vs {p2,p3,p4}). Δmargin p3s1: H2 −0.0798 vs
+    max-null 0.2254 — (a) FAIL; 8/10 ≫ the 1/10 bar — (b) FAIL
+    decisively, escalation moot; (c) moot; (d) mixed. The
+    pre-mortem's Branch B armor applies verbatim: p2 transcripts
+    published as counter-evidence to "degradation"; novelty
+    re-scoped to the L1–L4 bridge + pre-registered-ladder
+    methodology; the steers/reach language is RETIRED. **What the
+    record keeps:** T1's G0 (arrangement read at substrate level),
+    the closed loop twice, the transmission fix + Hebbian
+    reversal/clamp-rectified mechanism decomposition, the
+    unique-flow theorem (content-placement entanglement), the basins
+    finding, and the methodology that produced an honest negative —
+    the paper is infrastructure + honest adjudication + method.
+
 - 2026-08-20 (sI-v4, THREE SEALS COMMITTED BEFORE THE PRIMARY CHAIN'S
     TABLES ARE READ — chain ETA ~2.5 h; these eliminate every remaining
     discretionary surface) · **Seal 1 — VOID PROTOCOL for the primary
@@ -1235,6 +1259,13 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   embeddings-only public path is named follow-up (would cut ~90% of
   the wall). RSS 6593 MB (recorded). Falsifier:
   evidence/session-h2/ (run.log + judge ×2) + the census table.
+
+- [x] ISC-84 (sI) · **THE NULL-LADDER ADJUDICATION: Branch B, all
+  evidence banked in-tree.** evidence/session-i-primary/ (dose ×10 +
+  flip ×3 full logs) + session-i-stress/ (the 2× arm, report-only,
+  r10-p3 corrected to void → 8/9). The complete flip/destination/
+  Δmargin table in the README; ruling computed by the sealed
+  conjunct. Falsifier: any banked log contradicting a row.
 
 - [x] ISC-81 (sH) · **THE IN-VIVO GATE, TIER 1: ALL PASS — the
   model's own activations drive weight-reading firing, and the

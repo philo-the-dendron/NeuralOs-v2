@@ -205,115 +205,51 @@ fn main() {
         println!("dose-{seed}: {changed} cells (exact) · S2 clean → {out}");
     }
 
-    // ----- SHUFFLE ×3: the real cell set, permuted new-values, new≠source -----
-    // Perfect-dose constraint: assign the H2 VALUE MULTISET onto the H2
-    // changed positions, no value on a same-valued source, EXACT dose.
-    // Structure: 3 source-classes × 3 value-classes; a valid assignment
-    // is a transportation problem. The terminal diff has pool = {0, +1}
-    // (no −1s among new-values), so: −1-sourced cells take 0s or +1s;
-    // 0-sourced take −1/ +1 (pool has +1 and 0 — but 0-on-0 forbidden →
-    // 0-sourced cells need +1 or −1; pool's −1 count is 0 → they need +1);
-    // +1-sourced take 0s or −1s (pool: 0s). Solve the 3×3 counts by
-    // greedy most-constrained, then place uniformly within each bucket
-    // with the seeded rng. Any infeasibility ABORTS loudly.
-    let new_vals: Vec<Trit> = changed_idx.iter().map(|&i| h2[i]).collect();
-    let tix = |t: Trit| -> usize {
-        match t {
-            Trit::MinusOne => 0,
-            Trit::Zero => 1,
-            Trit::One => 2,
-        }
-    };
-    let tr_of = |i: usize| -> Trit {
-        match i {
-            0 => Trit::MinusOne,
-            1 => Trit::Zero,
-            _ => Trit::One,
-        }
-    };
-    // src-class counts among changed cells; value-pool counts
-    let mut src_count = [0usize; 3];
-    for &i in &changed_idx {
-        src_count[tix(src[i])] += 1;
-    }
-    let mut pool = [0usize; 3];
-    for &v in &new_vals {
-        pool[tix(v)] += 1;
-    }
-    // assignment[i][j] = # of src-class-i cells receiving value-class-j
-    // (i≠j per the constraint). Greedy: repeatedly assign the largest
-    // feasible (remaining_src, remaining_pool) pair avoiding i==j.
-    let mut rem_src = src_count;
-    let mut rem_pool = pool;
-    let mut assign = [[0usize; 3]; 3];
-    loop {
-        let total_left: usize = rem_src.iter().sum();
-        if total_left == 0 {
-            break;
-        }
-        // Most-constrained-first: pick the src class whose allowed pool
-        // (values != its own class) is tightest; assign to that pool's
-        // largest bucket. Infeasibility aborts loudly (pre-registered).
-        let mut best: Option<(usize, usize, i64)> = None; // (src_i, val_j, tightness)
-        for i in 0..3 {
-            if rem_src[i] == 0 {
-                continue;
-            }
-            let allowed: Vec<usize> = (0..3).filter(|&j| j != i && rem_pool[j] > 0).collect();
-            if allowed.is_empty() {
-                panic!("shuffle: src-class {i} unassignable — infeasible; ABORT (pre-registered)");
-            }
-            let allowed_total: usize = allowed.iter().map(|&j| rem_pool[j]).sum();
-            if allowed_total < rem_src[i] {
-                panic!("shuffle: src-class {i} under-supplied ({allowed_total} < {}) — infeasible; ABORT", rem_src[i]);
-            }
-            // tightness: allowed surplus over demand (smaller = tighter)
-            let tight = (allowed_total - rem_src[i]) as i64;
-            if best.is_none() || tight < best.unwrap().2 {
-                let jbest = *allowed.iter().max_by_key(|&&j| rem_pool[j]).unwrap();
-                best = Some((i, jbest, tight));
-            }
-        }
-        let (i, j, _tight) = best.expect("feasible step exists");
-        let amt = rem_src[i].min(rem_pool[j]);
-        assign[i][j] += amt;
-        rem_src[i] -= amt;
-        rem_pool[j] -= amt;
-    }
-    // place: per (i,j) bucket, draw amt cells from src-class-i changed cells
+    // ----- VALUE-FLIP ×3 (v3 amendment: the uniform shuffle is provably
+    // impossible for this patch — unique-flow theorem in the ISA). Real
+    // changed positions, exact dose, values REFLECTED where legal:
+    // −1→0 becomes −1→+1 · +1→0 becomes +1→−1 · 0→+1 unreflectable
+    // (no legal alternative at a 0-source under no-same-source) and held.
+    // Seed variation enters via a random hold-out split: each seed holds
+    // out a different random ~10% of flippable cells (kept at H2 values)
+    // so the three family members differ while every member stays exact-
+    // dose and legal.
     for seed in 1..=3u64 {
-        let mut rng = 0x5EED_FEED_0000_0003_u64 ^ seed;
-        let mut cells_by_class: Vec<Vec<usize>> = vec![Vec::new(); 3];
-        for &i in &changed_idx {
-            cells_by_class[tix(src[i])].push(i);
-        }
-        for v in &mut cells_by_class {
-            for k in (1..v.len()).rev() {
-                rng = xorshift64(rng);
-                let j2 = (rng % (k as u64 + 1)) as usize;
-                v.swap(k, j2);
-            }
-        }
+        let mut rng = 0xF11_0000_0000_0003_u64.wrapping_add(seed);
         let mut patched = src.clone();
-        let mut cursors = [0usize; 3];
-        let mut placed = 0usize;
-        for i in 0..3 {
-            for j in 0..3 {
-                let amt = assign[i][j];
-                for _ in 0..amt {
-                    let cell = cells_by_class[i][cursors[i]];
-                    cursors[i] += 1;
-                    patched[cell] = tr_of(j);
-                    placed += 1;
+        let mut flipped = 0usize;
+        let mut held = 0usize;
+        for &i in &changed_idx {
+            let (from, to) = (src[i], h2[i]);
+            let flipped_val = match (from, to) {
+                (Trit::MinusOne, Trit::Zero) => Some(Trit::One),
+                (Trit::One, Trit::Zero) => Some(Trit::MinusOne),
+                _ => None,
+            };
+            match flipped_val {
+                Some(v) => {
+                    rng = xorshift64(rng);
+                    if rng % 10 != 0 {
+                        patched[i] = v;
+                        flipped += 1;
+                    } else {
+                        patched[i] = to;
+                        held += 1;
+                    }
+                }
+                None => {
+                    patched[i] = to;
+                    held += 1;
                 }
             }
         }
         let changed = patched.iter().zip(&src).filter(|(a, b)| a != b).count();
-        assert_eq!(changed, h2_cells, "shuffle-{seed}: dose must stay exact");
-        assert_eq!(placed, h2_cells, "shuffle-{seed}: all cells placed");
-        let out = format!("models/null-shuffle-{seed}.gguf");
+        assert_eq!(changed, h2_cells, "flip-{seed}: dose exact");
+        let out = format!("models/null-flip-{seed}.gguf");
         do_surgery(&patched, &out);
-        println!("shuffle-{seed}: {changed} cells (exact, real positions, class-flow permuted values) · S2 clean → {out}");
+        println!(
+            "flip-{seed}: {changed} cells (exact; {flipped} reflected · {held} held) · S2 clean → {out}"
+        );
     }
     println!("done — judge chains next (queued behind the stress arm).");
 }
