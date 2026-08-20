@@ -1,1 +1,151 @@
-% WIP: filled by its own commit on paper-draft.
+\section{The substrate}
+\label{sec:substrate}
+
+The engine under everything that follows is \system{}, a
+\texttt{no\_std} Rust spiking-neural-network library with an
+\texttt{i16} fixed-point hot path (LIF neurons, STDP synapses, CSR
+sparse connectivity), published as \texttt{neuralos-snn} on
+crates.io. Integer-only computation is not an aesthetic choice: it is
+the regime ternary weights live in natively (an \texttt{i16} state
+holds a $\{-1,0,+1\}$ alphabet without conversion), and float-free SNN
+computation has been independently motivated for FPU-less edge silicon
+(IEEE 2025, \emph{Full-Integer SNN Inference with RISC-V ISA}). The
+library forbids allocation and unwraps on the hot path; every number
+in this paper is produced by that integer path.
+
+\subsection{Two discretization grids, two dead zones}
+\label{sec:grids}
+
+Membrane potential integrates in integer units on one of two grids
+(\texttt{VoltageResolution}): millivolt (the historical default) and
+centi-millivolt (dead zone $\approx 2\,\mu$A), added when the mV
+grid's quantization proved load-bearing. Each grid has a
+\emph{per-type} dead zone for input currents (mV: $\sim$200\,$\mu$A
+for E-cells, $\sim$100\,$\mu$A for I-cells) below which a single
+pulse is absorbed without membrane movement. The climb barrier is
+asymmetric and pinned by test: at a 300\,$\mu$A drive the membrane
+sticks at $-59$\,mV; a $+12\,\mu$A recurrent pulse ratchets it
+$+1$\,mV; a $-12\,\mu$A pulse is absorbed. Small weights are real
+physics on these grids, not noise: whether a $\pm 12\,\mu$A pulse
+moves the membrane is exactly the difference between the two grids,
+and the paper's substrate claims are grid-keyed throughout.
+
+\subsection{The population}
+\label{sec:population}
+
+All experiments in this paper use a 512-neuron slice of a real model
+tensor --- 409 excitatory, 103 inhibitory, 261{,}632 directed pairs
+--- with pair-based STDP ($\gamma = 125$), a fixed inhibitory wall
+($I_{\mathrm{INH}} = 600\,\mu$A), and per-class raw/absorbed/applied
+plasticity counters (Sec.~\ref{sec:mechanism}). Seeds are pinned;
+every run is deterministic, and every claimed double-run produced
+byte-identical exports.
+
+\subsection{Case study: the dead wire, found by falsification}
+\label{sec:deadwire}
+
+The substrate's central debugging story is worth telling in full,
+because it is the paper's clearest demonstration of
+pre-registration paying for itself \emph{inside} the infrastructure,
+months before the adjudication ladder did the same for the science.
+
+\paragraph{Two pre-registered predictions, two falsifications.}
+To test whether imported weights influence firing, we swept drive
+amplitude with three nets --- imported weights, census-shuffled
+control, zero --- and pre-registered the prediction that their spike
+trains diverge at 600\,$\mu$A. Result: \textbf{honest NO} --- the
+three trains were identical at \emph{every} amplitude (train Hamming
+0, rate-L1 0, across the full 9-amplitude grid). A second, finer-ruler
+sweep on the new centi grid (pre-registered again: divergence expected
+once mV truncation stopped absorbing pulses) falsified the rescue
+hypothesis too: totals shifted, E-cells fired at amplitudes the mV
+grid had silenced --- and the trains remained identical.
+
+\paragraph{The canary.}
+Two falsified predictions forced a code re-read in place of a third
+hypothesis, and the re-read found the structural cause:
+\texttt{step()}'s Phase 2 injected the recurrent current
+(\texttt{weight/10}) into the postsynaptic accumulator \emph{after}
+Phase 1's integration, and the next step's opening loop called the
+accumulator clear \emph{before} Phase 1 --- every recurrent pulse was
+born and destroyed without ever reaching \texttt{integrate\_and\_fire}.
+The canary test
+(\texttt{recurrent\_current\_is\_never\_integrated\_in\_step\_bug\_pinned})
+pinned it empirically: a 2-neuron net, the presynaptic cell fires, the
+postsynaptic membrane never leaves $-70$\,mV. The wire had been cut
+since the original port; the mV dead zone (real, unit-proven) had been
+a co-blocker upstream of the cut. An earlier audit's claim that
+``the pulse integrates with one-step delay'' was re-reading the code
+comment's intent, not the code's behavior.
+
+\paragraph{The fix and the shared miss.}
+The fix reorders the step: adaptation-current decay $\to$ integrate
+(reads the previous step's pulses --- the one-step delay the design
+always claimed) $\to$ clear-after-read $\to$ propagate $\to$
+plasticity. Exact-value tests pin transmission on both grids
+(centi: $-7{,}000 \to -6{,}988$ exactly one step after the presynaptic
+spike; mV: $-70 \to -68$ with a strong weight; two presynaptic spikes
+sum their quanta). The chastening datum: the library's 152-test suite
+was green before and after --- \emph{no unit pin had ever exercised
+live transmission through \texttt{step()}}. The tests pinned the
+parts; nothing pinned the wire between them.
+
+\paragraph{The mechanism reversal.}
+Re-running the import experiment on the live wire reversed the
+substrate's plasticity mechanism. Dead-wire era: correlated pairs
+drifted \emph{negative} (same-step co-fire tie-break LTD,
+anti-Hebbian, $\Delta\mathrm{SI} = -1.0000$) --- an artifact of a
+regime in which weights could not transmit. Live wire: pre spikes
+causally drive post spikes one step later $\Rightarrow$
+pre-before-post $\Rightarrow$ LTP: intra-class mean $\Delta$
+flipped from $-0.3133$ to $+0.1075$, discrimination magnitude
+$|\Delta\mathrm{SI}| = 1.0000$ in \emph{both} eras. The sign was
+never the selectivity claim; it is the mechanism label. The frozen
+gate's directional criterion --- written during the dead-wire era ---
+read the post-fix result as COLLAPSES and parked the pipeline
+honestly; the amended criterion asserts the raw non-degenerate fields
+(intra $|\mathrm{mean}\,\Delta| \ge 0.05$, flips $>0$, Hamming
+$<0.50$, zero sign crossings) and prints the direction as the era's
+mechanism label.
+
+\subsection{Arrangement vs.\ census}
+\label{sec:arrangement}
+
+With the wire live, the import experiment's question got a real
+answer. On the centi grid at 600\,$\mu$A: imported vs.\ its own
+census-shuffle control diverges far more than imported vs.\ zero ---
+$H(i,c) = 39{,}011$ vs.\ $H(i,z) = 23{,}907 \approx H(c,z) =
+23{,}958$ (1.63$\times$): \emph{firing reads the arrangement of the
+model's weights, not just their census}. The mV grid tells the
+complementary story: rate/Hamming sensitivity to weights (Hamming
+58{,}779 at 600\,$\mu$A; recruitment at 300\,$\mu$A where imported
+fires 1.14\,Hz, control 0.99, zero 0.00 --- coherent same-group
+bursts stack past the shrunken margin; a Gaussian-$\sigma$ analysis
+would have missed that bursts are coherent) --- with single weight
+pulses dead-zone-absorbed. Under the model's own in-vivo drive the
+same inequality holds at 1.35--1.36$\times$
+(Sec.~\ref{sec:invivo}). Boundary, stated: one slice, one model, one
+seed --- a sensitivity result, not a population claim.
+
+\subsection{The mechanism label, counted}
+\label{sec:mechanism}
+
+The substrate's realized plasticity mechanism is not what the naive
+Hebbian reading of Sec.~\ref{sec:deadwire} suggests --- and the
+refutation came from the substrate's own counters. Cumulative
+per-class counters ($\mathrm{raw} = \sum$ pre-clamp deltas;
+$\mathrm{absorbed} = \sum$ clamped-away remainder; applied by
+difference) decomposed the live-wire run: raw intra drift
+$-739{,}295$ (mean $-17.85$/syn --- same-step and post-leads LTD
+events dominate the raw stream) $\cdot$ clamp-absorbed $-839{,}029$
+$\cdot$ \emph{applied} $+99{,}734$ (mean $+2.41$/syn). The realized
+mechanism is \textsc{pairing-selective, clamp-rectified}: which pairs
+drift is timing-driven (only co-firing pairs pair at all), but the
+\emph{direction} of realized drift is bounds-driven --- the E-class
+zero-floor absorbs the net-negative raw drift and the applied residue
+potentiates. The examples compute the label from the counters (three
+cases: raw-LTP-dominant $=$ Hebbian-carried; raw-negative with
+applied-positive $=$ clamp-rectified; applied-negative $=$
+LTD-carried); this is the decomposition the in-vivo runs of
+Sec.~\ref{sec:invivo} inherit, and Fig.~\ref{fig:mechanism}
+(Sec.~\ref{sec:loop}) sketches its two rectification stages.
