@@ -3396,3 +3396,60 @@ quantize_linear extraction, 2026-08-21)
   #[ignore]; clippy -D warnings; no_std build; simd 187+8+1;
   nir_format_gate 4/4 (PARAM_LEN case now the structural
   rejection).
+
+## Decision + Verification (R13 — NIR slice 2, C1: rt's first feature
+gate + the HDF5 error boundary, 2026-08-21)
+
+- Step 0 of the commission closed first: the three unpushed snn-side
+  commits (de8c7cf/1bf57d1/ae15170) re-ran the battery green (288/0,
+  clippy, no_std, simd 187+8+1, nir_format_gate 4/4 banked verdicts)
+  and pushed `ad43d08..ae15170` to BOTH remotes (ls-remote-confirmed
+  on Gitea + GitHub mirror).
+- **Record correction (principal ruling 2)**: the prior session's
+  relay claimed "Cargo.lock IS committed" — a misread of ls-files vs
+  ls output (the fact survived a fast read). This session's arrival
+  check caught it; C1 makes the desired state true (lockfile
+  committed, `.gitignore` entry removed with rationale: binaries in
+  workspace, deterministic vendored-C pin, rust-cache key).
+- **rt's first feature gate**: `hdf5 = ["dep:hdf5", "dep:hdf5-sys"]`,
+  `hdf5 = "0.8"` (resolved 0.8.1) + `hdf5-sys { static, zlib }` as a
+  direct dep (single home for the static+zlib pin + the census FFI).
+  Vendored build: 2m58s cold on this box with cmake from the repo-local
+  `.nirenv` venv (numpy 2.5.2 / h5py 3.16.0 / cmake 4.4.2, gitignored,
+  rebuilt by documented one-liner; the pinned nir clone pip-installed
+  into it so `nir.version` metadata resolves).
+- **Named error boundary FIRST**: `NirHdfError` — Open/Read/Shape/
+  Strings/Filter{dataset,filter}/Seam, Display states the census policy
+  verbatim in every Filter rejection; `From<NirError>` rides the seam
+  rendering in full.
+- **Pre-read filter census** (per dataset, dcpl BEFORE any data read,
+  hdf5-sys FFI — the crate's one confined unsafe, test-pinned):
+  accepts {none, deflate(1)}, rejects everything else BY NAME.
+  Policy: lzf/szip are documented-legal in the reference's write();
+  rejection is stated honesty (undecodable filter = corruption
+  hazard).
+- **Probe findings of record** (pinned clone + h5py 3.16.0, BEFORE
+  reader code): (a) reference write() puts deflate(1) on every ndarray
+  dataset, NO filter on vlen strings and on `node/edges` (the
+  else-branch); (b) `nir.version` at the pin reports
+  "1.0.9.dev1+g7883c3c85" — the reader accepts any version string
+  (JSON-reader parity); (c) **the reference cannot emit an empty-edges
+  file** — NIRGraph construction auto-wires `input_<n>`/`<n>_output`
+  junctions into `edges=[]`; our writer emits 0-row edges for
+  zero-edge graphs, reader takes both; (d) **szip is not practically
+  emittable** by the pinned toolchain (libaec rejects every legal ppb
+  vs NIR-scale chunk geometry: ("ec",16) and ("ec",8) both fail on
+  16-element arrays) — documented census rejection, classifier-pinned
+  without a fixture; (e) lzf IS emittable (id 32000) → real negative
+  fixture in C2.
+- **HDF5_PLUGIN_PATH encoded structurally**: `build.rs` bakes
+  `NEURALOS_HDF5_PLUGIN_DIR` (repo `tools/hdf5-plugins/`, gitignored
+  except .gitkeep) + `nir_hdf5::ensure_plugin_dir` sets
+  `HDF5_PLUGIN_PATH` there before any HDF5 op (R7 finding: the
+  vendored build's compiled-in plugin dir never exists).
+- Falsifiers: 8 census/boundary tests (none/deflate pass; shuffle
+  rejected by name with dataset path; deflate+fletcher32 layered →
+  fletcher32 named; plugin dir set + exists; Display states policy;
+  seam rendering rides; FromStr string construction; VarLenUnicode
+  H5Type pin). Battery: workspace 288/0, clippy -D warnings (default
+  AND hdf5-feature legs), no_std, hdf5 leg 8/8.

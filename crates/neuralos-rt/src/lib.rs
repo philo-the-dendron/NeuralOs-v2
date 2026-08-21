@@ -19,11 +19,16 @@
 //!
 //! `std` crate (file IO lives at the edges — examples and, later, the
 //! loader); the parse core operates on caller-provided byte slices with no
-//! I/O of its own, so a `no_std` edge story remains open. No `unsafe`.
+//! I/O of its own, so a `no_std` edge story remains open. The one
+//! `unsafe` in the crate is the filter-census FFI in
+//! [`nir_hdf5`] (feature `hdf5`): three `hdf5-sys` calls on one
+//! property-list id, confined and test-pinned.
 
 pub mod gguf;
 pub mod harness;
 pub mod judge;
+#[cfg(feature = "hdf5")]
+pub mod nir_hdf5;
 pub mod math;
 pub mod model;
 pub mod norm;

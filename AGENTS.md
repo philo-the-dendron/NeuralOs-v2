@@ -71,6 +71,7 @@ cargo test   --workspace                          # offline; 288 executed green 
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
+PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # the hdf5 gate (vendored HDF5; cmake from .nirenv)
 
 # Run the visualizer (DISPLAY required, e.g. :0):
 cargo run -p neuralos-app --release               # ~2–9 min link on a 2-core CPU; binary cached after
@@ -95,8 +96,11 @@ is only worth the multi-minute link when you want real smoothness.
 - `neuralos-snn`: `default = ["std"]`, `std`, `simd` (implies std,
   x86_64-only, AVX2 batch LIF kernel). The published crate's default
   config is what CI tests.
-- `neuralos-rt`: no features, std-only, `publish = false`. Research
-  tooling, not product.
+- `neuralos-rt`: `hdf5` (first feature gate, simd-precedent posture):
+  NIR `.nir` HDF5 container support — vendored static HDF5 via
+  `hdf5-sys { static, zlib }`; needs `cmake` on PATH (the repo-local
+  `.nirenv` venv carries one). Default build stays std-only, offline,
+  `publish = false`. Research tooling, not product.
 - `neuralos-app`: no features (candle/summarizer code was deleted at
   the `v0.1-summarizer-demo` tag — the app is the SNN visualizer now).
 

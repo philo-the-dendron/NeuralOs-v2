@@ -2,7 +2,8 @@
 /target/
 **/target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock IS committed (workspace has binaries; the hdf5-sys vendored-C
+# pin must be deterministic; rust-cache keys off the lockfile).
 *.swp
 *.swo
 *~
@@ -35,3 +36,12 @@ fork-build/
 
 # NIR reference clone (pinned 7883c3c, fixture generation only)
 nir-ref/
+
+# NIR python env (numpy/h5py/cmake for fixture generation + the vendored
+# HDF5 cmake binary; rebuilt: python3 -m venv .nirenv && .nirenv/bin/pip
+# install numpy h5py cmake ./nir-ref)
+.nirenv/
+
+# HDF5 plugin dir (runtime HDF5_PLUGIN_PATH target; empty until a plugin ships)
+tools/hdf5-plugins/*
+!tools/hdf5-plugins/.gitkeep

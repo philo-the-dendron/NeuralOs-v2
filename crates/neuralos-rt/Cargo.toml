@@ -9,8 +9,25 @@ description = "NeuralOS ternary-LLM runtime — loads Bonsai-style Q1_0 GGUF mod
 # (2026-08-15 review: make that explicit instead of accidental).
 publish = false
 
+[features]
+# HDF5 `.nir` container support (NIR slice 2). The first feature gate
+# in this crate — same posture as neuralos-snn's `simd`: heavyweight
+# native deps stay opt-in so the default build (and CI's offline legs)
+# never pays for them.
+#
+# `hdf5-sys` builds vendored HDF5 from source (`static`) with the
+# deflate filter compiled in (`zlib`) — the reference's `write()`
+# defaults to gzip, so a zlib-less build could not read its files.
+# The vendored build needs `cmake` on PATH (repo-local `.nirenv`
+# carries one: `PATH="$PWD/.nirenv/bin:$PATH" cargo ...`).
+hdf5 = ["dep:hdf5", "dep:hdf5-sys"]
+
 [dependencies]
 neuralos-snn = { path = "../neuralos-snn" }
+hdf5 = { version = "0.8", optional = true }
+# Direct dep for the filter-census FFI (H5Dget_create_plist et al.);
+# features live here so the static+zlib pin has exactly one home.
+hdf5-sys = { version = "0.8", features = ["static", "zlib"], optional = true }
 
 [package.metadata.docs.rs]
 all-features = true
