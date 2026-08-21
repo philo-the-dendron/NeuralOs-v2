@@ -5,17 +5,24 @@ Doctrine (AGENTS.md): authoritative layouts come from the reference
 sources VERBATIM — test vectors derive from the reference's own
 outputs, never from our re-implementation of ourselves.
 
-Usage (numpy required; the repo pins the reference at nir-ref/):
-    /path/to/venv-with-numpy/bin/python3 tools/gen_nir_fixtures.py
+Usage (the repo-local .nirenv carries numpy+h5py and the pinned clone
+pip-installed, so `nir.version` metadata resolves):
+    .nirenv/bin/python3 tools/gen_nir_fixtures.py            # fixtures
+    .nirenv/bin/python3 tools/gen_nir_fixtures.py --verify <our.nir>
+                                       # load OUR HDF5 export with the
+                                       # reference's own read() and
+                                       # assert structural + numeric
+                                       # equality (the interop leg)
 
 Reference: neuromorphs/NIR @ 7883c3c85f1be27ed113ccc9e8d6ab47ab541df4
 (clone at nir-ref/, gitignored). Positive fixtures are emitted by the
-reference's own classes + to_dict(); the negative fixtures are
+reference's own classes + to_dict()/write(); the negative fixtures are
 MUTATIONS of that emission (each mutation is the minimal surgery for
 one error class — the reference cannot emit malformed documents by
 construction, so these are the only honest source).
 
 Outputs: crates/neuralos-snn/tests/nir_fixtures/*.json
+         crates/neuralos-rt/tests/nir_fixtures/*.nir
 """
 import json
 import pathlib
@@ -27,8 +34,58 @@ sys.path.insert(0, str(ROOT / "nir-ref"))
 import numpy as np  # noqa: E402
 import nir  # noqa: E402  (the pinned clone)
 
-OUT = ROOT / "crates/neuralos-snn/tests/nir_fixtures"
+OUT = ROOT / "crates" / "neuralos-snn" / "tests" / "nir_fixtures"
 OUT.mkdir(parents=True, exist_ok=True)
+
+# the frozen population values (both containers share them — the
+# cross-container comparability contract)
+POP_WEIGHT = np.array([[0.5, -1.0, 0.25], [-0.25, 1.0, 0.5]])
+POP_LIF = dict(
+    tau=np.array([0.02, 0.03]),
+    r=np.array([1e8, 2e8]),
+    v_leak=np.array([-0.07, -0.065]),
+    v_threshold=np.array([-0.055, -0.05]),
+    v_reset=np.array([-0.08, -0.075]),
+)
+
+
+def verify_our_export(path: pathlib.Path) -> int:
+    """Load OUR .nir export with the reference's own read() + assert.
+
+    The export writes DEQUANTIZED schema values (w' = q·scale,
+    potentials/τ/R rendered from the records) — the reference must see
+    a plain NIRGraph equal to the frozen population source within
+    quantization error (≤ scale/2 for weights, exact for dyadic ones).
+    """
+    g = nir.read(path)
+    names = set(g.nodes)
+    assert names == {"input", "linear", "lif", "output"}, f"nodes: {names}"
+    assert sorted(g.edges) == sorted(
+        [("input", "linear"), ("linear", "lif"), ("lif", "output")]
+    ), f"edges: {g.edges}"
+    lin = g.nodes["linear"]
+    assert lin.weight.shape == (2, 3), lin.weight.shape
+    # our export writes dequantized weights (q·scale); the source
+    # values are dyadic so the reconstruction is exact modulo the
+    # quantizer's half-step bound
+    scale = float(np.abs(POP_WEIGHT).max()) / 32767.0
+    dequant_err = float(np.abs(lin.weight - POP_WEIGHT).max())
+    assert dequant_err <= scale / 2 + 1e-12, f"weights off by {dequant_err} (scale {scale})"
+    lif = g.nodes["lif"]
+    for field, expect in POP_LIF.items():
+        got = getattr(lif, field)
+        tol = 5e-6 if field == "tau" else 5e-4  # record-rendered (us/mV grids)
+        assert np.allclose(got, expect, atol=tol, rtol=0), f"{field}: {got} vs {expect}"
+    print(f"VERIFY: PASS — the reference's own read() loads our export:")
+    print(f"  nodes {sorted(names)} · edges {sorted(g.edges)}")
+    print(f"  weight max |Δ| vs source {dequant_err:.3e} (≤ scale/2 = {scale / 2:.3e})")
+    print(f"  LIF params within record-render tolerance (tau ≤ 5e-6 s, V ≤ 5e-4 V)")
+    return 0
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--verify":
+        raise SystemExit(verify_our_export(pathlib.Path(sys.argv[2])))
 
 
 def to_jsonable(o):

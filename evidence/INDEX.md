@@ -16,6 +16,7 @@
 | `session-i-stress/` | I (2026-08-20) | Stress arm (report-only): ~2× dose nulls are LOUD — p3 9/10, p4 9/10 (new flip family) — the p3 knife-edge is fragile to perturbation magnitude | `null-r1..r10/`, `README.md` |
 | `r4-baselines/` | R4(i) (2026-08-20) | Pre-refactor re-pin baselines for the frozen example family (the R4(iv) contract); judge p0 leg closed by r4-closeout | `README.md` (the protocol + verdict table), `*_run{1,2}.log` |
 | `r4-closeout/` | R4(iii/iv) (2026-08-21) | **R4 closed.** Leg-3 re-pins: null_patches 13/13 byte-identical; judge p0 0/12 flips max \|Δ\| +0.4207 exact; stale H1 invivo bar root-caused; H2 re-pin **byte-identical** (21,065.6 s, export tier by-design not run) | `README.md`, `h2_invivo_r4iii.log`, `p0_{base,loop}_run{1,2}.{log,err}`, `null_*`, `h1_invivo_r4iii.log` |
+| `nir-hdf5-gate/` | NIR slice 2 (2026-08-21) | **The HDF5 evidence gate.** Reference-written `.nir` read end-to-end in pure Rust (5/5: exact frozen quanta cross-container · fires 9/100@6 · lzf censused out named · export read-back semantically identical · JSON byte-stability untouched); interop leg: the reference's own `read()` loads our export (weights ≤ scale/2) | `README.md` (rebuild), `gate.log`, `verify.log`, `SHA256SUMS` |
 
 Seeds of record (pinned as constants in the frozen examples): census-
 matched control `0x5EED_C0DE_0000_0002` (Fisher–Yates); primary dose

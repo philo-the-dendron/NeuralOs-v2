@@ -1,0 +1,15 @@
+=== NIR HDF5 gate — the reference's own .nir emissions ===
+ref     : neuromorphs/NIR @ 7883c3c85f1be27ed113ccc9e8d6ab47ab541df4
+
+fixture : chain_population.nir — 4 nodes / 3 edges / version "1.0.9.dev1+g7883c3c85"
+quant   : LIF[0] tau 20000 us · R 100 MOhm · leak -70/thr -55/reset -80 quanta · C 200 pF
+quant   : LIF[1] tau 30000 us · R 200 MOhm · leak -65/thr -50/reset -75 quanta · C 150 pF
+quant   : Linear 2x3 — weights [16384, -32767, 8192, -8192, 32767, 16384]
+gate 1  : PASS — reference emission quantizes exactly (cross-container)
+gate 2  : PASS — chain fires on the substrate: 9 spikes / 100 steps, first at step 6
+gate 3  : PASS — lzf censused out before any read, filter named, policy stated
+gate 4  : PASS — HDF5 export read-back semantically identical (idempotence = record equality, the named decision)
+gate 5  : PASS — JSON export byte-stable (941 B) + state-identical re-import
+
+NIR HDF5 GATE: PASS — 5/5 gates on reference-emitted .nir files
+dumped  : evidence/nir-hdf5-gate/gate_export.nir

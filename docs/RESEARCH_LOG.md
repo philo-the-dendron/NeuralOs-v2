@@ -890,3 +890,37 @@ export tier by-design not run to protect the adjudicated
 artifacts). Net: −1,900-odd duplicated lines against the record,
 every recorded verdict intact or re-pinned. **R4 closed
 2026-08-21.**
+
+### NIR slice 2 — HDF5 in the runtime (2026-08-21)
+
+The slice-1 JSON container met the reference's real container:
+`.nir` HDF5 files, read and written in pure Rust behind `neuralos-rt`'s
+first feature gate (`hdf5`; vendored static HDF5 via
+`hdf5-sys { static, zlib }`, cmake from the repo-local `.nirenv`).
+The named boundary (`NirHdfError`) and the PRE-READ per-dataset filter
+census came first: `{none, deflate}` accepted, everything else
+rejected loudly by name — lzf/szip are legal in the reference's
+`write()` and rejected on purpose (an undecodable filter is a
+corruption hazard), a stated policy printed in every rejection.
+Probe findings of record: the reference puts deflate on every ndarray
+and NO filter on strings/edges; it CANNOT emit an empty-edges file
+(the graph constructor auto-wires `input_<n>`/`<n>_output` junctions);
+szip is not practically emittable by the pinned h5py wheel (libaec
+geometry); `nir.version` at the pin reports `1.0.9.dev1+g7883c3c85`.
+The reader walks the layout verbatim from the pinned
+`serialization.py`, enforces exact dtypes (HDF5 would otherwise
+silently convert), and hands typed f64s to the structured-entry seam —
+the SAME records as the JSON path, pinned by a record-for-record
+cross-container parity test. The writer mirrors the reference layout
+(deflate(4), scalar vlen strings, uncompressed (N,2) edges, 0×2 for
+zero-edge graphs) with the JSON export's provenance convention in
+`metadata.neuralos`; HDF5 idempotence is SEMANTIC (record equality —
+named decision), the JSON export's byte-stability untouched. The
+evidence gate (`nir_hdf5_gate`, 5/5) runs the reference's own
+emissions end-to-end — including 9 spikes/100@6, identical to the
+JSON gate's frozen verdict — and the interop leg closes the loop: the
+pinned reference's own `read()` loads OUR export, weights within the
+quantizer half-step bound (`evidence/nir-hdf5-gate/`). Two engineering
+findings banked: raw census FFI must run under `hdf5::sync::sync`
+(parallel tests found the SIGSEGV), and the plugin-path `set_var` is
+OnceLock-gated.

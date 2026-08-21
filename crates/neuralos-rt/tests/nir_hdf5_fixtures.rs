@@ -10,10 +10,8 @@
 
 use std::path::PathBuf;
 
-use neuralos_rt::nir_hdf5::{
-    nir_hdf5_read, NirHdfError, NirHdfNodeKind,
-};
-use neuralos_snn::nir::{NirImport, NirImportOptions, NirLif};
+use neuralos_rt::nir_hdf5::{nir_hdf5_read, nir_hdf5_write, NirHdfError, NirHdfNodeKind};
+use neuralos_snn::nir::{NirBuilder, NirImport, NirImportOptions, NirLif, NirLifParams};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -339,4 +337,140 @@ fn integer_weight_dataset_is_a_shape_error() {
         NirHdfError::Shape(m) => assert!(m.contains("float64"), "{m}"),
         other => panic!("wrong error: {other:?}"),
     }
+}
+
+// ---- the writer: semantic idempotence (named decision) -------------
+
+/// Semantic equality = identical substrate state: per-node Linear
+/// weights, LIF records, shapes, and edges (the JSON gate's own
+/// equality set). Container bits (file bytes, ulp-level dequant
+/// scale drift) are NOT the contract.
+fn assert_semantically_equal(a: &NirImport<'_>, b: &NirImport<'_>) {
+    assert_eq!(a.nodes.len(), b.nodes.len());
+    for (name, _) in a.nodes.iter().map(|n| (n.name, n.kind)) {
+        let (na, nb) = (find(a, name), find(b, name));
+        assert_eq!(na.kind, nb.kind, "{name}");
+        assert_eq!(na.shape_len, nb.shape_len, "{name}: shape len");
+        assert_eq!(
+            &na.shape[..na.shape_len],
+            &nb.shape[..nb.shape_len],
+            "{name}: shape"
+        );
+        if let Some(la) = na.linear {
+            let lb = nb.linear.expect("linear");
+            assert_eq!((la.rows, la.cols), (lb.rows, lb.cols), "{name}");
+            assert_eq!(
+                &a.weights[la.weight_offset..la.weight_offset + la.rows * la.cols],
+                &b.weights[lb.weight_offset..lb.weight_offset + lb.rows * lb.cols],
+                "{name}: weights"
+            );
+        }
+        if let Some(pa) = na.lif {
+            let pb = nb.lif.expect("lif");
+            assert_eq!(pa.len, pb.len, "{name}: pop len");
+            for k in 0..pa.len {
+                assert_eq!(a.lifs[pa.offset + k], b.lifs[pb.offset + k], "{name}[{k}]");
+            }
+        }
+    }
+    fn pair<'a>(g: &NirImport<'a>) -> Vec<(&'a str, &'a str)> {
+        g.edges
+            .iter()
+            .map(|&(x, y)| (g.nodes[x as usize].name, g.nodes[y as usize].name))
+            .collect()
+    }
+    assert_eq!(pair(a), pair(b));
+}
+
+#[test]
+fn export_read_back_is_semantically_idempotent() {
+    let doc = nir_hdf5_read(&fixture("chain_population.nir")).expect("read");
+    let g = doc.import(NirImportOptions::default()).expect("import");
+    let out = hand::scratch("export_roundtrip.nir");
+    nir_hdf5_write(&out, &g).expect("export");
+    let doc2 = nir_hdf5_read(&out).expect("re-read");
+    assert_eq!(
+        doc2.version, "nir@7883c3c",
+        "our export carries the provenance version block"
+    );
+    let g2 = doc2.import(NirImportOptions::default()).expect("re-import");
+    assert_semantically_equal(&g, &g2);
+    // and the second round is stable too
+    let out2 = hand::scratch("export_roundtrip2.nir");
+    nir_hdf5_write(&out2, &g2).expect("export 2");
+    let doc3 = nir_hdf5_read(&out2).expect("re-read 2");
+    let g3 = doc3.import(NirImportOptions::default()).expect("re-import 2");
+    assert_semantically_equal(&g2, &g3);
+}
+
+#[test]
+fn defaulted_v_reset_survives_the_round_trip() {
+    // absent v_reset on read → defaulted record → export OMITS the
+    // dataset → re-read defaults again: the flag round-trips
+    let mut bld = NirBuilder::new(NirImportOptions::default());
+    let params = NirLifParams {
+        tau_s: &[0.02],
+        r_ohm: &[1e8],
+        v_leak_v: &[-0.07],
+        v_threshold_v: &[-0.055],
+        v_reset_v: None, // absent → zeros + defaulted
+    };
+    let inp = bld.add_input("i", &[1]).unwrap();
+    let lin = bld.add_linear("w", &[0.5, -1.0, 0.25], 1, 3).unwrap();
+    let lif = bld.add_lif_population("l", &params).unwrap();
+    let outp = bld.add_output("o", &[1]).unwrap();
+    for (a, b) in [(inp, lin), (lin, lif), (lif, outp)] {
+        bld.add_edge(a, b).unwrap();
+    }
+    let g = bld.build().unwrap();
+    assert!(g.lifs[0].v_reset_defaulted, "source flag set");
+
+    let path = hand::scratch("export_vreset_defaulted.nir");
+    nir_hdf5_write(&path, &g).expect("export");
+    let doc = nir_hdf5_read(&path).expect("read");
+    assert!(
+        doc.nodes.iter().find(|n| n.name == "l").unwrap().lif.v_reset_v.is_none(),
+        "v_reset dataset must be OMITTED when defaulted"
+    );
+    let g2 = doc.import(NirImportOptions::default()).unwrap();
+    assert!(g2.lifs[0].v_reset_defaulted, "flag survives the round trip");
+    assert_semantically_equal(&g, &g2);
+}
+
+#[test]
+fn zero_edge_graph_exports_and_reads() {
+    // the reference cannot emit this shape (auto-wiring); our writer
+    // emits 0×2 edges and the reader takes it back
+    let mut bld = NirBuilder::new(NirImportOptions::default());
+    bld.add_input("i", &[2]).unwrap();
+    bld.add_output("o", &[2]).unwrap();
+    let g = bld.build().unwrap();
+    let path = hand::scratch("export_zero_edges.nir");
+    nir_hdf5_write(&path, &g).expect("export");
+    let doc = nir_hdf5_read(&path).expect("read");
+    assert!(doc.edges.is_empty());
+    let g2 = doc.import(NirImportOptions::default()).unwrap();
+    assert_semantically_equal(&g, &g2);
+}
+
+#[test]
+fn json_export_stays_byte_stable_from_the_hdf5_import() {
+    // the JSON container's byte-stability contract is untouched by the
+    // HDF5 path: the same import exports byte-identically twice and
+    // re-imports state-identically
+    let doc = nir_hdf5_read(&fixture("chain_population.nir")).unwrap();
+    let g = doc.import(NirImportOptions::default()).unwrap();
+    let mut a = vec![0u8; 8192];
+    let mut b = vec![0u8; 8192];
+    let na = neuralos_snn::nir::nir_export(
+        &g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut a,
+    )
+    .unwrap();
+    let nb = neuralos_snn::nir::nir_export(
+        &g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut b,
+    )
+    .unwrap();
+    assert_eq!(&a[..na], &b[..nb], "JSON export is byte-stable");
+    let g2 = NirImport::from_json(&a[..na], NirImportOptions::default()).unwrap();
+    assert_semantically_equal(&g, &g2);
 }

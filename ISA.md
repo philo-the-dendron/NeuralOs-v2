@@ -3493,3 +3493,44 @@ the reader to the seam, 2026-08-21)
 - Battery: hdf5 leg 101 inline + 11 fixture / 0 failed, parallel,
   zero crashes; clippy -D warnings both legs; default workspace
   288/0.
+
+## Verification (R15 — NIR slice 2, C3: the writer + THE EVIDENCE
+GATE + reference interop, 2026-08-21)
+
+- **Writer** (`nir_hdf5_write`): the reference `write()` layout
+  mirrored — deflate(4) arrays (the h5py default level the probe
+  measured), scalar vlen strings, UNCOMPRESSED (N,2) edges, 0×2
+  edges for zero-edge graphs, `metadata.neuralos` per node with the
+  JSON export's provenance+quant convention, version dataset =
+  EXPORT_VERSION. The `v_reset` dataset is OMITTED when defaulted —
+  absent-on-read reproduces the defaulted flag (semantic
+  idempotence). Node names: any slash-free non-empty string (the
+  ASCII gate stays a JSON-container property — the 1b decision,
+  honored).
+- **Named decision of record**: HDF5 idempotence = SEMANTIC equality
+  (identical substrate state: weights, LIF records, shapes, edges);
+  HDF5 has no canonical byte form. The JSON export keeps
+  byte-stability — proven from the SAME import (941 B, byte-stable,
+  state-identical re-import).
+- **THE EVIDENCE GATE** (`nir_hdf5_gate`, feature-gated example,
+  family style): 5/5 — (1) reference emission quantizes exactly,
+  cross-container frozen quanta; (2) fires on the substrate: 9
+  spikes/100 steps, first at step 6 — IDENTICAL to the JSON gate's
+  frozen verdict; (3) lzf censused out before any read, filter +
+  policy named; (4) export read-back semantically identical; (5)
+  JSON byte-stability untouched. Evidence banked:
+  `evidence/nir-hdf5-gate/` (README with in-repo rebuild commands,
+  gate.log, verify.log, SHA256SUMS).
+- **Interop leg (ratified named win)**: `tools/gen_nir_fixtures.py
+  --verify <file>` loads OUR export with the pinned reference's own
+  `nir.read()` — nodes/edges exact, weights max |Δ| 1.526e-05 ≤
+  scale/2, LIF params within record-render tolerance.
+- Falsifiers: +4 writer tests (15 fixture tests total): two-hop
+  export→read→import semantic equality; defaulted-v_reset round trip
+  (dataset OMITTED, flag survives); zero-edge export (0×2, our
+  emission — the reference cannot make one); JSON byte-stability
+  from the HDF5 import.
+- Battery: hdf5 leg 101 inline + 15 fixture / 0 failed, clippy -D
+  warnings both legs; workspace default 288/0; no_std untouched.
+- `ndarray = "0.15"` moved dev→optional-dep on the feature (writer
+  constructs Array1/Array2); zero new compile cost off-feature.

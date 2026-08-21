@@ -1,0 +1,4 @@
+VERIFY: PASS — the reference's own read() loads our export:
+  nodes ['input', 'lif', 'linear', 'output'] · edges [('input', 'linear'), ('lif', 'output'), ('linear', 'lif')]
+  weight max |Δ| vs source 1.526e-05 (≤ scale/2 = 1.526e-05)
+  LIF params within record-render tolerance (tau ≤ 5e-6 s, V ≤ 5e-4 V)

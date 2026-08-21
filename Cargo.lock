@@ -3052,6 +3052,7 @@ dependencies = [
  "hdf5-sys",
  "ndarray",
  "neuralos-snn",
+ "proptest",
 ]
 
 [[package]]

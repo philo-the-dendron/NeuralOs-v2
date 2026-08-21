@@ -59,8 +59,10 @@ use hdf5::types::VarLenUnicode;
 use hdf5::{Dataset, File as H5File, Group};
 use hdf5_sys::h5d::H5Dget_create_plist;
 use hdf5_sys::h5p::{H5Pget_filter2, H5Pget_nfilters, H5Pclose};
+use ndarray::{Array1, Array2};
 use neuralos_snn::nir::{
-    NirBuilder, NirImport, NirImportOptions, NirLifParams, NirError,
+    NirBuilder, NirImport, NirImportOptions, NirLif, NirLifParams, NirNode, NirNodeKind,
+    NirError, EXPORT_VERSION,
 };
 
 /// HDF5's built-in deflate filter id (`H5Z_FILTER_DEFLATE`).
@@ -614,6 +616,265 @@ impl NirHdfDoc {
         }
         bld.build().map_err(NirHdfError::from)
     }
+}
+
+// ---------------------------------------------------------------------------
+// The writer — the reference's layout, our provenance convention
+// ---------------------------------------------------------------------------
+
+/// Write a [`NirImport`] as a `.nir` file: the reference
+/// `serialization.write()` layout (deflate(4) arrays — the h5py
+/// default level; scalar vlen strings; uncompressed `(N,2)` edges;
+/// `0×2` edges for a zero-edge graph), with the JSON export's
+/// provenance convention riding `metadata.neuralos` per node.
+///
+/// **Idempotence is SEMANTIC, not byte-level** (named decision): HDF5
+/// files embed no canonical byte form, so the contract is that
+/// `nir_hdf5_read` → `import` → `nir_hdf5_write` → `nir_hdf5_read` →
+/// `import` yields the identical substrate state — weights, LIF
+/// records, shapes, edges. The JSON export keeps byte-stability.
+///
+/// Node names may be any slash-free, NUL-free string (the
+/// printable-ASCII gate is a JSON-container property; HDF5 link names
+/// are the container's own, laxer, rule).
+///
+/// # Errors
+///
+/// [`NirHdfError::Open`] for create failures; [`NirHdfError::Strings`]
+/// for names HDF5 links cannot carry; [`NirHdfError::Seam`] for a
+/// starved node (missing population/linear view).
+pub fn nir_hdf5_write(path: &Path, g: &NirImport<'_>) -> Result<(), NirHdfError> {
+    ensure_plugin_dir();
+    let file = H5File::create(path)
+        .map_err(|e| NirHdfError::Open(format!("{}: {e}", path.display())))?;
+    write_str_scalar(&file, "version", EXPORT_VERSION)?;
+    let node_g = file
+        .create_group("node")
+        .map_err(|e| NirHdfError::Open(format!("create 'node': {e}")))?;
+    write_str_scalar(&node_g, "type", "NIRGraph")?;
+    let nodes_g = node_g
+        .create_group("nodes")
+        .map_err(|e| NirHdfError::Open(format!("create 'node/nodes': {e}")))?;
+    for node in &g.nodes {
+        write_node(&nodes_g, node, g)?;
+    }
+    // edges: (N,2) vlen strings, UNCOMPRESSED — the reference's own
+    // fall-through branch; 0×2 for a zero-edge graph (the reference
+    // cannot emit one; its constructor auto-wires junctions)
+    let edges = Array2::from_shape_fn((g.edges.len(), 2), |(i, j)| {
+        let (a, b) = g.edges[i];
+        let name = if j == 0 { g.nodes[a as usize].name } else { g.nodes[b as usize].name };
+        vlen_str(name).expect("node names are valid vlen strings (checked in write_node)")
+    });
+    node_g
+        .new_dataset_builder()
+        .with_data(&edges)
+        .create("edges")
+        .map_err(|e| NirHdfError::Open(format!("create 'node/edges': {e}")))?;
+    file.close()
+        .map_err(|e| NirHdfError::Open(format!("close: {e}")))?;
+    Ok(())
+}
+
+fn vlen_str(s: &str) -> Result<VarLenUnicode, NirHdfError> {
+    s.parse()
+        .map_err(|_| NirHdfError::Strings(format!("'{s}' cannot become a vlen string")))
+}
+
+fn write_str_scalar(parent: &hdf5::Group, name: &str, s: &str) -> Result<(), NirHdfError> {
+    let ds = parent
+        .new_dataset_builder()
+        .empty::<VarLenUnicode>()
+        .shape(())
+        .create(name)
+        .map_err(|e| NirHdfError::Open(format!("create '{name}': {e}")))?;
+    ds.write_scalar(&vlen_str(s)?)
+        .map_err(|e| NirHdfError::Strings(format!("write '{name}': {e}")))
+}
+
+fn write_f64_array(
+    parent: &hdf5::Group,
+    name: &str,
+    values: &[f64],
+) -> Result<(), NirHdfError> {
+    let arr = Array1::from(values.to_vec());
+    parent
+        .new_dataset_builder()
+        .with_data(&arr)
+        .deflate(4)
+        .create(name)
+        .map_err(|e| NirHdfError::Open(format!("create '{name}': {e}")))?;
+    Ok(())
+}
+
+fn write_f64_scalar(parent: &hdf5::Group, name: &str, v: f64) -> Result<(), NirHdfError> {
+    let ds = parent
+        .new_dataset_builder()
+        .empty::<f64>()
+        .shape(())
+        .create(name)
+        .map_err(|e| NirHdfError::Open(format!("create '{name}': {e}")))?;
+    ds.write_scalar(&v)
+        .map_err(|e| NirHdfError::Open(format!("write '{name}': {e}")))?;
+    Ok(())
+}
+
+fn write_i64_scalar(parent: &hdf5::Group, name: &str, v: i64) -> Result<(), NirHdfError> {
+    let ds = parent
+        .new_dataset_builder()
+        .empty::<i64>()
+        .shape(())
+        .create(name)
+        .map_err(|e| NirHdfError::Open(format!("create '{name}': {e}")))?;
+    ds.write_scalar(&v)
+        .map_err(|e| NirHdfError::Open(format!("write '{name}': {e}")))?;
+    Ok(())
+}
+
+fn write_node(nodes_g: &hdf5::Group, node: &NirNode<'_>, g: &NirImport<'_>) -> Result<(), NirHdfError> {
+    if node.name.contains('/') || node.name.contains('\0') || node.name.is_empty() {
+        return Err(NirHdfError::Strings(format!(
+            "node name '{}' is not a legal HDF5 link name",
+            node.name
+        )));
+    }
+    let ng = nodes_g
+        .create_group(node.name)
+        .map_err(|e| NirHdfError::Open(format!("create node '{}': {e}", node.name)))?;
+    let type_name = match node.kind {
+        NirNodeKind::Input => "Input",
+        NirNodeKind::Output => "Output",
+        NirNodeKind::Linear => "Linear",
+        NirNodeKind::Lif => "LIF",
+    };
+    write_str_scalar(&ng, "type", type_name)?;
+    match node.kind {
+        NirNodeKind::Input | NirNodeKind::Output => {
+            let shape: Vec<i64> = node.shape[..node.shape_len]
+                .iter()
+                .map(|&d| i64::from(d))
+                .collect();
+            let arr = Array1::from(shape);
+            ng.new_dataset_builder()
+                .with_data(&arr)
+                .deflate(4)
+                .create("shape")
+                .map_err(|e| NirHdfError::Open(format!("'{}': shape: {e}", node.name)))?;
+        }
+        NirNodeKind::Linear => {
+            let lin = node
+                .linear
+                .ok_or_else(|| NirHdfError::from(NirError::MissingField("linear")))?;
+            // dequantized weights: w' = q·scale — plain NIR a real
+            // snnTorch/NIR stack can load; provenance rides metadata
+            let arr = Array2::from_shape_fn((lin.rows, lin.cols), |(r, c)| {
+                f64::from(g.weights[lin.weight_offset + r * lin.cols + c]) * lin.scale
+            });
+            ng.new_dataset_builder()
+                .with_data(&arr)
+                .deflate(4)
+                .create("weight")
+                .map_err(|e| NirHdfError::Open(format!("'{}': weight: {e}", node.name)))?;
+            let meta = ng.create_group("metadata").and_then(|m| m.create_group("neuralos"));
+            let meta = meta.map_err(|e| NirHdfError::Open(format!("metadata: {e}")))?;
+            let prov = meta
+                .create_group("provenance")
+                .map_err(|e| NirHdfError::Open(format!("metadata provenance: {e}")))?;
+            write_f64_scalar(&prov, "absmax", lin.absmax)?;
+            let quant = meta
+                .create_group("quant")
+                .map_err(|e| NirHdfError::Open(format!("metadata quant: {e}")))?;
+            write_f64_scalar(&quant, "scale", lin.scale)?;
+            write_f64_scalar(&quant, "max_abs_err", lin.max_abs_err)?;
+            write_i64_scalar(&quant, "zero_tensor", i64::from(lin.zero_tensor))?;
+            write_str_scalar(&quant, "source", neuralos_snn::nir::NIR_REF_SHA)?;
+        }
+        NirNodeKind::Lif => {
+            let pop = node
+                .lif
+                .ok_or_else(|| NirHdfError::from(NirError::MissingField("lif")))?;
+            let rec = |i: usize| -> Result<NirLif, NirHdfError> {
+                g.lifs
+                    .get(pop.offset + i)
+                    .copied()
+                    .ok_or_else(|| NirHdfError::from(NirError::MissingField("lif")))
+            };
+            // schema arrays rendered from the RECORDS exactly as the
+            // JSON export renders them (tau_us/1e6, r_mohm*1e6,
+            // q/(1000·scale)): re-import reproduces the identical
+            // quantized population
+            let scale = g.opts.resolution.scale();
+            let to_v = |q: i16| f64::from(q) / (1000.0 * f64::from(scale));
+            let mut tau = Vec::with_capacity(pop.len);
+            let mut r = Vec::with_capacity(pop.len);
+            let mut leak = Vec::with_capacity(pop.len);
+            let mut thr = Vec::with_capacity(pop.len);
+            let mut reset = Vec::with_capacity(pop.len);
+            let mut tau_src = Vec::with_capacity(pop.len);
+            let mut r_src = Vec::with_capacity(pop.len);
+            let mut leak_src = Vec::with_capacity(pop.len);
+            let mut thr_src = Vec::with_capacity(pop.len);
+            let mut reset_src = Vec::with_capacity(pop.len);
+            let mut tau_err = Vec::with_capacity(pop.len);
+            let mut v_err = Vec::with_capacity(pop.len);
+            let mut defaulted = false;
+            for i in 0..pop.len {
+                let it = rec(i)?;
+                tau.push(f64::from(it.tau_us) / 1.0e6);
+                r.push(f64::from(it.resistance_mohm) * 1.0e6);
+                leak.push(to_v(it.leak_q));
+                thr.push(to_v(it.threshold_q));
+                reset.push(to_v(it.reset_q));
+                tau_src.push(it.tau_s);
+                r_src.push(it.r_ohm);
+                leak_src.push(it.v_leak_v);
+                thr_src.push(it.v_threshold_v);
+                reset_src.push(it.v_reset_v);
+                tau_err.push(it.tau_err_s);
+                v_err.push(it.max_v_err_v);
+                defaulted |= it.v_reset_defaulted;
+            }
+            write_f64_array(&ng, "tau", &tau)?;
+            write_f64_array(&ng, "r", &r)?;
+            write_f64_array(&ng, "v_leak", &leak)?;
+            write_f64_array(&ng, "v_threshold", &thr)?;
+            // v_reset dataset OMITTED when defaulted: absent-on-read is
+            // the reference's zeros+defaulted semantics, so the
+            // read-back reproduces the flag (semantic idempotence)
+            if !defaulted {
+                write_f64_array(&ng, "v_reset", &reset)?;
+            }
+            let meta = ng
+                .create_group("metadata")
+                .and_then(|m| m.create_group("neuralos"))
+                .map_err(|e| NirHdfError::Open(format!("metadata: {e}")))?;
+            let prov = meta
+                .create_group("provenance")
+                .map_err(|e| NirHdfError::Open(format!("metadata provenance: {e}")))?;
+            write_f64_array(&prov, "tau_s", &tau_src)?;
+            write_f64_array(&prov, "r_ohm", &r_src)?;
+            write_f64_array(&prov, "v_leak_v", &leak_src)?;
+            write_f64_array(&prov, "v_threshold_v", &thr_src)?;
+            write_f64_array(&prov, "v_reset_v", &reset_src)?;
+            write_i64_scalar(&prov, "v_reset_defaulted", i64::from(defaulted))?;
+            let quant = meta
+                .create_group("quant")
+                .map_err(|e| NirHdfError::Open(format!("metadata quant: {e}")))?;
+            write_str_scalar(
+                &quant,
+                "grid",
+                if g.opts.resolution == neuralos_snn::lif_neuron::VoltageResolution::CentiMillivolt {
+                    "cV"
+                } else {
+                    "mV"
+                },
+            )?;
+            write_i64_scalar(&quant, "dt_us", i64::from(g.opts.dt_us))?;
+            write_f64_array(&quant, "tau_err_s", &tau_err)?;
+            write_f64_array(&quant, "max_v_err_v", &v_err)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
