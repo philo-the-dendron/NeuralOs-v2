@@ -713,13 +713,12 @@ impl SpikingNeuralNetwork {
         flips
     }
 
-    /// Reset all neurons, synapses, stats, and time. Keeps topology + synapse wiring.
+    /// Reset all neurons, stats, and time. Keeps topology + synapse wiring.
+    /// (Synapses carry no per-sim dynamic state since the alpha.3 F5a
+    /// removal — weight + structural params only.)
     pub fn reset(&mut self) {
         for n in &mut self.neurons {
             n.reset();
-        }
-        for s in &mut self.synapses {
-            s.reset();
         }
         self.current_time_us = 0;
         self.stats.total_spikes = 0;

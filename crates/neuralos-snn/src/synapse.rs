@@ -17,7 +17,6 @@
 //!
 //! - Weight: `i16`, fixed-point 1000 = 1.0 (range ~[-2000, 2000] typically).
 //! - Time: `u32` microseconds.
-//! - Conductance / `eligibility_trace`: `i16` with the same 1000 = 1.0 scale.
 //!
 //! # `no_std`
 //!
@@ -35,16 +34,6 @@
 
 use crate::Error;
 
-/// Default synaptic delay (μs).
-const DEFAULT_DELAY_US: u16 = 1_000; // 1 ms
-/// Minimum allowed synaptic delay (μs).
-const MIN_DELAY_US: u16 = 100;
-/// Maximum allowed synaptic delay (μs).
-const MAX_DELAY_US: u16 = 10_000;
-/// Eligibility-trace time constant (μs).
-const TAU_TRACE_US: u32 = 20_000; // 20 ms
-/// Conductance floor — below this, snap to zero (avoid noisy tiny values).
-const CONDUCTANCE_FLOOR: i16 = 10;
 /// Fixed-point scale: 1000 = 1.0.
 ///
 /// Public since Stage 3: `bridge::wire_gamma_to_substrate` maps imported
@@ -64,7 +53,7 @@ pub enum SynapseType {
     Modulatory,
 }
 
-/// Synapse with conductance, eligibility trace, and recent-activity counter.
+/// Synapse with fixed-point weight and STDP instrumentation counters.
 ///
 /// Biologically-modeled synaptic transmission with fixed-point math throughout.
 /// Pairs with [`crate::lif_neuron::LIFNeuron`] for full integrate-and-fire + STDP.
@@ -84,40 +73,10 @@ pub struct Synapse {
     /// Minimum weight (plasticity clamp).
     pub min_weight: i16,
 
-    /// Transmission delay (μs). **DECORATIVE** since session F: `step()`
-    /// transmits with a fixed one-step delay (the network's time step)
-    /// and never reads this field — the actual wire delay is
-    /// `SpikingNeuralNetwork::time_step_us`. Kept for a future
-    /// delay-respecting synapse queue.
-    pub delay_us: u16,
     /// Conductance rise time constant (μs) — biological: AMPA 0.5ms, GABA 0.3ms.
     pub tau_rise_us: u16,
     /// Conductance decay time constant (μs) — biological: AMPA 5ms, GABA 10ms.
     pub tau_decay_us: u16,
-
-    /// Current conductance — decays exponentially between spikes.
-    /// **DECORATIVE** in orchestration (2026-08-20 audit): `step()`
-    /// propagates via the CSR `weight/divisor` pulse directly and never
-    /// calls `receive_spike`/`transmit` — this field is only touched by
-    /// the dead transmission machinery below.
-    pub conductance: i16,
-    /// Timestamp of the last presynaptic spike (μs). **DECORATIVE** in
-    /// orchestration: the network tracks its own `last_spike_time_us` for
-    /// STDP pairing; this synapse-side copy is only written by the dead
-    /// `receive_spike` path.
-    pub last_spike_time_us: u32,
-    /// Buffered transmission value awaiting pickup by `transmit()`.
-    /// **DECORATIVE** in orchestration (see `conductance`).
-    pub transmission_buffer: i16,
-
-    /// STDP eligibility trace — decays with `TAU_TRACE_US`, jumps on spike.
-    /// **DECORATIVE** in orchestration: plasticity reads spike-timing
-    /// directly; nothing reads this trace.
-    pub eligibility_trace: i16,
-    /// Recent-activity counter — used by plasticity algorithms.
-    /// **DECORATIVE** in orchestration: nothing reads it; slated for
-    /// removal at alpha.3.
-    pub recent_activity: u8,
 
     /// Cumulative RAW STDP delta applied by `update_weight` (session G
     /// instrumentation — the mechanism-label evidence): the signed sum of
@@ -157,88 +116,11 @@ impl Synapse {
             weight,
             max_weight,
             min_weight,
-            delay_us: DEFAULT_DELAY_US,
             tau_rise_us,
             tau_decay_us,
-            conductance: 0,
-            last_spike_time_us: 0,
-            transmission_buffer: 0,
-            eligibility_trace: 0,
-            recent_activity: 0,
             raw_stdp_delta: 0,
             absorbed_delta: 0,
         })
-    }
-
-    /// Process one transmission step: decay conductance, drain buffer, decay trace.
-    ///
-    /// Returns the synaptic current (μA) to inject into the postsynaptic neuron.
-    ///
-    /// **DECORATIVE** in orchestration (2026-08-20 audit): `step()`
-    /// transmits via the CSR `weight/divisor` pulse and never calls this.
-    pub fn transmit(&mut self, dt_us: u32) -> i16 {
-        self.decay_conductance(dt_us);
-        let current = self.transmission_buffer;
-        self.transmission_buffer = 0;
-        self.decay_eligibility_trace(dt_us);
-        current
-    }
-
-    /// Receive a presynaptic spike at `spike_time_us`. Updates conductance,
-    /// transmission buffer, eligibility trace, and activity counter.
-    ///
-    /// **DECORATIVE** in orchestration (2026-08-20 audit): `step()` never
-    /// calls this; the CSR path drives transmission directly.
-    pub fn receive_spike(&mut self, spike_time_us: u32) {
-        self.last_spike_time_us = spike_time_us;
-
-        // Add weight magnitude to conductance (saturating). unsigned_abs() is u16;
-        // cast to i16 is safe because weight is bounded to ±2000 by biological_params.
-        self.conductance = self
-            .conductance
-            .saturating_add(self.weight.unsigned_abs() as i16);
-
-        // Driving force by synapse type (fixed-point 1000 = 1.0).
-        let driving_force: i32 = match self.synapse_type {
-            SynapseType::Excitatory => SCALE,
-            SynapseType::Inhibitory => -SCALE,
-            SynapseType::Modulatory => SCALE / 2,
-        };
-
-        // Current = weight × conductance × driving_force / (SCALE × SCALE)
-        let current = (i32::from(self.weight) * i32::from(self.conductance) * driving_force)
-            / (SCALE * SCALE);
-        self.transmission_buffer = self.transmission_buffer.saturating_add(current as i16);
-
-        // STDP eligibility trace bumps by a fixed quantum per spike.
-        self.eligibility_trace = self.eligibility_trace.saturating_add(100);
-        self.recent_activity = self.recent_activity.saturating_add(1);
-    }
-
-    /// Exponential-decay approximation of conductance: `g[n+1] = g[n] · (1 − dt/τ)`.
-    /// Snaps to zero below `CONDUCTANCE_FLOOR` to avoid noisy tiny values.
-    /// **DECORATIVE** in orchestration: only called by `transmit` (dead path).
-    fn decay_conductance(&mut self, dt_us: u32) {
-        if self.conductance > 0 && self.tau_decay_us > 0 {
-            let decay_num = SCALE - (((dt_us as i32) * SCALE) / i32::from(self.tau_decay_us));
-            let next = i32::from(self.conductance) * decay_num / SCALE;
-            self.conductance = if next < i32::from(CONDUCTANCE_FLOOR) {
-                0
-            } else {
-                next as i16
-            };
-        }
-    }
-
-    /// Decay eligibility trace with `TAU_TRACE_US`. Decrement activity counter
-    /// every full millisecond.
-    fn decay_eligibility_trace(&mut self, dt_us: u32) {
-        let decay_num = SCALE - (((dt_us as i32) * SCALE) / TAU_TRACE_US as i32);
-        self.eligibility_trace =
-            (i32::from(self.eligibility_trace) * decay_num / SCALE) as i16;
-        if self.recent_activity > 0 && dt_us > 1000 {
-            self.recent_activity = self.recent_activity.saturating_sub(1);
-        }
     }
 
     /// Apply a plastic weight delta. Clamps to `[min_weight, max_weight]`.
@@ -264,26 +146,6 @@ impl Synapse {
             0
         }
     }
-
-    /// Is the synapse currently conducting or has pending transmission?
-    #[must_use]
-    pub fn is_active(&self) -> bool {
-        self.conductance > 0 || self.transmission_buffer != 0
-    }
-
-    /// Reset all dynamic state (keeps weight + structural params).
-    pub fn reset(&mut self) {
-        self.conductance = 0;
-        self.last_spike_time_us = 0;
-        self.transmission_buffer = 0;
-        self.eligibility_trace = 0;
-        self.recent_activity = 0;
-    }
-
-    /// Set transmission delay (clamped to `[MIN_DELAY_US, MAX_DELAY_US]`).
-    pub fn set_delay_us(&mut self, delay: u16) {
-        self.delay_us = delay.clamp(MIN_DELAY_US, MAX_DELAY_US);
-    }
 }
 
 impl Default for Synapse {
@@ -296,14 +158,8 @@ impl Default for Synapse {
             weight: 100,
             max_weight: 2000,
             min_weight: 0,
-            delay_us: DEFAULT_DELAY_US,
             tau_rise_us: 500,
             tau_decay_us: 5_000,
-            conductance: 0,
-            last_spike_time_us: 0,
-            transmission_buffer: 0,
-            eligibility_trace: 0,
-            recent_activity: 0,
             raw_stdp_delta: 0,
             absorbed_delta: 0,
         })
@@ -421,12 +277,6 @@ impl SynapseBuilder {
     }
 
     #[must_use]
-    pub fn delay_us(mut self, delay: u16) -> Self {
-        self.synapse.delay_us = delay.clamp(MIN_DELAY_US, MAX_DELAY_US);
-        self
-    }
-
-    #[must_use]
     pub fn tau_decay_us(mut self, tau: u16) -> Self {
         self.synapse.tau_decay_us = tau;
         self
@@ -497,10 +347,8 @@ mod tests {
     fn builder_overrides_params() {
         let s = SynapseBuilder::new(1, 2, 150)
             .expect("valid ids")
-            .delay_us(2_000)
             .weight_bounds(-500, 500)
             .build();
-        assert_eq!(s.delay_us, 2_000);
         assert_eq!(s.max_weight, 500);
         assert_eq!(s.min_weight, -500);
     }
@@ -516,60 +364,12 @@ mod tests {
     }
 
     #[test]
-    fn receive_spike_then_transmit_emits_current() {
-        let mut s = Synapse::new(1, 2, 100).expect("valid ids");
-        s.receive_spike(1_000);
-        assert!(s.is_active(), "synapse must be active right after spike");
-        let current = s.transmit(1_000);
-        assert!(
-            current > 0,
-            "excitatory synapse with positive weight must emit positive current"
-        );
-    }
-
-    #[test]
-    fn transmit_drains_buffer_and_decays_conductance() {
-        let mut s = Synapse::new(1, 2, 100).expect("valid ids");
-        s.receive_spike(1_000);
-        let first = s.transmit(1_000);
-        assert!(first > 0);
-        // Buffer drained — next transmit emits ~zero (only decayed conductance contribution).
-        let second = s.transmit(1_000);
-        assert!(second < first, "second transmit must be smaller (buffer drained)");
-    }
-
-    #[test]
     fn weight_clamped_at_bounds() {
         let mut s = Synapse::new(1, 2, 100).expect("valid ids");
         s.update_weight(10_000); // Way over max
         assert_eq!(s.weight, s.max_weight);
         s.update_weight(-10_000); // Way under min
         assert_eq!(s.weight, s.min_weight);
-    }
-
-    #[test]
-    fn reset_clears_dynamic_state_keeps_structure() {
-        let mut s = Synapse::new(1, 2, 100).expect("valid ids");
-        s.receive_spike(1_000);
-        s.receive_spike(2_000);
-        let w = s.weight;
-        let max_w = s.max_weight;
-        s.reset();
-        assert_eq!(s.conductance, 0);
-        assert_eq!(s.transmission_buffer, 0);
-        assert_eq!(s.eligibility_trace, 0);
-        assert_eq!(s.recent_activity, 0);
-        assert_eq!(s.weight, w, "reset must keep weight");
-        assert_eq!(s.max_weight, max_w, "reset must keep structural params");
-    }
-
-    #[test]
-    fn delay_clamped_to_valid_range() {
-        let mut s = Synapse::new(1, 2, 100).expect("valid ids");
-        s.set_delay_us(1); // Below MIN
-        assert_eq!(s.delay_us, MIN_DELAY_US);
-        s.set_delay_us(20_000); // Above MAX
-        assert_eq!(s.delay_us, MAX_DELAY_US);
     }
 
     // ----- STDP rule tests -----
@@ -669,15 +469,6 @@ mod tests {
             let far_dt_neg = -((rule.tau_plus_us * multiplier) as i32);
             prop_assert_eq!(rule.calculate_weight_change(far_dt_pos), 0);
             prop_assert_eq!(rule.calculate_weight_change(far_dt_neg), 0);
-        }
-
-        /// Delay always clamped within `[MIN_DELAY_US, MAX_DELAY_US]`.
-        #[test]
-        fn prop_delay_clamped(d in 0u16..=20_000) {
-            let mut s = Synapse::new(1, 2, 100).expect("valid");
-            s.set_delay_us(d);
-            prop_assert!(s.delay_us >= MIN_DELAY_US);
-            prop_assert!(s.delay_us <= MAX_DELAY_US);
         }
     }
 }
