@@ -25,7 +25,7 @@ archive, not here. `cd` to `NeuralOs-v2`.
 
 | Path | Role |
 |---|---|
-| `crates/neuralos-snn` | The spine. Published on crates.io (`0.1.0-alpha.2`). `no_std`-by-default, i16 fixed-point. |
+| `crates/neuralos-snn` | The spine. Published on crates.io (`0.1.0-alpha.3`; `alpha.4` staged). `no_std`-by-default, i16 fixed-point. |
 | `crates/neuralos-app` | The microscope. Slint visualizer over the library. |
 | `crates/neuralos-rt` | The research runtime (GGUF container, Q1_0/Q2_0 compute, tokenizer, model). `publish = false`, std-only. Consumed by the frozen bridge examples. |
 | `paper/` | The Branch B article. Builds with `make` in `paper/` (`make figs` regenerates figures from evidence; `make gate` enforces the language rules of record). |
@@ -71,7 +71,8 @@ cargo test   --workspace                          # offline; 288 executed green 
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
-PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # the hdf5 gate (vendored HDF5; cmake from .nirenv)
+PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # the hdf5 gate (vendored HDF5; cmake from .nirenv; 116 green)
+PATH="$PWD/.nirenv/bin:$PATH" cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate  # THE NIR HDF5 EVIDENCE GATE (5/5)
 
 # Run the visualizer (DISPLAY required, e.g. :0):
 cargo run -p neuralos-app --release               # ~2–9 min link on a 2-core CPU; binary cached after
@@ -115,12 +116,13 @@ pre-rebase history — get explicit OK first.
 
 ## Published crate
 
-`neuralos-snn` is on crates.io at `0.1.0-alpha.2` (the bridge release:
-`i2_s`/`q1_0` codecs, kernel, transmission fix). The workspace consumes
-it via path dep, so lib edits take effect locally without republishing
-— a real bugfix or API addition warrants an `alpha.3`. Bump the
-workspace `version` in the root `Cargo.toml` and
-`cargo publish -p neuralos-snn` when that's the call.
+`neuralos-snn` is on crates.io at `0.1.0-alpha.3` (the substrate-
+hardening release). The workspace consumes it via path dep, so lib
+edits take effect locally without republishing — a real bugfix or
+API addition warrants the next alpha. Bump the workspace `version`
+in the root `Cargo.toml` and `cargo publish -p neuralos-snn` when
+that's the call (`alpha.4` is staged: NIR structured entry —
+quantizers, builder, populations — + the R9 review fixes).
 
 ## Session discipline (the autopsy doctrine — read before scoping any session)
 

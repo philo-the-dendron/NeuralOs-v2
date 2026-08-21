@@ -3534,3 +3534,27 @@ GATE + reference interop, 2026-08-21)
   warnings both legs; workspace default 288/0; no_std untouched.
 - `ndarray = "0.15"` moved dev→optional-dep on the feature (writer
   constructs Array1/Array2); zero new compile cost off-feature.
+
+## Verification (R16 — NIR slice 2, C4+C5: CI leg + docs truth +
+alpha.4 staged, 2026-08-21)
+
+- **CI**: Swatinem/rust-cache@v2 on the main job (the lockfile is
+  committed → stable cache key — closes the "no cache today" gap);
+  new `hdf5` job: apt cmake → feature tests → `nir_hdf5_gate` →
+  feature clippy. The ~3 min vendored-C build lands in target/ and
+  rust-cache carries it — cold only when Cargo.lock moves.
+- **Docs truth**: root README alpha.2 debt closed (current-status
+  row → alpha.3 published / alpha.4 staged; quality-gates block
+  gains the hdf5 leg; workspace overview names NIR .nir IO in rt);
+  AGENTS published-crate section + battery counts + the two hdf5
+  commands; snn README status counts (288/196/116) + alpha.4-staged
+  note + the rt-container pointer; ROADMAP NIR row → slices 1+2
+  LANDED with the named remainder (general multi-node assembly),
+  validated-state counts 275→288.
+- **Alpha.4 staged**: workspace version bumped to `0.1.0-alpha.4`
+  (the snn package: NIR structured entry — pub quantize_lif/
+  quantize_linear + typed scratch, NirBuilder, per-neuron
+  populations — + the R9 fixes). Battery on the bumped tree:
+  check/test/clippy workspace 288/0, no_std, simd 196, hdf5 116/0.
+  Dry-run output banked verbatim below; real publish = principal's
+  call (STOP per commission).

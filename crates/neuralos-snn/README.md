@@ -95,7 +95,7 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   see the alpha.3 audit record in the repo's `ISA.md`.
 - SIMD gate runs in CI; the batch kernel is documented mV-grid-only.
 
-## Since alpha.3 (unreleased — toward alpha.4)
+## Since alpha.3 (the alpha.4 notes — staged, unreleased)
 
 - **NIR slice 1 shipped *in* alpha.3** (missing from the notes
   above): `neuralos_snn::nir` — JSON import/export of
@@ -139,6 +139,10 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   alpha.3 binary. No consumers are known (the module shipped within
   the day); all are fixed here, ahead of any consumer, targeted
   for alpha.4.
+- **The HDF5 `.nir` container** ships workspace-side, in
+  `neuralos-rt` behind its `hdf5` feature (vendored static HDF5,
+  pre-read filter census, the reference's own fixtures +
+  `nir_hdf5_gate`) — the seam it feeds is the structured entry above.
 
 ## Status
 
@@ -148,8 +152,11 @@ never silences the net); `synaptic_input_divisor` — **the coupling
 knob**, new public API (default 10 = the historical weight/10 pulse;
 0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
 published path unchanged; the simd batch kernel doc'd mV-grid-only.
-270 offline unit/property tests (3 app, 174 snn, 93 rt) + 4 simd-gated
-+ 5 model-gated `#[ignore]`; the API may still move within alpha semver.
+**`alpha.4` is staged in-repo** (NIR structured entry + HDF5 via the
+workspace's `neuralos-rt`, R9 review fixes). 288 offline
+unit/property tests (3 app, 192 snn, 93 rt) + 196 simd-gated + 116
+hdf5-gated (in `neuralos-rt`) + 5 model-gated `#[ignore]`; the API
+may still move within alpha semver.
 
 ## License
 

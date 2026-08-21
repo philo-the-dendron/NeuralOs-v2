@@ -35,7 +35,7 @@ NeuralOs-v2/
 ├── crates/
 │   ├── neuralos-snn/   # no_std-by-default SNN library (published, the spine)
 │   ├── neuralos-app/   # Slint visualizer running the SNN live
-│   └── neuralos-rt/    # research runtime (GGUF / Q1_0 / Q2_0 / tokenizer) — publish = false
+│   └── neuralos-rt/    # research runtime (GGUF / Q1_0 / Q2_0 / tokenizer / NIR .nir IO) — publish = false
 ├── paper/              # the Branch B article (make / make figs / make gate)
 ├── evidence/           # raw judge/experiment logs (INDEX.md)
 ├── docs/               # vision, roadmap, research log, format spec, landscape
@@ -50,7 +50,7 @@ NeuralOs-v2/
 
 | Component | State |
 |---|---|
-| `neuralos-snn` | Active and validated. `cargo test -p neuralos-snn`, `cargo check --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass. Published as `0.1.0-alpha.2`. |
+| `neuralos-snn` | Active and validated. `cargo test -p neuralos-snn`, `cargo check --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass. Published on crates.io (currently `0.1.0-alpha.3`; `alpha.4` staged in-repo). |
 | `neuralos-app` | Active Slint visualizer wired directly to `neuralos-snn`. |
 | `neuralos-rt` | Research runtime that proved the ternary bridge. `publish = false`; kept as the executable record behind `paper/`. |
 | Ternary bridge | **Closed chapter** — gates adjudicated, record in `docs/RESEARCH_LOG.md`, article in `paper/`. Reopening is a recorded fork, not default work. |
@@ -74,6 +74,7 @@ cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn
+PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # NIR HDF5 gate leg (vendored HDF5; cmake from .nirenv)
 ```
 
 The first three were validated in this workspace state.
