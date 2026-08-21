@@ -23,9 +23,10 @@ re-pin evidence, banked at commit d3311a7 + this tree. Protocol:
 - Determinism: base run1≡run2 byte-identical (dumps + continuation);
   loop run1≡run2 byte-identical.
 - Continuation: base ≡ loop byte-identical (`1 2 3 4 5 6 7 8 9 10 11 1`).
-- `judge_delta` (Rust port of the Python original; `cargo run -p
+- `judge_delta` (Rust port of the Python original — the Python was
+  deleted after parity; `cargo run -p
   neuralos-rt --release --example judge_delta -- p0_base_run1.err
-  p0_loop_run1.err` — byte-compatible, deleted after parity):
+  p0_loop_run1.err`):
   **12 steps | 0/12 argmax flips | overlap 10/10 | max |Δ| +0.4207 |
   mean 0.0779** — identical to the r4-baselines banked numbers
   (incl. step 9 carrying the max). Same fork binary as the banking
@@ -67,9 +68,17 @@ banking (2fb7c5b, 2026-08-20):
   surgery re-pinned byte-identical (export sha 24ffe5f3…, leg 1) and
   null_patches exercises encode+write+re-read across 13 files
   (13/13 byte-identical, above). Every verdict-bearing line — drive
-  stats, T1 tables, learn-tier counters (events 25,322,176 · flips
+  stats, T1 tables, learn-tier counters (events 25,302,899 · flips
   1,112,771), Hamming 0.3330, mechanism label, verdict block —
   byte-identical. **This match closes R4.**
+
+  *Correction (2026-08-21 fresh-eyes review): this file earlier
+  quoted learn-tier events as 25,322,176 — that is session-H's
+  figure (`evidence/session-h-invivo/invivo.log:23`, where it pairs
+  with flips 1,125,221). Both H2 logs read 25,302,899 (verified:
+  `evidence/session-h2/run.log:24`, `h2_invivo_r4iii.log:24`). The
+  byte-identity claim above was and is true; only the prose figure
+  was wrong.*
 
 ## r4-baselines/README.md amendment
 

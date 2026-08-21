@@ -2929,3 +2929,52 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   build clean; bonsai_probe YES / bonsai_full OK on the real file
 - ISC-50: VISION + ROADMAP C-core sections; this ledger; commits local
   only — merge/push presented to the principal
+
+## Verification (R7 opening — fresh-eyes review, 2026-08-21)
+
+- 2026-08-21 (fresh-eyes on 556cdb8^..556cdb8 code only) · **judge
+    tools: 3 real parity bugs fixed, adversarial parity re-proven
+    against the recovered Python itself.** (a) summary `max()` now
+    replicates CPython's NaN asymmetry (NaN at index 0 stays, later
+    NaNs drop; `f64::max` dropped NaN unconditionally); (b) empty
+    dumps now assert with the exact 3.12 `min() iterable argument is
+    empty` text (was: a `-inf`/NaN garbage summary via `unwrap_or(0)`);
+    (c) the CLI failure surface matches the scripts (unreadable file
+    → stderr+1 not panic-101; missing args → 1 not 2; zero-file
+    census → header + `0 entries` + exit 0). Falsifier: adversarial
+    fixtures (zero-shared steps at index 0 AND later, duplicate ids,
+    duplicate steps, >10 pairs, negative logits, steps ≥ 100, top-1
+    ties, <2-entry steps) run through `git show 556cdb8^:tools/`
+    Python 3.12.3 and the Rust binaries — **byte-identical, exit
+    codes 1/1/1/0** (banked: /tmp/opencode/judge-parity, regenerated
+    by the commands in judge.rs's test comments); the banked
+    r4-closeout pair re-verified byte-identical end-to-end. 6 new
+    tests; rt offline suite 87 → 93.
+- 2026-08-21 · **CORRECTION of the R4 closeout prose:** ISC-84's and
+    `evidence/r4-closeout/README.md`'s "events 25,322,176" is
+    session-H's figure (`evidence/session-h-invivo/invivo.log:23`,
+    where it pairs with flips 1,125,221); both H2 logs read
+    **25,302,899** (`evidence/session-h2/run.log:24`,
+    `h2_invivo_r4iii.log:24` — grep-verified this session). The
+    byte-identity verdict was and is true; only the prose figure was
+    wrong. README corrected in place (it is a living index, not a
+    log); THIS entry is the ledger's correction record — ISC-84's
+    block above is history and stays as written.
+
+## Learning (R7 opening — fresh-eyes review)
+
+- conjectured: the R4 closeout's prose figures were faithful to the
+  artifacts they describe.
+  refuted by: "events 25,322,176" beside "flips 1,112,771" is a
+  chimera — events from session-H, flips from session-H2; both H2
+  logs read 25,302,899. The figure was quoted from adjacent context
+  (session-H's invivo record), not from the log the claim was about.
+  learned: a true verdict claim launders its neighboring numbers.
+  The byte-identity claim (load-bearing, diff-verified) sat next to
+  a decorative figure copied from the wrong session; every reader's
+  verification budget went to the verdict, and the decoration rode
+  along unverified through a README written the same day as the log.
+  criterion now: every number quoted in an evidence README or ledger
+  entry is grep-verified against the named artifact IN THE SESSION
+  THAT WRITES IT — one grep per number at write time, no exceptions
+  for numbers that "match something I remember."
