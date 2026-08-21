@@ -4,7 +4,7 @@
 > silicon — LIF neurons, pairwise STDP, CSR synapses, ternary weight
 > codecs, and an AVX2 batch kernel.
 
-Published on crates.io as `0.1.0-alpha.2` (AGPL-3.0-or-later).
+Published on crates.io as `0.1.0-alpha.3` (AGPL-3.0-or-later).
 
 ## What this crate is
 
@@ -69,8 +69,13 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
 
 ## Status
 
-`0.1.0-alpha.2` — the bridge release (codecs, kernel, live-transmission
-fix). 160 offline unit/property tests + 3 simd-gated; the API may still
+`0.1.0-alpha.3` — the substrate-hardening release: the
+adaptation-decay contract pinned by unit + live tests (equilibrates,
+never silences the net); `synaptic_input_divisor` — **the coupling
+knob**, new public API (default 10 = the historical weight/10 pulse;
+0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
+published path unchanged; the simd batch kernel doc'd mV-grid-only.
+160 offline unit/property tests + 3 simd-gated; the API may still
 move within alpha semver.
 
 ## License
