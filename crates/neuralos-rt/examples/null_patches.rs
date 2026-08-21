@@ -22,53 +22,14 @@
 //! [orig.gguf] [h2-patched.gguf]` — writes models/null-dose-<s>.gguf and
 //! models/null-flip-<s>.gguf, all S2-asserted.
 
-use neuralos_rt::{GgufFile, GGML_TYPE_Q2_0};
+use neuralos_rt::harness::{decode_slice, tensor_abs, xorshift64, ExperimentParams};
+use neuralos_rt::GgufFile;
 use neuralos_snn::{decode_q2_0, encode_q2_0, Trit};
 
-const N: usize = 512;
-const TENSOR: &str = "blk.0.attn_q.weight";
-const MODEL_COLS: usize = 2560;
-const ROW_BYTES: usize = (MODEL_COLS / 128) * 34;
-
-fn xorshift64(state: u64) -> u64 {
-    let mut x = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    x ^= x << 13;
-    x ^= x >> 7;
-    x ^= x << 17;
-    x
-}
-
-/// Decode the 512×512 slice from a GGUF (original or patched).
-fn decode_slice(path: &str) -> Vec<Trit> {
-    let buf = std::fs::read(path).unwrap_or_else(|e| {
-        eprintln!("cannot read {path}: {e}");
-        std::process::exit(1);
-    });
-    let f = GgufFile::parse(&buf).expect("GGUF container must parse");
-    let info = f
-        .tensors
-        .iter()
-        .find(|t| t.name == TENSOR)
-        .unwrap_or_else(|| panic!("tensor {TENSOR} not found"));
-    assert_eq!(info.ty, GGML_TYPE_Q2_0);
-    let data = f.tensor_data(info).expect("slice in bounds");
-    assert_eq!(data.len(), 4096 * ROW_BYTES);
-    let mut out = Vec::with_capacity(N * N);
-    let mut row_trits = vec![Trit::Zero; N];
-    let mut scales = [0u16; N / 128];
-    for r in 0..N {
-        decode_q2_0(
-            &data[r * ROW_BYTES..r * ROW_BYTES + N / 128 * 34],
-            &mut row_trits,
-            &mut scales,
-        )
-        .expect("decode");
-        out.extend_from_slice(&row_trits);
-    }
-    out
-}
-
+#[allow(non_snake_case)]
 fn main() {
+    let p = ExperimentParams::default();
+    let (N, ROW_BYTES) = (p.n, p.row_bytes());
     let orig_path = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "models/Ternary-Bonsai-4B-Q2_0.gguf".into());
@@ -79,8 +40,8 @@ fn main() {
     println!("orig    : {orig_path}");
     println!("H2      : {h2_path}");
 
-    let src = decode_slice(&orig_path);
-    let h2 = decode_slice(&h2_path);
+    let src = decode_slice(&orig_path, &p);
+    let h2 = decode_slice(&h2_path, &p);
 
     // ----- The H2 terminal diff: exact changed-cell set + composition -----
     let changed_idx: Vec<usize> = (0..N * N).filter(|&i| h2[i] != src[i]).collect();
@@ -114,38 +75,28 @@ fn main() {
     let do_surgery = |patched: &[Trit], out: &str| {
         let mut buf = std::fs::read(&orig_path).expect("re-read base");
         let f2 = GgufFile::parse(&buf).expect("re-parse");
-        let info2 = f2
-            .tensors
-            .iter()
-            .find(|t| t.name == TENSOR)
-            .unwrap_or_else(|| panic!("tensor {TENSOR}"));
-        let abs = (f2.data_start + info2.offset) as usize;
-        const CHUNK: usize = 4 * 34;
+        let abs = tensor_abs(&f2, &p);
+        let chunk: usize = p.chunk_bytes();
         let mut row_orig = vec![Trit::Zero; N];
-        let mut scales = [0u16; N / 128];
-        let mut enc = [0u8; CHUNK];
+        let mut scales = vec![0u16; N / 128];
+        let mut enc = vec![0u8; chunk];
         for r in 0..N {
             let off = abs + r * ROW_BYTES;
-            decode_q2_0(&buf[off..off + CHUNK], &mut row_orig, &mut scales)
+            decode_q2_0(&buf[off..off + chunk], &mut row_orig, &mut scales)
                 .expect("orig decodes");
             encode_q2_0(&patched[r * N..(r + 1) * N], &scales, &mut enc).expect("encode");
-            buf[off..off + CHUNK].copy_from_slice(&enc);
+            buf[off..off + chunk].copy_from_slice(&enc);
         }
         std::fs::write(out, &buf).expect("write");
         let check = std::fs::read(out).expect("re-read");
         let f3 = GgufFile::parse(&check).expect("parse post-write");
-        let info3 = f3
-            .tensors
-            .iter()
-            .find(|t| t.name == TENSOR)
-            .unwrap_or_else(|| panic!("tensor {TENSOR}"));
-        let abs3 = (f3.data_start + info3.offset) as usize;
+        let abs3 = tensor_abs(&f3, &p);
         let mut rt = vec![Trit::Zero; N];
-        let mut sc = [0u16; N / 128];
+        let mut sc = vec![0u16; N / 128];
         let mut mism = 0u64;
         for r in 0..N {
             let off = abs3 + r * ROW_BYTES;
-            decode_q2_0(&check[off..off + CHUNK], &mut rt, &mut sc).expect("decode post");
+            decode_q2_0(&check[off..off + chunk], &mut rt, &mut sc).expect("decode post");
             for c in 0..N {
                 if rt[c] != patched[r * N + c] {
                     mism += 1;

@@ -53,6 +53,8 @@
 //! `neuralos-snn`; G2 = S1+S2 here; G3 = fork delta on the patched file;
 //! G4 = double-run determinism (both sides).
 
+#![allow(non_snake_case)] // phase-2 locals keep the frozen original's const names
+
 use neuralos_rt::harness::{
     decode_slice, peak_rss_mb, run_gate_phase, tensor_abs, ExperimentParams,
 };
@@ -140,7 +142,7 @@ fn main() {
     println!("  spikes {D2_SPIKES_IMP}/{D2_SPIKES_CTL}/{D2_SPIKES_ZERO} · events {D2_PLASTICITY_EVENTS} · flips {D2_FLIPS} · Hamming {D2_HAMMING} · intra Δ +0.1075 (clamp-rectified) — all reproduced");
 
     // ----- Phase 2: export + surgery -----
-    let (N, GAMMA) = (p.n, p.gamma);
+    let N = p.n;
     let ROW_BYTES = p.row_bytes();
     let CHUNK_BYTES = p.chunk_bytes();
     let TENSOR_BYTES = p.tensor_bytes();

@@ -75,150 +75,12 @@
 //! Usage: `cargo run -p neuralos-rt --release --example hybrid_invivo --
 //! [model.gguf]` (default `models/Ternary-Bonsai-4B-Q2_0.gguf`).
 
-use neuralos_rt::{rms_norm_milli, GgufFile, GGML_TYPE_Q2_0, Qwen3, Tokenizer};
-use neuralos_snn::{
-    decode_q2_0, NetworkTopology, SpikingNeuralNetwork, Trit, VoltageResolution,
+use neuralos_rt::harness::{
+    build_from_trits, decode_slice, exc_count, group_of, peak_rss_mb, rate_l1,
+    run_and_capture, shuffled_copy, train_hamming, trit_val, ExperimentParams, Train,
 };
-
-// ----- Geometry (D-2 verbatim; grid pinned centi per the registration) -----
-const N: usize = 512; // slice side
-const TENSOR: &str = "blk.0.attn_q.weight";
-const MODEL_COLS: usize = 2560;
-const MODEL_ROWS: usize = 4096;
-const ROW_BYTES: usize = (MODEL_COLS / 128) * 34; // 680
-const GAMMA: i16 = 125;
-/// Driven dims — the E population only (fork (a)); I keeps I_INH=600.
-const DRIVEN_DIMS: usize = 409;
-
-// ----- Drive (in-vivo) -----
-const DT_US: u32 = 1000;
-const EXCITATORY_RATIO: f64 = 0.8; // 409 E of 512
-const I_INH: i16 = 600; // the validated wall
-const STEPS: usize = 2000;
-/// Corpus RMS target (μA) — mid-band of the validated amplitude range.
-const TARGET_RMS_UA: f64 = 450.0;
-/// Clamp ceiling for per-dim step currents.
-const CLAMP_UA: i32 = 1000;
-/// Clamp-audit threshold (recorded caveat above this).
-const CLAMP_WARN_FRAC: f64 = 0.10;
-
-// ----- Floors / bounds -----
-const SI_FLOOR: f64 = 0.05;
-const CONTROL_SEED: u64 = 0x5EED_C0DE_0000_0002;
-const RSS_BUDGET_MB: u64 = 1536;
-
-fn exc_count() -> usize {
-    ((N as f64) * EXCITATORY_RATIO) as usize // 409
-}
-
-fn group_of(neuron_id: u16, exc: u16) -> u16 {
-    let g = (u32::from(neuron_id) * 4 / u32::from(exc)) as u16;
-    g.min(3)
-}
-
-fn peak_rss_mb() -> u64 {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|s| {
-            s.lines()
-                .find(|l| l.starts_with("VmHWM:"))
-                .and_then(|l| l.split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok()))
-        })
-        .map(|kb| kb / 1024)
-        .unwrap_or(0)
-}
-
-fn xorshift64(state: u64) -> u64 {
-    let mut x = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    x ^= x << 13;
-    x ^= x >> 7;
-    x ^= x << 17;
-    x
-}
-
-fn shuffled_copy(src: &[Trit]) -> Vec<Trit> {
-    let mut v = src.to_vec();
-    let mut rng = CONTROL_SEED;
-    for i in (1..v.len()).rev() {
-        rng = xorshift64(rng);
-        let j = (rng % (i as u64 + 1)) as usize;
-        v.swap(i, j);
-    }
-    v
-}
-
-/// Build the substrate network from a trit matrix — CENTI grid (pinned).
-fn build_from_trits(trits: &[Trit]) -> SpikingNeuralNetwork {
-    let mut net = SpikingNeuralNetwork::new_with_voltage_resolution(
-        N as u16,
-        DT_US,
-        NetworkTopology::Random { connectivity: 0.0 },
-        VoltageResolution::CentiMillivolt,
-    )
-    .expect("512-neuron net must construct");
-    net.build_topology()
-        .expect("zero-connectivity build must succeed");
-    for j in 0..N {
-        for i in 0..N {
-            if i != j {
-                let w = trits[i * N + j].to_weight(GAMMA);
-                net.add_synapse(j as u16, i as u16, w)
-                    .expect("in-bounds, non-self edge");
-            }
-        }
-    }
-    net.finalize_synapses();
-    net
-}
-
-fn trit_val(t: Trit) -> f64 {
-    match t {
-        Trit::MinusOne => -1.0,
-        Trit::Zero => 0.0,
-        Trit::One => 1.0,
-    }
-}
-
-/// Spike train bitset (step-major, 8 words per 512-neuron step) + counts.
-struct Train {
-    words: Vec<u64>,
-    counts: Vec<u64>,
-    total: u64,
-}
-
-fn run_and_capture(net: &mut SpikingNeuralNetwork, inputs: &[Vec<i16>]) -> Train {
-    net.set_plasticity_enabled(false);
-    const WORDS: usize = N / 64;
-    let mut words = vec![0u64; inputs.len() * WORDS];
-    let mut counts = vec![0u64; N];
-    let mut total = 0u64;
-    for (t, inp) in inputs.iter().enumerate() {
-        let spikes = net.step(inp).expect("step");
-        for sp in &spikes {
-            let n = sp.neuron_id as usize;
-            words[t * WORDS + n / 64] |= 1u64 << (n % 64);
-            counts[n] += 1;
-            total += 1;
-        }
-    }
-    Train { words, counts, total }
-}
-
-fn train_hamming(a: &Train, b: &Train) -> u64 {
-    a.words
-        .iter()
-        .zip(&b.words)
-        .map(|(x, y)| (x ^ y).count_ones() as u64)
-        .sum()
-}
-
-fn rate_l1(a: &Train, b: &Train) -> u64 {
-    a.counts
-        .iter()
-        .zip(&b.counts)
-        .map(|(x, y)| x.abs_diff(*y))
-        .sum()
-}
+use neuralos_rt::{rms_norm_milli, GgufFile, Qwen3, Tokenizer};
+use neuralos_snn::{decode_q2_0, encode_q2_0, Trit, VoltageResolution};
 
 /// The in-vivo learning run (STDP on, one token per step) with the
 /// full counter battery: pairing histogram + per-class raw/absorbed/
@@ -241,7 +103,8 @@ struct VivoStats {
     ck_snaps: Vec<(usize, Vec<Trit>)>,
 }
 
-fn group_pair_classes(net: &SpikingNeuralNetwork, exc: u16) -> Vec<bool> {
+#[allow(non_snake_case)]
+fn group_pair_classes(net: &neuralos_snn::SpikingNeuralNetwork, exc: u16, p: &ExperimentParams) -> Vec<bool> {
     // per synapse: is this E→E pair INTRA-group (4-group geometry, only
     // used for the class decomposition — the drive is data-driven now)?
     net.synapses()
@@ -249,7 +112,7 @@ fn group_pair_classes(net: &SpikingNeuralNetwork, exc: u16) -> Vec<bool> {
         .map(|s| {
             s.pre_neuron_id < exc
                 && s.post_neuron_id < exc
-                && group_of(s.pre_neuron_id, exc) == group_of(s.post_neuron_id, exc)
+                && group_of(s.pre_neuron_id, exc, p) == group_of(s.post_neuron_id, exc, p)
         })
         .collect()
 }
@@ -261,9 +124,16 @@ fn group_pair_classes(net: &SpikingNeuralNetwork, exc: u16) -> Vec<bool> {
 /// caller. The PLAIN path (no checkpoints) executes identically — the
 /// invariance assert (100%-checkpoint export sha == plain export sha)
 /// proves the machinery did not perturb the frozen artifact.
-fn run_vivo_ck(trits: &[Trit], inputs: &[Vec<i16>], checkpoints: &[usize]) -> VivoStats {
-    let exc = exc_count() as u16;
-    let mut net = build_from_trits(trits);
+#[allow(non_snake_case)]
+fn run_vivo_ck(
+    trits: &[Trit],
+    inputs: &[Vec<i16>],
+    checkpoints: &[usize],
+    p: &ExperimentParams,
+) -> VivoStats {
+    let (N, GAMMA, DT_US) = (p.n, p.gamma, p.dt_us);
+    let exc = exc_count(p) as u16;
+    let mut net = build_from_trits(trits, GAMMA, p, VoltageResolution::CentiMillivolt);
     // Init cycle: STDP off, defeats the last_spike=0 sentinel (D-2 verbatim
     // — 400 steps of the SAME in-vivo drive, recorded).
     net.set_plasticity_enabled(false);
@@ -296,7 +166,7 @@ fn run_vivo_ck(trits: &[Trit], inputs: &[Vec<i16>], checkpoints: &[usize]) -> Vi
             Trit::One => 2,
         }
     };
-    let is_intra = group_pair_classes(&net, exc);
+    let is_intra = group_pair_classes(&net, exc, p);
     let mut raw_intra = 0_i64;
     let mut raw_inter = 0_i64;
     let mut absorbed_intra = 0_i64;
@@ -361,8 +231,15 @@ fn run_vivo_ck(trits: &[Trit], inputs: &[Vec<i16>], checkpoints: &[usize]) -> Vi
     }
 }
 
+#[allow(non_snake_case)]
 fn main() {
     let t0 = std::time::Instant::now();
+    let p = ExperimentParams::default();
+    let (N, GAMMA, DT_US, STEPS, I_INH) = (p.n, p.gamma, p.dt_us, p.steps, p.i_inh);
+    let (SI_FLOOR, RSS_BUDGET_MB, CONTROL_SEED) = (p.si_floor, p.rss_budget_mb, p.control_seed);
+    let (TARGET_RMS_UA, CLAMP_UA, CLAMP_WARN_FRAC) = (p.target_rms_ua, p.clamp_ua, p.clamp_warn_frac);
+    let (TENSOR, ROW_BYTES) = (p.tensor, p.row_bytes());
+    let DRIVEN_DIMS = exc_count(&p);
     let path = std::env::args().nth(1).unwrap_or_else(|| {
         "models/Ternary-Bonsai-4B-Q2_0.gguf".into()
     });
@@ -371,35 +248,7 @@ fn main() {
     println!("reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen");
     println!();
 
-    // ----- Decode the slice (D-2 path) -----
-    let src: Vec<Trit> = {
-        let buf = std::fs::read(&path).unwrap_or_else(|e| {
-            eprintln!("cannot read {path}: {e}");
-            std::process::exit(1);
-        });
-        let f = GgufFile::parse(&buf).expect("GGUF container must parse");
-        let info = f
-            .tensors
-            .iter()
-            .find(|t| t.name == TENSOR)
-            .unwrap_or_else(|| panic!("tensor {TENSOR} not found"));
-        assert_eq!(info.ty, GGML_TYPE_Q2_0);
-        assert_eq!(info.dims, vec![MODEL_COLS as u64, MODEL_ROWS as u64]);
-        let data = f.tensor_data(info).expect("tensor slice in bounds");
-        let mut out = Vec::with_capacity(N * N);
-        let mut row_trits = vec![Trit::Zero; N];
-        let mut scales = [0u16; N / 128];
-        for r in 0..N {
-            decode_q2_0(
-                &data[r * ROW_BYTES..r * ROW_BYTES + N / 128 * 34],
-                &mut row_trits,
-                &mut scales,
-            )
-            .expect("real q2_0 bytes must decode");
-            out.extend_from_slice(&row_trits);
-        }
-        out
-    };
+    let src = decode_slice(&path, &p);
     println!("decode  : {} trits (D-2 slice path)", src.len());
 
     // ----- In-vivo drive: tokenize the pinned corpus, run the model,
@@ -530,16 +379,18 @@ fn main() {
 
     // ----- Tier 1: G2′ tripwire + G0 (fixed-weight, full battery) -----
     println!("--- TIER 1: substrate gates (fixed weights, STDP off, in-vivo drive, CENTI grid) ---");
-    let mut imported = build_from_trits(&src);
-    let ti = run_and_capture(&mut imported, &inputs);
+    let mut imported = build_from_trits(&src, GAMMA, &p, VoltageResolution::CentiMillivolt);
+    let ti = run_and_capture(&mut imported, &inputs, &p);
     drop(imported);
-    let mut control = build_from_trits(&shuffled_copy(&src));
-    let tc = run_and_capture(&mut control, &inputs);
+    let ctrl_trits = shuffled_copy(&src, CONTROL_SEED);
+    let mut control = build_from_trits(&ctrl_trits, GAMMA, &p, VoltageResolution::CentiMillivolt);
+    let tc = run_and_capture(&mut control, &inputs, &p);
     drop(control);
-    let mut zero = build_from_trits(&[Trit::Zero; N * N]);
-    let tz = run_and_capture(&mut zero, &inputs);
+    let zero_trits = vec![Trit::Zero; N * N];
+    let mut zero = build_from_trits(&zero_trits, GAMMA, &p, VoltageResolution::CentiMillivolt);
+    let tz = run_and_capture(&mut zero, &inputs, &p);
     drop(zero);
-    let exc = exc_count();
+    let exc = exc_count(&p);
     let secs = n_steps as f64 * f64::from(DT_US) / 1e6;
     let hz = |t: &Train, hi: usize| -> f64 {
         t.counts[..hi].iter().sum::<u64>() as f64 / (secs * hi as f64)
@@ -582,7 +433,7 @@ fn main() {
     } else {
         Vec::new()
     };
-    let v = run_vivo_ck(&src, &inputs, &cks);
+    let v = run_vivo_ck(&src, &inputs, &cks, &p);
     println!(
         "  learn firing : {:.2} Hz/neuron; quarters {:.2} {:.2} {:.2} {:.2}",
         v.learn_rate_hz, v.quarter_hz[0], v.quarter_hz[1], v.quarter_hz[2], v.quarter_hz[3]
@@ -633,8 +484,8 @@ fn main() {
     let (mut din, mut dit) = (Vec::new(), Vec::new());
     {
         // rebuild intra flags in synapse order
-        let net = build_from_trits(&src);
-        let is_intra = group_pair_classes(&net, exc16);
+        let net = build_from_trits(&src, GAMMA, &p, VoltageResolution::CentiMillivolt);
+        let is_intra = group_pair_classes(&net, exc16, &p);
         drop(net);
         for (k, &ft) in v.final_trits.iter().enumerate() {
             if is_intra[k] {
@@ -686,7 +537,6 @@ fn main() {
     // ----- Tier-2 export (readout of the SAME frozen experiment; argv
     // flag `export` writes the patched GGUF for the fork judge) -----
     if export_mode {
-        use neuralos_snn::encode_q2_0;
         println!();
         println!("--- TIER-2 export (hybrid_loop surgery machinery; S2 re-read on EVERY file) ---");
         // The surgery as a reusable unit: writes `out` from a synapse-order
@@ -722,19 +572,19 @@ fn main() {
                 .find(|t| t.name == TENSOR)
                 .unwrap_or_else(|| panic!("tensor {TENSOR} not found"));
             let abs = (f2.data_start + info2.offset) as usize;
-            const CHUNK: usize = 4 * 34; // first 4 blocks = the 512 driven/row cols
+            let chunk: usize = p.chunk_bytes(); // first 4 blocks = the 512 driven/row cols
             let mut row_orig = vec![Trit::Zero; N];
-            let mut scales = [0u16; N / 128];
-            let mut enc = [0u8; CHUNK];
+            let mut scales = vec![0u16; N / 128];
+            let mut enc = vec![0u8; chunk];
             let mut code_changed = 0u64;
             let mut scale_changed = 0u64;
             for r in 0..N {
                 let off = abs + r * ROW_BYTES;
-                decode_q2_0(&buf[off..off + CHUNK], &mut row_orig, &mut scales)
+                decode_q2_0(&buf[off..off + chunk], &mut row_orig, &mut scales)
                     .expect("original chunk decodes");
                 encode_q2_0(&adapted[r * N..(r + 1) * N], &scales, &mut enc)
                     .expect("encode row");
-                for (b, (&old, &new)) in buf[off..off + CHUNK].iter().zip(enc.iter()).enumerate() {
+                for (b, (&old, &new)) in buf[off..off + chunk].iter().zip(enc.iter()).enumerate() {
                     if old != new {
                         if b % 34 < 2 {
                             scale_changed += 1;
@@ -744,7 +594,7 @@ fn main() {
                     }
                 }
                 assert_eq!(scale_changed, 0, "scales pass through");
-                buf[off..off + CHUNK].copy_from_slice(&enc);
+                buf[off..off + chunk].copy_from_slice(&enc);
             }
             std::fs::write(out, &buf).expect("write patched");
             // S2 post-write re-read — EVERY export, nulls included.
@@ -757,11 +607,11 @@ fn main() {
                 .unwrap_or_else(|| panic!("tensor {TENSOR} missing post-write"));
             let abs3 = (f3.data_start + info3.offset) as usize;
             let mut rt = vec![Trit::Zero; N];
-            let mut sc = [0u16; N / 128];
+            let mut sc = vec![0u16; N / 128];
             let mut mism = 0u64;
             for r in 0..N {
                 let off = abs3 + r * ROW_BYTES;
-                decode_q2_0(&check[off..off + CHUNK], &mut rt, &mut sc)
+                decode_q2_0(&check[off..off + chunk], &mut rt, &mut sc)
                     .expect("patched chunk decodes post-write");
                 for c in 0..N {
                     if rt[c] != adapted[r * N + c] {

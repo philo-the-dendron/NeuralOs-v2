@@ -1,4 +1,8 @@
+#![allow(non_snake_case)]
 //! The frozen-example experiment harness (R4(iii) extraction, 2026-08-20).
+//!
+//! (Uppercase locals below are deliberate: the moved bodies stay verbatim
+//! against their original `const` names — the re-pin diff is the proof.)
 //!
 //! The six bridge examples (`hybrid_{gate,loop,invivo,sweep,sweep_cmv}`,
 //! `null_patches`) grew ~1,864 duplicated lines under the freeze-source
@@ -1193,7 +1197,6 @@ pub fn run_amplitude_sweep(
 ) {
     let t0 = std::time::Instant::now();
     let (N, GAMMA, STEPS) = (p.n, p.gamma, p.steps);
-    let I_INH = p.i_inh;
     let CONTROL_SEED = p.control_seed;
     let RSS_BUDGET_MB = p.rss_budget_mb;
     let AMPLITUDES = &p.amplitudes;
