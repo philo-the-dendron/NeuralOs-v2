@@ -3558,3 +3558,25 @@ alpha.4 staged, 2026-08-21)
   check/test/clippy workspace 288/0, no_std, simd 196, hdf5 116/0.
   Dry-run output banked verbatim below; real publish = principal's
   call (STOP per commission).
+
+## Close-out (the milestone commission's end-state, 2026-08-21)
+
+- **Dry-run verbatim** (from clean tree ff0be22; also banked in
+  `evidence/nir-hdf5-gate/publish_dryrun_alpha4.log`):
+  `Packaging neuralos-snn v0.1.0-alpha.4 … Packaged 43 files,
+  488.9KiB (128.5KiB compressed) … Verifying … Compiling … Finished
+  dev profile in 2.99s … Uploading … warning: aborting upload due to
+  dry run` — exit 0. **STOP here per commission; real publish = the
+  principal's call** (`cargo publish -p neuralos-snn`).
+- **Push state**: step 0 pushed `ad43d08..ae15170` (the three snn
+  commits) to both remotes; then per commit group — b681dd1 (C1),
+  bbc4f3b (C2), 8924cf3 (C3), ff0be22 (C5-docs, pre-dry-run) — all
+  ls-remote-confirmed on Gitea + GitHub mirror.
+- **Named wins (ratified additions)**: `.nirenv` in-repo (rebuilt by
+  a documented one-liner; carries numpy+h5py+cmake+the pinned clone
+  installed — R3 doctrine, no /tmp); the reference-side `--verify`
+  interop leg in `tools/gen_nir_fixtures.py`.
+- Milestone falsifier totals: hdf5 leg 116 tests green (8 census +
+  93 prior inline + 15 fixture), workspace 288/0 untouched, no_std
+  untouched, simd 196. Gate artifacts: `evidence/nir-hdf5-gate/`
+  (gate.log 5/5, verify.log, SHA256SUMS, the export, the dry-run).

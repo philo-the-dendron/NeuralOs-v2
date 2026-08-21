@@ -49,3 +49,20 @@ PATH="$PWD/.nirenv/bin:$PATH" \
 - verify: reference loads our export; weights within the quantizer
   half-step bound (1.526e-05 ≤ scale/2 = 1.526e-05), LIF params
   within record-render tolerance
+
+## alpha.4 dry-run (verbatim, from commit ff0be22)
+
+```
+     Updating crates.io index
+    Packaging neuralos-snn v0.1.0-alpha.4 (/home/student/projets/NeuralOs-v2/crates/neuralos-snn)
+     Updating crates.io index
+    Packaged 43 files, 488.9KiB (128.5KiB compressed)
+   Verifying neuralos-snn v0.1.0-alpha.4 (/home/student/projets/NeuralOs-v2/crates/neuralos-snn)
+   Compiling neuralos-snn v0.1.0-alpha.4 (/home/student/projets/NeuralOs-v2/target/package/neuralos-snn-0.1.0-alpha.4)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.99s
+   Uploading neuralos-snn v0.1.0-alpha.4 (/home/student/projets/NeuralOs-v2/crates/neuralos-snn)
+warning: aborting upload due to dry run
+```
+
+`publish_dryrun_alpha4.log` is the raw capture. The real publish is
+the principal's call.

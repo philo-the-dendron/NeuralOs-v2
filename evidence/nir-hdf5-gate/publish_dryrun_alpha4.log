@@ -1,0 +1,9 @@
+    Updating crates.io index
+   Packaging neuralos-snn v0.1.0-alpha.4 (/home/student/projets/NeuralOs-v2/crates/neuralos-snn)
+    Updating crates.io index
+    Packaged 43 files, 488.9KiB (128.5KiB compressed)
+   Verifying neuralos-snn v0.1.0-alpha.4 (/home/student/projets/NeuralOs-v2/crates/neuralos-snn)
+   Compiling neuralos-snn v0.1.0-alpha.4 (/home/student/projets/NeuralOs-v2/target/package/neuralos-snn-0.1.0-alpha.4)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.99s
+   Uploading neuralos-snn v0.1.0-alpha.4 (/home/student/projets/NeuralOs-v2/crates/neuralos-snn)
+warning: aborting upload due to dry run
