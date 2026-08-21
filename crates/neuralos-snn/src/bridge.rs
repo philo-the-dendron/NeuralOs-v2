@@ -128,7 +128,7 @@ const fn code_to_trit(code: u8) -> Result<Trit, BridgeError> {
 /// Encoded byte length of an `i2_s` tensor with `n` trits: `n/4` packed
 /// bytes plus the 32-byte scale tail. `n` must be a multiple of 128.
 #[must_use]
-pub const fn i2_s_encoded_len(n: usize) -> usize {
+const fn i2_s_encoded_len(n: usize) -> usize {
     n / 4 + I2_S_TAIL_BYTES
 }
 
@@ -138,14 +138,14 @@ pub const fn i2_s_encoded_len(n: usize) -> usize {
 /// lives at byte `(i/128)*32 + (i%32)` in lane `(i%128)/32`, counting from
 /// the top bits. This is `numpy.reshape(n, 4, 32)` with lane 0 shifted `<<6`.
 #[must_use]
-pub const fn i2_s_byte_index(i: usize) -> usize {
+const fn i2_s_byte_index(i: usize) -> usize {
     (i / I2_S_BLOCK) * 32 + (i % 32)
 }
 
 /// The 2-bit shift (within the byte) of element `i`'s lane: lane 0 → bits
 /// 7-6, lane 1 → bits 5-4, lane 2 → bits 3-2, lane 3 → bits 1-0.
 #[must_use]
-pub const fn i2_s_lane_shift(i: usize) -> u32 {
+const fn i2_s_lane_shift(i: usize) -> u32 {
     6 - 2 * (((i % I2_S_BLOCK) / 32) as u32)
 }
 
@@ -184,7 +184,7 @@ pub fn encode_i2_s(trits: &[Trit], scale_bits: u32, out: &mut [u8]) -> Result<us
 /// Decode a `BitNet` `i2_s` byte stream back into ternary values.
 ///
 /// `trits.len()` is the tensor length `n` (must be `n % 128 == 0`);
-/// `bytes.len()` must be at least [`i2_s_encoded_len`]. Returns the raw f32
+/// `bytes.len()` must be at least `i2_s_encoded_len(n)`. Returns the raw f32
 /// scale bits from the tail — the exact inverse of [`encode_i2_s`]. The
 /// 28 tail pad bytes after the scale are not validated (the reference
 /// ignores them too). On [`BridgeError::UnsupportedCode`], `trits` may

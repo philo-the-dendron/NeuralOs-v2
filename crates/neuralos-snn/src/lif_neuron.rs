@@ -177,7 +177,7 @@ impl LIFNeuron {
     /// New neuron with specific biological type. Type sets threshold, tau, capacitance.
     /// Voltage grid = mV (the historical default).
     #[must_use]
-    pub fn new_with_type(id: u16, neuron_type: NeuronType) -> Self {
+    fn new_with_type(id: u16, neuron_type: NeuronType) -> Self {
         Self::new_with_type_resolution(id, neuron_type, VoltageResolution::Millivolt)
     }
 
@@ -222,7 +222,7 @@ impl LIFNeuron {
     /// Switch the voltage grid in place, rescaling the four stored potentials
     /// (values are preserved exactly: ×100 or ÷100 on whole-quanta values).
     /// Call before stepping; spikes/history/currents are grid-independent.
-    pub fn set_voltage_resolution(&mut self, resolution: VoltageResolution) {
+    fn set_voltage_resolution(&mut self, resolution: VoltageResolution) {
         if resolution == self.voltage_resolution {
             return;
         }
