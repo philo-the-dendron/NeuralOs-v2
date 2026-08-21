@@ -36,7 +36,9 @@ no tuning).
     byte-identical, wall/RSS + the by-design-not-run export tier
     excepted.]**
   4. Judge legs: one double-run pair (p0) via `tools/build_fork.sh` +
-    the flags of record; `delta.py` must read 0 flips, max |Δ| ≈ 0.4207,
+    the flags of record; `judge_delta` (the Rust port of delta.py —
+    `cargo run -p neuralos-rt --release --example judge_delta -- <base.err>
+    <patched.err>`) must read 0 flips, max |Δ| ≈ 0.4207,
     continuations byte-identical. **[CLOSED 2026-08-21 —
     `evidence/r4-closeout/`: 0/12 flips, max +0.4207, mean 0.0779,
     exact.]**

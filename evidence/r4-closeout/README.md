@@ -23,7 +23,9 @@ re-pin evidence, banked at commit d3311a7 + this tree. Protocol:
 - Determinism: base run1≡run2 byte-identical (dumps + continuation);
   loop run1≡run2 byte-identical.
 - Continuation: base ≡ loop byte-identical (`1 2 3 4 5 6 7 8 9 10 11 1`).
-- `tools/delta.py p0_base_run1.err p0_loop_run1.err`:
+- `judge_delta` (Rust port of the Python original; `cargo run -p
+  neuralos-rt --release --example judge_delta -- p0_base_run1.err
+  p0_loop_run1.err` — byte-compatible, deleted after parity):
   **12 steps | 0/12 argmax flips | overlap 10/10 | max |Δ| +0.4207 |
   mean 0.0779** — identical to the r4-baselines banked numbers
   (incl. step 9 carrying the max). Same fork binary as the banking

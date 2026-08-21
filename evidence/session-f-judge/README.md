@@ -14,6 +14,7 @@ substrate), double-run per prompt:
   message. (The baseline dumps were a /tmp cache, since expired —
   regenerate with `bash tools/build_fork.sh` + the judge flags above.)
 
-Mechanical summary (delta.py, now at tools/delta.py): 60/60 steps
+Mechanical summary (delta.py at the time — now the byte-compatible
+Rust `judge_delta` example; margin census likewise): 60/60 steps
 moved, max |Δ| 0.42 (p0), mean |Δ| 0.057–0.151, 0/60 argmax flips,
 continuations byte-identical to baseline on all five prompts.

@@ -23,6 +23,7 @@
 
 pub mod gguf;
 pub mod harness;
+pub mod judge;
 pub mod math;
 pub mod model;
 pub mod norm;

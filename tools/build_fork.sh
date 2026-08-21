@@ -4,7 +4,8 @@
 # Pin:   PrismML-Eng/llama.cpp @ 9ca265a (branch prism, CPU-only build).
 # Patch: tools/neuralos_dump.patch — env-gated (NEURALOS_DUMP=1) top-10
 #        pre-sampler logit dump at the completion sample site, comma
-#        decimals (the exact format tools/delta.py parses).
+#        decimals (the exact format the judge tools parse: cargo run
+#        -p neuralos-rt --release --example judge_delta).
 # Out:   fork-build/llama.cpp/build/bin/llama-completion (gitignored).
 #
 # Judge invocation of record (greedy forced, double-run per variant):
