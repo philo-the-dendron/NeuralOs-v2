@@ -1,0 +1,1 @@
+{"version":"1.0.0","node":{"metadata":{},"nodes":{"input":{"metadata":{},"type":"Input","shape":[3]},"linear":{"metadata":{},"weight":[[0.5,-1.0,0.25]],"type":"Linear"},"lif":{"type":"CubaLIF","tau_syn":[0.01]},"output":{"metadata":{},"type":"Output","shape":[1]}},"edges":[["input","linear"],["linear","lif"],["lif","output"]],"type":"NIRGraph"}}

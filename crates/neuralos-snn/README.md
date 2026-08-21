@@ -24,6 +24,7 @@ core, `no_std` by default. Designed for FPU-less edge targets
 | `network` *(std)* | `SpikingNeuralNetwork` orchestration (`step()`), CSR `SparseSynapseMatrix` with forward + reverse iteration, 4 topology builders (Random, Small-World, Feedforward, Balanced E/I), plasticity passes (LTD + LTP), per-step stats |
 | `trit` | Ternary weight type `{-1, 0, +1}` + scale, ternarizer, stochastic bucket-flip (LFSR, integer-only) |
 | `bridge` | `BitNet` `i2_s` encode/decode (bit-exact round-trip), Prism `q1_0`/`q2_0` import + `q2_0` export, integer fp16 widening — layouts pinned from reference sources, loud errors on impossible input |
+| `nir` | NIR (Neuromorphic Intermediate Representation) slice 1 — JSON import/export of `Input`/`Linear`/`LIF`/`Output` graphs, explicit per-node quantization records, loud lossiness, byte-stable export. Schema pinned verbatim to the reference implementation (`neuromorphs/NIR` @ `7883c3c`); fixtures are the reference's own emissions (`tools/gen_nir_fixtures.py`) |
 | `kernel` | Shared `no_std` ternary matvec: sequential 2-bit packed trits × Q15 activations → i32, absmax normalization, wire→compute repack seam |
 | `simd` *(feature)* | AVX2 batch LIF integration (`x86_64`, ~1.6–2.2× vs scalar, ±2 mV tolerance) |
 
@@ -42,7 +43,7 @@ keeps every historically recorded result bit-exact.
 - `simd` — implies `std`, x86_64-only AVX2 batch kernel
 
 Without `std` the crate builds `no_std` (neurons, synapses, trit,
-bridge, kernel) — the embedded posture CI enforces.
+bridge, kernel, nir) — the embedded posture CI enforces.
 
 ## Usage sketch
 

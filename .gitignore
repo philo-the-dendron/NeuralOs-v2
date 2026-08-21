@@ -32,3 +32,6 @@ fork-build/
 
 # Paper figure venv (repo-local alternative to system python)
 .figvenv/
+
+# NIR reference clone (pinned 7883c3c, fixture generation only)
+nir-ref/

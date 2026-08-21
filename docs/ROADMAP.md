@@ -20,7 +20,7 @@
 
 ```bash
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; 256 executed green (3 app, 160 snn, 93 rt) + 5 rt model-gated #[ignore]
+cargo test   --workspace                          # offline; 275 executed green (3 app, 179 snn, 93 rt) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate
 ```
@@ -48,7 +48,7 @@ Strict order — nothing new opens until the rung above is 100%.
 
 | Work item | Why it matters |
 |---|---|
-| NIR import/export | Interop with snnTorch/SpikingJelly; the #1 ecosystem recommendation. **First move.** |
+| NIR import/export | Interop with snnTorch/SpikingJelly; the #1 ecosystem recommendation. **First move.** **Slice 1 LANDED 2026-08-21** (`neuralos-snn::nir` — JSON container, Input/Linear/LIF/Output, explicit quant records, reference-emitted fixtures + 4/4 format gate; schema pinned to `neuromorphs/NIR@7883c3c`). Slice 2: HDF5 container (std-side), per-neuron LIF populations, multi-node graph assembly. |
 | Lock-free ports from v0.1 archive | Throughput and future concurrency experiments |
 | SIMD follow-up / hardening | `simd.rs` untouched since 2026-08-07; keep the performance path honest |
 | Additional regression/property tests | The transmission-wire lesson: no unit test had ever exercised live transmission until session F |

@@ -265,6 +265,44 @@ impl SpikingNeuralNetwork {
         })
     }
 
+    /// Build a network from caller-supplied neurons — synapses come
+    /// only from later [`add_synapse`](Self::add_synapse) calls and
+    /// [`build_topology`](Self::build_topology) must NOT be called
+    /// (it would discard the caller's wiring; the stored topology
+    /// marker is inert here). The constructor path for imported
+    /// models (NIR) whose neuron parameters are not the biological
+    /// defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidParameter`] when `neurons` is empty or
+    /// `time_step_us == 0`.
+    pub fn from_neurons(neurons: Vec<LIFNeuron>, time_step_us: u32) -> Result<Self> {
+        if neurons.is_empty() || time_step_us == 0 {
+            return Err(Error::InvalidParameter);
+        }
+        let neuron_count = neurons.len() as u16;
+        let resolution = neurons[0].voltage_resolution;
+        Ok(Self {
+            neurons,
+            synapses: Vec::new(),
+            synapse_matrix: SparseSynapseMatrix::new(neuron_count, 0),
+            time_step_us,
+            current_time_us: 0,
+            plasticity_rule: STDPRule::new(),
+            stats: NetworkStats::new(neuron_count),
+            spike_history: VecDeque::new(),
+            max_spike_history: 10_000,
+            topology: NetworkTopology::Random { connectivity: 0.0 },
+            seed: DEFAULT_SEED,
+            plasticity_queue: Vec::new(),
+            plasticity_enabled: true,
+            ternary_flip_lfsr: TERNARY_FLIP_SEED,
+            voltage_resolution: resolution,
+            synaptic_input_divisor: DEFAULT_SYNAPTIC_INPUT_DIVISOR,
+        })
+    }
+
     /// Build the configured topology. Must be called before [`step`].
     ///
     /// Idempotent: a second call clears any existing synapses, CSR state, and

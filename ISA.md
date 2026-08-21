@@ -2978,3 +2978,77 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   entry is grep-verified against the named artifact IN THE SESSION
   THAT WRITES IT — one grep per number at write time, no exceptions
   for numbers that "match something I remember."
+
+## Verification (R7 / Phase 1 — NIR slice 1, 2026-08-21)
+
+- 2026-08-21 · **NIR import/export slice 1 landed in
+    `neuralos-snn::nir` (no_std, buffer-based, zero new deps).** Node
+    subset Input/Linear/LIF/Output; unknown kinds (incl. Affine)
+    reject loudly with the kind named. Quantization contract per the
+    ratified policy: per-node records carry provenance + derived
+    values; export renders derived (one version block, substrate-
+    exact, spec-native `metadata.neuralos` provenance); hard fails on
+    tau≤0 / tau<dt / threshold→0 / out-of-range potentials / r≤0 /
+    non-finite; lossy-but-bounded (scale = absmax/32767, max_abs_err
+    recorded) is NOTED, never silent. dt is an explicit import arg.
+- **Reference pinned:** the brief's `NeuromorphicLabs/NIR` 404s —
+    canonical is `neuromorphs/NIR` @
+    `7883c3c85f1be27ed113ccc9e8d6ab47ab541df4` (BSD-3, clone at
+    gitignored `nir-ref/`, file shas banked in the session record).
+    Read verbatim: `nir/ir/{node,graph,neuron,linear}.py`,
+    `nir/serialization.py`, `nir/__init__.py`, `pyproject.toml`.
+- **Finding: the reference container at this sha is HDF5, not JSON**
+    (serialization.py = h5py; deps numpy+h5py; no JSON path). The
+    dict schema (`to_dict`/`dict2NIRNode`) is container-independent —
+    slice 1 carries its JSON encoding (the historical container),
+    ratified by the principal; HDF5 `.nir` IO is named slice-2 work,
+    std-side (hdf5 crate).
+- **Finding: a NIR LIF node is a POPULATION** — per-neuron arrays
+    whose length must equal the feeding Linear's rows (the
+    reference's own type checker enforces it: our first fixture
+    generation was rejected with `linear.output: [[2]] ->
+    lif.input: [[1]]`). Slice 1 imports length-1 populations only;
+    the per-neuron expansion is the named slice-2 item.
+- **Fixtures derive from the reference itself**
+    (`tools/gen_nir_fixtures.py`, rerunnable): positives are the
+    reference's own `to_dict()` emissions (chain.json sha
+    82bb1e75…, chain_vreset_absent.json d0182299…); negatives are
+    minimal mutations of that emission, one error class each (13
+    files). 16 fixtures committed under
+    `crates/neuralos-snn/tests/nir_fixtures/`.
+- **Falsifiers:** 12 unit tests (parser edge cases, quantization
+    contract incl. hard-fail matrix, export idempotence) + 7 fixture
+    tests + `nir_format_gate` example (4/4 gates: exact dyadic
+    quantization [0.5,-1,0.25]→[16384,-32767,8192] @ 1/32767; 13
+  named rejections; chain assembles onto a real
+    SpikingNeuralNetwork and FIRES — 9 spikes/100 steps under
+    deterministic 655 μA drive, first at step 6; export byte-stable
+    + re-import state-identical). **Interop proof beyond the gate:**
+    the exported document reconstructs through the pinned reference's
+    own `dict2NIRNode` (valid NIRGraph; LIF params exact; provenance
+    metadata present) — our export is loadable NIR, not a private
+    dialect. Battery: 275 workspace tests offline green (3 app + 179
+    snn + 93 rt), clippy -D warnings clean, no_std build clean.
+- **API addition (for alpha.4):** `SpikingNeuralNetwork::from_neurons`
+  (std) — caller-supplied neurons, synapses via `add_synapse` only;
+  `build_topology` not implied. Version discipline: alpha.3 publishes
+  from 4309c0a (dry-run presented, publish = principal's call); NIR
+  rides main for alpha.4.
+
+## Decisions (R7 / Phase 1)
+
+- NIR container: JSON now (historical container, same verbatim dict
+  schema), HDF5 in neuralos-rt next slice — principal-ratified
+  2026-08-21 (the brief's "graph JSON serialization" matched an
+  older NIR era; the pinned reference is HDF5-only at 7883c3c).
+- Slice-1 assembly = the canonical chain Input→Linear→LIF→Output:
+  Linear is the input encoder (y=W·x → per-step μA currents, /100
+  gain documented), the LIF node's quantized params are the neurons.
+  Anything else rejects at assembly with the shape named — the
+  format layer still imports any 4-kind graph.
+- Named follow-ups (the review's cosmetic tail, untouched by design):
+  harness surgery unit exists 3× (loop/invivo/null_patches — pending
+  R4-style extraction); `run_vivo_ck` mirrors `run_hybrid`; `tix`
+  body duplicated as closures in 2 examples; harness.rs has zero
+  direct unit tests (its pins are the example re-runs); embeddings-
+  only capture path in model.rs stays PARKED (principal's call).

@@ -7,6 +7,7 @@
 pub mod bridge;
 pub mod kernel;
 pub mod lif_neuron;
+pub mod nir;
 pub mod synapse;
 pub mod trit;
 #[cfg(feature = "std")]
@@ -28,6 +29,10 @@ pub use kernel::{
 pub use lif_neuron::{
     LIFNeuron, NeuronBuilder, NeuronType, VoltageResolution, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN,
     MAX_SPIKE_HISTORY,
+};
+pub use nir::{
+    nir_export, nir_import, nir_scan, NirBuffers, NirError, NirImportOptions, NirLif, NirLinear,
+    NirNode, NirNodeKind, NirNote, NirReport, NirScan, EXPORT_VERSION, NIR_NOTE_KINDS, NIR_REF_SHA,
 };
 pub use synapse::{STDPRule, Synapse, SynapseBuilder, SynapseType, SCALE};
 pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternarize, Trit};
