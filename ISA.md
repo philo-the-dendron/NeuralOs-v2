@@ -3014,8 +3014,10 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
     reference's own `to_dict()` emissions (chain.json sha
     82bb1e75…, chain_vreset_absent.json d0182299…); negatives are
     minimal mutations of that emission, one error class each (13
-    files). 16 fixtures committed under
-    `crates/neuralos-snn/tests/nir_fixtures/`.
+    files). 15 fixtures committed under
+    `crates/neuralos-snn/tests/nir_fixtures/` (13 negatives + 2
+    reference-emitted positives; corrected 16→15 in the alpha.3 merge —
+    disk and the sha list both read 15).
 - **Falsifiers:** 12 unit tests (parser edge cases, quantization
     contract incl. hard-fail matrix, export idempotence) + 7 fixture
     tests + `nir_format_gate` example (4/4 gates: exact dyadic
@@ -3074,3 +3076,125 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   per-neuron LIF populations ≈ another half-day; multi-node graph
   assembly (the real design work) 1–2 sessions. Total slice 2 ≈ 2–3
   sessions.
+## Verification (R8 — alpha.3 audit, branch `alpha.3-audit`, 2026-08-21)
+
+Branch cut from 4309c0a (pre-NIR: the package must match its dry-run).
+Quartet green on the base and on every leg commit.
+
+- [x] ISC-86 (F5a) · **The DECORATIVE-in-orchestration machinery is
+  GONE and the outputs did not move**: the marked Synapse state
+  (`delay_us`, `conductance`, `last_spike_time_us`,
+  `transmission_buffer`, `eligibility_trace`, `recent_activity`), its
+  dead methods (`transmit`, `receive_spike`, `decay_conductance`,
+  `decay_eligibility_trace`, `is_active`, `set_delay_us`), the
+  builder/const shadow, `LIFNeuron::tau_synapse_us`, and — principal
+  ruling — `Synapse::reset` + its loop in
+  `SpikingNeuralNetwork::reset` (an empty reset is a banned stub with
+  a lying name). −227 lines. Covers on the removal commit: quartet
+  (251 executed, 0 fail); hybrid_gate ADAPTS @ intra +0.1075 with
+  spikes 35115/35136/35157 · events 18,817,891 · flips 708,029 ·
+  Hamming 64,877 — all byte-exact vs the session-F bank; loop export
+  sha 24ffe5f3… pinned; null_patches 13/13 byte-identical to the
+  banked shas (23/23 regen-stable); AUTO_SMOKE tier 2 PASS.
+- [x] ISC-87 (census) · **Pub-API census executed**: 91 `pub fn`
+  sites = 77 unique names + 7 `pub const fn` (the "~91/8 modules"
+  figure held; stats.rs is struct-based, simd is feature-gated).
+  Every symbol got a caller count across tests/examples/app/rt. Five
+  de-pubbed (all callers in-module): `LIFNeuron::new_with_type`,
+  `LIFNeuron::set_voltage_resolution`, bridge
+  `{i2_s_encoded_len, i2_s_byte_index, i2_s_lane_shift}` (1503ed1).
+  Quartet green. The dead_code lint VETOES de-pub for test-only
+  callers — see Learning.
+- [x] ISC-88 (invariants) · **Behavioral invariant inventory
+  complete** (see R8 table below): 22 invariants mapped to named
+  failing tests; 2 named gaps → follow-ups, NOT fixed in this window.
+
+Invariant inventory (R8): adaptation −1/floor-0 + +2/spike +
+live-equilibration → lif_neuron exact-value pair +
+network::adaptation_decay_each_step_keeps_a_driven_net_alive; step
+ordering (decay → integrate reads LAST pulses → clear AFTER read →
+propagate) → the transmission trio
+(`transmission_is_live_one_step_delayed_{centimv,mv_strong_weight}`,
+`transmission_pulses_sum_across_presynaptic_spikes`); plasticity
+OFF-freezes → GAP (stuck-OFF is caught by
+stage1_5b/ltp tests; stuck-ON is not caught anywhere); mV bit-identity
+→ `millivolt_trace_is_pinned_to_the_historical_arithmetic` +
+`resolution_switch_rescales_stored_potentials`; coupling-knob default
+= legacy → `synaptic_input_divisor_defaults_to_ten_and_rejects_zero` +
+`divisor_five_doubles_the_transmitted_pulse_centimv`; CSR finalize
+equivalence → 4 network tests + prop; CSR/plasticity weight sync → 2
+tests; STDP sign/floor/clamp → unit + 3 props; self-connection → unit
++ prop + add_synapse; membrane bounds/refractory/leak/reset/noise →
+lif_neuron props + units; SIMD≈scalar →
+`simd_approximates_scalar_within_tolerance` (tolerance, not
+bit-exact — documented) + kernel `prop_matvec_matches_scalar_reference`
+(bit-exact); determinism → lfsr pair + stage1; ternary codec
+round-trips → trit/kernel/bridge units + props + the live example
+re-pins (ISC-86).
+
+Named follow-ups (gaps, unfixed by design):
+- plasticity-toggle direct test: assert
+  `set_plasticity_enabled(false)` freezes weights under a drive that
+  would otherwise adapt (stuck-ON is currently invisible to CI; the
+  visualizer's sustained-firing mode depends on OFF).
+- step-order decay-position swap (adaptation decay AFTER integrate)
+  is pinned at unit level + liveness level only; no exact-value
+  orchestration pin of the decay's opening position.
+
+## Decision (R8 — audit rulings + principal's list)
+
+- Synapse::reset REMOVED (principal): pub fn + the network.rs call.
+  SpikingNeuralNetwork::reset keeps live meaning; LIFNeuron::reset
+  untouched.
+- Census borderlines routed to the principal (all left PUB on the
+  branch): (a) `NeuronBuilder`/`SynapseBuilder` + full setter surface
+  — root-re-exported, zero workspace consumers; de-pub is
+  whole-type removal, not visibility trimming; (b)
+  `synaptic_input_divisor`/`set_synaptic_input_divisor` — README
+  announces the knob as alpha.3's new API, yet zero workspace
+  callers; de-pubbing it in the release that announces it is a
+  policy call; (c) test-only introspection
+  (`firing_rate_mhz`, `isi_stats_us`, `is_refractory`, `spike_count`)
+  — de-pub impossible without deletion (dead_code), listed as
+  deletion candidates; (d) `Synapse::normalized_weight` — zero
+  callers anywhere, same deletion-candidate class.
+- RECORD NIT for the merge: main's NIR entry (ISA.md, b18c49c) says
+  "16 fixtures committed"; disk and the sha list both have 15
+  (14 negative + chain.json). Correct to 15 in the merge commit —
+  pre-noticed here because the branch base predates the entry.
+
+## Learning (R8 — the census)
+
+- conjectured: pub-API trimming is a visibility edit.
+  refuted by: clippy's dead_code evaluates the LIB target without
+  cfg(test) — a symbol whose only callers are its own module's tests
+  cannot go private without becoming dead code. "De-pub" bifurcates:
+  module-machinery de-pubs cleanly; test-only surface is DELETE-or-
+  keep-pub, a semver decision, not a visibility one.
+  criterion now: before proposing a de-pub, classify the caller set
+  as module-code / test-only / none — only the first class is a
+  visibility edit; the other two are deletion decisions that need
+  their own ratification.
+
+## Verification (R8 close-out — alpha.3 PUBLISHED, merge to main, 2026-08-21)
+
+- **`neuralos-snn` 0.1.0-alpha.3 is live on crates.io, published from
+  branch tip 09c8192** (registry-confirmed by the principal). The
+  dry-run presented from 3567710 is superseded by the one from 09c8192
+  (the comment-only fixed-point-header fixup; identical package shape).
+- Merge `alpha.3-audit` → main, --no-ff. ISA.md was the sole conflict
+  (both sides appended at the tail; resolved chronologically R7 → R8).
+  No nir.rs collision materialized — consistent with the pre-check
+  (nir builds neurons via constructors; it touches none of the removed
+  F5a fields or the de-pubbed fns).
+- Principal rulings on the census borderlines (on record): **coupling
+  knob KEEP-pub** (`synaptic_input_divisor`/`set_synaptic_input_divisor`
+  — announced API of the release); **builders + test-only introspection
+  quartet deferred to the consolidation session as named follow-ups**
+  (de-pub = whole-type removal / deletion decisions, own ratification).
+- Housekeeping in the merge commit: AGENTS test counts execution-true
+  for the merged tree; the fixtures 16→15 correction above. On
+  `nir-ref/`: main's `.gitignore` already carried it (b18c49c-era
+  line 37, `git check-ignore` matches on the merged tree) — the
+  pre-merge "no-match" verification ran against a stale tree; no
+  duplicate line added, no change needed.

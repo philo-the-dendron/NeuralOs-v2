@@ -74,10 +74,6 @@ use heapless::Vec;
 /// Maximum spike history length (compile-time, no allocator).
 pub const MAX_SPIKE_HISTORY: usize = 64;
 
-/// Default synaptic current decay time constant (μs). DECORATIVE since
-/// session F (see [`LIFNeuron::tau_synapse_us`]).
-const DEFAULT_TAU_SYNAPSE_US: u32 = 5_000;
-
 /// Membrane potential lower bound (mV) — biological floor.
 pub const MEMBRANE_MV_MIN: i16 = -100;
 
@@ -147,12 +143,6 @@ pub struct LIFNeuron {
     pub tau_membrane_us: u32,
     /// Refractory period (μs). Prevents immediate re-firing.
     pub tau_refractory_us: u32,
-    /// Synaptic current decay time constant (μs). **DECORATIVE** since
-    /// session F: the accumulator is cleared-after-read by the network, so
-    /// no decay is applied — pulses live exactly one step at full
-    /// amplitude. Kept for a future conductance-shaped synapse.
-    pub tau_synapse_us: u32,
-
     /// Remaining refractory time (μs). `0` when not refractory.
     pub refractory_time_us: u32,
     /// Last simulation time the neuron was updated (μs).
@@ -187,7 +177,7 @@ impl LIFNeuron {
     /// New neuron with specific biological type. Type sets threshold, tau, capacitance.
     /// Voltage grid = mV (the historical default).
     #[must_use]
-    pub fn new_with_type(id: u16, neuron_type: NeuronType) -> Self {
+    fn new_with_type(id: u16, neuron_type: NeuronType) -> Self {
         Self::new_with_type_resolution(id, neuron_type, VoltageResolution::Millivolt)
     }
 
@@ -217,7 +207,6 @@ impl LIFNeuron {
             voltage_resolution: resolution,
             tau_membrane_us,
             tau_refractory_us: 2_000,
-            tau_synapse_us: DEFAULT_TAU_SYNAPSE_US,
             refractory_time_us: 0,
             last_update_time_us: 0,
             last_spike_time_us: 0,
@@ -233,7 +222,7 @@ impl LIFNeuron {
     /// Switch the voltage grid in place, rescaling the four stored potentials
     /// (values are preserved exactly: ×100 or ÷100 on whole-quanta values).
     /// Call before stepping; spikes/history/currents are grid-independent.
-    pub fn set_voltage_resolution(&mut self, resolution: VoltageResolution) {
+    fn set_voltage_resolution(&mut self, resolution: VoltageResolution) {
         if resolution == self.voltage_resolution {
             return;
         }
@@ -343,8 +332,8 @@ impl LIFNeuron {
     /// dead in `step` since the port — the accumulator was always cleared
     /// before its only read. Post-fix the network clears after the read, so
     /// there is nothing to decay: pulses live exactly one step at full
-    /// amplitude, then are integrated and zeroed. `tau_synapse_us` is
-    /// decorative until a conductance-shaped synapse ships.)
+    /// amplitude, then are integrated and zeroed. The decorative
+    /// `tau_synapse_us` field was removed at alpha.3 — F5a.)
     pub fn decay_adaptation_current(&mut self) {
         if self.adaptation_current_ua > 0 {
             self.adaptation_current_ua = self.adaptation_current_ua.saturating_sub(1);
