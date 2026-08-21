@@ -3316,3 +3316,34 @@ quantize_linear extraction, 2026-08-21)
   (seam Phase 2), per-neuron LIF arrays, HDF5 in rt behind the
   feature gate with reference-written fixtures, `nir_hdf5_gate`,
   alpha.4 prep.
+
+## Verification (R11 — NIR structured entry Phase 1b: typed builder
++ ASCII-gate-JSON-only, 2026-08-21)
+
+- **`NirBuilder` (std)**: the graph seam over the quantizer seam —
+  `add_input/add_output(shape ≤ 4 dims)/add_lif(source-unit params →
+  quantize_lif under builder opts)/add_linear(materialized f64s →
+  quantize_linear into the arena, offset = append)/add_edge(indices)`,
+  `build()` runs import-parity checks (DuplicateNodeName,
+  DuplicateEdge — reference validate_structure) and yields a
+  `NirImport` that exports and assembles like any other. `add_*`
+  return node indices; error surface = the seam's errors verbatim.
+- **ASCII gate JSON-only, as commissioned**: the escape-free
+  printable-ASCII restriction now fires ONLY at the JSON boundary.
+  New `NirError::NonAsciiNodeName(&str)`; `nir_export` validates
+  node names up front (`"`, `\`, outside 0x20–0x7e unwritable —
+  the same subset `read_string` reads). The typed surface (builder,
+  quantizers, assembly) accepts any `&str`; `nir_export` signature
+  now carries the node lifetime (`NirError<'a>`).
+- Falsifiers: +4 tests (282→286): builder-vs-JSON exact equivalence
+  (every node's quantized state, edges, weights, vs `import_chain`),
+  builder chain assembles + fires + exports + re-imports
+  state-identical, ASCII gate (non-ASCII/quoted names build and
+  quantize fine, export fails loudly carrying the name, ASCII chain
+  exports), builder rejections (dup name/edge at build, >4-dim
+  shape, edge index OOB, quantize_lif/quantize_linear error
+  propagation).
+- Battery green: check workspace all-targets; workspace tests 286
+  executed / 0 failed (3 app + 190 snn + 93 rt) + 5 model-gated
+  #[ignore]; clippy -D warnings; no_std build; simd 186+7+1;
+  nir_format_gate 4/4 (unchanged verdicts).

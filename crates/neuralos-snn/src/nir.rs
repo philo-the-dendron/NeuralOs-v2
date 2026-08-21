@@ -77,7 +77,11 @@
 //! The structured-entry seam: callers that already hold materialized
 //! values (HDF5 import, builders) skip the JSON reader and call
 //! [`quantize_linear`] / [`quantize_lif`] directly — the same
-//! quantization contract, the same errors, arena placement included.
+//! quantization contract, the same errors, arena placement included —
+//! or assemble the whole graph in memory with [`NirBuilder`] (std).
+//! The printable-ASCII string gate is a property of the JSON
+//! container: it fires at read and at [`nir_export`], never on the
+//! typed surface.
 
 #![allow(clippy::module_name_repetitions)]
 // `tau_s` vs `tau_us`, `r_ohm` vs `r_mohm`: the unit suffixes ARE the
@@ -116,6 +120,11 @@ pub enum NirError<'a> {
     /// A string we must read (type/name/version/edge endpoint) carries
     /// a JSON escape or non-ASCII byte — outside the documented subset.
     EscapedOrNonAsciiString(usize),
+    /// A node name outside the escape-free printable-ASCII subset the
+    /// JSON container can write (carries the name). The
+    /// structured-entry builder accepts any `&str`; this gate fires
+    /// only at the JSON boundary — [`nir_export`].
+    NonAsciiNodeName(&'a str),
     /// A node kind outside the slice-1 subset (includes `Affine`,
     /// `CubaLIF`, `Conv1d`, …). Carries the kind name.
     UnsupportedNodeKind(&'a str),
@@ -156,6 +165,10 @@ impl core::fmt::Display for NirError<'_> {
             Self::EscapedOrNonAsciiString(p) => write!(
                 f,
                 "string at byte {p} uses escapes/non-ASCII — outside the documented subset"
+            ),
+            Self::NonAsciiNodeName(n) => write!(
+                f,
+                "node name '{n}' outside the printable-ASCII subset the JSON container writes"
             ),
             Self::UnsupportedNodeKind(k) => write!(
                 f,
@@ -1266,6 +1279,15 @@ fn write_u32(w: &mut ByteWriter<'_>, v: u32) -> Result<(), NirError<'static>> {
     write!(w, "{v}").map_err(|_| NirError::ExportTooSmall)
 }
 
+/// The JSON container's string subset: printable ASCII, no escape
+/// char, no quote — exactly what [`Reader::read_string`] reads
+/// back. The structured-entry builder accepts any `&str`; this
+/// rule gates only the JSON boundary (export).
+fn name_is_writable(s: &str) -> bool {
+    s.bytes()
+        .all(|c| c != b'"' && c != b'\\' && (0x20..=0x7e).contains(&c))
+}
+
 /// Export an imported graph: the SAME dict schema, canonical bytes —
 /// fixed key order, derived (substrate-exact) values in the schema
 /// fields, provenance + quant records in `metadata.neuralos`.
@@ -1274,14 +1296,22 @@ fn write_u32(w: &mut ByteWriter<'_>, v: u32) -> Result<(), NirError<'static>> {
 ///
 /// # Errors
 ///
-/// [`NirError::ExportTooSmall`] when `out` cannot hold the document.
-pub fn nir_export(
-    nodes: &[NirNode<'_>],
+/// [`NirError::ExportTooSmall`] when `out` cannot hold the document;
+/// [`NirError::NonAsciiNodeName`] when a node name cannot be written
+/// escape-free (the builder accepts any `&str`; the container
+/// cannot).
+pub fn nir_export<'a>(
+    nodes: &[NirNode<'a>],
     edges: &[(u32, u32)],
     weights: &[i16],
     opts: NirImportOptions,
     out: &mut [u8],
-) -> Result<usize, NirError<'static>> {
+) -> Result<usize, NirError<'a>> {
+    for node in nodes {
+        if !name_is_writable(node.name) {
+            return Err(NirError::NonAsciiNodeName(node.name));
+        }
+    }
     let mut w = ByteWriter { out, len: 0 };
     w.push_str("{\"version\":\"")?;
     w.push_str(EXPORT_VERSION)?;
@@ -1627,10 +1657,185 @@ mod std_assembly {
             out
         }
     }
+
+    /// Structured-entry graph builder: construct a NIR graph in
+    /// memory — no JSON document. `quantize_lif` / `quantize_linear`
+    /// are the quantization seam; this is the graph seam over them.
+    /// Node names may be any `&str` (the printable-ASCII gate is a
+    /// property of the JSON container and fires only at export);
+    /// `add_*` return the node index `add_edge` wires together;
+    /// [`NirBuilder::build`] runs the import-parity checks
+    /// (duplicate names, duplicate edges) and yields a
+    /// [`NirImport`] that exports and assembles like any other.
+    #[derive(Debug)]
+    pub struct NirBuilder<'a> {
+        nodes: Vec<NirNode<'a>>,
+        edges: Vec<(u32, u32)>,
+        weights: Vec<i16>,
+        opts: NirImportOptions,
+    }
+
+    impl<'a> NirBuilder<'a> {
+        /// An empty graph under the given import options (dt + the
+        /// voltage grid the LIF quantizer uses).
+        #[must_use]
+        pub fn new(opts: NirImportOptions) -> Self {
+            Self {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+                weights: Vec::new(),
+                opts,
+            }
+        }
+
+        /// Add an `Input` node (shape carrier; 1–4 dims).
+        ///
+        /// # Errors
+        ///
+        /// [`NirError::BadShape("shape")`] beyond 4 dims.
+        pub fn add_input(&mut self, name: &'a str, shape: &[u32]) -> Result<usize, NirError<'a>> {
+            self.push_node(name, NirNodeKind::Input, shape)
+        }
+
+        /// Add an `Output` node (shape carrier; 1–4 dims).
+        ///
+        /// # Errors
+        ///
+        /// [`NirError::BadShape("shape")`] beyond 4 dims.
+        pub fn add_output(&mut self, name: &'a str, shape: &[u32]) -> Result<usize, NirError<'a>> {
+            self.push_node(name, NirNodeKind::Output, shape)
+        }
+
+        /// Add a `LIF` node from source-unit parameters — quantized
+        /// via [`quantize_lif`](super::quantize_lif) under the
+        /// builder's options. `v_reset_defaulted` records the
+        /// reference's absent-`v_reset` semantics for provenance.
+        ///
+        /// # Errors
+        ///
+        /// Every [`quantize_lif`](super::quantize_lif) hard failure.
+        // the five source-unit params + defaulted flag ARE the
+        // reference's LIF dict — one arg each, quantize_lif parity
+        #[allow(clippy::too_many_arguments)]
+        pub fn add_lif(
+            &mut self,
+            name: &'a str,
+            tau_s: f64,
+            r_ohm: f64,
+            v_leak_v: f64,
+            v_threshold_v: f64,
+            v_reset_v: f64,
+            v_reset_defaulted: bool,
+        ) -> Result<usize, NirError<'a>> {
+            let idx = self.push_node(name, NirNodeKind::Lif, &[])?;
+            let lif = super::quantize_lif(
+                tau_s,
+                r_ohm,
+                v_leak_v,
+                v_threshold_v,
+                v_reset_v,
+                v_reset_defaulted,
+                self.opts,
+            )?;
+            self.nodes[idx].lif = Some(lif);
+            Ok(idx)
+        }
+
+        /// Add a `Linear` node from materialized row-major f64
+        /// weights — quantized into the arena via
+        /// [`quantize_linear`](super::quantize_linear).
+        ///
+        /// # Errors
+        ///
+        /// Every [`quantize_linear`](super::quantize_linear) failure.
+        pub fn add_linear(
+            &mut self,
+            name: &'a str,
+            values: &[f64],
+            rows: usize,
+            cols: usize,
+        ) -> Result<usize, NirError<'a>> {
+            let idx = self.push_node(name, NirNodeKind::Linear, &[])?;
+            let offset = self.weights.len();
+            let n = rows.checked_mul(cols).ok_or(NirError::BadShape("weight"))?;
+            self.weights.resize(offset + n, 0);
+            let lin = super::quantize_linear(values, rows, cols, &mut self.weights, offset)?;
+            self.nodes[idx].linear = Some(lin);
+            Ok(idx)
+        }
+
+        /// Wire `from → to` (indices returned by the `add_*` calls).
+        ///
+        /// # Errors
+        ///
+        /// [`NirError::BadShape("edges")`] when an index names no
+        /// node (the builder twin of import's endpoint resolution).
+        pub fn add_edge(&mut self, from: usize, to: usize) -> Result<(), NirError<'a>> {
+            let end = self.nodes.len();
+            if from >= end || to >= end {
+                return Err(NirError::BadShape("edges"));
+            }
+            self.edges.push((from as u32, to as u32));
+            Ok(())
+        }
+
+        /// Finish: import-parity checks (duplicate node names,
+        /// duplicate edges — the reference `validate_structure`
+        /// semantics) and hand over the graph as a [`NirImport`].
+        ///
+        /// # Errors
+        ///
+        /// [`NirError::DuplicateNodeName`], [`NirError::DuplicateEdge`].
+        pub fn build(self) -> Result<NirImport<'a>, NirError<'a>> {
+            for i in 0..self.nodes.len() {
+                for j in (i + 1)..self.nodes.len() {
+                    if self.nodes[i].name == self.nodes[j].name {
+                        return Err(NirError::DuplicateNodeName);
+                    }
+                }
+            }
+            for i in 0..self.edges.len() {
+                for j in (i + 1)..self.edges.len() {
+                    if self.edges[i] == self.edges[j] {
+                        return Err(NirError::DuplicateEdge);
+                    }
+                }
+            }
+            Ok(NirImport {
+                nodes: self.nodes,
+                edges: self.edges,
+                weights: self.weights,
+                opts: self.opts,
+                ref_sha: NIR_REF_SHA,
+            })
+        }
+
+        fn push_node(
+            &mut self,
+            name: &'a str,
+            kind: NirNodeKind,
+            shape: &[u32],
+        ) -> Result<usize, NirError<'a>> {
+            if shape.len() > 4 {
+                return Err(NirError::BadShape("shape"));
+            }
+            let mut s = [0u32; 4];
+            s[..shape.len()].copy_from_slice(shape);
+            self.nodes.push(NirNode {
+                name,
+                kind,
+                shape: s,
+                shape_len: shape.len(),
+                lif: None,
+                linear: None,
+            });
+            Ok(self.nodes.len() - 1)
+        }
+    }
 }
 
 #[cfg(feature = "std")]
-pub use std_assembly::{ChainEncoder, NirImport};
+pub use std_assembly::{ChainEncoder, NirBuilder, NirImport};
 
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
@@ -2442,5 +2647,137 @@ mod tests {
             quantize_linear(&deq, rows, cols, &mut arena2, 0).expect("re-quantizes");
             prop_assert_eq!(&arena2[..n], &arena[..n]);
         }
+    }
+
+    // ---- structured-entry seam: the typed builder ----
+
+    fn builder_chain() -> NirImport<'static> {
+        let mut bld = NirBuilder::new(NirImportOptions::default());
+        let inp = bld.add_input("input", &[3]).expect("input");
+        let lin = bld
+            .add_linear(
+                "linear",
+                &[0.5, -1.0, 0.25, 0.0, 0.75, -0.5],
+                2,
+                3,
+            )
+            .expect("linear");
+        let lif = bld
+            .add_lif("lif", 0.02, 1e8, -0.07, -0.055, -0.08, false)
+            .expect("lif");
+        let out = bld.add_output("output", &[2]).expect("output");
+        for (a, c) in [(inp, lin), (lin, lif), (lif, out)] {
+            bld.add_edge(a, c).expect("edge");
+        }
+        bld.build().expect("builds")
+    }
+
+    #[test]
+    fn builder_matches_the_json_path_exactly() {
+        let built = builder_chain();
+        let (jn, je, jw, _rep) = import_chain(NirImportOptions::default());
+        // same quantized state, node for node
+        assert_eq!(built.edges, je);
+        assert_eq!(built.weights, jw);
+        for (b, j) in built.nodes.iter().zip(jn.iter()) {
+            assert_eq!(b.name, j.name);
+            assert_eq!(b.kind, j.kind);
+            assert_eq!((b.shape, b.shape_len), (j.shape, j.shape_len));
+            assert_eq!(b.lif, j.lif, "LIF quantized identically");
+            assert_eq!(b.linear, j.linear, "Linear quantized identically");
+        }
+    }
+
+    #[test]
+    fn builder_chain_assembles_and_exports() {
+        let g = builder_chain();
+        let (mut net, enc) = g.build_chain_network().expect("canonical chain");
+        assert_eq!((net.neuron_count(), enc.rows(), enc.cols()), (2, 2, 3));
+        let spikes: usize = (0..100)
+            .map(|_| net.step(&enc.encode(&[400, 0, 0])).unwrap().len())
+            .sum();
+        assert!(spikes > 0, "the built chain fires");
+
+        // export → JSON boundary → re-import: state-identical
+        let mut out = vec![0u8; 2048];
+        let n = nir_export(&g.nodes, &g.edges, &g.weights, g.opts, &mut out).expect("exports");
+        let g2 = NirImport::from_json(&out[..n], g.opts).expect("re-imports");
+        assert_eq!(g2.weights, g.weights);
+        assert_eq!(g2.edges, g.edges);
+        let l1 = g.nodes[2].lif.unwrap();
+        let l2 = g2.nodes[2].lif.unwrap();
+        assert_eq!(
+            (l2.tau_us, l2.threshold_q, l2.leak_q, l2.reset_q),
+            (l1.tau_us, l1.threshold_q, l1.leak_q, l1.reset_q)
+        );
+    }
+
+    #[test]
+    fn ascii_gate_fires_at_export_only() {
+        // a non-ASCII name is FINE on the typed surface…
+        let mut bld = NirBuilder::new(NirImportOptions::default());
+        let inp = bld.add_input("entrée", &[1]).expect("input");
+        let lif = bld
+            .add_lif("lif", 0.02, 1e8, -0.07, -0.055, -0.08, false)
+            .expect("lif");
+        bld.add_edge(inp, lif).expect("edge");
+        let g = bld.build().expect("builds — no gate on the typed surface");
+        // …and the LIF quantized fine
+        assert_eq!(g.nodes[1].lif.unwrap().tau_us, 20_000);
+        // …but the JSON container cannot write it
+        let mut out = vec![0u8; 2048];
+        assert_eq!(
+            nir_export(&g.nodes, &g.edges, &g.weights, g.opts, &mut out),
+            Err(NirError::NonAsciiNodeName("entrée"))
+        );
+        // quotes and escapes are unwritable too (would corrupt the
+        // container); the plain-ASCII builder chain exports fine
+        let mut q = NirBuilder::new(NirImportOptions::default());
+        let qi = q.add_input("a\"b", &[1]).expect("input");
+        let qn = q
+            .add_lif("lif", 0.02, 1e8, -0.07, -0.055, -0.08, false)
+            .expect("lif");
+        q.add_edge(qi, qn).expect("edge");
+        let gq = q.build().expect("builds");
+        assert_eq!(
+            nir_export(&gq.nodes, &gq.edges, &gq.weights, gq.opts, &mut out),
+            Err(NirError::NonAsciiNodeName("a\"b"))
+        );
+        let ok = builder_chain();
+        assert!(nir_export(&ok.nodes, &ok.edges, &ok.weights, ok.opts, &mut out).is_ok());
+    }
+
+    #[test]
+    fn builder_parity_checks_and_rejections() {
+        let mut b = NirBuilder::new(NirImportOptions::default());
+        let i = b.add_input("a", &[1]).expect("input");
+        let o = b.add_output("a", &[1]).expect("output");
+        b.add_edge(i, o).expect("edge");
+        assert!(matches!(b.build(), Err(NirError::DuplicateNodeName)));
+
+        let mut b2 = NirBuilder::new(NirImportOptions::default());
+        let i2 = b2.add_input("a", &[1]).expect("input");
+        let o2 = b2.add_output("b", &[1]).expect("output");
+        b2.add_edge(i2, o2).expect("edge");
+        // shape > 4 dims and edge indices naming no node
+        assert_eq!(
+            b2.add_input("c", &[1, 2, 3, 4, 5]),
+            Err(NirError::BadShape("shape"))
+        );
+        assert_eq!(b2.add_edge(0, 99), Err(NirError::BadShape("edges")));
+        // LIF hard failures propagate from quantize_lif
+        assert_eq!(
+            b2.add_lif("x", -0.02, 1e8, -0.07, -0.055, -0.08, false),
+            Err(NirError::BadNumber("tau"))
+        );
+        // linear shape mismatch propagates from quantize_linear
+        assert_eq!(
+            b2.add_linear("y", &[1.0], 2, 3),
+            Err(NirError::BadShape("weight"))
+        );
+        // duplicate edge fires at build (the reference's
+        // validate_structure parity)
+        b2.add_edge(i2, o2).expect("edge");
+        assert!(matches!(b2.build(), Err(NirError::DuplicateEdge)));
     }
 }

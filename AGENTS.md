@@ -67,7 +67,7 @@ MSRV — don't bump without checking).
 ```bash
 # Quality gates (what CI runs, .github/workflows/ci.yml):
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; 282 executed green (3 app, 186 snn, 93 rt) + 5 rt model-gated #[ignore]
+cargo test   --workspace                          # offline; 286 executed green (3 app, 190 snn, 93 rt) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
