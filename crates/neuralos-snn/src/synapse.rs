@@ -24,7 +24,7 @@
 //! Fully `no_std`-compatible — pairs with `lif_neuron`.
 
 #![allow(clippy::module_name_repetitions)]
-// Fixed-point design: narrow types (i16 weight, u32 μs, i16 conductance) with
+// Fixed-point design: narrow types (i16 weight, u32 μs) with
 // physics-bounded values. Casts between them are intentional and bounded.
 #![allow(
     clippy::cast_possible_truncation,
