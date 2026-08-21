@@ -67,6 +67,33 @@ runtime — the library is a library. (The research runtime that proved a
 ternary SNN↔LLM bridge on this substrate lives in the workspace's
 `neuralos-rt`, `publish = false`.)
 
+## Since alpha.2
+
+- **F1 — adaptation-decay contract pinned**: unit tests pin the exact
+  −1/step decay with floor 0 and the +2/spike jump; a 6,000-step live test
+  proves a driven net stays firing and adaptation equilibrates. Leak
+  convergence pinned too (dt = τ lands on rest exactly, both directions).
+- **The coupling knob** — `synaptic_input_divisor` (new API): the recurrent
+  pulse is `weight / divisor` μA. Default 10 = the historical pulse
+  byte-for-byte; 0 rejected; pinned by default + doubling tests.
+- **`network.rs` split into `csr.rs` + `stats.rs`** — every published path
+  unchanged, CSR build/equivalence now pinned by dedicated tests
+  (unsorted insertion, external adds, reverse-CSR incoming, plasticity
+  weight sync).
+- **F5a — the DECORATIVE-in-orchestration machinery removed** (alpha semver
+  window): `Synapse`'s transmission/eligibility state (`delay_us`,
+  `conductance`, `transmission_buffer`, `eligibility_trace`,
+  `recent_activity`, synapse-side `last_spike_time_us`) and its dead
+  methods (`transmit`, `receive_spike`, `is_active`, `set_delay_us`,
+  `reset`), plus `LIFNeuron::tau_synapse_us`. Orchestration never read any
+  of it — proven output-neutral by byte-exact re-pins of the bridge
+  examples (gate verdict, export sha, 13/13 null patches).
+- **Pub-API census**: five module-internal fns de-pubbed
+  (`LIFNeuron::new_with_type`, `set_voltage_resolution`, the three
+  `i2_s` layout helpers); introspection accessors and builders stay pub —
+  see the alpha.3 audit record in the repo's `ISA.md`.
+- SIMD gate runs in CI; the batch kernel is documented mV-grid-only.
+
 ## Status
 
 `0.1.0-alpha.3` — the substrate-hardening release: the
@@ -75,8 +102,8 @@ never silences the net); `synaptic_input_divisor` — **the coupling
 knob**, new public API (default 10 = the historical weight/10 pulse;
 0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
 published path unchanged; the simd batch kernel doc'd mV-grid-only.
-160 offline unit/property tests + 3 simd-gated; the API may still
-move within alpha semver.
+251 offline unit/property tests (3 app, 155 snn, 93 rt) + 4 simd-gated
++ 5 model-gated `#[ignore]`; the API may still move within alpha semver.
 
 ## License
 
