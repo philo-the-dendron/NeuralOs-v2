@@ -70,7 +70,7 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
 ## Status
 
 `0.1.0-alpha.2` — the bridge release (codecs, kernel, live-transmission
-fix). 154 offline unit/property tests + 3 simd-gated; the API may still
+fix). 160 offline unit/property tests + 3 simd-gated; the API may still
 move within alpha semver.
 
 ## License
