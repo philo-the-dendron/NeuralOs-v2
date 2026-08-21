@@ -7,15 +7,15 @@
 //! small-margin tail (margin < 0.5) is printed per file — the
 //! census of record stays readable.
 //!
+//! CLI contract mirrors the Python script: a zero-file invocation
+//! prints the header + empty census and exits 0; unreadable files
+//! exit 1.
+//!
 //! Usage: `cargo run -p neuralos-rt --release --example
-//! margin_census -- <p0.err> [<p1.err> ...]`
+//! margin_census -- [<p0.err> ...]`
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        eprintln!("usage: margin_census <p0.err> [<p1.err> ...]");
-        std::process::exit(2);
-    }
     let parsed: Vec<(String, neuralos_rt::judge::Dump)> = args[1..]
         .iter()
         .map(|path| {

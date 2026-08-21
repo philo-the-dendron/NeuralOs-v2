@@ -7,7 +7,15 @@
 //! builds the mechanical comparison tables of the adjudication
 //! protocol. Output is byte-compatible with the Python originals —
 //! pinned by tests against the banked logs and their recorded
-//! Python outputs (`evidence/r4-closeout/`, `evidence/session-i-*`).
+//! Python outputs (`evidence/r4-closeout/`, `evidence/session-i-*`)
+//! and re-pinned adversarially (zero-shared steps, duplicate ids,
+//! duplicate steps, >10 pairs, negative logits, steps ≥ 100) on
+//! outputs banked from the recovered Python itself.
+//!
+//! Error-path contract mirrors the Python scripts of record: every
+//! failure (unreadable file, step-set mismatch, empty dumps) lands
+//! on stderr and exits status 1; the tools' stdout formatting is
+//! Python's float repr (`nan`, `+nan`).
 //!
 //! Insertion order is load-bearing: the Python dict preserved
 //! capture order and `max()` keeps the FIRST entry on value ties,
@@ -105,11 +113,14 @@ fn scan_pairs(line: &str, out: &mut DumpStep) {
     }
 }
 
-/// Read + parse a judge `.err` log. Exits loudly (status 1) if the
-/// file is unreadable — same contract as the examples of record.
+/// Read + parse a judge `.err` log. Exits loudly (stderr + status 1)
+/// if the file is unreadable — the Python scripts' traceback-exit-1
+/// contract.
 pub fn parse_dump_file(path: &str) -> Dump {
-    let text = fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
+    let text = fs::read_to_string(path).unwrap_or_else(|e| {
+        eprintln!("cannot read {path}: {e}");
+        std::process::exit(1);
+    });
     let mut dump = Dump::new();
     for line in text.lines() {
         if let Some((step, pairs)) = parse_dump_line(line) {
@@ -142,6 +153,34 @@ fn value(step: &DumpStep, id: u32) -> Option<f64> {
     step.iter().find(|(i, _)| *i == id).map(|(_, v)| *v)
 }
 
+/// CPython `max(list)` over the per-step deltas: a NaN at index 0
+/// STAYS (every later `x > nan` is false); a NaN at any later index
+/// is silently skipped. `f64::max` drops NaN unconditionally — this
+/// reproduces the Python asymmetry of record.
+fn cpython_max(vals: &[f64]) -> f64 {
+    let mut best = vals[0];
+    for &x in &vals[1..] {
+        if x > best {
+            best = x;
+        }
+    }
+    best
+}
+
+/// Python float formatting: `nan` / `+nan`, not Rust's `NaN` (the
+/// `+` flag signs NaN in CPython). Finite values format identically
+/// in both, so only the NaN spellings are mapped.
+fn fmt_py(x: f64, plus: bool) -> String {
+    if x.is_nan() {
+        return if plus { "+nan".into() } else { "nan".into() };
+    }
+    if plus {
+        format!("{x:+.4}")
+    } else {
+        format!("{x:.4}")
+    }
+}
+
 fn shared_ids(a: &DumpStep, b: &DumpStep) -> Vec<u32> {
     a.iter()
         .filter(|(i, _)| b.iter().any(|(j, _)| i == j))
@@ -151,7 +190,10 @@ fn shared_ids(a: &DumpStep, b: &DumpStep) -> Vec<u32> {
 
 /// The mechanical delta table: summary line + one row per step.
 /// Panics loudly when the two logs carry different step sets (the
-/// Python `assert b.keys() == p.keys()` of record).
+/// Python `assert b.keys() == p.keys()` of record) or when both
+/// carry no dump lines at all (Python's `min()` ValueError); the
+/// example binaries map both to stderr + exit 1, matching the
+/// scripts' tracebacks.
 pub fn delta_table(base: &Dump, patched: &Dump) -> String {
     let keys: Vec<u32> = base.keys().copied().collect();
     assert!(
@@ -178,13 +220,21 @@ pub fn delta_table(base: &Dump, patched: &Dump) -> String {
                 .fold(f64::NEG_INFINITY, f64::max),
         });
     }
+    // Python dies at `min(overlaps)` (ValueError, exit 1) when both
+    // logs are dump-less — same loud failure here (exact 3.12 text).
+    assert!(
+        !overlaps.is_empty(),
+        "min() iterable argument is empty"
+    );
     let mean_ov = overlaps.iter().sum::<usize>() as f64 / overlaps.len() as f64;
-    let max_d = deltas.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let max_d = cpython_max(&deltas);
     let mean_d = deltas.iter().sum::<f64>() / deltas.len() as f64;
     let mut out = String::new();
     out.push_str(&format!(
-        "steps {n} | argmax flips {flips}/{n} | overlap min {}/10 mean {mean_ov:.2} | max|d| shared {max_d:+.4} | mean|d| {mean_d:.4}\n",
-        overlaps.iter().min().copied().unwrap_or(0)
+        "steps {n} | argmax flips {flips}/{n} | overlap min {}/10 mean {mean_ov:.2} | max|d| shared {} | mean|d| {}\n",
+        overlaps.iter().min().copied().unwrap_or(0),
+        fmt_py(max_d, true),
+        fmt_py(mean_d, false),
     ));
     for &s in &keys {
         let (b, p) = (&base[&s], &patched[&s]);
@@ -369,6 +419,143 @@ mod tests {
         let mut dump = Dump::new();
         dump.insert(0, vec![(16, 10.0), (220, 5.0)]);
         let out = margin_census(&[("p0", &dump)]);
+        assert_eq!(
+            out,
+            concat!(
+                "                        file step   top1   top2   margin  knife?\n",
+                "\n",
+                "knife-edge set (margin < 0.05): 0 entries across all files\n",
+            )
+        );
+    }
+
+    // ---- Adversarial parity: outputs banked from the recovered ---
+    // Python originals themselves (Python 3.12.3; regenerate with
+    // `git show 556cdb8^:tools/delta.py` / `...margin_census.py`
+    // and the fixture lines below written to files). Covers the
+    // classes the 3 banked parity sets never touched: zero-shared
+    // steps (NaN summary paths), duplicate ids within a line,
+    // duplicate step ids across lines, >10 pairs, negative logits,
+    // steps ≥ 100 (width expansion), top-1/top-2 ties, <2-entry
+    // steps in the census, and the zero-file census invocation.
+
+    fn dump_from_lines(lines: &[&str]) -> Dump {
+        let mut d = Dump::new();
+        for l in lines {
+            if let Some((s, p)) = parse_dump_line(l) {
+                d.insert(s, p);
+            }
+        }
+        d
+    }
+
+    const A1: &[&str] = &[
+        "NEURALOS_DUMP step=0 n_out=10: 5:1,0000 7:0,5000",
+        "NEURALOS_DUMP step=1 n_out=10: 5:1,0000 7:0,5000",
+        // duplicate step id: the later line replaces the earlier one
+        "NEURALOS_DUMP step=1 n_out=10: 9:2,0000 7:0,2500",
+        // duplicate id 3 within the line (first position, last
+        // value -> 9.0); 12 pairs (>10); negative logit; step >= 100
+        "NEURALOS_DUMP step=100 n_out=10: 3:-1,5000 4:2,0000 3:9,0000 12:0,0001 13:0,0002 14:0,0003 15:0,0004 16:0,0005 17:0,0006 18:0,0007 19:0,0008 20:0,0009",
+        "garbage line without pairs",
+    ];
+    const A2: &[&str] = &[
+        // step 0 shares no ids -> zero-shared step at index 0 ->
+        // CPython max() keeps the NaN, mean poisons: "+nan"/"nan"
+        "NEURALOS_DUMP step=0 n_out=10: 8:3,0000 9:1,0000",
+        "NEURALOS_DUMP step=1 n_out=10: 5:1,1000 7:0,6000",
+        "NEURALOS_DUMP step=100 n_out=10: 3:-1,4000 4:2,5000 12:0,0002 13:0,0003 14:0,0004 15:0,0005 16:0,0006 17:0,0007 18:0,0008 19:0,0009 20:0,0010",
+    ];
+
+    #[test]
+    fn delta_table_adversarial_matches_python() {
+        let out = delta_table(&dump_from_lines(A1), &dump_from_lines(A2));
+        assert_eq!(
+            out,
+            concat!(
+                "steps 3 | argmax flips 3/3 | overlap min 0/10 mean 4.00 | max|d| shared +nan | mean|d| nan\n",
+                "  step  0: argmax 5->8 FLIP | top1logit base +1.0000 d   n/a \n",
+                "  step  1: argmax 9->5 FLIP | top1logit base +2.0000 d   n/a \n",
+                "  step 100: argmax 3->4 FLIP | top1logit base +9.0000 d +10.4000\n",
+            )
+        );
+    }
+
+    #[test]
+    fn delta_table_nan_at_later_index_keeps_numeric_max() {
+        // Zero-shared at the LAST step: CPython max() drops that NaN
+        // (numeric max survives), but sum() still poisons the mean.
+        let a3 = &[
+            "NEURALOS_DUMP step=0 n_out=10: 5:1,0000 7:0,5000",
+            "NEURALOS_DUMP step=5 n_out=10: 1:2,0000 2:1,0000",
+        ];
+        let a4 = &[
+            "NEURALOS_DUMP step=0 n_out=10: 5:1,2000 7:0,1000",
+            "NEURALOS_DUMP step=5 n_out=10: 8:3,0000 9:0,5000",
+        ];
+        let out = delta_table(&dump_from_lines(a3), &dump_from_lines(a4));
+        assert_eq!(
+            out,
+            concat!(
+                "steps 2 | argmax flips 1/2 | overlap min 0/10 mean 1.00 | max|d| shared +0.4000 | mean|d| nan\n",
+                "  step  0: argmax 5->5 same | top1logit base +1.0000 d +0.2000\n",
+                "  step  5: argmax 1->8 FLIP | top1logit base +2.0000 d   n/a \n",
+            )
+        );
+    }
+
+    #[test]
+    fn delta_table_panics_on_empty_dumps() {
+        let empty = Dump::new();
+        let _ = std::panic::catch_unwind(|| delta_table(&empty, &empty))
+            .expect_err("must panic like Python's min() ValueError");
+    }
+
+    #[test]
+    fn duplicate_id_keeps_first_position_last_value() {
+        let (_, pairs) = parse_dump_line(
+            "NEURALOS_DUMP step=0: 3:-1,5000 4:2,0000 3:9,0000",
+        )
+        .expect("parses");
+        assert_eq!(pairs.len(), 2, "duplicate id collapses to one slot");
+        assert_eq!(pairs[0], (3, 9.0), "first position, LAST value");
+        assert_eq!(pairs[1], (4, 2.0));
+    }
+
+    #[test]
+    fn margin_census_adversarial_matches_python() {
+        let c1 = &[
+            "NEURALOS_DUMP step=0 n_out=10: 16:10,0000 220:9,9800",
+            // top-1/top-2 tie (margin 0): first-inserted wins both
+            "NEURALOS_DUMP step=2 n_out=10: 5:2,0000 6:2,0000 7:1,0000",
+            // <2 entries: skipped by the census, like Python
+            "NEURALOS_DUMP step=3 n_out=10: 8:1,0000",
+            "not a dump: 42:1,0000",
+        ];
+        let dump = dump_from_lines(c1);
+        // Tag "c1.err": no _runN suffix to strip (Python parity —
+        // the tag is the basename with suffixes removed if present).
+        let out = margin_census(&[("c1.err", &dump)]);
+        assert_eq!(
+            out,
+            concat!(
+                "                        file step   top1   top2   margin  knife?\n",
+                "                      c1.err    0     16    220  +0.0200  ◄ KNIFE\n",
+                "                      c1.err    2      5      6  +0.0000  ◄ KNIFE\n",
+                "\n",
+                "knife-edge set (margin < 0.05): 2 entries across all files\n",
+                "  c1.err step 0: +0.0200\n",
+                "  c1.err step 2: +0.0000\n",
+            )
+        );
+    }
+
+    #[test]
+    fn margin_census_zero_files_matches_python_zero_args() {
+        // `margin_census.py` with no arguments prints header + empty
+        // census and exits 0 — the Rust entry point allows the same
+        // zero-file invocation.
+        let out = margin_census(&[]);
         assert_eq!(
             out,
             concat!(
