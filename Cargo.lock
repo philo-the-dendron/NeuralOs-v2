@@ -3050,6 +3050,7 @@ version = "0.1.0-alpha.3"
 dependencies = [
  "hdf5",
  "hdf5-sys",
+ "ndarray",
  "neuralos-snn",
 ]
 

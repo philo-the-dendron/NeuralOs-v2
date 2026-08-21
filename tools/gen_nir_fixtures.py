@@ -83,6 +83,34 @@ lif_pop = nir.LIF(
 g_pop = nir.NIRGraph.from_list(lin_pop, lif_pop)
 dump("chain_population.json", {"version": "1.0.0", "node": to_jsonable(g_pop.to_dict())})
 
+# --- HDF5 fixtures (slice 2) — the reference's own write() ----------
+# Same doctrine, one container over: positive .nir files are the
+# pinned reference's own `nir.write()` emissions. The population chain
+# REUSES chain_population.json's exact values so the frozen quanta are
+# cross-container comparable (same dyadic weights, same per-neuron
+# params). Negative container: lzf — write(compression="lzf") is
+# reference-legal, censused out by our reader (stated policy).
+# SZIP: unemittable by this toolchain (libaec rejects every legal ppb
+# against NIR-scale chunks) — documented census rejection, no fixture.
+# Empty edges: unemittable — NIRGraph auto-wires input_<n>/<n>_output
+# junctions into edges=[] (probe finding of record, 2026-08-21).
+OUT_H5 = ROOT / "crates" / "neuralos-rt" / "tests" / "nir_fixtures"
+OUT_H5.mkdir(parents=True, exist_ok=True)
+
+
+def dump_h5(name, graph, **write_kwargs):
+    import hashlib
+
+    path = OUT_H5 / name
+    nir.write(path, graph, **write_kwargs)
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    print(f"wrote {path.relative_to(ROOT)} ({path.stat().st_size} B, sha256 {sha[:16]}…)")
+
+
+dump_h5("chain_population.nir", g_pop)  # gzip default (deflate id 1)
+dump_h5("chain_population_uncompressed.nir", g_pop, compression=None)
+dump_h5("neg_filter_lzf.nir", g_pop, compression="lzf")
+
 # --- positive 2: absent v_reset + lossy weights ---------------------
 # The absent-v_reset shape is reference-legal: serialization.read_node
 # constructs it when the dataset is missing, and dict2NIRNode accepts

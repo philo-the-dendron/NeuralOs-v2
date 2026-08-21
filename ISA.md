@@ -3453,3 +3453,43 @@ gate + the HDF5 error boundary, 2026-08-21)
   seam rendering rides; FromStr string construction; VarLenUnicode
   H5Type pin). Battery: workspace 288/0, clippy -D warnings (default
   AND hdf5-feature legs), no_std, hdf5 leg 8/8.
+
+## Verification (R14 — NIR slice 2, C2: reference-written fixtures +
+the reader to the seam, 2026-08-21)
+
+- **Fixtures from the reference's OWN write()** (tools/
+  gen_nir_fixtures.py extended; the pinned clone pip-installed into
+  .nirenv so `nir.version` metadata resolves — "1.0.9.dev1+g7883c3c85"):
+  - `chain_population.nir` (gzip default) — sha256 d2939fb700ee5a4a…
+  - `chain_population_uncompressed.nir` — sha256 ec58c9c89a9f0def…
+  - `neg_filter_lzf.nir` (compression="lzf") — sha256 79f1e2fdd76d89dc…
+  Same source values as chain_population.json → frozen quanta are
+  cross-container comparable. Regeneration confirmed all 15 JSON
+  fixtures byte-identical (no churn). szip: no fixture (unemittable,
+  R13 probe finding); empty-edges: no fixture (reference auto-wires).
+- **Reader**: `nir_hdf5_read` → owned `NirHdfDoc` (names owned; layout
+  walk: version → node/type NIRGraph → nodes alphabetical → edges) →
+  `NirHdfDoc::import(opts)` via `NirBuilder` — the SAME
+  quantize_lif/quantize_linear records as the JSON path. Exact-dtype
+  enforcement (`Datatype::is::<f64/i64>` — HDF5 would otherwise
+  silently convert integers); census per dataset BEFORE any data read;
+  unknown node kind / unknown edge endpoint / param length mismatch
+  surface as Seam with the full NirError rendering; 0-row and (0,)-shaped
+  edges datasets both accepted (our zero-edge emission; the reference
+  cannot emit one).
+- **Concurrency fix found by the parallel tests**: raw census FFI
+  bypassed the hdf5 crate's global lock → SIGSEGV under default
+  test threading. Census now runs inside `hdf5::sync::sync`; the
+  plugin-path `set_var` is OnceLock-gated (exactly once per process).
+- Falsifiers: 11 fixture tests — per-neuron quanta exact
+  ((20k,−70,−55,−80,100MΩ,200pF)/(30k,−65,−50,−75,200MΩ,150pF),
+  weights [16384,−32767,8192,−8192,32767,16384]); **cross-container
+  record parity** (HDF5 vs JSON path, node-by-name: kinds, weights,
+  LIF records, edges-as-name-pairs); uncompressed variant
+  record-identical; lzf censused out at input/shape (first array in
+  walk) with the policy stated; hand-built negatives (missing
+  version, wrong root type, CubaLIF seam, ghost edge endpoint, LIF
+  param length BadShape, integer weight dtype Shape).
+- Battery: hdf5 leg 101 inline + 11 fixture / 0 failed, parallel,
+  zero crashes; clippy -D warnings both legs; default workspace
+  288/0.

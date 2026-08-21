@@ -9,6 +9,11 @@ description = "NeuralOS ternary-LLM runtime — loads Bonsai-style Q1_0 GGUF mod
 # (2026-08-15 review: make that explicit instead of accidental).
 publish = false
 
+[dev-dependencies]
+# matches hdf5 0.8's ndarray (0.15) — needed to construct the 2-D
+# vlen-string edge datasets in the fixture tests
+ndarray = "0.15"
+
 [features]
 # HDF5 `.nir` container support (NIR slice 2). The first feature gate
 # in this crate — same posture as neuralos-snn's `simd`: heavyweight
