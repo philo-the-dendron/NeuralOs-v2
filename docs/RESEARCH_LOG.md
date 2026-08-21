@@ -866,3 +866,24 @@ buries the weekday chain at every width — even the base clarifies
   carrying the q2_0 codec fix as a must-ship, gguf
   lazy arrays, contiguity validation; merge/no-merge of the branch and
   the 8B-vs-stop call are the principal's).
+
+### R4 — the harness consolidation (2026-08-20/21, multi-session)
+
+The autopsy's answer to the 1,864-duplicated-line disease: extract
+the six frozen hybrid examples' shared machinery into
+`neuralos-rt::harness` and prove each rewrite against the banked
+verdicts. R4(i) banked the pre-refactor baselines
+(`evidence/r4-baselines/`) + `hybrid_smoke.sh`; R4(ii) added the
+coupling knob + split `network.rs`; R4(iii) extracted the harness
+and converted the family leg by leg — gate+loop (leg 1, outputs
+byte-identical to baseline, export sha 24ffe5f3…), sweeps (leg 2),
+invivo + null_patches (leg 3, completed 2026-08-21 after the
+interrupted session, d3311a7). R4(iv) re-pins at closeout:
+null_patches regenerated all 13 null files byte-identical to the
+session-I artifacts; judge p0 reproduced 0/12 flips, max |Δ|
++0.4207, mean 0.0779 exactly; the r4-baselines invivo bar was
+found STALE (it cited session-H pins the post-H2 drive code cannot
+produce — root cause banked in `evidence/r4-closeout/`, the H2
+record amended in as the true bar; its full re-run in flight at
+closeout). Net: −1,900-odd duplicated lines against the record,
+every recorded verdict intact or re-pinned.

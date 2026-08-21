@@ -14,6 +14,8 @@
 | `session-h2/` | H2 (2026-08-19) | Corrected-corpus rerun: P1' PASS, P3' split (1/12 argmax flip), 2nd continuation change | per-prompt run pairs, `README.md` |
 | `session-i-primary/` | I (2026-08-20) | **The adjudication.** Dose-matched nulls ×10 + flow-shuffle ×3, all S2-clean. Conjunct: (a) FAIL 0.0798 < 0.2254 · (b) FAIL 8/10 ≫ 1/10 · (c) moot · (d) MIXED band → **BRANCH B: unattributed perturbation** (ISC-84) | `null-d1..d10/`, `null-f1..f3/`, `README.md` (the ruling table) |
 | `session-i-stress/` | I (2026-08-20) | Stress arm (report-only): ~2× dose nulls are LOUD — p3 9/10, p4 9/10 (new flip family) — the p3 knife-edge is fragile to perturbation magnitude | `null-r1..r10/`, `README.md` |
+| `r4-baselines/` | R4(i) (2026-08-20) | Pre-refactor re-pin baselines for the frozen example family (the R4(iv) contract); judge p0 leg closed by r4-closeout | `README.md` (the protocol + verdict table), `*_run{1,2}.log` |
+| `r4-closeout/` | R4(iii/iv) (2026-08-21) | Leg-3 re-pins: null_patches 13/13 files byte-identical; judge p0 pair 0/12 flips max \|Δ\| +0.4207 exact; the stale H1 invivo bar root-caused (H2 record is the re-pin target) | `README.md`, `p0_{base,loop}_run{1,2}.{log,err}`, `null_*`, `h1_invivo_r4iii.log` |
 
 Seeds of record (pinned as constants in the frozen examples): census-
 matched control `0x5EED_C0DE_0000_0002` (Fisher–Yates); primary dose

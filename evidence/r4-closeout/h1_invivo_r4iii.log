@@ -1,0 +1,40 @@
+=== Session H: the in-vivo gate — the model's own activations drive the substrate ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen
+
+decode  : 262144 trits (D-2 slice path)
+corpus  : /tmp/opencode/h1_corpus_1024.txt (1024 bytes)
+tokens  : 332 (vocab 151669)
+drive   : single truncated pass — first 332 of 332 tokens (no epochs, no wrap by construction)
+cut-ctx : …"t tools/delta.py): 60/60 steps\nmoved, max |Δ| 0.42 (p0), mean |Δ| 0.057–0.151, 0/60 argmax flips,\ncontinuations byte-identical to baseline on all five prompts.\n"… (last ~160 chars before the token-2000 cut)
+scaling : corpus RMS 0.0463 → k = 9721.41 μA/unit (target 450 μA)
+clamp   : 94774/135788 = 69.796% clamped at ±1000 μA  ⚠ ABOVE 10% — recorded caveat
+          hottest dim 75 railed 301× (90% of its steps)
+hist    : |I| <100 41014 · 100–150 0 · 150–300 0 · 300–600 0 · >600/railed 94774 (per dim-step)
+
+--- TIER 1: substrate gates (fixed weights, STDP off, in-vivo drive, CENTI grid) ---
+  rates  E Hz (i/c/z): 18.80 / 18.87 / 18.80   I Hz: 126.36 / 126.51 / 126.51
+  totals (i/c/z): 6874 / 6888 / 6879
+  H(i,c)=4364  H(i,z)=3131  H(c,z)=2661   L1(i,c)=234  L1(i,z)=173  L1(c,z)=125
+  G2′ wire-liveness tripwire : PASS (weights borne in trains)
+  G0  arrangement-vs-census : H(i,c) > H(i,z) → 4364 > 3131 : PASS — firing reads model arrangement
+
+--- in-vivo adaptation (STDP on, γ=125, counters per the registration) ---
+  learn firing : NaN Hz/neuron; quarters NaN NaN NaN NaN
+  events 0 · flips 0 · pairing same-step 0 · post-leads 0 · pre-leads 0
+  bucket-transition census:
+  −1→−1 ×       0  −1→ 0 ×       0  −1→+1 ×       0
+   0→−1 ×       0   0→ 0 ×       0   0→+1 ×       0
+  +1→−1 ×       0  +1→ 0 ×       0  +1→+1 ×       0
+  raw drift intra +0 · inter +0   absorbed intra +0 · inter +0   APPLIED intra +0 · inter +0
+  Hamming vs imported: 0/261632 = 0.0000
+  intra meanΔ +0.0000 (41412) · inter meanΔ +0.0000 (220220) — data-driven classes; |Δ| floor 0.05
+  mechanism label: [none — no differential movement]
+
+--- Verdict (per the frozen registration) ---
+  T1 G2′ tripwire   : PASS
+  T1 G0 arrangement : PASS
+  adaptation alive  : FAIL (frozen)
+  not collapsed     : PASS
+  selective (descriptive — drift-liveness, classes dissolved): no movement
+wall 1481.2s   peak RSS 2437 MB (budget 1536)

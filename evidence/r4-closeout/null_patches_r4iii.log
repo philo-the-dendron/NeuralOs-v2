@@ -1,0 +1,22 @@
+    Finished `release` profile [optimized] target(s) in 0.84s
+     Running `target/release/examples/null_patches`
+=== Null family v2: dose-matched ×10 + shuffle ×3 (from the H2 terminal patch) ===
+orig    : models/Ternary-Bonsai-4B-Q2_0.gguf
+H2      : models/Ternary-Bonsai-4B-Q2_0-invivo.gguf
+H2 diff : 87119 changed cells (pre-registered 87,119)
+comp    : −1→0 26027 · 0→−1 0 · 0→+1 29949 · +1→0 31143 · (others 5)
+classes : 3 (full composition incl. crossovers)
+dose-1: 87119 cells (exact) · S2 clean → models/null-dose-1.gguf
+dose-2: 87119 cells (exact) · S2 clean → models/null-dose-2.gguf
+dose-3: 87119 cells (exact) · S2 clean → models/null-dose-3.gguf
+dose-4: 87119 cells (exact) · S2 clean → models/null-dose-4.gguf
+dose-5: 87119 cells (exact) · S2 clean → models/null-dose-5.gguf
+dose-6: 87119 cells (exact) · S2 clean → models/null-dose-6.gguf
+dose-7: 87119 cells (exact) · S2 clean → models/null-dose-7.gguf
+dose-8: 87119 cells (exact) · S2 clean → models/null-dose-8.gguf
+dose-9: 87119 cells (exact) · S2 clean → models/null-dose-9.gguf
+dose-10: 87119 cells (exact) · S2 clean → models/null-dose-10.gguf
+flip-1: 87119 cells (exact; 51517 reflected · 35602 held) · S2 clean → models/null-flip-1.gguf
+flip-2: 87119 cells (exact; 51409 reflected · 35710 held) · S2 clean → models/null-flip-2.gguf
+flip-3: 87119 cells (exact; 51402 reflected · 35717 held) · S2 clean → models/null-flip-3.gguf
+done — judge chains next (queued behind the stress arm).

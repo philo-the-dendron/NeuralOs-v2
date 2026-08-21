@@ -3,9 +3,9 @@ task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: climbing
-progress: 84/84
+progress: 85/85
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-19T02:45:00Z
+updated: 2026-08-21T01:00:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..84 sH+H2+sI — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..84 sH+H2+sI, 85 R4 — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -1030,6 +1030,42 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 | ISC-10 | unit | decoded tensor ↔ Trit::to_weight round-trip stays on-grid | exact | cargo test | bridge::tests::decoded_trits_feed_trit_substrate |
 
 ## Decisions
+
+- 2026-08-21 (R4 closeout, per the autopsy cadence) · **R4(iii) leg 3
+    + R4(iv) re-pins: the harness extraction is verified to the
+    protocol's own bar, one leg in flight.** The interrupted
+    2026-08-20 session left leg 3 (invivo + null_patches onto
+    `harness::`) uncommitted; this session verified + banked it.
+    **null_patches: perfect** — all 13 regenerated null files
+    byte-identical (sha256 before/after) to the session-I artifacts;
+    87,119-cell dose exact. **judge p0: exact** — 0/12 flips,
+    max |Δ| +0.4207, mean 0.0779, double-run deterministic,
+    continuations byte-identical base-vs-loop (same fork binary as
+    the banking → no FP jitter; session-f's binary differs at the
+    4th decimal — cross-build variation, now recorded).
+    **The r4-baselines invivo bar was STALE when written:** it cites
+    session-H pins (41,190/69.796%) unreachable on any tree at/after
+    the sH2 single-pass drive redesign — on H1's 332-token corpus
+    (recovered verbatim at `3b512df`, sha 2d64e907…; on-disk README
+    has since grown to 1,057 B) the frozen 400-step init cycle
+    swallows the whole learn tier (0 events, NaN quarters —
+    reproduced, understood, NOT a refactor bug; Tier-1 scales
+    exactly ×6). **The correct bar is the H2 record at default
+    args; the full re-run is in flight** (launched 2026-08-20
+    ~23:30 UTC, ~8 h per ISC-83's 29,668 s) — its match closes R4;
+    a divergence is a refactor bug (stop rule: report, no tuning).
+
+- [x] ISC-85 (R4) · **Leg 3 lands with its re-pin evidence: 4 CI
+    gates green on d3311a7 (241 tests, 0 fail); null_patches 13/13
+    byte-identical; judge p0 stats exact vs banked; the stale H1
+    bar root-caused with the falsifier log banked; H2 re-pin
+    launched with the protocol amended.** Evidence:
+    `evidence/r4-closeout/` (judge ×4, null shas, h1 diagnostic);
+    r4-baselines README §3 amended + §4 closed; INDEX row added.
+    Falsifier: the H2 run's diff vs `evidence/session-h2/run.log`
+    pins (RMS 0.0447 / k=10,060.46 / clamp 69.477% / H(i,c)=41,555
+    > 30,724 / flips 1,112,771 / Hamming 33.30%) — PENDING at this
+    entry's commit; the next session banks the result either way.
 
 - 2026-08-21 (sI-ADJUDICATION, by rule, zero discretionary calls) ·
     **BRANCH B: the in-vivo continuation changes are statistically
