@@ -22,6 +22,10 @@ jobs:
         with:
           components: clippy
 
+      # Cargo.lock is committed (deterministic deps; hdf5-sys vendored-C
+      # pin) — the cache key is stable across runs.
+      - uses: Swatinem/rust-cache@v2
+
       # Slint's femtovg/winit backends link against these on Linux.
       - name: Slint Linux build deps
         run: |
@@ -48,3 +52,33 @@ jobs:
       # SIMD kernel equivalence vs scalar (AVX2, x86_64, behind `simd`).
       - name: simd gate (neuralos-snn)
         run: cargo test -p neuralos-snn --features simd
+
+  # The HDF5 feature leg (NIR slice 2): vendored HDF5 (needs cmake) +
+  # the reference-fixture tests + THE EVIDENCE GATE + feature clippy.
+  # The ~3 min vendored-C build lands in target/ and is cached by
+  # rust-cache, so it repeats only when Cargo.lock moves.
+  hdf5:
+    name: hdf5 gate (neuralos-rt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: cmake (vendored HDF5 build)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo test -p neuralos-rt --features hdf5
+        run: cargo test -p neuralos-rt --features hdf5
+
+      - name: nir_hdf5_gate (the evidence gate)
+        run: cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate
+
+      - name: clippy with the feature
+        run: cargo clippy -p neuralos-rt --features hdf5 --all-targets -- -D warnings
