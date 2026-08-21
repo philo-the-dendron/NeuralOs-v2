@@ -95,6 +95,33 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   see the alpha.3 audit record in the repo's `ISA.md`.
 - SIMD gate runs in CI; the batch kernel is documented mV-grid-only.
 
+## Since alpha.3 (unreleased — toward alpha.4)
+
+- **NIR slice 1 shipped *in* alpha.3** (missing from the notes
+  above): `neuralos_snn::nir` — JSON import/export of
+  `Input`/`Linear`/`LIF`/`Output` graphs, schema pinned to
+  `neuromorphs/NIR@7883c3c`, reference-emitted fixtures +
+  `nir_format_gate`, explicit per-node quantization records.
+- **Fresh-eyes review fixes (findings R1-R8)**: `skip_value`
+  depth-capped at 64 (adversarial nesting is a loud `Json` error,
+  not a stack overflow); trailing content after the root rejected
+  (Python `json.loads` parity); denormal-`absmax` weights (e.g.
+  `5e-324`) are a loud `BadNumber` — the underflowed `scale = 0`
+  would have zeroed exports silently and broken idempotence;
+  `round_half_away` rewritten as truncate-compare (the classic
+  add-±0.5 idiom misrounds values 1 ulp below a half — reachable
+  via `r` in MΩ: 499999.99999999994 Ω imported as 1 MΩ);
+  `ChainEncoder::encode` accumulates in i64 (i32 silently wrapped
+  negative at cols ≥ 3 with full-scale weights); scan rejects
+  1-D/empty/3-D weight arrays up front; export rejects dangling
+  edge indices (no `"?"` placeholders); the import scratch
+  contract documented truthfully as **4×** (each f64 stages as
+  four i16) at every provider.
+- **Honesty note**: findings R1-R5 were present in the published
+  alpha.3 binary. No consumers are known (the module shipped within
+  the day); all are fixed here, ahead of any consumer, targeted
+  for alpha.4.
+
 ## Status
 
 `0.1.0-alpha.3` — the substrate-hardening release: the
@@ -103,7 +130,7 @@ never silences the net); `synaptic_input_divisor` — **the coupling
 knob**, new public API (default 10 = the historical weight/10 pulse;
 0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
 published path unchanged; the simd batch kernel doc'd mV-grid-only.
-251 offline unit/property tests (3 app, 155 snn, 93 rt) + 4 simd-gated
+270 offline unit/property tests (3 app, 174 snn, 93 rt) + 4 simd-gated
 + 5 model-gated `#[ignore]`; the API may still move within alpha semver.
 
 ## License

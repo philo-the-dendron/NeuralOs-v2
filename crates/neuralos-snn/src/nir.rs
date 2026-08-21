@@ -66,8 +66,8 @@
 //! [`NirBuffers`] + [`nir_import`] fills (the import itself walks the
 //! document twice: nodes, then edges — edge endpoints may appear
 //! before their nodes in key order). During import the weight arena is
-//! used as scratch (each f64 staged as two i16 slots), so it must hold
-//! **2× the total weight count**; the quantized result occupies the
+//! used as scratch (each f64 staged as four i16 slots), so it must hold
+//! **4× the total weight count**; the quantized result occupies the
 //! first half. Export writes into a caller byte slice. Strings are
 //! borrowed from the input (schema strings must be escape-free
 //! printable ASCII — loud error otherwise). `f64` appears in the
@@ -184,6 +184,12 @@ impl std::error::Error for NirError<'_> {}
 // JSON reader — the documented subset, zero alloc, borrowed strings
 // ---------------------------------------------------------------------------
 
+/// Maximum container nesting [`Reader::skip_value`] will walk before
+/// rejecting the document. The schema's own depth is ≤ 6; 64 leaves
+/// generous headroom for foreign `metadata` while bounding the
+/// recursion (no stack overflow on adversarial input).
+const MAX_SKIP_DEPTH: usize = 64;
+
 struct Reader<'a> {
     b: &'a [u8],
     pos: usize,
@@ -248,6 +254,11 @@ impl<'a> Reader<'a> {
 
     /// A number as f64 (core's correctly-rounded parser — the same
     /// values Python's `float()` produces for the same token).
+    /// Grammar note: this accepts Rust's `f64::FromStr` set, a slight
+    /// SUPERSET of JSON's (`.5`, `1.`, `+5`, `007` parse here, are
+    /// errors in Python's `json`). The reference emitter never
+    /// produces these forms and the numeric values agree wherever
+    /// both accept — a documented laxity, not an accident.
     fn read_number(&mut self) -> Result<f64, NirError<'static>> {
         self.ws();
         let start = self.pos;
@@ -291,7 +302,10 @@ impl<'a> Reader<'a> {
 
     /// Object-key stepper: yields the next key (value left for the
     /// caller to parse/skip), `None` at `}`. Duplicate keys:
-    /// last-wins (Python `json.loads` semantics).
+    /// scalar fields are last-wins (Python `json.loads` semantics);
+    /// repeated container fields (`edges`, `nodes`) are visited in
+    /// order and their contents aggregate. Our exports never repeat
+    /// a key; the reference emitter neither.
     fn object_step(&mut self, first: &mut bool) -> Result<Option<&'a str>, NirError<'static>> {
         if *first {
             self.eat(b'{')?;
@@ -314,7 +328,13 @@ impl<'a> Reader<'a> {
     }
 
     /// Skip one value of any shape (unknown fields, `metadata`).
-    fn skip_value(&mut self) -> Result<(), NirError<'static>> {
+    /// Depth-capped: nesting beyond [`MAX_SKIP_DEPTH`] is rejected as
+    /// malformed instead of overflowing the call stack (a 50k-deep
+    /// junk array is adversarial input, not a document).
+    fn skip_value(&mut self, depth: usize) -> Result<(), NirError<'static>> {
+        if depth > MAX_SKIP_DEPTH {
+            return Err(NirError::Json(self.pos));
+        }
         match self.peek() {
             Some(b'"') => {
                 self.pos += 1;
@@ -332,14 +352,14 @@ impl<'a> Reader<'a> {
             Some(b'{') => {
                 let mut first = true;
                 while self.object_step(&mut first)?.is_some() {
-                    self.skip_value()?;
+                    self.skip_value(depth + 1)?;
                 }
                 Ok(())
             }
             Some(b'[') => {
                 let mut first = true;
                 while self.array_step(&mut first)? {
-                    self.skip_value()?;
+                    self.skip_value(depth + 1)?;
                 }
                 Ok(())
             }
@@ -518,14 +538,26 @@ impl Default for NirImportOptions {
 // Quantization (pure, unit-tested below)
 // ---------------------------------------------------------------------------
 
-/// `f64::round` (half away from zero) without std — `round`/`trunc`
-/// are std-only. `as i64` truncates toward zero (saturating); every
-/// caller pre-validates finiteness and bounds (`|x| ≤ u32::MAX` here,
-/// exactly representable in both directions).
+/// `f64::round` (half away from zero) without std — `round`/`floor`/
+/// `ceil` are std-only. Truncate-then-compare: `as i64` truncates
+/// toward zero (saturating at the extremes), then the exact fraction
+/// decides. (The classic add-±0.5-then-truncate idiom MISROUNDS
+/// values up to 1 ulp below a half boundary — `0.49999999999999994`
+/// would yield 1.0 — and that value is reachable via `r` in MΩ.)
+/// Every caller pre-validates finiteness and bounds; saturation at
+/// ±`i64::MAX` lands far outside every caller's accepted range and
+/// fails their checks loudly.
 #[allow(clippy::cast_precision_loss)]
 fn round_half_away(x: f64) -> f64 {
-    let t = (x + f64::copysign(0.5, x)) as i64;
-    t as f64
+    let t = x as i64 as f64;
+    let frac = x - t;
+    if frac >= 0.5 {
+        t + 1.0
+    } else if frac <= -0.5 {
+        t - 1.0
+    } else {
+        t
+    }
 }
 
 /// Quantize one potential (V) onto the grid. Loud on out-of-range.
@@ -644,8 +676,13 @@ pub fn nir_scan(json: &[u8]) -> Result<NirScan<'_>, NirError<'_>> {
                 saw_node = true;
                 scan_graph(&mut r, &mut node_count, &mut edge_count, &mut weight_cells)?;
             }
-            _ => r.skip_value()?,
+            _ => r.skip_value(0)?,
         }
+    }
+    // strict subset: nothing but whitespace may follow the root object
+    // (Python's `json.loads` rejects trailing content; so do we)
+    if r.peek().is_some() {
+        return Err(NirError::Json(r.pos));
     }
     let version = version.ok_or(NirError::MissingField("version"))?;
     if !saw_node {
@@ -695,7 +732,7 @@ fn scan_graph(
                     *node_count += 1;
                 }
             }
-            _ => r.skip_value()?,
+            _ => r.skip_value(0)?,
         }
     }
     Ok(())
@@ -712,32 +749,48 @@ fn scan_node(r: &mut Reader<'_>, weight_cells: &mut usize) -> Result<(), NirErro
                 let mut depth = 0usize;
                 count_array(r, &mut depth, weight_cells)?;
             }
-            _ => r.skip_value()?,
+            _ => r.skip_value(0)?,
         }
     }
     Ok(())
 }
 
-/// Recursively walk an array, counting leaves.
+/// Recursively walk a weight array, counting leaves. A weight tensor
+/// is EXACTLY 2-D of non-empty rows — 1-D, empty, empty-row, and 3-D
+/// shapes all fail here (scan's "malformed structure fails here"
+/// contract); ragged rows still fail at import (shape is checked,
+/// not counted, there).
 fn count_array(
     r: &mut Reader<'_>,
     depth: &mut usize,
     leaves: &mut usize,
 ) -> Result<(), NirError<'static>> {
-    if *depth >= 3 {
+    if *depth >= 2 {
         // 2-D max (a weight tensor); deeper = wrong shape
         return Err(NirError::BadShape("weight"));
     }
     let mut first = true;
+    let mut elems = 0usize;
+    let mut nested = false;
     while r.array_step(&mut first)? {
         if r.peek() == Some(b'[') {
             *depth += 1;
+            nested = true;
             count_array(r, depth, leaves)?;
             *depth -= 1;
         } else {
             r.read_number()?;
             *leaves += 1;
         }
+        elems += 1;
+    }
+    if elems == 0 {
+        // `[]` outer or an empty row `[[]]`
+        return Err(NirError::BadShape("weight"));
+    }
+    if *depth == 0 && !nested {
+        // a flat array at the top = 1-D tensor
+        return Err(NirError::BadShape("weight"));
     }
     Ok(())
 }
@@ -750,6 +803,10 @@ fn count_array(
 /// document order, `edges` as resolved node-index pairs, and the
 /// quantized weights into the arena. On any error nothing is promised
 /// about buffer contents.
+// two documented walks (nodes, then edges) + their trailing checks;
+// the 100-line cap is crossed by the EOF checks alone (network.rs
+// precedent for the allow)
+#[allow(clippy::too_many_lines)]
 pub fn nir_import<'a>(
     json: &'a [u8],
     opts: NirImportOptions,
@@ -784,12 +841,16 @@ pub fn nir_import<'a>(
                             )?;
                         }
                     } else {
-                        r.skip_value()?;
+                        r.skip_value(0)?;
                     }
                 }
             } else {
-                r.skip_value()?;
+                r.skip_value(0)?;
             }
+        }
+        // trailing content after the root is rejected here too
+        if r.peek().is_some() {
+            return Err(NirError::Json(r.pos));
         }
     }
     report.weight_cells = weight_fill;
@@ -840,12 +901,16 @@ pub fn nir_import<'a>(
                             report.edges = edge_count;
                         }
                     } else {
-                        r.skip_value()?;
+                        r.skip_value(0)?;
                     }
                 }
             } else {
-                r.skip_value()?;
+                r.skip_value(0)?;
             }
+        }
+        // and here (walk 2 sees the same document)
+        if r.peek().is_some() {
+            return Err(NirError::Json(r.pos));
         }
     }
 
@@ -978,7 +1043,7 @@ fn import_node<'a>(
                 bufs.nodes[idx].linear = Some(lin);
                 *weight_fill += lin.rows * lin.cols;
             }
-            _ => r.skip_value()?, // metadata + unknown fields tolerated
+            _ => r.skip_value(0)?, // metadata + unknown fields tolerated
         }
     }
 
@@ -1021,7 +1086,7 @@ fn import_node<'a>(
 }
 
 /// Read a 2-D weight array, quantizing into the arena at `offset`
-/// (staging f64 bits in the arena's scratch half first). Row-major
+/// (staging f64 bits in the arena's scratch region first). Row-major
 /// `weight[out][in]`: `y_o = Σ_i w[o][i] · x_i`.
 fn import_weight(
     r: &mut Reader<'_>,
@@ -1030,7 +1095,7 @@ fn import_weight(
 ) -> Result<NirLinear, NirError<'static>> {
     let mut rows = 0usize;
     let mut cols: Option<usize> = None;
-    let mut staged = 0usize; // f64 slots written (2 i16 each)
+    let mut staged = 0usize; // f64 slots written (4 i16 each)
 
     let mut rfirst = true;
     while r.array_step(&mut rfirst)? {
@@ -1098,6 +1163,15 @@ fn import_weight(
     } else {
         (absmax / I16_FS, false)
     };
+    // Denormal `absmax`: `absmax/32767` underflows to exactly 0.0 —
+    // finite, so every prior check passes, but then q·scale = 0 ≠
+    // absmax and the quant record would lie (export would silently
+    // zero the tensor and break idempotence). Loud, per the contract.
+    // (NaN unreachable: absmax is finite and I16_FS is a nonzero
+    // constant, so `== 0.0` is exact, not partial-order fuzz.)
+    if scale == 0.0 {
+        return Err(NirError::BadNumber("weight"));
+    }
     let mut max_abs_err = 0.0f64;
     for k in 0..n {
         let v = staged_val(bufs, k);
@@ -1187,8 +1261,16 @@ pub fn nir_export(
         if i > 0 {
             w.push(b',')?;
         }
-        let an = nodes.get(*a as usize).map_or("?", |n| n.name);
-        let bn = nodes.get(*b as usize).map_or("?", |n| n.name);
+        // edge indices must name nodes — "?" placeholders would be a
+        // silent lie in an export document
+        let an = nodes
+            .get(*a as usize)
+            .ok_or(NirError::BadShape("edges"))?
+            .name;
+        let bn = nodes
+            .get(*b as usize)
+            .ok_or(NirError::BadShape("edges"))?
+            .name;
         w.push_str("[\"")?;
         w.push_str(an)?;
         w.push_str("\",\"")?;
@@ -1366,7 +1448,7 @@ mod std_assembly {
                 scan.node_count
             ];
             let mut edges = vec![(0u32, 0u32); scan.edge_count];
-            // scratch contract: 2× weights during import
+            // scratch contract: 4× weights during import (f64 = 4 i16)
             let mut weights = vec![0i16; scan.weight_cells.saturating_mul(4)];
             {
                 let mut bufs = super::NirBuffers {
@@ -1494,19 +1576,21 @@ mod std_assembly {
         }
 
         /// Encode feature currents into per-neuron currents.
+        /// i64 accumulator: i32 would overflow (and in release,
+        /// silently wrap) at cols ≥ 3 with |w| = |x| = 32767.
         #[must_use]
         pub fn encode(&self, x: &[i16]) -> Vec<i16> {
             let mut out = vec![0i16; self.lin.rows];
             for (r, o) in out.iter_mut().enumerate() {
-                let mut acc: i32 = 0;
+                let mut acc: i64 = 0;
                 for c in 0..self.lin.cols {
-                    let w = i32::from(
+                    let w = i64::from(
                         self.weights[self.lin.weight_offset + r * self.lin.cols + c],
                     );
-                    acc += w * i32::from(x.get(c).copied().unwrap_or(0));
+                    acc += w * i64::from(x.get(c).copied().unwrap_or(0));
                 }
                 acc /= 100;
-                *o = acc.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+                *o = acc.clamp(i64::from(i16::MIN), i64::from(i16::MAX)) as i16;
             }
             out
         }
@@ -1960,5 +2044,181 @@ mod tests {
         let lif = nodes[0].lif.unwrap();
         assert_eq!(lif.reset_q, 0);
         assert!(lif.v_reset_defaulted);
+    }
+
+    // ---- fresh-eyes review (R9): adversarial pins for each fix ----
+
+    #[test]
+    fn skip_value_is_depth_capped() {
+        let nest = |n: usize| format!("{}0{}", "[".repeat(n), "]".repeat(n));
+        // deep junk at top level — a Json error, not a stack overflow
+        let doc = format!("{{\"version\":\"x\",\"junk\":{}}}", nest(200));
+        assert!(matches!(nir_scan(doc.as_bytes()), Err(NirError::Json(_))));
+        // deep junk inside a node (the metadata path)
+        let doc2 = format!(
+            "{{\"version\":\"x\",\"node\":{{\"type\":\"NIRGraph\",\"edges\":[],\
+             \"nodes\":{{\"a\":{{\"type\":\"Input\",\"shape\":[1],\"deep\":{}}}}}}}}}",
+            nest(200)
+        );
+        assert!(matches!(nir_scan(doc2.as_bytes()), Err(NirError::Json(_))));
+        // generous-but-legal nesting still passes (metadata headroom)
+        let ok = format!(
+            "{{\"version\":\"x\",\"node\":{{\"type\":\"NIRGraph\",\"edges\":[],\"nodes\":{{}}}},\"junk\":{}}}",
+            nest(40)
+        );
+        assert!(nir_scan(ok.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn trailing_content_after_root_is_rejected() {
+        let mut b = CHAIN.as_bytes().to_vec();
+        b.extend_from_slice(b"garbage");
+        assert!(matches!(nir_scan(&b), Err(NirError::Json(_))));
+        // even well-formed extra JSON after the root
+        let mut b2 = CHAIN.as_bytes().to_vec();
+        b2.extend_from_slice(b" {}");
+        assert!(matches!(nir_scan(&b2), Err(NirError::Json(_))));
+        // trailing whitespace is fine (the fixtures end with \n)
+        let mut b3 = CHAIN.as_bytes().to_vec();
+        b3.extend_from_slice(b" \n\t");
+        assert!(nir_scan(&b3).is_ok());
+        // the buffer-import walks enforce it too
+        let doc = b"{\"version\":\"x\",\"node\":{\"type\":\"NIRGraph\",\"edges\":[],\
+\"nodes\":{\"a\":{\"type\":\"Input\",\"shape\":[1]}}}} x";
+        let mut nodes = [NirNode {
+            name: "",
+            kind: NirNodeKind::Input,
+            shape: [0; 4],
+            shape_len: 0,
+            lif: None,
+            linear: None,
+        }];
+        let mut edges = [];
+        let mut weights = [];
+        let mut bufs = NirBuffers {
+            nodes: &mut nodes,
+            edges: &mut edges,
+            weights: &mut weights,
+        };
+        assert!(matches!(
+            nir_import(doc, NirImportOptions::default(), &mut bufs),
+            Err(NirError::Json(_))
+        ));
+    }
+
+    #[test]
+    fn denormal_absmax_scale_is_a_loud_error() {
+        // absmax/32767 underflows to exactly 0.0: the record would
+        // lie (q·scale = 0 ≠ absmax) and export would silently zero
+        // the tensor, breaking idempotence
+        for tok in ["5e-324", "1e-320", "2.47e-321"] {
+            let doc = format!(
+                "{{\"version\":\"x\",\"node\":{{\"type\":\"NIRGraph\",\"edges\":[],\
+                 \"nodes\":{{\"a\":{{\"type\":\"Linear\",\"weight\":[[{tok}]]}}}}}}}}"
+            );
+            let mut nodes = [NirNode {
+                name: "",
+                kind: NirNodeKind::Input,
+                shape: [0; 4],
+                shape_len: 0,
+                lif: None,
+                linear: None,
+            }];
+            let mut edges = [];
+            let mut weights = [0i16; 8];
+            let mut bufs = NirBuffers {
+                nodes: &mut nodes,
+                edges: &mut edges,
+                weights: &mut weights,
+            };
+            assert_eq!(
+                nir_import(doc.as_bytes(), NirImportOptions::default(), &mut bufs),
+                Err(NirError::BadNumber("weight")),
+                "{tok}"
+            );
+        }
+    }
+
+    #[test]
+    fn round_half_away_pins_half_boundaries() {
+        // exact halves round away from zero
+        assert_eq!(round_half_away(0.5), 1.0);
+        assert_eq!(round_half_away(-0.5), -1.0);
+        assert_eq!(round_half_away(2.5), 3.0);
+        assert_eq!(round_half_away(-2.5), -3.0);
+        // one ulp BELOW a half must round down — the classic
+        // add-±0.5-then-truncate idiom rounded these UP (review
+        // finding: 0.49999999999999994 + 0.5 == 1.0 in f64)
+        let below = |x: f64| f64::from_bits(x.to_bits() - 1);
+        assert_eq!(round_half_away(below(0.5)), 0.0);
+        assert_eq!(round_half_away(below(1.5)), 1.0);
+        assert_eq!(round_half_away(below(2.5)), 2.0);
+        assert_eq!(round_half_away(below(10.5)), 10.0);
+        // reachability: r one ulp below 0.5 MΩ is a loud BadNumber,
+        // not a silent 1 MΩ
+        assert!(matches!(
+            quant_lif(
+                0.02,
+                499_999.999_999_999_94,
+                -0.07,
+                -0.055,
+                -0.08,
+                false,
+                NirImportOptions::default()
+            ),
+            Err(NirError::BadNumber("r"))
+        ));
+    }
+
+    #[test]
+    fn scan_rejects_non_2d_weight_shapes() {
+        let mk = |weight: &str| {
+            format!(
+                "{{\"version\":\"x\",\"node\":{{\"type\":\"NIRGraph\",\"edges\":[],\
+                 \"nodes\":{{\"a\":{{\"type\":\"Linear\",\"weight\":{weight}}}}}}}}}"
+            )
+        };
+        // 1-D, empty outer, empty row, empty+full rows, 3-D — all at
+        // SCAN now (the "malformed structure fails here" contract;
+        // previously 1-D/empty slipped through to import)
+        for w in ["[1.0, 2.0]", "[]", "[[]]", "[[],[1.0]]", "[[[1.0]]]"] {
+            assert!(
+                matches!(nir_scan(mk(w).as_bytes()), Err(NirError::BadShape("weight"))),
+                "scan must reject {w}"
+            );
+        }
+        // 2-D non-empty scans; raggedness remains import's check
+        assert!(nir_scan(mk("[[1.0],[1.0,2.0]]").as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn export_rejects_dangling_edge_indices() {
+        let (nodes, _edges, weights, _report) = import_chain(NirImportOptions::default());
+        let mut out = [0u8; 512];
+        assert_eq!(
+            nir_export(&nodes, &[(0, 99)], &weights, NirImportOptions::default(), &mut out),
+            Err(NirError::BadShape("edges")),
+            "edge indices must name nodes — no silent \"?\" placeholders"
+        );
+    }
+
+    #[test]
+    fn encoder_saturates_instead_of_wrapping() {
+        // all-max weights × all-max inputs: 3·32767²/100 = 32212250
+        // clamps to 32767 — the i32 accumulator produced a NEGATIVE
+        // output here before the fix (release mode: a silent wrap)
+        let doc = "{\"version\":\"x\",\"node\":{\"type\":\"NIRGraph\",\"edges\":[\
+[\"i\",\"l\"],[\"l\",\"n\"],[\"n\",\"o\"]],\"nodes\":{\"i\":{\"type\":\"Input\",\"shape\":[3]},\
+\"l\":{\"type\":\"Linear\",\"weight\":[[1.0,1.0,1.0]]},\
+\"n\":{\"type\":\"LIF\",\"tau\":[0.02],\"r\":[100000000.0],\"v_leak\":[-0.07],\
+\"v_threshold\":[-0.055],\"v_reset\":[-0.08]},\"o\":{\"type\":\"Output\",\"shape\":[1]}}}}";
+        let g =
+            NirImport::from_json(doc.as_bytes(), NirImportOptions::default()).expect("imports");
+        let (_net, enc) = g.build_chain_network().expect("canonical chain");
+        assert_eq!(enc.encode(&[32767, 32767, 32767]), vec![32767]);
+        // negative saturation lands on i16::MIN (-32768)
+        assert_eq!(enc.encode(&[-32767, -32767, -32767]), vec![-32768]);
+        // arithmetic sanity: w·x/100 truncates
+        assert_eq!(enc.encode(&[1, 0, 0]), vec![327]);
     }
 }

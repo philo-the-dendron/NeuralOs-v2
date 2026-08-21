@@ -5,7 +5,7 @@ project: NeuralOS v2
 phase: climbing
 progress: 85/85
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-21T14:30:00Z
+updated: 2026-08-21T20:25:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -3198,3 +3198,61 @@ Named follow-ups (gaps, unfixed by design):
   line 37, `git check-ignore` matches on the merged tree) — the
   pre-merge "no-match" verification ran against a stale tree; no
   duplicate line added, no change needed.
+
+## Findings (R9 — fresh-eyes review of NIR slice 1, 2026-08-21)
+
+Gate review for the "real files" milestone, on main @ 72c694b
+against NIR slice 1 (b18c49c: nir.rs, 15 fixtures, format gate).
+Every reference-semantics doc claim verified against the pinned
+nir-ref@7883c3 sources (root layout, LIF from_dict v_reset
+zero-fill, validate_structure duplicate edges, y=W·x rows=outputs,
+metadata round-trip). Quantization contract verified at every
+named f64 edge; 200k-fuzz scale exact-recovery: 0 failures.
+Findings (fixed same session, below):
+
+| # | Sev | Finding |
+|---|-----|---------|
+| R1 | MED-HIGH | `skip_value` recursed unbounded — deeply nested junk metadata = stack overflow, not a `NirError` |
+| R2 | MED | trailing content after the root silently accepted (scan + both import walks) |
+| R3 | MED | denormal `absmax` → `scale = absmax/32767` underflows to 0.0 (finite, passes all checks) → quant record lies, export zeroes the tensor, idempotence breaks silently |
+| R4 | LOW-MED | `round_half_away` add-±0.5 idiom misrounds values 1 ulp below a half (`0.49999999999999994 → 1.0`); reachable via `r` (499999.99999999994 Ω imported as 1 MΩ) |
+| R5 | LOW-MED | `ChainEncoder::encode` i32 accumulator overflowed at cols ≥ 3 full-scale (debug panic, release silent wrap to negative) |
+| R6 | LOW | scratch contract documented 2× at module header + `from_json`; the code stages 4 i16 per f64 |
+| R7 | LOW | scan laxer than its "malformed structure fails here" claim — 1-D/empty/3-D weight passed scan, failed import |
+| R8 | LOW | dangling edge indices exported as `"?"` placeholder; number-grammar laxity and last-wins semantics undocumented |
+
+Known-and-named slice-1 markers (length-1 LIF population ~:899-916,
+ASCII gate in `read_string`, single-chain assembly) confirmed
+present — milestone work per the merged slicing, untouched.
+
+## Fixes (R9 — all eight landed, one commit)
+
+R1 `MAX_SKIP_DEPTH = 64` in `skip_value`; R2 EOF checks after each
+root walk (scan + both import walks, whitespace-only trailing legal
+— the fixtures end in `\n`); R3 `scale == 0.0` → `BadNumber("weight")`
+(+ 5e-324/1e-320/2.47e-321 pins); R4 truncate-compare
+`round_half_away` (+ half-boundary/nextafter pins + the
+`r`-reachability pin); R5 i64 accumulator (+ saturation pin:
+positive 32767, negative −32768); R6 2×→4× corrected at every
+provider; R7 `count_array` rejects 1-D/empty/empty-row/3-D at scan
+(raggedness stays import's check); R8 dangling edges →
+`BadShape("edges")` + grammar/last-wins docs written down.
+7 new tests (workspace 270 → 277). No fixture touched — frozen shas
+unchanged, format gate 4/4 on the same bytes.
+
+## Verification (R9)
+
+- Battery green: `cargo check --workspace --all-targets`;
+  `cargo test --workspace` (277, 0 failed); `cargo clippy
+  --workspace --all-targets -- -D warnings`; `cargo build
+  --no-default-features -p neuralos-snn`; `cargo test -p
+  neuralos-snn --features simd` (177+7+1); `nir_format_gate` 4/4.
+- Honesty: R1-R5 were present in the published alpha.3 binary
+  (README since-alpha.3 section carries the note; no known
+  consumers; fixes target alpha.4).
+- Seam verdict (feeds the milestone): the planned structured-entry
+  seam — pub `quantize_lif`/`quantize_linear` + typed builder,
+  ASCII gate JSON-only — fits the code as written. One open
+  decision named for slice work: `quantize_linear` extraction from
+  `import_weight` either keeps the arena-scratch 4× contract (now
+  documented truthfully) or takes a separate scratch slice.
