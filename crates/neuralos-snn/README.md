@@ -123,6 +123,18 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   typed `NirBuffers::scratch` f64 slice; arena and scratch each
   hold the weight-cell count exactly. Breaking buffer-API change,
   alpha.4-bound.
+- **Per-neuron LIF populations + `NirBuilder`**: a LIF node is the
+  reference's population — per-neuron param arrays quantize to
+  per-neuron records in a `lifs` buffer (`NirLifPopulation` views);
+  assembly enforces Linear rows == population size (reference
+  type-check parity), one neuron per row with its own params.
+  `NirBuilder` (std) assembles graphs in memory over the quantizer
+  seam; export renders per-neuron arrays; the printable-ASCII gate
+  is a JSON-container property only (new
+  `NonAsciiNodeName` at export, never on the typed surface).
+  Reference-emitted `chain_population.json` fixture pins the
+  expansion end-to-end (imports → assembles → fires → re-imports
+  state-identical).
 - **Honesty note**: findings R1-R5 were present in the published
   alpha.3 binary. No consumers are known (the module shipped within
   the day); all are fixed here, ahead of any consumer, targeted

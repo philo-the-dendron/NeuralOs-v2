@@ -3347,3 +3347,52 @@ quantize_linear extraction, 2026-08-21)
   executed / 0 failed (3 app + 190 snn + 93 rt) + 5 model-gated
   #[ignore]; clippy -D warnings; no_std build; simd 186+7+1;
   nir_format_gate 4/4 (unchanged verdicts).
+
+## Verification (R12 — NIR Phase 1c: per-neuron LIF populations,
+2026-08-21)
+
+- **A LIF node is the reference's population, now honored fully.**
+  `NirLifPopulation { offset, len }` views a per-neuron record
+  buffer; `NirBuffers.lifs` (breaking, alpha.4-bound) and
+  `NirImport.lifs` hold the records. Scan counts
+  `NirScan.lif_neurons` (param arrays walked at scan; length
+  mismatch within a node = structural `BadShape("LIF param")`
+  there); import stages the five param arrays contiguously in
+  scratch (contract: `weight_cells + 5 × lif_neurons` f64s) and
+  quantizes each neuron via `quantize_lif` — per-neuron notes fire
+  per neuron, `VResetDefaulted` once per population. Export renders
+  per-neuron arrays (schema fields + provenance/quant metadata);
+  idempotence is record-equality over the whole population.
+- **Assembly parity (reference type-check)**:
+  `build_chain_network` requires population len == Linear rows and
+  gives each neuron its own quantized params. The unit CHAIN
+  constant corrected to 2x3→2 (its old 2x3→1 shape is exactly what
+  the reference's own type checker rejected in R7 — import
+  permits, assembly rejects). The frozen chain.json fixture
+  (1x3→1) unchanged and still valid.
+- **Builder**: `add_lif` (scalar) superseded by
+  `add_lif_population(&NirLifParams)` — equal-length slices ≥ 1,
+  `v_reset_v: None` = absent-`v_reset` semantics.
+- **Fixtures**: new reference-emitted positive
+  `chain_population.json` (Linear 2x3 → LIF pop 2, DISTINCT
+  per-neuron params — generated via the pinned clone +
+  tools/gen_nir_fixtures.py with the nirenv venv; regeneration
+  confirmed all 15 frozen fixtures byte-identical, only the new
+  file added). It exercises param-before-`type` key order too.
+  `neg_param_length.json` semantic flip: tau len 2 vs r len 1 is
+  now a structural scan rejection (`BadShape("LIF param")`), not
+  the retired `UnsupportedTopology` — fixture bytes untouched,
+  expectations updated in the fixture test + gate table.
+- Falsifiers: +2 tests (286→288): `lif_population_semantics`
+  (mismatch at scan, coherent pop counts, assembly parity
+  rejection) + fixture `reference_population_chain_imports_per_neuron`
+  (per-neuron quanta exact: (20k,100,−70,−55,−80,200pF) /
+  (30k,200,−65,−50,−75,150pF); assembles 2 neurons; fires; export
+  → re-import population state-identical). Builder/JSON population
+  equivalence pinned by `builder_matches_the_json_path_exactly`
+  over the corrected 2-neuron CHAIN.
+- Battery green: check workspace all-targets; workspace 288
+  executed / 0 failed (3 app + 192 snn + 93 rt) + 5 model-gated
+  #[ignore]; clippy -D warnings; no_std build; simd 187+8+1;
+  nir_format_gate 4/4 (PARAM_LEN case now the structural
+  rejection).

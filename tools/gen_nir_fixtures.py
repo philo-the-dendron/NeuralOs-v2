@@ -54,8 +54,8 @@ def dump(name, doc):
 # (0.5 -> 16384, 1.0 -> 32767 at scale 1/32767; -70/-55/-80 mV quanta).
 # NOTE: the reference's type checker requires Linear rows == LIF
 # population size — a LIF node is a POPULATION (per-neuron arrays).
-# Slice 1 imports length-1 populations only (per-neuron expansion is
-# the named slice-2 work), so the canonical chain here is 1x3 -> 1.
+# The canonical chain stays 1x3 -> 1 (the slice-1 shape);
+# chain_population.json carries the 2-neuron expansion.
 lin = nir.Linear(weight=np.array([[0.5, -1.0, 0.25]]))
 lif = nir.LIF(
     tau=np.array([0.02]),
@@ -67,6 +67,21 @@ lif = nir.LIF(
 g = nir.NIRGraph.from_list(lin, lif)
 doc = {"version": "1.0.0", "node": to_jsonable(g.to_dict())}
 dump("chain.json", doc)
+
+# --- positive 1b: a 2-neuron LIF population -------------------------
+# Per-neuron expansion: distinct params per neuron prove per-neuron
+# quantization (not one record cloned). Dyadic values keep the
+# expected quanta predictable.
+lin_pop = nir.Linear(weight=np.array([[0.5, -1.0, 0.25], [-0.25, 1.0, 0.5]]))
+lif_pop = nir.LIF(
+    tau=np.array([0.02, 0.03]),
+    r=np.array([1e8, 2e8]),
+    v_leak=np.array([-0.07, -0.065]),
+    v_threshold=np.array([-0.055, -0.05]),
+    v_reset=np.array([-0.08, -0.075]),
+)
+g_pop = nir.NIRGraph.from_list(lin_pop, lif_pop)
+dump("chain_population.json", {"version": "1.0.0", "node": to_jsonable(g_pop.to_dict())})
 
 # --- positive 2: absent v_reset + lossy weights ---------------------
 # The absent-v_reset shape is reference-legal: serialization.read_node

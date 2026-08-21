@@ -30,7 +30,7 @@
 //! fixtures are embedded.
 
 use neuralos_snn::nir::{
-    nir_export, nir_scan, NirBuffers, NirError, NirImport, NirImportOptions, NirNode,
+    nir_export, nir_scan, NirBuffers, NirError, NirImport, NirImportOptions, NirLif, NirNode,
     NirNodeKind, NirNote, EXPORT_VERSION, NIR_REF_SHA,
 };
 
@@ -91,9 +91,9 @@ const NEGATIVES: &[NegCase] = &[
         |e| matches!(e, NirError::BadShape("weight")),
     ),
     (
-        "param length > 1 (slice 2)",
+        "param length mismatch (population)",
         include_str!("../tests/nir_fixtures/neg_param_length.json"),
-        |e| matches!(e, NirError::UnsupportedTopology(_)),
+        |e| matches!(e, NirError::BadShape("LIF param")),
     ),
     (
         "missing version",
@@ -125,7 +125,8 @@ fn main() {
     let opts = NirImportOptions::default();
     let g = NirImport::from_json(CHAIN.as_bytes(), opts)
         .unwrap_or_else(|e| fail(&format!("chain import: {e}")));
-    let lif = g.nodes[2].lif.expect("lif");
+    let pop = g.nodes[2].lif.expect("lif");
+    let lif = g.lifs[pop.offset];
     let lin = g.nodes[1].linear.expect("linear");
     print!("quant   : LIF tau {} us · R {} MOhm · leak {}/thr {}/reset {} quanta · C {} pF",
         lif.tau_us, lif.resistance_mohm, lif.leak_q, lif.threshold_q, lif.reset_q, lif.capacitance_pf);
@@ -148,12 +149,14 @@ fn main() {
     let mut nodes = vec![blank(); scan2.node_count];
     let mut edges = vec![(0u32, 0u32); scan2.edge_count];
     let mut weights = vec![0i16; scan2.weight_cells];
-    let mut scratch = vec![0f64; scan2.weight_cells];
+    let mut lifs2 = vec![NirLif::default(); scan2.lif_neurons];
+    let mut scratch = vec![0f64; scan2.weight_cells + 5 * scan2.lif_neurons];
     let report = {
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            lifs: &mut lifs2,
             scratch: &mut scratch,
         };
         neuralos_snn::nir::nir_import(CHAIN_VRESET.as_bytes(), opts, &mut bufs)
@@ -198,11 +201,11 @@ fn main() {
 
     // ---- gate 4: export byte-stability + idempotence ----------------
     let mut out = vec![0u8; 4096];
-    let n = nir_export(&g.nodes, &g.edges, &g.weights, opts, &mut out)
+    let n = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, opts, &mut out)
         .unwrap_or_else(|e| fail(&format!("export: {e}")));
     out.truncate(n);
     let mut out2 = vec![0u8; 4096];
-    let n2 = nir_export(&g.nodes, &g.edges, &g.weights, opts, &mut out2).unwrap();
+    let n2 = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, opts, &mut out2).unwrap();
     if out != out2[..n2] {
         fail("export must be byte-stable");
     }
@@ -211,7 +214,8 @@ fn main() {
     if g2.weights != g.weights {
         fail("re-imported weights differ");
     }
-    let l2 = g2.nodes[2].lif.unwrap();
+    let pop2 = g2.nodes[2].lif.unwrap();
+    let l2 = g2.lifs[pop2.offset];
     if (l2.tau_us, l2.threshold_q, l2.leak_q, l2.reset_q)
         != (lif.tau_us, lif.threshold_q, lif.leak_q, lif.reset_q)
     {

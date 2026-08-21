@@ -6,11 +6,12 @@
 //! emission, one error class each.
 
 use neuralos_snn::nir::{
-    nir_export, nir_import, nir_scan, NirBuffers, NirError, NirImport, NirImportOptions,
+    nir_export, nir_import, nir_scan, NirBuffers, NirError, NirImport, NirImportOptions, NirLif,
     NirNode, NirNodeKind, NirNote, EXPORT_VERSION,
 };
 
 const CHAIN: &str = include_str!("nir_fixtures/chain.json");
+const CHAIN_POP: &str = include_str!("nir_fixtures/chain_population.json");
 const CHAIN_VRESET: &str = include_str!("nir_fixtures/chain_vreset_absent.json");
 const AFFINE: &str = include_str!("nir_fixtures/neg_affine.json");
 const UNKNOWN: &str = include_str!("nir_fixtures/neg_unknown_kind.json");
@@ -48,12 +49,13 @@ fn reference_chain_imports_with_exact_quantization() {
     assert_eq!(g.edges, vec![(0, 1), (1, 2), (2, 3)]);
 
     let lif = g.nodes[2].lif.expect("lif");
+    let rec = g.lifs[lif.offset];
     assert_eq!(
-        (lif.tau_us, lif.resistance_mohm, lif.leak_q, lif.threshold_q, lif.reset_q),
+        (rec.tau_us, rec.resistance_mohm, rec.leak_q, rec.threshold_q, rec.reset_q),
         (20_000, 100, -70, -55, -80)
     );
-    assert_eq!(lif.capacitance_pf, 200, "C = tau/r = 200 pF");
-    assert!(!lif.v_reset_defaulted);
+    assert_eq!(rec.capacitance_pf, 200, "C = tau/r = 200 pF");
+    assert!(!rec.v_reset_defaulted);
 
     // dyadic weights at absmax 1.0: q = round(w*32767), scale = 1/32767
     let lin = g.nodes[1].linear.expect("linear");
@@ -82,11 +84,13 @@ fn absent_v_reset_is_reference_semantics_with_note() {
     ];
     let mut edges = vec![(0u32, 0u32); scan.edge_count];
     let mut weights = vec![0i16; scan.weight_cells];
-    let mut scratch = vec![0f64; scan.weight_cells];
+    let mut lifs = vec![NirLif::default(); scan.lif_neurons];
+    let mut scratch = vec![0f64; scan.weight_cells + 5 * scan.lif_neurons];
     let mut bufs = NirBuffers {
         nodes: &mut nodes,
         edges: &mut edges,
         weights: &mut weights,
+        lifs: &mut lifs,
         scratch: &mut scratch,
     };
     let report = nir_import(
@@ -96,8 +100,9 @@ fn absent_v_reset_is_reference_semantics_with_note() {
     )
     .expect("imports");
     let lif = nodes[2].lif.expect("lif");
-    assert!(lif.v_reset_defaulted);
-    assert_eq!(lif.reset_q, 0);
+    let rec = lifs[lif.offset];
+    assert!(rec.v_reset_defaulted);
+    assert_eq!(rec.reset_q, 0);
     assert!(report.notes[NirNote::VResetDefaulted as usize] >= 1);
     assert!(report.notes[NirNote::QuantizationLoss as usize] >= 1, "0.1 is not dyadic");
 }
@@ -121,25 +126,70 @@ fn reference_chain_assembles_and_fires() {
     assert!(spikes > 0, "the imported chain must actually spike");
 }
 
+#[test]
+fn reference_population_chain_imports_per_neuron() {
+    let scan = nir_scan(CHAIN_POP.as_bytes()).expect("scans");
+    assert_eq!(
+        (scan.node_count, scan.edge_count, scan.weight_cells, scan.lif_neurons),
+        (4, 3, 6, 2)
+    );
+    let g = import_owned(CHAIN_POP).expect("imports");
+    let pop = g.nodes[2].lif.expect("lif population");
+    assert_eq!(pop.len, 2);
+    let n0 = g.lifs[pop.offset];
+    let n1 = g.lifs[pop.offset + 1];
+    // neuron 0: tau 20 ms, 100 MΩ, −70/−55/−80 quanta, C = 200 pF
+    assert_eq!(
+        (n0.tau_us, n0.resistance_mohm, n0.leak_q, n0.threshold_q, n0.reset_q),
+        (20_000, 100, -70, -55, -80)
+    );
+    assert_eq!(n0.capacitance_pf, 200);
+    // neuron 1: PER-NEURON params — tau 30 ms, 200 MΩ, −65/−50/−75,
+    // C = 0.03/2e8 F = 150 pF
+    assert_eq!(
+        (n1.tau_us, n1.resistance_mohm, n1.leak_q, n1.threshold_q, n1.reset_q),
+        (30_000, 200, -65, -50, -75)
+    );
+    assert_eq!(n1.capacitance_pf, 150);
+
+    // assembles one neuron per Linear row with its own params, fires
+    let (mut net, enc) = g.build_chain_network().expect("canonical chain");
+    assert_eq!(net.neuron_count(), 2);
+    assert_eq!((enc.rows(), enc.cols()), (2, 3));
+    let spikes: usize = (0..100)
+        .map(|_| net.step(&enc.encode(&[400, 0, 0])).expect("step").len())
+        .sum();
+    assert!(spikes > 0, "the population chain fires");
+
+    // export → re-import: every per-neuron record survives
+    let mut out = vec![0u8; 4096];
+    let n = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut out)
+        .expect("exports");
+    let g2 = NirImport::from_json(&out[..n], g.opts).expect("re-imports");
+    assert_eq!(g2.lifs, g.lifs, "per-neuron quantized state identical");
+}
+
 
 #[test]
 fn reference_chain_export_round_trips() {
     let g = import_owned(CHAIN).expect("imports");
     let mut out = vec![0u8; 4096];
-    let n = nir_export(&g.nodes, &g.edges, &g.weights, g.opts, &mut out).expect("exports");
+    let n = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut out).expect("exports");
     out.truncate(n);
     assert!(std::str::from_utf8(&out).unwrap().contains(EXPORT_VERSION));
 
     // byte-stable
     let mut out2 = vec![0u8; 4096];
-    let n2 = nir_export(&g.nodes, &g.edges, &g.weights, g.opts, &mut out2).unwrap();
+    let n2 = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut out2).unwrap();
     assert_eq!(out, out2[..n2]);
 
     // state-identical re-import
     let g2 = NirImport::from_json(&out, g.opts).expect("re-imports");
     assert_eq!(g2.weights, g.weights);
-    let l1 = g.nodes[2].lif.unwrap();
-    let l2 = g2.nodes[2].lif.unwrap();
+    let pop1 = g.nodes[2].lif.unwrap();
+    let pop2 = g2.nodes[2].lif.unwrap();
+    let l1 = g.lifs[pop1.offset];
+    let l2 = g2.lifs[pop2.offset];
     assert_eq!(
         (l2.tau_us, l2.threshold_q, l2.leak_q, l2.reset_q),
         (l1.tau_us, l1.threshold_q, l1.leak_q, l1.reset_q)
@@ -169,9 +219,9 @@ fn negative_fixtures_reject_with_the_named_error() {
         ("duplicate edge", DUP_EDGE, |e| matches!(e, NirError::DuplicateEdge)),
         ("ragged weight", RAGGED, |e| matches!(e, NirError::BadShape("weight"))),
         (
-            "param length > 1 names slice 2",
+            "param length mismatch (population)",
             PARAM_LEN,
-            |e| matches!(e, NirError::UnsupportedTopology(_)),
+            |e| matches!(e, NirError::BadShape("LIF param")),
         ),
         ("missing version", MISSING_V, |e| matches!(e, NirError::MissingField("version"))),
         ("escaped name", ESCAPED, |e| matches!(e, NirError::EscapedOrNonAsciiString(_))),
@@ -218,12 +268,14 @@ fn buffer_api_consumes_reference_emission() {
     ];
     let mut edges = vec![(0u32, 0u32); scan.edge_count];
     let mut weights = vec![0i16; scan.weight_cells];
-    let mut scratch = vec![0f64; scan.weight_cells];
+    let mut lifs = vec![NirLif::default(); scan.lif_neurons];
+    let mut scratch = vec![0f64; scan.weight_cells + 5 * scan.lif_neurons];
     {
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            lifs: &mut lifs,
             scratch: &mut scratch,
         };
         let report = nir_import(
