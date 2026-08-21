@@ -60,11 +60,13 @@
 //! - DRIVEN DIMS 0..408 ONLY (fork (a)): token features drive the E
 //!   population; the I population keeps the validated fixed I_INH=600
 //!   wall. The 512-dim purity variant is a named follow-on.
-//! - Corpus: the sha-pinned README slice (18fb5452…), tokens repeated in
-//!   WHOLE EPOCHS — floor(2000/N) epochs, STOP BEFORE THE WRAP (the
-//!   epoch-boundary last→first pairing at dt≈1 ms full factor on one
-//!   arbitrary dim pair every epoch is a concentrated artifact,
-//!   excluded by construction).
+//! - Corpus: the sha-pinned README slice (18fb5452…), FIRST 2000
+//!   tokens, SINGLE TRUNCATED PASS — no epochs, never wraps by
+//!   construction (the sH2 registration v2, 2026-08-19: the original
+//!   whole-epochs design — floor(2000/N) epochs, stop before the
+//!   wrap — died with the drive redesign; on short corpora its
+//!   frozen 400-step init cycle swallowed the whole learn tier,
+//!   banked in `evidence/r4-closeout/h1_invivo_r4iii.log`).
 //! - Population: the 512-neuron slice net (409 E / 103 I), live
 //!   substrate (post-F), STDP on, γ=125, census-shuffle + zero controls,
 //!   seeds D-2-verbatim.
@@ -73,7 +75,14 @@
 //!   expect the clamp-rectified regime under dense co-firing.
 //!
 //! Usage: `cargo run -p neuralos-rt --release --example hybrid_invivo --
-//! [model.gguf]` (default `models/Ternary-Bonsai-4B-Q2_0.gguf`).
+//! [model.gguf] [corpus.txt] [export]` (defaults:
+//! `models/Ternary-Bonsai-4B-Q2_0.gguf`,
+//! `evidence/corpus_readme_pinned.txt`, no export). The third arg
+//! `export` additionally runs Tier 2: writes
+//! `models/…-invivo-ck{step}.gguf` checkpoints + the terminal
+//! `models/…-invivo.gguf` (WARNING: overwrites the session-I
+//! adjudication artifacts — the R4 re-pin ran plain mode for exactly
+//! this reason).
 
 use neuralos_rt::harness::{
     build_from_trits, decode_slice, exc_count, group_of, peak_rss_mb, rate_l1,

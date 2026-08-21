@@ -1,14 +1,19 @@
 //! Session E stage 1 — THE AMPLITUDE SWEEP: at what drive amplitude do the
 //! pretrained weights begin to shape firing?
 //!
-//! The stage-0 deep-dive finding this experiment falsifies or confirms: at
-//! I_ACTIVE=600 μA the excitatory threshold margin is ~450 μA while a
-//! recurrent ±12 μA (weight/10) pulse is integer-mV-quantization-absorbed
-//! on the E climb — an 8.6–11.2σ event needed to gate a spike, which is why
-//! imported / census-matched control / zero-weight nets all fired exactly
-//! 35,157 spikes (D-2 + session E, recorded). The weight→firing channel is
-//! closed at 600 μA. This sweep walks the amplitude DOWN to find where it
-//! opens — the curve is itself a publishable figure.
+//! The stage-0 deep-dive finding this experiment was designed against
+//! (dead-wire era, ISA history): at I_ACTIVE=600 μA the excitatory
+//! threshold margin is ~450 μA while a recurrent ±12 μA (weight/10)
+//! pulse is integer-mV-quantization-absorbed on the E climb — an
+//! 8.6–11.2σ event needed to gate a spike, which is why imported /
+//! census-matched control / zero-weight nets all fired exactly 35,157
+//! spikes (D-2 + session E, recorded). On the LIVE-WIRE substrate
+//! (session-F transmission fix, 2026-08-18) that record is dead: the
+//! pinned baseline shows THREE DISTINCT totals (35,115/35,136/35,157
+//! at 600 μA) and nonzero train Hamming at EVERY amplitude — the
+//! weight→firing channel is OPEN at the top of the grid. This sweep
+//! remains the instrument that established it — the curve is itself a
+//! publishable figure.
 //!
 //! # Design (locked pre-run; single variable)
 //!
@@ -39,9 +44,13 @@
 //!   train. D-2's 35,157×3 was a total-count check; trains are the record.
 //! - Per-neuron rate-vector L1 per pair (a neuron-resolved view).
 //!
-//! # Pre-registered prediction + criterion (written before any run)
+//! # Pre-registered prediction + criterion (written before any run;
+//! FALSIFIED by the live-wire re-run — kept as the pre-registration
+//! record. Pinned verdict: A\* = 600 μA, divergence at EVERY
+//! amplitude, `evidence/r4-baselines/sweep_mv_run1.log`)
 //!
-//! - At 600 μA the trains are IDENTICAL (the recorded 35,157 ×3).
+//! - At 600 μA the trains are IDENTICAL (the recorded 35,157 ×3). —
+//!   falsified: H(i,c)=58,779 at 600 μA on the live wire.
 //! - **A\* = the HIGHEST amplitude with any pairwise train Hamming > 0.**
 //! - Prediction: onset ≤ 300 μA — mechanism: recurrent σ ≈ 40–52 μA vs
 //!   margin I_ACTIVE − 150 μA; at 170 μA the margin (~20 μA) is inside the

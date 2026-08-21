@@ -7,16 +7,22 @@
 //! diff (decode the H2 patched GGUF's slice vs the original). The earlier
 //! census-transition family (~178k cells) is the STRESS ARM, report-only.
 //!
-//! - **dose-<seed>** (×10, seeds 1–10; escalation seeds 11–20
-//!   pre-generated): exactly `H2_CELLS` changed cells, per-class
-//!   composition matching the H2 terminal diff, placed uniformly over
-//!   cells whose source value matches the from-class (seeded FY shuffle).
-//! - **shuffle-<seed>** (×3): the REAL changed-cell set (positions and
-//!   per-row clustering preserved); the assigned new-VALUES permuted
-//!   among the changed positions, CONDITIONED on new ≠ source (re-draw
-//!   on collision); a shrunk dose ABORTS loudly, never silently.
-//!   Pre-stated bar: "reproduces the signature" = ≥10/12 p3 flips OR the
-//!   p3 step-1 knife-edge crossing.
+//! - **dose-<seed>** (×10, seeds 1–10): exactly `H2_CELLS` changed
+//!   cells, per-class composition matching the H2 terminal diff,
+//!   placed uniformly over cells whose source value matches the
+//!   from-class (seeded FY shuffle). (An escalation family, seeds
+//!   11–20, was pre-registered but never generated — the
+//!   adjudication made it moot: 8/10 ≫ the 1/10 bar,
+//!   `evidence/session-i-primary/README.md`.)
+//! - **shuffle-<seed>** (×3) — AS BUILT (v3 amendment): the REAL
+//!   changed-cell set, exact dose, values REFLECTED where legal
+//!   (−1→0 becomes −1→+1 · +1→0 becomes +1→−1 · 0→+1 unreflectable
+//!   and held); seed variation via a random ~10% hold-out. The
+//!   pre-registered v2 design (uniform value shuffle, re-draw on
+//!   collision) is provably impossible for this patch — unique-flow
+//!   theorem in the ISA. A shrunk dose ABORTS loudly, never
+//!   silently. Pre-stated bar: "reproduces the signature" = ≥10/12
+//!   p3 flips OR the p3 step-1 knife-edge crossing.
 //!
 //! Usage: `cargo run -p neuralos-rt --release --example null_patches --
 //! [orig.gguf] [h2-patched.gguf]` — writes models/null-dose-<s>.gguf and

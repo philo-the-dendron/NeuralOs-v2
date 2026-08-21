@@ -1,12 +1,17 @@
 //! Session E stage 1c — THE FINER-RULER SWEEP: same amplitude grid, same
 //! nets, same instrument as stage 1 — on the CENTI-MILLIVOLT grid.
 //!
-//! Stage 1's honest NO (recorded): on the 1 mV voltage grid the three nets'
-//! spike trains were identical at EVERY amplitude — delta_v truncation makes
-//! the ±12 μA recurrent pulses arithmetically invisible (a steady current
-//! below ~200 μA at rest moves the membrane exactly zero, forever; even
-//! 160 μA — above the ~150 μA threshold current — is blind from rest). The
-//! channel was never closed by amplitude; it was closed by the RULER.
+//! Stage 1's dead-wire-era record (pre transmission-fix, ISA
+//! history): on the 1 mV voltage grid the three nets' spike trains
+//! were identical at EVERY amplitude — then read as "the ruler closes
+//! the channel" (delta_v truncation absorbing the ±12 μA recurrent
+//! pulses). The session-F live-wire fix (2026-08-18) killed that
+//! story: the pinned mV baseline now diverges at EVERY amplitude
+//! (A\* = 600 μA, `evidence/r4-baselines/sweep_mv_run1.log`). What
+//! this sweep adds at the pinned state is the single-variable GRID
+//! comparison — same protocol, mV vs centi-mV — and its own pinned
+//! record (`sweep_cmv_run1.log`, A\* = 600 μA on the centi grid
+//! too).
 //!
 //! This sweep re-runs the frozen stage-1 protocol verbatim with one change:
 //! every neuron is constructed on VoltageResolution::CentiMillivolt
