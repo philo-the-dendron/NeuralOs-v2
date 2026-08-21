@@ -52,14 +52,28 @@ banking (2fb7c5b, 2026-08-20):
   clamp 69.477% (568,321/818,000) / dim-199 1,786×; T1 H(i,c)=41,555 >
   H(i,z)=30,724, H(c,z)=29,013; learn 43.65 Hz, flips 1,112,771,
   Hamming 33.30%; record: `evidence/session-h2/run.log`.
-- Status at banking: full H2 re-run IN FLIGHT (launched 2026-08-20
-  ~23:30 UTC, log /tmp/opencode/h2_invivo_r4iii.log — not bankable
-  until complete; expected wall ~8 h per ISC-83's recorded 29,668 s).
-  The result (and, if matching, this README's amendment) closes R4.
+- Status: **DONE — MATCH (2026-08-21).** The full H2 re-run at default
+  args completed in 21,065.6 s (idle box; the banked 29,668 s ran
+  under load), peak RSS 6,595 MB (banked 6,593). Banked log:
+  `h2_invivo_r4iii.log`. Diff vs `evidence/session-h2/run.log` with
+  wall/RSS stripped: **empty except the Tier-2 export section** —
+  session H2 ran with the `export` argv flag; the re-run was plain
+  mode deliberately (running export mode would overwrite
+  `models/Ternary-Bonsai-4B-Q2_0-invivo*.gguf`, the session-I
+  adjudication artifacts, recoverable only via another ~6–8 h run).
+  The export machinery itself is pinned elsewhere: hybrid_loop's
+  surgery re-pinned byte-identical (export sha 24ffe5f3…, leg 1) and
+  null_patches exercises encode+write+re-read across 13 files
+  (13/13 byte-identical, above). Every verdict-bearing line — drive
+  stats, T1 tables, learn-tier counters (events 25,322,176 · flips
+  1,112,771), Hamming 0.3330, mechanism label, verdict block —
+  byte-identical. **This match closes R4.**
 
 ## r4-baselines/README.md amendment
 
 §3's invivo row and the § Re-pin table's `hybrid_invivo` line are
 amended by this directory: the H1 bar is void (stale, root cause
 above); the H2 record is the re-pin target. The judge-leg row is
-CLOSED by this directory (all stats exact).
+CLOSED by this directory (all stats exact). **The H2 re-pin MATCHED
+(byte-identical modulo the by-design-not-run export tier) — R4 is
+closed.**

@@ -884,6 +884,9 @@ session-I artifacts; judge p0 reproduced 0/12 flips, max |Δ|
 +0.4207, mean 0.0779 exactly; the r4-baselines invivo bar was
 found STALE (it cited session-H pins the post-H2 drive code cannot
 produce — root cause banked in `evidence/r4-closeout/`, the H2
-record amended in as the true bar; its full re-run in flight at
-closeout). Net: −1,900-odd duplicated lines against the record,
-every recorded verdict intact or re-pinned.
+record amended in as the true bar; the full H2-config re-run then
+MATCHED byte-identical — 21,065.6 s, every verdict-bearing line,
+export tier by-design not run to protect the adjudicated
+artifacts). Net: −1,900-odd duplicated lines against the record,
+every recorded verdict intact or re-pinned. **R4 closed
+2026-08-21.**

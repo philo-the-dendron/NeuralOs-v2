@@ -1,0 +1,40 @@
+=== Session H: the in-vivo gate — the model's own activations drive the substrate ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen
+
+decode  : 262144 trits (D-2 slice path)
+corpus  : evidence/corpus_readme_pinned.txt (12148 bytes)
+tokens  : 4411 (vocab 151669)
+drive   : single truncated pass — first 2000 of 4411 tokens (no epochs, no wrap by construction)
+cut-ctx : …"uggingface.co/collections/Qwen/qwen2-vl-66cee7455501d7126940800d)\n- [x] [LFM2-VL](https://huggingface.co/collections/LiquidAI/lfm2-vl-68963bbc84a610f7638d5ffa)\n"… (last ~160 chars before the token-2000 cut)
+scaling : corpus RMS 0.0447 → k = 10060.46 μA/unit (target 450 μA)
+clamp   : 568321/818000 = 69.477% clamped at ±1000 μA  ⚠ ABOVE 10% — recorded caveat
+          hottest dim 199 railed 1786× (89% of its steps)
+hist    : |I| <100 249679 · 100–150 0 · 150–300 0 · 300–600 0 · >600/railed 568321 (per dim-step)
+
+--- TIER 1: substrate gates (fixed weights, STDP off, in-vivo drive, CENTI grid) ---
+  rates  E Hz (i/c/z): 18.11 / 18.08 / 18.07   I Hz: 125.01 / 125.16 / 125.00
+  totals (i/c/z): 40571 / 40570 / 40535
+  H(i,c)=41555  H(i,z)=30724  H(c,z)=29013   L1(i,c)=1309  L1(i,z)=950  L1(c,z)=819
+  G2′ wire-liveness tripwire : PASS (weights borne in trains)
+  G0  arrangement-vs-census : H(i,c) > H(i,z) → 41555 > 30724 : PASS — firing reads model arrangement
+
+--- in-vivo adaptation (STDP on, γ=125, counters per the registration) ---
+  learn firing : 43.65 Hz/neuron; quarters 44.88 42.93 42.89 43.90
+  events 25302899 · flips 1112771 · pairing same-step 813962 · post-leads 7030561 · pre-leads 7030561
+  bucket-transition census:
+  −1→−1 ×       0  −1→ 0 ×  193198  −1→+1 ×       0
+   0→−1 ×  167171   0→ 0 ×       0   0→+1 ×  375604
+  +1→−1 ×       0  +1→ 0 ×  376798  +1→+1 ×       0
+  raw drift intra -161833 · inter -4715638   absorbed intra -286155 · inter -6576170   APPLIED intra +124322 · inter +1860532
+  Hamming vs imported: 87119/261632 = 0.3330
+  intra meanΔ +0.0805 (41412) · inter meanΔ +0.0976 (220220) — data-driven classes; |Δ| floor 0.05
+  mechanism label: [PAIRING-SELECTIVE, CLAMP-RECTIFIED — net-negative raw drift, 0-floor absorbs, applied residue potentiates]
+
+--- Verdict (per the frozen registration) ---
+  T1 G2′ tripwire   : PASS
+  T1 G0 arrangement : PASS
+  adaptation alive  : PASS (flips > 0)
+  not collapsed     : PASS
+  selective (descriptive — drift-liveness, classes dissolved): movement present
+wall 21065.6s   peak RSS 6595 MB (budget 1536)

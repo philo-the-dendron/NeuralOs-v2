@@ -39,10 +39,10 @@ Strict order — nothing new opens until the rung above is 100%.
 | R1 | Delete merged `stage4-ternary-runtime`; ignore `.opencode/`, `fork-build/`, `.figvenv/` | ✅ done |
 | R2 | Docs truth pass: AGENTS/README/VISION rewrite, RESEARCH_LOG split, this re-baseline | ✅ done |
 | R3 | Kill `/tmp` path rot in tools + evidence READMEs; repo-local fork build (`tools/build_fork.sh`) | ✅ done |
-| R4 | Extract the shared hybrid harness; rewrite the 6 hybrid examples on it; re-run pins recorded verdicts | 🟡 **legs 1–3 + judge/null re-pins done (d3311a7, `evidence/r4-closeout/`); H2 invivo re-pin in flight — its match closes R4** |
+| R4 | Extract the shared hybrid harness; rewrite the 6 hybrid examples on it; re-run pins recorded verdicts | ✅ done (2026-08-21; all re-pins exact — `evidence/r4-closeout/`; the stale H1 invivo bar root-caused + the H2 record re-pinned byte-identical) |
 | R5 | `evidence/INDEX.md` — session → claim → files | ✅ done |
 | R6 | Merge `paper-draft` → main; paper builds from main | ✅ done |
-| R7 | Original roadmap work, in order (below) | ⬜ opens after R4 |
+| R7 | Original roadmap work, in order (below) | ⬜ **open — R4 closed 2026-08-21** |
 
 ## Phase 1 — Substrate hardening (the starved list, now first)
 

@@ -1054,6 +1054,16 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
     args; the full re-run is in flight** (launched 2026-08-20
     ~23:30 UTC, ~8 h per ISC-83's 29,668 s) — its match closes R4;
     a divergence is a refactor bug (stop rule: report, no tuning).
+    **RESOLVED 2026-08-21 (~4 h later): MATCH — the H2 re-run
+    (21,065.6 s idle-box, RSS 6,595 MB) is byte-identical to
+    `evidence/session-h2/run.log` modulo wall/RSS and the Tier-2
+    export section (not run BY DESIGN — export mode would overwrite
+    the session-I adjudication artifacts; the export machinery is
+    separately pinned by the loop leg's sha 24ffe5f3… and
+    null_patches' 13/13 byte-identity). Every verdict-bearing line
+    identical: drive stats, T1 tables, events 25,322,176 · flips
+    1,112,771, Hamming 0.3330, mechanism label, all-PASS verdict.
+    **R4 IS CLOSED on the full protocol.**
 
 - [x] ISC-85 (R4) · **Leg 3 lands with its re-pin evidence: 4 CI
     gates green on d3311a7 (241 tests, 0 fail); null_patches 13/13
@@ -1064,8 +1074,9 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
     r4-baselines README §3 amended + §4 closed; INDEX row added.
     Falsifier: the H2 run's diff vs `evidence/session-h2/run.log`
     pins (RMS 0.0447 / k=10,060.46 / clamp 69.477% / H(i,c)=41,555
-    > 30,724 / flips 1,112,771 / Hamming 33.30%) — PENDING at this
-    entry's commit; the next session banks the result either way.
+    > 30,724 / flips 1,112,771 / Hamming 33.30%) — MATCHED same
+    day (byte-identical modulo wall/RSS + the by-design-not-run
+    export tier): `evidence/r4-closeout/h2_invivo_r4iii.log`.
 
 - 2026-08-21 (sI-ADJUDICATION, by rule, zero discretionary calls) ·
     **BRANCH B: the in-vivo continuation changes are statistically
