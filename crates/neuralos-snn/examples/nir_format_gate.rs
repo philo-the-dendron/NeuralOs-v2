@@ -147,12 +147,14 @@ fn main() {
     let scan2 = nir_scan(CHAIN_VRESET.as_bytes()).unwrap();
     let mut nodes = vec![blank(); scan2.node_count];
     let mut edges = vec![(0u32, 0u32); scan2.edge_count];
-    let mut weights = vec![0i16; scan2.weight_cells * 4];
+    let mut weights = vec![0i16; scan2.weight_cells];
+    let mut scratch = vec![0f64; scan2.weight_cells];
     let report = {
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
         };
         neuralos_snn::nir::nir_import(CHAIN_VRESET.as_bytes(), opts, &mut bufs)
             .unwrap_or_else(|e| fail(&format!("absent-v_reset import: {e}")))

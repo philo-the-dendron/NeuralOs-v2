@@ -31,8 +31,9 @@ pub use lif_neuron::{
     MAX_SPIKE_HISTORY,
 };
 pub use nir::{
-    nir_export, nir_import, nir_scan, NirBuffers, NirError, NirImportOptions, NirLif, NirLinear,
-    NirNode, NirNodeKind, NirNote, NirReport, NirScan, EXPORT_VERSION, NIR_NOTE_KINDS, NIR_REF_SHA,
+    nir_export, nir_import, nir_scan, quantize_lif, quantize_linear, NirBuffers, NirError,
+    NirImportOptions, NirLif, NirLinear, NirNode, NirNodeKind, NirNote, NirReport, NirScan,
+    EXPORT_VERSION, NIR_NOTE_KINDS, NIR_REF_SHA,
 };
 pub use synapse::{STDPRule, Synapse, SynapseBuilder, SynapseType, SCALE};
 pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternarize, Trit};

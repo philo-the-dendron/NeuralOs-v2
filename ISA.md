@@ -3256,3 +3256,63 @@ unchanged, format gate 4/4 on the same bytes.
   decision named for slice work: `quantize_linear` extraction from
   `import_weight` either keeps the arena-scratch 4× contract (now
   documented truthfully) or takes a separate scratch slice.
+
+## Decision + Verification (R10 — NIR structured entry Phase 1a:
+quantize_linear extraction, 2026-08-21)
+
+- The delegated design call (R9's one named open choice), decided:
+  **separate typed f64 scratch, NOT arena-4×**. `NirBuffers` gains
+  `scratch: &'buf mut [f64]`; import stages each Linear's source
+  weights there (one slot per cell) and delegates to the new pub
+  `quantize_linear`. Why: (a) the pub seam should take
+  materialized f64s — the slice-2 HDF5 caller holds exactly that;
+  the u16-lane bit-packing was a streaming-JSON-reader artifact
+  with no place in a public contract; (b) R6's doc drift (2× vs
+  4×) was the arena trick's signature — a typed scratch slice is
+  drift-evident; (c) the persistent arena shrinks 4×→1× of the
+  weight count (scratch is the same transient bytes the 4× arena
+  was; per-node the true need is the largest tensor —
+  `weight_cells` stays the simple documented bound). The A′
+  counter (arena-4×, zero new fields) loses on the pub-signature
+  fight and saves nothing transient (arena 4n ≡ arena n +
+  scratch n).
+- API (alpha.4-bound; breaking buffer change; no known
+  consumers): `pub fn quantize_linear(values, rows, cols, arena,
+  offset) -> Result<NirLinear, NirError>` — the R3 `scale == 0.0`
+  guard lives inside it, so every future caller inherits the
+  denormal defense; `pub fn quantize_lif` (rename of `quant_lif`,
+  standing ruling); `pub NirBuffers::scratch`; root re-exports
+  added.
+- `import_weight` is now parse+stage+delegate, one pass per row —
+  the per-row re-parse sub-Reader and the lane pack/unpack
+  machinery are DELETED (~45 lines); scratch contract rewritten at
+  every provider (module header, `NirBuffers`, `from_json`,
+  README); `from_json` allocates arena n + scratch n, no
+  truncate.
+- Falsifiers: +5 tests (277→282): direct `quantize_linear` pins
+  (dyadic gate vector [0.5,-1,0.25]→[16384,-32767,8192]; offset
+  placement; absmax-32767 scale-1.0 lossless integers; zero
+  tensor; full-scale max element; denormal-absmax `BadNumber`;
+  non-finite; len/zero-dim `BadShape`; arena bounds incl. usize
+  offset overflow) + `prop_quantize_linear_round_trip` (bounded
+  dequant error ≤ scale/2+ε, full-scale max element,
+  re-quantize(dequant) == q — the R9 200k-fuzz invariants,
+  property-pinned); `buffer_overflow_is_loud` extended (too-small
+  arena AND too-small scratch each fire `BufferOverflow`).
+- Equivalence proof (battery on ad43d08 base, all green):
+  `cargo check --workspace --all-targets`; `cargo test
+  --workspace` 282 executed / 0 failed (3 app + 186 snn + 93 rt) +
+  5 model-gated #[ignore]; `cargo clippy --workspace
+  --all-targets -- -D warnings`; `cargo build
+  --no-default-features -p neuralos-snn`; `cargo test -p
+  neuralos-snn --features simd` (182 + 7 + 1);
+  `nir_format_gate` 4/4 with verdicts identical to the banked
+  record (dyadic vector exact, 13 named rejections, 9 spikes/100
+  steps first at step 6, export 827 B byte-stable, re-import
+  state-identical) — the f64 round-trip through typed scratch is
+  value-identical to lane staging, as designed.
+- Milestone continuation (scope guard honored): queued next in the
+  same commission — structured-entry builder + ASCII-gate split
+  (seam Phase 2), per-neuron LIF arrays, HDF5 in rt behind the
+  feature gate with reference-written fixtures, `nir_hdf5_gate`,
+  alpha.4 prep.

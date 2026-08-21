@@ -81,11 +81,13 @@ fn absent_v_reset_is_reference_semantics_with_note() {
         scan.node_count
     ];
     let mut edges = vec![(0u32, 0u32); scan.edge_count];
-    let mut weights = vec![0i16; scan.weight_cells * 4];
+    let mut weights = vec![0i16; scan.weight_cells];
+    let mut scratch = vec![0f64; scan.weight_cells];
     let mut bufs = NirBuffers {
         nodes: &mut nodes,
         edges: &mut edges,
         weights: &mut weights,
+        scratch: &mut scratch,
     };
     let report = nir_import(
         CHAIN_VRESET.as_bytes(),
@@ -215,12 +217,14 @@ fn buffer_api_consumes_reference_emission() {
         scan.node_count
     ];
     let mut edges = vec![(0u32, 0u32); scan.edge_count];
-    let mut weights = vec![0i16; scan.weight_cells * 4];
+    let mut weights = vec![0i16; scan.weight_cells];
+    let mut scratch = vec![0f64; scan.weight_cells];
     {
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
         };
         let report = nir_import(
             CHAIN.as_bytes(),
@@ -231,6 +235,5 @@ fn buffer_api_consumes_reference_emission() {
         assert_eq!(report.weight_cells, 3);
         assert!(report.note_count() >= 1, "QuantizationLoss noted (non-dyadic scale)");
     }
-    weights.truncate(3);
     assert_eq!(weights, vec![16384, -32767, 8192]);
 }

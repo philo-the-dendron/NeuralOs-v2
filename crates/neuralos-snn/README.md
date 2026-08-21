@@ -114,9 +114,15 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   `ChainEncoder::encode` accumulates in i64 (i32 silently wrapped
   negative at cols ≥ 3 with full-scale weights); scan rejects
   1-D/empty/3-D weight arrays up front; export rejects dangling
-  edge indices (no `"?"` placeholders); the import scratch
-  contract documented truthfully as **4×** (each f64 stages as
-  four i16) at every provider.
+  edge indices (no `"?"` placeholders).
+- **Structured-entry seam (post-review)**: `quantize_linear` and
+  `quantize_lif` are public — callers holding materialized f64
+  values (HDF5 import, builders) quantize without a JSON document,
+  the same contract and errors, arena placement included. The 4×
+  arena-scratch trick is gone: import stages source weights in a
+  typed `NirBuffers::scratch` f64 slice; arena and scratch each
+  hold the weight-cell count exactly. Breaking buffer-API change,
+  alpha.4-bound.
 - **Honesty note**: findings R1-R5 were present in the published
   alpha.3 binary. No consumers are known (the module shipped within
   the day); all are fixed here, ahead of any consumer, targeted

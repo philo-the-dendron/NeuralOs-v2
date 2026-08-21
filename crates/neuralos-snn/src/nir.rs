@@ -65,13 +65,19 @@
 //! all memory. Two-pass protocol — [`nir_scan`] counts,
 //! [`NirBuffers`] + [`nir_import`] fills (the import itself walks the
 //! document twice: nodes, then edges — edge endpoints may appear
-//! before their nodes in key order). During import the weight arena is
-//! used as scratch (each f64 staged as four i16 slots), so it must hold
-//! **4× the total weight count**; the quantized result occupies the
-//! first half. Export writes into a caller byte slice. Strings are
+//! before their nodes in key order). During import each Linear's
+//! source f64 weights stage into [`NirBuffers::scratch`] (one slot
+//! per cell) and quantize into the weight arena, so both must hold
+//! the total weight count; the arena keeps exactly the quantized
+//! result. Export writes into a caller byte slice. Strings are
 //! borrowed from the input (schema strings must be escape-free
 //! printable ASCII — loud error otherwise). `f64` appears in the
 //! setup path only, never in any per-step hot path.
+//!
+//! The structured-entry seam: callers that already hold materialized
+//! values (HDF5 import, builders) skip the JSON reader and call
+//! [`quantize_linear`] / [`quantize_lif`] directly — the same
+//! quantization contract, the same errors, arena placement included.
 
 #![allow(clippy::module_name_repetitions)]
 // `tau_s` vs `tau_us`, `r_ohm` vs `r_mohm`: the unit suffixes ARE the
@@ -498,16 +504,20 @@ pub struct NirScan<'a> {
     pub weight_cells: usize,
 }
 
-/// Caller-owned buffers for [`nir_import`]. The weight arena is used
-/// as scratch during import (each f64 staged as four i16 slots), so
-/// it must hold **4× [`NirScan::weight_cells`]**; the quantized
-/// result occupies the first `weight_cells` slots.
+/// Caller-owned buffers for [`nir_import`]. `weights` and `scratch`
+/// must each hold [`NirScan::weight_cells`] cells: import stages the
+/// source f64 weights into `scratch` (one slot per cell) while each
+/// Linear quantizes into the arena, which keeps exactly the quantized
+/// result.
 #[derive(Debug)]
 pub struct NirBuffers<'buf, 'a> {
     /// `bufs` borrow lifetime (`'buf`) and json-data lifetime (`'a`).
     pub nodes: &'buf mut [NirNode<'a>],
     pub edges: &'buf mut [(u32, u32)],
     pub weights: &'buf mut [i16],
+    /// Transient f64 staging for the Linear quantizer (import only;
+    /// one slot per weight cell).
+    pub scratch: &'buf mut [f64],
 }
 
 /// Import options: the two things NIR does not carry that the
@@ -581,9 +591,16 @@ fn quant_potential(
     Ok((q, err))
 }
 
-/// Quantize a LIF parameter set (single neuron). Every hard failure
-/// of the contract fires here.
-fn quant_lif(
+/// Quantize a LIF parameter set (single neuron) onto the substrate
+/// grids (μs / MΩ / voltage quanta) — the structured-entry seam's LIF
+/// half. Every hard failure of the contract fires here.
+///
+/// # Errors
+///
+/// [`NirError::BadNumber`] on non-finite values, `tau ≤ 0`, `r ≤ 0`
+/// or out-of-range magnitudes; [`NirError::TauBelowDt`];
+/// [`NirError::ThresholdZero`]; [`NirError::PotentialOutOfRange`].
+pub fn quantize_lif(
     tau_s: f64,
     r_ohm: f64,
     v_leak_v: f64,
@@ -650,6 +667,75 @@ fn quant_lif(
         reset_q,
         tau_err_s,
         max_v_err_v: e1.max(e2).max(e3),
+    })
+}
+
+/// Quantize a materialized Linear weight tensor into the arena at
+/// `offset` — the structured-entry seam's Linear half. `values` is
+/// row-major `weight[out][in]` (`y = W·x`, rows = outputs), the same
+/// contract the JSON importer applies; callers that hold f64 weights
+/// (HDF5 import, builders) enter here without a JSON document.
+///
+/// # Errors
+///
+/// [`NirError::BadShape("weight")`] unless `values.len()` is exactly
+/// `rows·cols` with both nonzero; [`NirError::BufferOverflow`] when
+/// the arena cannot hold `offset + rows·cols`; [`NirError::BadNumber`]
+/// on any non-finite value or a `scale` that underflows to 0 (denormal
+/// `absmax` — the record would lie, per the R3 review finding).
+pub fn quantize_linear(
+    values: &[f64],
+    rows: usize,
+    cols: usize,
+    arena: &mut [i16],
+    offset: usize,
+) -> Result<NirLinear, NirError<'static>> {
+    if rows == 0 || cols == 0 {
+        return Err(NirError::BadShape("weight"));
+    }
+    let n = rows.checked_mul(cols).ok_or(NirError::BadShape("weight"))?;
+    if values.len() != n {
+        return Err(NirError::BadShape("weight"));
+    }
+    let end = offset.checked_add(n).ok_or(NirError::BufferOverflow)?;
+    if end > arena.len() {
+        return Err(NirError::BufferOverflow);
+    }
+    let mut absmax = 0.0f64;
+    for &v in values {
+        if !v.is_finite() {
+            return Err(NirError::BadNumber("weight"));
+        }
+        absmax = absmax.max(v.abs());
+    }
+    let (scale, zero_tensor) = if absmax == 0.0 {
+        (1.0, true)
+    } else {
+        (absmax / I16_FS, false)
+    };
+    // Denormal `absmax`: `absmax/32767` underflows to exactly 0.0 —
+    // finite, so every prior check passes, but then q·scale = 0 ≠
+    // absmax and the quant record would lie (export would silently
+    // zero the tensor and break idempotence). Loud, per the contract.
+    // (NaN unreachable: absmax is finite and I16_FS is a nonzero
+    // constant, so `== 0.0` is exact, not partial-order fuzz.)
+    if scale == 0.0 {
+        return Err(NirError::BadNumber("weight"));
+    }
+    let mut max_abs_err = 0.0f64;
+    for (k, &v) in values.iter().enumerate() {
+        let q = round_half_away(v / scale).clamp(-I16_FS, I16_FS) as i16;
+        arena[offset + k] = q;
+        max_abs_err = max_abs_err.max((v - f64::from(q) * scale).abs());
+    }
+    Ok(NirLinear {
+        rows,
+        cols,
+        weight_offset: offset,
+        scale,
+        absmax,
+        max_abs_err,
+        zero_tensor,
     })
 }
 
@@ -939,7 +1025,7 @@ fn finish_lif(
         report.note(NirNote::VResetDefaulted);
         0.0
     });
-    let lif = quant_lif(
+    let lif = quantize_lif(
         tau.ok_or(NirError::MissingField("tau"))?,
         res.ok_or(NirError::MissingField("r"))?,
         v_leak.ok_or(NirError::MissingField("v_leak"))?,
@@ -1085,9 +1171,11 @@ fn import_node<'a>(
     Ok(())
 }
 
-/// Read a 2-D weight array, quantizing into the arena at `offset`
-/// (staging f64 bits in the arena's scratch region first). Row-major
-/// `weight[out][in]`: `y_o = Σ_i w[o][i] · x_i`.
+/// Read a 2-D weight array and quantize it into the arena at
+/// `offset`: parse + stage the source f64s into `bufs.scratch`
+/// (row-major `weight[out][in]`: `y_o = Σ_i w[o][i] · x_i`), then
+/// delegate to [`quantize_linear`] — the shared quantization
+/// contract.
 fn import_weight(
     r: &mut Reader<'_>,
     bufs: &mut NirBuffers<'_, '_>,
@@ -1095,100 +1183,41 @@ fn import_weight(
 ) -> Result<NirLinear, NirError<'static>> {
     let mut rows = 0usize;
     let mut cols: Option<usize> = None;
-    let mut staged = 0usize; // f64 slots written (4 i16 each)
+    let mut staged = 0usize; // f64 slots written to scratch
 
     let mut rfirst = true;
     while r.array_step(&mut rfirst)? {
         if r.peek() != Some(b'[') {
             return Err(NirError::BadShape("weight"));
         }
-        let row_start = r.pos;
-        // count + validate the row
+        // one pass per row: read, stage, count — raggedness compares
+        // after the row (buffer contents are unspecified on error)
         let mut cfirst = true;
         let mut rc = 0usize;
         while r.array_step(&mut cfirst)? {
             if r.peek() == Some(b'[') {
-                return Err(NirError::BadShape("weight"));
+                return Err(NirError::BadShape("weight")); // 3-D
             }
-            r.read_number()?;
+            let v = r.read_number()?;
+            if staged >= bufs.scratch.len() {
+                return Err(NirError::BufferOverflow);
+            }
+            bufs.scratch[staged] = v;
+            staged += 1;
             rc += 1;
         }
         if rc == 0 {
-            return Err(NirError::BadShape("weight"));
+            return Err(NirError::BadShape("weight")); // empty row
         }
         match cols {
             None => cols = Some(rc),
-            Some(c) if c != rc => return Err(NirError::BadShape("weight")),
+            Some(c) if c != rc => return Err(NirError::BadShape("weight")), // ragged
             Some(_) => {}
         }
         rows += 1;
-        // re-parse the row from its start, staging the f64 bits
-        let mut sub = Reader { b: r.b, pos: row_start };
-        let mut sfirst = true;
-        while sub.array_step(&mut sfirst)? {
-            let v = sub.read_number()?;
-            if offset + staged + 4 > bufs.weights.len() {
-                return Err(NirError::BufferOverflow);
-            }
-            let bits = v.to_bits();
-            for k in 0..4 {
-                bufs.weights[offset + staged + k] =
-                    ((bits >> (16 * k)) & 0xffff) as u16 as i16;
-            }
-            staged += 4;
-        }
     }
-    let cols = cols.ok_or(NirError::BadShape("weight"))?;
-    let n = rows * cols;
-
-    // quantize from the staged bits
-    // reassemble the staged 64-bit pattern (4 x u16 lanes, little-endian)
-    let staged_val = |bufs: &NirBuffers<'_, '_>, k: usize| -> f64 {
-        let mut bits: u64 = 0;
-        for lane in 0..4 {
-            bits |= u64::from(bufs.weights[offset + 4 * k + lane] as u16) << (16 * lane);
-        }
-        f64::from_bits(bits)
-    };
-    let mut absmax = 0.0f64;
-    for k in 0..n {
-        let v = staged_val(bufs, k);
-        if !v.is_finite() {
-            return Err(NirError::BadNumber("weight"));
-        }
-        absmax = absmax.max(v.abs());
-    }
-    let (scale, zero_tensor) = if absmax == 0.0 {
-        (1.0, true)
-    } else {
-        (absmax / I16_FS, false)
-    };
-    // Denormal `absmax`: `absmax/32767` underflows to exactly 0.0 —
-    // finite, so every prior check passes, but then q·scale = 0 ≠
-    // absmax and the quant record would lie (export would silently
-    // zero the tensor and break idempotence). Loud, per the contract.
-    // (NaN unreachable: absmax is finite and I16_FS is a nonzero
-    // constant, so `== 0.0` is exact, not partial-order fuzz.)
-    if scale == 0.0 {
-        return Err(NirError::BadNumber("weight"));
-    }
-    let mut max_abs_err = 0.0f64;
-    for k in 0..n {
-        let v = staged_val(bufs, k);
-        let q = round_half_away(v / scale).clamp(-I16_FS, I16_FS) as i16;
-        bufs.weights[offset + k] = q;
-        max_abs_err = max_abs_err.max((v - f64::from(q) * scale).abs());
-    }
-
-    Ok(NirLinear {
-        rows,
-        cols,
-        weight_offset: offset,
-        scale,
-        absmax,
-        max_abs_err,
-        zero_tensor,
-    })
+    let cols = cols.ok_or(NirError::BadShape("weight"))?; // `[]` outer
+    quantize_linear(&bufs.scratch[..staged], rows, cols, bufs.weights, offset)
 }
 
 // ---------------------------------------------------------------------------
@@ -1448,17 +1477,20 @@ mod std_assembly {
                 scan.node_count
             ];
             let mut edges = vec![(0u32, 0u32); scan.edge_count];
-            // scratch contract: 4× weights during import (f64 = 4 i16)
-            let mut weights = vec![0i16; scan.weight_cells.saturating_mul(4)];
+            // scratch contract: arena + f64 scratch each hold the
+            // exact weight-cell count (the arena keeps the result)
+            let n = scan.weight_cells;
+            let mut weights = vec![0i16; n];
+            let mut scratch = vec![0f64; n];
             {
                 let mut bufs = super::NirBuffers {
                     nodes: &mut nodes,
                     edges: &mut edges,
                     weights: &mut weights,
+                    scratch: &mut scratch,
                 };
                 super::nir_import(json, opts, &mut bufs)?;
             }
-            weights.truncate(scan.weight_cells);
             Ok(NirImport {
                 nodes,
                 edges,
@@ -1650,14 +1682,15 @@ mod tests {
             linear: None,
         }; scan.node_count];
         let mut edges = vec![(0u32, 0u32); scan.edge_count];
-        let mut weights = vec![0i16; scan.weight_cells * 4];
+        let mut weights = vec![0i16; scan.weight_cells];
+        let mut scratch = vec![0f64; scan.weight_cells];
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
         };
         let report = nir_import(CHAIN.as_bytes(), opts, &mut bufs).expect("chain imports");
-        weights.truncate(scan.weight_cells);
         (nodes, edges, weights, report)
     }
 
@@ -1713,11 +1746,13 @@ mod tests {
             linear: None,
         }; scan.node_count];
         let mut edges = vec![(0u32, 0u32); scan.edge_count];
-        let mut weights = vec![0i16; scan.weight_cells * 4];
+        let mut weights = vec![0i16; scan.weight_cells];
+        let mut scratch = vec![0f64; scan.weight_cells];
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
         };
         assert_eq!(
             nir_import(CHAIN.as_bytes(), opts, &mut bufs),
@@ -1725,31 +1760,31 @@ mod tests {
         );
         // direct quant_lif contract:
         assert!(matches!(
-            quant_lif(0.0, 1e8, -0.07, -0.055, -0.08, false, NirImportOptions::default()),
+            quantize_lif(0.0, 1e8, -0.07, -0.055, -0.08, false, NirImportOptions::default()),
             Err(NirError::BadNumber("tau"))
         ));
         assert!(matches!(
-            quant_lif(-0.02, 1e8, -0.07, -0.055, -0.08, false, NirImportOptions::default()),
+            quantize_lif(-0.02, 1e8, -0.07, -0.055, -0.08, false, NirImportOptions::default()),
             Err(NirError::BadNumber("tau"))
         ));
         assert!(matches!(
-            quant_lif(0.02, 0.0, -0.07, -0.055, -0.08, false, NirImportOptions::default()),
+            quantize_lif(0.02, 0.0, -0.07, -0.055, -0.08, false, NirImportOptions::default()),
             Err(NirError::BadNumber("r"))
         ));
         assert!(matches!(
-            quant_lif(0.02, 1e8, -0.07, -0.0004, -0.08, false, NirImportOptions::default()),
+            quantize_lif(0.02, 1e8, -0.07, -0.0004, -0.08, false, NirImportOptions::default()),
             Err(NirError::ThresholdZero)
         ));
         assert!(matches!(
-            quant_lif(0.02, 1e8, -0.07, -0.055, -0.08, false, NirImportOptions::new(30_000, VoltageResolution::Millivolt)),
+            quantize_lif(0.02, 1e8, -0.07, -0.055, -0.08, false, NirImportOptions::new(30_000, VoltageResolution::Millivolt)),
             Err(NirError::TauBelowDt)
         ));
         assert!(matches!(
-            quant_lif(0.02, 1e8, -0.07, 0.06, -0.08, false, NirImportOptions::default()),
+            quantize_lif(0.02, 1e8, -0.07, 0.06, -0.08, false, NirImportOptions::default()),
             Err(NirError::PotentialOutOfRange("v_threshold"))
         ));
         // threshold on the centi grid: -0.0555 V is representable
-        let lif = quant_lif(
+        let lif = quantize_lif(
             0.02,
             1e8,
             -0.07,
@@ -1776,10 +1811,12 @@ mod tests {
         }];
         let mut edges = [];
         let mut weights = [0i16; 8];
+        let mut scratch = [0f64; 8];
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
         };
         assert_eq!(
             nir_import(doc.as_bytes(), NirImportOptions::default(), &mut bufs),
@@ -1803,10 +1840,12 @@ mod tests {
         }; 2];
         let mut edges = [(0u32, 0u32); 1];
         let mut weights = [];
+        let mut scratch = [];
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
         };
         nir_import(doc.as_bytes(), NirImportOptions::default(), &mut bufs).expect("resolves");
         assert_eq!(edges[0], (0, 1));
@@ -1875,10 +1914,12 @@ mod tests {
             }; 4];
             let mut edges = [(0u32, 0u32); 4];
             let mut weights = [0i16; 64];
+            let mut scratch = [0f64; 64];
             let mut bufs = NirBuffers {
                 nodes: &mut nodes,
                 edges: &mut edges,
                 weights: &mut weights,
+                scratch: &mut scratch,
             };
             let err = nir_import(doc.as_bytes(), NirImportOptions::default(), &mut bufs)
                 .expect_err(label);
@@ -1888,6 +1929,7 @@ mod tests {
 
     #[test]
     fn buffer_overflow_is_loud() {
+        // node capacity: the nodes check fires before weights are read
         let mut nodes = [NirNode {
             name: "",
             kind: NirNodeKind::Input,
@@ -1897,11 +1939,58 @@ mod tests {
             linear: None,
         }];
         let mut edges = [];
-        let mut weights = [0i16; 2]; // chain needs 24 (scratch)
+        let mut weights = [];
+        let mut scratch = [];
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
+        };
+        assert_eq!(
+            nir_import(CHAIN.as_bytes(), NirImportOptions::default(), &mut bufs),
+            Err(NirError::BufferOverflow)
+        );
+        // arena too small: staging completes (scratch fits the 6
+        // cells), the quantizer refuses — offset+6 > 2
+        let mut nodes = [NirNode {
+            name: "",
+            kind: NirNodeKind::Input,
+            shape: [0; 4],
+            shape_len: 0,
+            lif: None,
+            linear: None,
+        }; 4];
+        let mut edges = [(0u32, 0u32); 3];
+        let mut weights = [0i16; 2];
+        let mut scratch = [0f64; 6];
+        let mut bufs = NirBuffers {
+            nodes: &mut nodes,
+            edges: &mut edges,
+            weights: &mut weights,
+            scratch: &mut scratch,
+        };
+        assert_eq!(
+            nir_import(CHAIN.as_bytes(), NirImportOptions::default(), &mut bufs),
+            Err(NirError::BufferOverflow)
+        );
+        // scratch too small: the staging loop refuses mid-tensor
+        let mut nodes = [NirNode {
+            name: "",
+            kind: NirNodeKind::Input,
+            shape: [0; 4],
+            shape_len: 0,
+            lif: None,
+            linear: None,
+        }; 4];
+        let mut edges = [(0u32, 0u32); 3];
+        let mut weights = [0i16; 64];
+        let mut scratch = [0f64; 2];
+        let mut bufs = NirBuffers {
+            nodes: &mut nodes,
+            edges: &mut edges,
+            weights: &mut weights,
+            scratch: &mut scratch,
         };
         assert_eq!(
             nir_import(CHAIN.as_bytes(), NirImportOptions::default(), &mut bufs),
@@ -1935,14 +2024,15 @@ mod tests {
             linear: None,
         }; scan2.node_count];
         let mut edges2 = vec![(0u32, 0u32); scan2.edge_count];
-        let mut weights2 = vec![0i16; scan2.weight_cells * 4];
+        let mut weights2 = vec![0i16; scan2.weight_cells];
+        let mut scratch2 = vec![0f64; scan2.weight_cells];
         let mut bufs2 = NirBuffers {
             nodes: &mut nodes2,
             edges: &mut edges2,
             weights: &mut weights2,
+            scratch: &mut scratch2,
         };
         let report2 = nir_import(exported.as_bytes(), opts, &mut bufs2).expect("re-imports");
-        weights2.truncate(scan2.weight_cells);
         assert_eq!(edges2, edges);
         assert_eq!(weights2, weights, "quantized weights identical");
         // The CONTRACT is quantized-state identity. The re-import's
@@ -1998,10 +2088,12 @@ mod tests {
         }];
         let mut edges = [];
         let mut weights = [0i16; 64];
+        let mut scratch = [0f64; 64];
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
         };
         let rep = nir_import(doc.as_bytes(), NirImportOptions::default(), &mut bufs).unwrap();
         assert!(rep.notes[NirNote::ZeroWeightTensor as usize] >= 1);
@@ -2013,6 +2105,7 @@ mod tests {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
         };
         let rep2 = nir_import(doc2.as_bytes(), NirImportOptions::default(), &mut bufs2).unwrap();
         assert!(rep2.notes[NirNote::QuantizationLoss as usize] >= 1);
@@ -2034,10 +2127,12 @@ mod tests {
         }];
         let mut edges = [];
         let mut weights = [];
+        let mut scratch = [];
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
         };
         let rep = nir_import(doc.as_bytes(), NirImportOptions::default(), &mut bufs).unwrap();
         assert!(rep.notes[NirNote::VResetDefaulted as usize] >= 1);
@@ -2095,10 +2190,12 @@ mod tests {
         }];
         let mut edges = [];
         let mut weights = [];
+        let mut scratch = [];
         let mut bufs = NirBuffers {
             nodes: &mut nodes,
             edges: &mut edges,
             weights: &mut weights,
+            scratch: &mut scratch,
         };
         assert!(matches!(
             nir_import(doc, NirImportOptions::default(), &mut bufs),
@@ -2126,10 +2223,12 @@ mod tests {
             }];
             let mut edges = [];
             let mut weights = [0i16; 8];
+            let mut scratch = [0f64; 8];
             let mut bufs = NirBuffers {
                 nodes: &mut nodes,
                 edges: &mut edges,
                 weights: &mut weights,
+                scratch: &mut scratch,
             };
             assert_eq!(
                 nir_import(doc.as_bytes(), NirImportOptions::default(), &mut bufs),
@@ -2157,7 +2256,7 @@ mod tests {
         // reachability: r one ulp below 0.5 MΩ is a loud BadNumber,
         // not a silent 1 MΩ
         assert!(matches!(
-            quant_lif(
+            quantize_lif(
                 0.02,
                 499_999.999_999_999_94,
                 -0.07,
@@ -2220,5 +2319,128 @@ mod tests {
         assert_eq!(enc.encode(&[-32767, -32767, -32767]), vec![-32768]);
         // arithmetic sanity: w·x/100 truncates
         assert_eq!(enc.encode(&[1, 0, 0]), vec![327]);
+    }
+
+    // ---- structured-entry seam: quantize_linear / quantize_lif ----
+
+    #[test]
+    fn quantize_linear_dyadic_vector_is_exact() {
+        // the gate vector, direct: [0.5,-1,0.25] at absmax 1.0
+        let vals = [0.5, -1.0, 0.25];
+        let mut arena = [0i16; 8];
+        let lin = quantize_linear(&vals, 1, 3, &mut arena, 0).expect("quantizes");
+        assert_eq!((lin.rows, lin.cols, lin.weight_offset), (1, 3, 0));
+        assert!((lin.scale - 1.0 / I16_FS).abs() < 1e-18);
+        assert_eq!(&arena[..3], &[16384, -32767, 8192]);
+        assert!(
+            lin.max_abs_err > 0.0 && lin.max_abs_err <= lin.scale / 2.0,
+            "scale 1/32767 is non-dyadic: bounded loss, recorded"
+        );
+        // offset placement: the record views exactly the slice it wrote
+        let lin2 = quantize_linear(&vals, 1, 3, &mut arena, 3).expect("quantizes");
+        assert_eq!(lin2.weight_offset, 3);
+        assert_eq!(&arena[3..6], &[16384, -32767, 8192]);
+        assert_eq!(lin2.scale, lin.scale, "same tensor, same scale");
+        // absmax 32767 → scale exactly 1.0: integers are lossless
+        let lin3 = quantize_linear(&[32767.0, -16384.0, 0.0], 1, 3, &mut arena, 0)
+            .expect("quantizes");
+        assert_eq!(lin3.scale, 1.0);
+        assert_eq!(lin3.max_abs_err, 0.0);
+        assert_eq!(&arena[..3], &[32767, -16384, 0]);
+    }
+
+    #[test]
+    fn quantize_linear_zero_tensor_and_full_scale() {
+        let mut arena = [7i16; 4];
+        let lin = quantize_linear(&[0.0; 4], 2, 2, &mut arena, 0).expect("quantizes");
+        assert!(lin.zero_tensor);
+        assert_eq!(lin.scale, 1.0);
+        assert_eq!(lin.max_abs_err, 0.0);
+        assert_eq!(&arena[..4], &[0, 0, 0, 0]);
+        // the max-|w| element maps to ±32767 by construction
+        // (1.0/(3/32767) = 10922.33 — far from the .5 boundary)
+        let lin2 = quantize_linear(&[3.0, -3.0, 1.0], 1, 3, &mut arena, 0).expect("quantizes");
+        assert!(!lin2.zero_tensor);
+        assert_eq!(lin2.absmax, 3.0);
+        assert_eq!(&arena[..3], &[32767, -32767, 10922]);
+    }
+
+    #[test]
+    fn quantize_linear_denormal_absmax_is_loud() {
+        // absmax/32767 underflows to 0.0: the record would lie
+        // (q·scale = 0 ≠ absmax) and export would zero the tensor
+        for v in [5e-324, 1e-320, 2.47e-321] {
+            let mut arena = [0i16; 4];
+            assert_eq!(
+                quantize_linear(&[v], 1, 1, &mut arena, 0),
+                Err(NirError::BadNumber("weight")),
+                "{v}"
+            );
+        }
+    }
+
+    #[test]
+    fn quantize_linear_rejects_loudly() {
+        let mut arena = [0i16; 8];
+        // non-finite (`1e400` reaches this same door via JSON parse)
+        for v in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                quantize_linear(&[1.0, v], 1, 2, &mut arena, 0),
+                Err(NirError::BadNumber("weight"))
+            );
+        }
+        // len mismatch / zero dims
+        assert_eq!(
+            quantize_linear(&[1.0], 1, 2, &mut arena, 0),
+            Err(NirError::BadShape("weight"))
+        );
+        assert_eq!(
+            quantize_linear(&[], 0, 3, &mut arena, 0),
+            Err(NirError::BadShape("weight"))
+        );
+        assert_eq!(
+            quantize_linear(&[1.0], 1, 0, &mut arena, 0),
+            Err(NirError::BadShape("weight"))
+        );
+        // arena bounds (including offset arithmetic overflow)
+        assert_eq!(
+            quantize_linear(&[1.0; 6], 2, 3, &mut arena, 4),
+            Err(NirError::BufferOverflow)
+        );
+        assert_eq!(
+            quantize_linear(&[1.0; 6], 2, 3, &mut arena, usize::MAX - 2),
+            Err(NirError::BufferOverflow)
+        );
+    }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        /// The R9 200k-fuzz invariants, property-pinned: bounded
+        /// dequant error, full-scale max element, and
+        /// re-quantize(dequant) == q — the core of export
+        /// idempotence.
+        #[test]
+        fn prop_quantize_linear_round_trip(
+            rows in 1usize..=4,
+            cols in 1usize..=5,
+            values in proptest::collection::vec(-1024.0f64..1024.0, 20usize..=20),
+        ) {
+            let n = rows * cols;
+            let values = &values[..n];
+            let mut arena = [0i16; 32];
+            let lin = quantize_linear(values, rows, cols, &mut arena, 0)
+                .expect("finite values quantize");
+            prop_assert!(lin.max_abs_err <= lin.scale * (0.5 + 1e-9));
+            if lin.zero_tensor {
+                prop_assert_eq!(lin.scale, 1.0);
+            } else {
+                prop_assert!(arena[..n].iter().any(|&q| q.abs() == 32767));
+            }
+            let deq: Vec<f64> = arena[..n].iter().map(|&q| f64::from(q) * lin.scale).collect();
+            let mut arena2 = [0i16; 32];
+            quantize_linear(&deq, rows, cols, &mut arena2, 0).expect("re-quantizes");
+            prop_assert_eq!(&arena2[..n], &arena[..n]);
+        }
     }
 }
