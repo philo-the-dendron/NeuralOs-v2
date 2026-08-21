@@ -239,7 +239,7 @@ pub fn group_of(neuron_id: u16, exc: u16, p: &ExperimentParams) -> u16 {
 /// Which group is driven at `step` (GROUPS = silent gap) — the 1.5c
 /// schedule.
 #[must_use]
-pub fn active_group_at(step: usize, p: &ExperimentParams) -> u16 {
+fn active_group_at(step: usize, p: &ExperimentParams) -> u16 {
     let slot_len = p.active_on + p.off_gap;
     let cycle = slot_len * u32::from(p.groups);
     let within = (step as u32) % cycle;
@@ -253,7 +253,7 @@ pub fn active_group_at(step: usize, p: &ExperimentParams) -> u16 {
 
 /// The structured-drive input schedule (one `Vec<i16>` per step).
 #[must_use]
-pub fn make_inputs(i_active: i16, p: &ExperimentParams) -> Vec<Vec<i16>> {
+fn make_inputs(i_active: i16, p: &ExperimentParams) -> Vec<Vec<i16>> {
     let (N, STEPS) = (p.n, p.steps);
     let exc = exc_count(p) as u16;
     let mut inputs = Vec::with_capacity(STEPS);
@@ -323,7 +323,7 @@ pub fn trit_val(t: Trit) -> f64 {
 
 /// Trit bucket as census index: 0=−1, 1=0, 2=+1.
 #[must_use]
-pub fn tix(t: Trit) -> usize {
+fn tix(t: Trit) -> usize {
     match t {
         Trit::MinusOne => 0,
         Trit::Zero => 1,
@@ -374,7 +374,7 @@ pub fn build_from_trits(
 /// Fixed-weight run (STDP off). Reports over the full window, plus
 /// per-quarter rates (the self-quench evidence) and per-group
 /// containment. Verbatim from `hybrid_gate.rs`.
-pub fn run_fixed(
+fn run_fixed(
     net: &mut SpikingNeuralNetwork,
     inputs: &[Vec<i16>],
     p: &ExperimentParams,
@@ -483,7 +483,7 @@ pub struct HybridStats {
 /// stochastic ternary bucket-flips at γ). Tracks the bucket-transition
 /// census, firing sanity, and E→E co-firing structure over the learning
 /// phase. Verbatim from `hybrid_gate.rs`.
-pub fn run_hybrid(trits: &[Trit], inputs: &[Vec<i16>], p: &ExperimentParams) -> HybridStats {
+fn run_hybrid(trits: &[Trit], inputs: &[Vec<i16>], p: &ExperimentParams) -> HybridStats {
     let (N, GAMMA, INIT_STEPS) = (p.n, p.gamma, p.init_steps);
     let exc = exc_count(p) as u16;
     let mut net = build_from_trits(trits, GAMMA, p, VoltageResolution::Millivolt);
