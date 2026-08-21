@@ -5,7 +5,7 @@ project: NeuralOS v2
 phase: climbing
 progress: 85/85
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-21T01:00:00Z
+updated: 2026-08-21T14:30:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -3052,3 +3052,25 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
   body duplicated as closures in 2 examples; harness.rs has zero
   direct unit tests (its pins are the example re-runs); embeddings-
   only capture path in model.rs stays PARKED (principal's call).
+
+## Verification (R7 — HDF5 pre-flight, 2026-08-21)
+
+- Slice-2 pre-flight (scratch crate /tmp/opencode/hdf5-preflight, NO
+  workspace dep): `hdf5 = "0.8"` + `hdf5-sys = { features = ["static"]
+  }` builds vendored HDF5 from source on this box — needs cmake
+  (available passwordless via pip wheel; no sudo required) — 1m47s
+  first build, cached after. Runtime needs `HDF5_PLUGIN_PATH` pointed
+  at any existing dir (vendored default /usr/local/hdf5/lib/plugin is
+  absent). **A reference-written `.nir` file was read end-to-end in
+  pure Rust**: version string, node type, member names, weight shape,
+  and f64 data (tau [0.02]) — from the pinned clone's own
+  `nir.write()`. Two flags for slice 2: (a) the reference's write()
+  defaults to GZIP — the static build lacks the deflate filter until
+  `hdf5-sys`'s `zlib` feature is on (exists: features
+  `["static","zlib"]`); (b) system-hdf5 boxes skip the vendored build
+  entirely. **Slice-2 wall estimate:** HDF5 read/write in
+  neuralos-rt over the same schema layer ≈ one half-day session
+  (incl. CI cmake + gzip fixtures from reference-written files);
+  per-neuron LIF populations ≈ another half-day; multi-node graph
+  assembly (the real design work) 1–2 sessions. Total slice 2 ≈ 2–3
+  sessions.
