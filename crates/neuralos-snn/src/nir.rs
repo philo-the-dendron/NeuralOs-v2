@@ -154,6 +154,9 @@ pub enum NirError<'a> {
     /// e.g. a LIF population whose size ≠ the feeding Linear's
     /// rows).
     UnsupportedTopology(&'static str),
+    /// A per-edge type-shape mismatch (reference `check_types`
+    /// parity): the `src → dst` edge's tensor shapes disagree.
+    EdgeShapeMismatch { src: &'a str, dst: &'a str },
     /// The export byte buffer is too small.
     ExportTooSmall,
 }
@@ -191,6 +194,10 @@ impl core::fmt::Display for NirError<'_> {
             Self::UnsupportedTopology(n) => {
                 write!(f, "topology unsupported by slice 1: {n}")
             }
+            Self::EdgeShapeMismatch { src, dst } => write!(
+                f,
+                "edge shape mismatch: '{src}' -> '{dst}' (reference type-check parity)"
+            ),
             Self::ExportTooSmall => write!(f, "export byte buffer too small"),
         }
     }
@@ -1651,19 +1658,51 @@ fn export_node(
 
 #[cfg(feature = "std")]
 mod std_assembly {
-    //! The slice-1 network assembly: the canonical chain
-    //! `Input → Linear → LIF → Output` onto a real
-    //! [`crate::network::SpikingNeuralNetwork`]. Linear is the input
-    //! encoder (`y = W·x` → per-step μA currents, the substrate's only
-    //! external-input channel); the LIF node's quantized params are
-    //! the neurons. Any other graph shape is a loud
-    //! [`NirError::UnsupportedTopology`] naming slice 2.
+    //! The network-assembly surface: the canonical chain
+    //! `Input → Linear → LIF → Output` ([`NirImport::build_chain_network`],
+    //! slice 1) and the GENERAL four-kind graph
+    //! ([`NirImport::build_network`], slice 2): any reference-emitted
+    //! Input/Linear/LIF/Output graph assembles and fires.
+    //!
+    //! # The general assembly contract
+    //!
+    //! - **Encoder stages (the Linear half):** the Linear sub-DAG is
+    //!   evaluated symbolically at setup — for every drive Linear `L`
+    //!   and root Input `r`, the composed matrix `W_L·G` (product of
+    //!   the chain's matrices in f64, D2 fusion) is quantized ONCE via
+    //!   [`quantize_linear`](super::quantize_linear). At step time the
+    //!   encoder applies the substrate's `/100` gain per stage and
+    //!   merges saturating-i16 into the global per-step current vector
+    //!   (D5's mechanical merge; multiple Inputs read their own slices,
+    //!   one stage matrix per (drive Linear, root) pair).
+    //! - **Edges:** LIF→LIF wires `add_synapse(pre_i, post_i,
+    //!   EDGE_PULSE_QUANTA)` per neuron pair (identity element
+    //!   mapping — the reference defines no element semantics at this
+    //!   sha); Input→Linear is the encoder entry; LIF→Output is
+    //!   shape-checked decoration.
+    //! - **Plasticity is FROZEN at assembly** (`NIR has no plasticity
+    //!   term` — STDP would clamp ±32767 and corrupt the edge quanta);
+    //!   recorded in the report.
+    //! - **Grid:** any graph with a LIF→LIF edge assembles only on
+    //!   [`VoltageResolution::CentiMillivolt`] options — a 20 μA edge
+    //!   pulse is dead 10× over on mV. Explicit mV options on such a
+    //!   graph reject BY NAME with the re-import remedy (never a
+    //!   silent override).
+    //! - Every rejection is NAMED (see the fixture table in the
+    //!   tests): structure (empty / no Input / no Output / no LIF),
+    //!   edge kinds (pass-through, direct drive, readout, self-loop,
+    //!   Output-as-source), per-edge shapes
+    //!   ([`NirError::EdgeShapeMismatch`], reference `check_types`
+    //!   parity), Linear-only cycles, and the u16 neuron-id bound
+    //!   ([`NirError::BufferOverflow`], D7).
+
+    use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
         NirError, NirImportOptions, NirLif, NirLifParams, NirLinear, NirLifPopulation, NirNode,
         NirNodeKind, NIR_REF_SHA,
     };
-    use crate::lif_neuron::{LIFNeuron, NeuronType};
+    use crate::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
     use crate::network::SpikingNeuralNetwork;
 
     /// **THE D1 edge-semantics contract (principal-ratified 2026-08-22).**
@@ -1763,6 +1802,496 @@ mod std_assembly {
         #[test]
         fn edge_pulse_quanta_is_two_hundred() {
             assert_eq!(EDGE_PULSE_QUANTA, 200);
+        }
+    }
+
+    #[cfg(test)]
+    mod assembly_tests {
+        use super::super::quantize_linear;
+        use super::{
+            NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, EDGE_PULSE_QUANTA,
+        };
+        use crate::lif_neuron::VoltageResolution;
+
+        const BRANCH: &[u8] = include_bytes!("../tests/nir_fixtures/branch.json");
+        const MERGE: &[u8] = include_bytes!("../tests/nir_fixtures/merge.json");
+        const RECURRENT: &[u8] = include_bytes!("../tests/nir_fixtures/recurrent.json");
+        const CHAIN: &[u8] = include_bytes!("../tests/nir_fixtures/chain.json");
+
+        fn centi() -> NirImportOptions {
+            NirImportOptions::new(1_000, VoltageResolution::CentiMillivolt)
+        }
+
+        /// The frozen chain fixtures re-run UNCHANGED through both
+        /// builders: `build_chain_network` (frozen pins) and
+        /// `build_network` must produce the same neurons, the same
+        /// encoder output, and the same 100-step spike raster — the
+        /// general path subsumes the chain, proven bit-exact.
+        #[test]
+        fn chain_equivalence_both_builders_bit_exact() {
+            let opts = NirImportOptions::default();
+            let g = NirImport::from_json(CHAIN, opts).expect("chain imports");
+            let (mut net1, enc1) = g.build_chain_network().expect("chain builder");
+            let (mut net2, enc2, rep2) = g.build_network().expect("general builder");
+
+            assert_eq!(rep2.neurons, 1);
+            assert_eq!(rep2.synapses, 0, "the chain has no LIF->LIF edge");
+            assert_eq!(rep2.stages, 1);
+            assert!(rep2.fused.is_empty());
+            assert!(!rep2.multi_linear_gain, "one drive Linear");
+            assert!(rep2.undriven.is_empty());
+            assert!(rep2.plasticity_frozen);
+
+            // neurons bit-exact (Debug string = every field)
+            let n1: Vec<String> = net1.neurons().iter().map(|n| format!("{n:?}")).collect();
+            let n2: Vec<String> = net2.neurons().iter().map(|n| format!("{n:?}")).collect();
+            assert_eq!(n1, n2);
+
+            // encoder output identical on probe drives
+            for x in [[4, 0, 0], [100, -50, 25], [0, 0, 0], [-32768, 32767, 1]] {
+                assert_eq!(enc1.encode(&x), enc2.encode(&[&x]), "x={x:?}");
+            }
+
+            // same drive, same raster over 100 steps
+            let mut r1 = Vec::new();
+            let mut r2 = Vec::new();
+            for _ in 0..100 {
+                r1.extend(
+                    net1.step(&enc1.encode(&[4, 0, 0]))
+                        .unwrap()
+                        .iter()
+                        .map(|s| s.neuron_id),
+                );
+                r2.extend(
+                    net2.step(&enc2.encode(&[&[4, 0, 0]]))
+                        .unwrap()
+                        .iter()
+                        .map(|s| s.neuron_id),
+                );
+            }
+            assert_eq!(r1, r2);
+            assert!(!r1.is_empty(), "the frozen chain fires (9/100 pins)");
+        }
+
+        /// The branch fixture: report shape (fusion record for
+        /// l1·l2, two stages, D6 note) + every population fires.
+        #[test]
+        fn branch_assembles_fuses_and_fires() {
+            let g = NirImport::from_json(BRANCH, NirImportOptions::default()).expect("imports");
+            let (mut net, enc, rep) = g.build_network().expect("assembles");
+            assert_eq!(rep.neurons, 4);
+            assert_eq!(rep.synapses, 0);
+            assert_eq!(rep.inputs, 1);
+            assert_eq!(rep.drive_linears, 2, "l2 (fused) and l3");
+            assert_eq!(rep.stages, 2);
+            assert_eq!(rep.fused.len(), 1, "the l1->l2 chain fused once");
+            assert_eq!(rep.fused[0].chain, vec!["l1", "l2"]);
+            assert!((rep.fused[0].scales[0] - 1.0 / 32_767.0).abs() < 1e-18);
+            assert!((rep.fused[0].scales[1] - 1.0 / 32_767.0).abs() < 1e-18, "l2 absmax is 1.0");
+            assert!(rep.multi_linear_gain, "D6: >1 drive Linear, loud");
+            assert!(rep.undriven.is_empty());
+
+            // fused-stage exactness: the quantized product must equal
+            // quantize_linear(W2_dequant · W1_dequant) through the same
+            // seam — the f64 reference IS the fixture's source tensors
+            let w1 = [[0.5f64, -1.0, 0.25], [-0.25, 1.0, 0.5]];
+            let w2 = [[1.0f64, 0.0], [0.0, -0.5]];
+            let mut prod = [[0f64; 3]; 2];
+            for r in 0..2 {
+                for k in 0..3 {
+                    prod[r][k] = w2[r][0] * w1[0][k] + w2[r][1] * w1[1][k];
+                }
+            }
+            let flat: Vec<f64> = prod.iter().flat_map(|r| r.iter().copied()).collect();
+            let mut expect = vec![0i16; 6];
+            quantize_linear(&flat, 2, 3, &mut expect, 0).expect("reference quantizes");
+            assert!(
+                enc.mats.iter().any(|m| m.q == expect),
+                "the fused stage is the ONCE-quantized product {:?} (mats: {:?})",
+                expect,
+                enc.mats.iter().map(|m| &m.q).collect::<Vec<_>>()
+            );
+
+            // every population fires under a seeded drive
+            let mut fired = [false; 4];
+            for _ in 0..100 {
+                for s in net.step(&enc.encode(&[&[6, 0, 0]])).unwrap() {
+                    fired[s.neuron_id as usize] = true;
+                }
+            }
+            assert!(fired.iter().all(|&f| f), "all four neurons fire: {fired:?}");
+        }
+
+        /// The merge fixture at graph scale: one branch stalls below
+        /// the climb (81 μA → `V_ss−rest` 810 < the 1500 gap), the
+        /// summed fan-in fires (162 μA) — the `transmission_pulses_sum`
+        /// property, encoder edition. First-spike step pinned exactly
+        /// (integer math, noise 0).
+        #[test]
+        fn merge_summed_fan_in_fires_where_single_stalls() {
+            let g = NirImport::from_json(MERGE, centi()).expect("imports");
+            let (mut net, enc, rep) = g.build_network().expect("assembles");
+            assert_eq!(rep.neurons, 2);
+            assert_eq!(rep.drive_linears, 2);
+            assert!(rep.multi_linear_gain);
+
+            // single branch: neuron 0 never fires over 200 steps (the
+            // stall), while the always-hot control neuron 1 does (the
+            // encoder is live — the stall is the current, not a dead wire)
+            let mut counts = [0usize; 2];
+            for _ in 0..200 {
+                for s in net.step(&enc.encode(&[&[1, 1], &[]])).unwrap() {
+                    counts[s.neuron_id as usize] += 1;
+                }
+            }
+            assert_eq!(counts[0], 0, "81 uA stalls below the climb");
+            assert!(counts[1] > 0, "the 327 uA control row fires");
+
+            // fresh net, both branches: first spike on neuron 0 at
+            // 0-based step 52 (g shrinks 1620 -> 116 by g/20 per step)
+            let g2 = NirImport::from_json(MERGE, centi()).unwrap();
+            let (mut net2, enc2, _) = g2.build_network().unwrap();
+            let mut first = usize::MAX;
+            let mut n0 = 0usize;
+            for t in 0..100 {
+                for s in net2.step(&enc2.encode(&[&[1, 0], &[1, 0]])).unwrap() {
+                    if s.neuron_id == 0 {
+                        first = first.min(t);
+                        n0 += 1;
+                    }
+                }
+            }
+            assert_eq!(first, 52, "summed 162 uA crosses at step 52 exactly");
+            assert_eq!(n0, 1, "one spike in the 100-step window (next ~112)");
+        }
+
+        /// The recurrent fixture at graph scale — D1's assert: a
+        /// postsynaptic neuron moves EXACTLY +10 centi-quanta the
+        /// step after its presynaptic spike, and the edge quanta ride
+        /// no learning weight (plasticity frozen).
+        #[test]
+        fn recurrent_pulse_moves_postsynaptic_exactly() {
+            let g = NirImport::from_json(RECURRENT, centi()).expect("imports");
+            let (mut net, enc, rep) = g.build_network().expect("assembles");
+            assert_eq!(rep.neurons, 4);
+            assert_eq!(rep.synapses, 4, "a->b and b->a, 2 neurons each");
+            assert_eq!(rep.stages, 1, "linear drives lif_a only");
+            assert!(!rep.multi_linear_gain);
+            assert!(rep.undriven.is_empty());
+
+            // ids: lif_a = 0,1; lif_b = 2,3. Drive x=[1,0]: a0 at 327
+            // uA fires; a1 undriven; b* has no encoder path.
+            let mut a0_first = usize::MAX;
+            for t in 0..80 {
+                let fired_a0 = net
+                    .step(&enc.encode(&[&[1, 0]]))
+                    .unwrap()
+                    .iter()
+                    .any(|s| s.neuron_id == 0);
+                if fired_a0 && a0_first == usize::MAX {
+                    a0_first = t;
+                    assert_eq!(
+                        net.neurons()[2].membrane_potential,
+                        -7_000,
+                        "b0 unmoved on the spike step — one-step delay"
+                    );
+                }
+                if a0_first != usize::MAX && t == a0_first + 1 {
+                    assert_eq!(
+                        net.neurons()[2].membrane_potential,
+                        -6_990,
+                        "b0 integrates the 20 uA pulse: exactly +10 quanta"
+                    );
+                }
+            }
+            assert_ne!(a0_first, usize::MAX, "a0 must fire in 80 steps");
+            assert_eq!(
+                net.neurons()[3].membrane_potential,
+                -7_000,
+                "b1 unmoved (a1 never fires — identity element mapping)"
+            );
+            // frozen plasticity: the edge quanta never moved
+            assert!(net.synapses().iter().all(|s| s.weight == EDGE_PULSE_QUANTA));
+        }
+
+        /// The loud-rejections table: every named error, one
+        /// reference-emitted negative fixture each (+ the mV-on-
+        /// recurrent ruling, opts-driven, same fixture file).
+        #[test]
+        #[allow(clippy::type_complexity)]
+        fn named_rejections_reference_fixtures() {
+            let cases: Vec<(&str, &[u8], fn(&NirError<'_>) -> bool)> = vec![
+                (
+                    "pass-through",
+                    include_bytes!("../tests/nir_fixtures/neg_asm_passthrough.json"),
+                    |e| matches!(e, NirError::UnsupportedTopology("Input->Output pass-through")),
+                ),
+                (
+                    "direct drive",
+                    include_bytes!("../tests/nir_fixtures/neg_asm_direct_drive.json"),
+                    |e| matches!(
+                        e,
+                        NirError::UnsupportedTopology(
+                            "direct drive (Input->LIF) deferred — drive convention not yet named"
+                        )
+                    ),
+                ),
+                (
+                    "no LIF (encoder-only)",
+                    include_bytes!("../tests/nir_fixtures/neg_asm_no_lif.json"),
+                    |e| matches!(
+                        e,
+                        NirError::UnsupportedTopology(
+                            "graph without LIF: nothing to fire — encoder-only assembly deferred"
+                        )
+                    ),
+                ),
+                (
+                    "readout edge",
+                    include_bytes!("../tests/nir_fixtures/neg_asm_lif_to_linear.json"),
+                    |e| matches!(
+                        e,
+                        NirError::UnsupportedTopology(
+                            "readout (LIF->Linear) deferred — spike-count readout convention not yet named"
+                        )
+                    ),
+                ),
+                (
+                    "self-loop",
+                    include_bytes!("../tests/nir_fixtures/neg_asm_self_loop.json"),
+                    |e| matches!(
+                        e,
+                        NirError::UnsupportedTopology(
+                            "LIF self-loop — the substrate forbids self-synapse"
+                        )
+                    ),
+                ),
+                (
+                    "empty graph",
+                    include_bytes!("../tests/nir_fixtures/neg_asm_empty.json"),
+                    |e| matches!(e, NirError::UnsupportedTopology("empty graph")),
+                ),
+                (
+                    "shape mismatch",
+                    include_bytes!("../tests/nir_fixtures/neg_asm_shape_mismatch.json"),
+                    |e| matches!(
+                        e,
+                        NirError::EdgeShapeMismatch { src: "input", dst: "l1" }
+                    ),
+                ),
+                (
+                    "cycle without Output",
+                    include_bytes!("../tests/nir_fixtures/neg_asm_cycle_no_output.json"),
+                    |e| matches!(e, NirError::UnsupportedTopology("no Output node")),
+                ),
+                (
+                    "no Input",
+                    include_bytes!("../tests/nir_fixtures/neg_asm_no_input.json"),
+                    |e| matches!(e, NirError::UnsupportedTopology("no Input node")),
+                ),
+                (
+                    "recurrent on mV (opts-driven)",
+                    RECURRENT,
+                    |e| matches!(e, NirError::UnsupportedTopology(m) if m.contains(
+                        "CentiMillivolt"
+                    ) && m.contains("~200 uA dead zone")),
+                ),
+            ];
+            for (label, doc, check) in cases {
+                let opts = if label.starts_with("recurrent") {
+                    NirImportOptions::default() // mV — the rejected request
+                } else {
+                    centi()
+                };
+                let g = NirImport::from_json(doc, opts)
+                    .unwrap_or_else(|e| panic!("{label}: fixture must IMPORT: {e}"));
+                let err = g
+                    .build_network()
+                    .err()
+                    .unwrap_or_else(|| panic!("{label}: expected a named rejection"));
+                assert!(check(&err), "{label}: got {err:?}");
+            }
+        }
+
+        /// Builder-only rejections (unemittable shapes): Output as an
+        /// edge source, a Linear-only cycle, a dead Input, and the D7
+        /// population bound.
+        #[test]
+        #[allow(clippy::too_many_lines)] // four independent scenarios, one table
+        fn named_rejections_builder_only() {
+            // Output as edge source
+            let mut b = NirBuilder::new(NirImportOptions::default());
+            let inp = b.add_input("input", &[1]).unwrap();
+            let lin = b.add_linear("l", &[0.5], 1, 1).unwrap();
+            let lif = b
+                .add_lif_population(
+                    "lif",
+                    &NirLifParams {
+                        tau_s: &[0.02],
+                        r_ohm: &[1e8],
+                        v_leak_v: &[-0.07],
+                        v_threshold_v: &[-0.055],
+                        v_reset_v: Some(&[-0.08]),
+                    },
+                )
+                .unwrap();
+            let out = b.add_output("out", &[1]).unwrap();
+            let out2 = b.add_output("out2", &[1]).unwrap();
+            b.add_edge(inp, lin).unwrap();
+            b.add_edge(lin, lif).unwrap();
+            b.add_edge(lif, out).unwrap();
+            b.add_edge(out2, lif).unwrap();
+            let g = b.build().unwrap();
+            let err = g.build_network().unwrap_err();
+            assert!(matches!(
+                err,
+                NirError::UnsupportedTopology("Output node as edge source")
+            ));
+
+            // Linear-only cycle: no feedforward evaluation order
+            let mut b = NirBuilder::new(NirImportOptions::default());
+            let inp = b.add_input("input", &[1]).unwrap();
+            let lin1 = b.add_linear("l1", &[1.0], 1, 1).unwrap();
+            let lin2 = b.add_linear("l2", &[1.0], 1, 1).unwrap();
+            let lif = b
+                .add_lif_population(
+                    "lif",
+                    &NirLifParams {
+                        tau_s: &[0.02],
+                        r_ohm: &[1e8],
+                        v_leak_v: &[-0.07],
+                        v_threshold_v: &[-0.055],
+                        v_reset_v: Some(&[-0.08]),
+                    },
+                )
+                .unwrap();
+            let out = b.add_output("out", &[1]).unwrap();
+            b.add_edge(inp, lin1).unwrap();
+            b.add_edge(lin1, lin2).unwrap();
+            b.add_edge(lin2, lin1).unwrap();
+            b.add_edge(lin2, lif).unwrap();
+            b.add_edge(lif, out).unwrap();
+            let g = b.build().unwrap();
+            let err = g.build_network().unwrap_err();
+            assert!(matches!(
+                err,
+                NirError::UnsupportedTopology(
+                    "cycle through Linear nodes — no feedforward evaluation order exists"
+                )
+            ));
+
+            // dead Input: no edge leaves it
+            let mut b = NirBuilder::new(NirImportOptions::default());
+            b.add_input("input", &[1]).unwrap();
+            let lif = b
+                .add_lif_population(
+                    "lif",
+                    &NirLifParams {
+                        tau_s: &[0.02],
+                        r_ohm: &[1e8],
+                        v_leak_v: &[-0.07],
+                        v_threshold_v: &[-0.055],
+                        v_reset_v: Some(&[-0.08]),
+                    },
+                )
+                .unwrap();
+            let out = b.add_output("out", &[1]).unwrap();
+            b.add_edge(lif, out).unwrap();
+            let g = b.build().unwrap();
+            let err = g.build_network().unwrap_err();
+            assert!(matches!(
+                err,
+                NirError::UnsupportedTopology(
+                    "no edge leaves an Input node — the reference cannot start type inference"
+                )
+            ));
+
+            // D7: total neurons past u16::MAX is a loud BufferOverflow
+            let pop_len = 33_000usize;
+            let mut b = NirBuilder::new(NirImportOptions::default());
+            let inp = b.add_input("input", &[1]).unwrap();
+            let la = b.add_linear("la", &vec![0.5; pop_len], pop_len, 1).unwrap();
+            let lb = b.add_linear("lb", &vec![0.5; pop_len], pop_len, 1).unwrap();
+            let pop = |b: &mut NirBuilder<'_>, name: &'static str| {
+                b.add_lif_population(
+                    name,
+                    &NirLifParams {
+                        tau_s: &vec![0.02; pop_len],
+                        r_ohm: &vec![1e8; pop_len],
+                        v_leak_v: &vec![-0.07; pop_len],
+                        v_threshold_v: &vec![-0.055; pop_len],
+                        v_reset_v: Some(&vec![-0.08; pop_len]),
+                    },
+                )
+                .unwrap()
+            };
+            let a = pop(&mut b, "a");
+            let c = pop(&mut b, "c");
+            let out = b.add_output("out", &[pop_len as u32]).unwrap();
+            b.add_edge(inp, la).unwrap();
+            b.add_edge(inp, lb).unwrap();
+            b.add_edge(la, a).unwrap();
+            b.add_edge(lb, c).unwrap();
+            b.add_edge(a, out).unwrap();
+            let g = b.build().unwrap();
+            let err = g.build_network().unwrap_err();
+            assert!(
+                matches!(err, NirError::BufferOverflow),
+                "66k neurons must reject loudly, got {err:?}"
+            );
+        }
+
+        /// The plan-gate ruling on undriven populations: an
+        /// Input-unreachable LIF population assembles with a
+        /// STRUCTURAL note naming the node — and pins 0 spikes over
+        /// the drive window (silence documented, never silent).
+        #[test]
+        fn undriven_population_notes_and_stays_silent() {
+            let mut b = NirBuilder::new(NirImportOptions::default());
+            let inp = b.add_input("input", &[1]).unwrap();
+            let lin = b.add_linear("l", &[0.5], 1, 1).unwrap();
+            let lif_a = b
+                .add_lif_population(
+                    "lif_a",
+                    &NirLifParams {
+                        tau_s: &[0.02],
+                        r_ohm: &[1e8],
+                        v_leak_v: &[-0.07],
+                        v_threshold_v: &[-0.055],
+                        v_reset_v: Some(&[-0.08]),
+                    },
+                )
+                .unwrap();
+            let lif_b = b
+                .add_lif_population(
+                    "lif_b",
+                    &NirLifParams {
+                        tau_s: &[0.02],
+                        r_ohm: &[1e8],
+                        v_leak_v: &[-0.07],
+                        v_threshold_v: &[-0.055],
+                        v_reset_v: Some(&[-0.08]),
+                    },
+                )
+                .unwrap();
+            let out1 = b.add_output("out1", &[1]).unwrap();
+            let out2 = b.add_output("out2", &[1]).unwrap();
+            b.add_edge(inp, lin).unwrap();
+            b.add_edge(lin, lif_a).unwrap();
+            b.add_edge(lif_a, out1).unwrap();
+            b.add_edge(lif_b, out2).unwrap();
+            let g = b.build().unwrap();
+            let (mut net, enc, rep) = g.build_network().expect("assembles with the note");
+            assert_eq!(rep.undriven, vec!["lif_b"], "the note names the node");
+            assert_eq!(rep.neurons, 2);
+            let mut counts = [0usize; 2];
+            for _ in 0..100 {
+                for s in net.step(&enc.encode(&[&[3]])).unwrap() {
+                    counts[s.neuron_id as usize] += 1;
+                }
+            }
+            assert!(counts[0] > 0, "the driven population fires");
+            assert_eq!(counts[1], 0, "the undriven population stays silent");
         }
     }
 
@@ -1923,7 +2452,651 @@ mod std_assembly {
             };
             Ok((net, encoder))
         }
+
+        /// Assemble ANY reference-emitted four-kind graph onto a real
+        /// substrate network: every LIF population becomes neurons
+        /// (its own quantized params), every LIF→LIF edge becomes an
+        /// [`EDGE_PULSE_QUANTA`] synapse pair, and the Linear DAG
+        /// becomes quantized encoder stages (D2 fusion at the setup
+        /// seam). Plasticity is frozen; the report records everything
+        /// loud (fusion, undriven structure, multi-Linear gain).
+        ///
+        /// The import options ARE the grid request (one channel, no
+        /// overrides): a graph with any LIF→LIF edge assembles only
+        /// on centi-mV options — mV options reject by name with the
+        /// re-import remedy (D1: a 20 μA pulse is dead 10× over on
+        /// the mV grid). Feed-forward imports (no LIF→LIF edge) keep
+        /// the historical mV default — the frozen chain pins.
+        ///
+        /// # Errors
+        ///
+        /// [`NirError::UnsupportedTopology`] for every named
+        /// structural/kind/grid rejection; [`NirError::EdgeShapeMismatch`]
+        /// per mismatched edge; [`NirError::BufferOverflow`] past the
+        /// u16 neuron-id bound (D7); every
+        /// [`quantize_linear`](super::quantize_linear) hard failure at
+        /// the fusion seam (e.g. a composed-absmax overflow to
+        /// non-finite).
+        ///
+        /// # Panics
+        ///
+        /// Never on a graph produced by [`NirImport::from_json`] or
+        /// [`NirBuilder`] (edge indices are resolved/bounds-checked
+        /// there); a hand-built `NirImport` with dangling edge indices
+        /// panics on the node bounds.
+        pub fn build_network(
+            &self,
+        ) -> Result<
+            (
+                SpikingNeuralNetwork,
+                NirGraphEncoder,
+                NirAssemblyReport<'_>,
+            ),
+            NirError<'_>,
+        > {
+            self.validate_graph()?;
+
+            let inputs: Vec<usize> = self
+                .nodes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| n.kind == NirNodeKind::Input)
+                .map(|(i, _)| i)
+                .collect();
+            let lif_nodes: Vec<usize> = self
+                .nodes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| n.kind == NirNodeKind::Lif)
+                .map(|(i, _)| i)
+                .collect();
+
+            // neuron sheet: population order = node order; global ids
+            // sequential (D7: the u16 id bound is a loud bound)
+            let mut total = 0usize;
+            let mut pop_base: BTreeMap<usize, usize> = BTreeMap::new();
+            for &l in &lif_nodes {
+                pop_base.insert(l, total);
+                total += self.nodes[l].lif.ok_or(NirError::MissingField("lif"))?.len;
+            }
+            if total > u16::MAX as usize {
+                return Err(NirError::BufferOverflow);
+            }
+            let mut neurons: Vec<LIFNeuron> = Vec::with_capacity(total);
+            for &l in &lif_nodes {
+                let pop = self.nodes[l].lif.expect("counted above");
+                for i in 0..pop.len {
+                    let p = self.lifs.get(pop.offset + i).ok_or(NirError::MissingField("lif"))?;
+                    neurons.push(substrate_neuron(neurons.len() as u16, p, self.opts.resolution));
+                }
+            }
+            let mut net =
+                SpikingNeuralNetwork::from_neurons(neurons, self.opts.dt_us)
+                    .map_err(|_| NirError::BufferOverflow)?;
+
+            // LIF->LIF edges -> EDGE_PULSE_QUANTA synapse pairs
+            // (identity element mapping; equal sizes shape-checked)
+            let mut synapses = 0usize;
+            for &(a, b) in &self.edges {
+                let (na, nb) = (&self.nodes[a as usize], &self.nodes[b as usize]);
+                if matches!((na.kind, nb.kind), (NirNodeKind::Lif, NirNodeKind::Lif)) {
+                    let pa = na.lif.expect("checked");
+                    let (ba, bb) = (pop_base[&(a as usize)], pop_base[&(b as usize)]);
+                    for i in 0..pa.len {
+                        net.add_synapse((ba + i) as u16, (bb + i) as u16, EDGE_PULSE_QUANTA)
+                            .map_err(|_| NirError::BufferOverflow)?;
+                        synapses += 1;
+                    }
+                }
+            }
+            net.finalize_synapses();
+            net.set_plasticity_enabled(false); // NIR has no plasticity term
+
+            // encoder stages + fusion records (the Linear DAG, fused)
+            let order = self.linear_order()?;
+            let EncoderPlan {
+                mats,
+                stages,
+                fused,
+                rooted,
+                drive_linears,
+            } = self.build_stages(&inputs, &order, &pop_base)?;
+            let undriven = self.undriven_notes(&inputs, &rooted);
+            let encoder = NirGraphEncoder {
+                total,
+                input_feats: inputs
+                    .iter()
+                    .map(|&i| self.nodes[i].shape.first().copied().unwrap_or(0) as usize)
+                    .collect(),
+                mats,
+                stages,
+            };
+            let report = NirAssemblyReport {
+                neurons: total,
+                synapses,
+                inputs: inputs.len(),
+                drive_linears,
+                stages: encoder.mats.len(),
+                fused,
+                undriven,
+                multi_linear_gain: drive_linears > 1,
+                plasticity_frozen: true,
+            };
+            Ok((net, encoder, report))
+        }
+
+        /// The named rejections, in deterministic order: empty /
+        /// no-Input / no-Output / dead-Input / per-edge kinds /
+        /// no-LIF / per-edge shapes / the mV-on-recurrent grid
+        /// rejection. (Cycles through Linear nodes reject later, in
+        /// [`Self::linear_order`]; D4's cycle boundary resolves here —
+        /// a cycle legal at import is tolerated exactly when the
+        /// graph still has its Input-rooted path and Output leaf,
+        /// which the no-Input/no-Output checks and the reference's
+        /// own constructor boundary mirror.)
+        // the named-rejection ladder is one flat deterministic scan;
+        // the 100-line cap is crossed by the edge tables alone
+        // (nir_import's precedent allow)
+        #[allow(clippy::too_many_lines)]
+        fn validate_graph(&self) -> Result<(), NirError<'_>> {
+            let nodes = &self.nodes;
+            if nodes.is_empty() {
+                return Err(NirError::UnsupportedTopology("empty graph"));
+            }
+            if !nodes.iter().any(|n| n.kind == NirNodeKind::Input) {
+                return Err(NirError::UnsupportedTopology("no Input node"));
+            }
+            if !nodes.iter().any(|n| n.kind == NirNodeKind::Output) {
+                return Err(NirError::UnsupportedTopology("no Output node"));
+            }
+            if !self.edges.iter().any(|&(a, _)| nodes[a as usize].kind == NirNodeKind::Input) {
+                return Err(NirError::UnsupportedTopology(
+                    "no edge leaves an Input node — the reference cannot start type inference",
+                ));
+            }
+            for &(a, b) in &self.edges {
+                let (ka, kb) = (nodes[a as usize].kind, nodes[b as usize].kind);
+                let err = match (ka, kb) {
+                    (NirNodeKind::Input, NirNodeKind::Output) => Some(
+                        NirError::UnsupportedTopology("Input->Output pass-through"),
+                    ),
+                    (NirNodeKind::Input, NirNodeKind::Lif) => Some(NirError::UnsupportedTopology(
+                        "direct drive (Input->LIF) deferred — drive convention not yet named",
+                    )),
+                    (NirNodeKind::Lif, NirNodeKind::Linear) => Some(NirError::UnsupportedTopology(
+                        "readout (LIF->Linear) deferred — spike-count readout convention not yet named",
+                    )),
+                    (NirNodeKind::Lif, NirNodeKind::Lif) if a == b => Some(
+                        NirError::UnsupportedTopology("LIF self-loop — the substrate forbids self-synapse"),
+                    ),
+                    (NirNodeKind::Output, _) => Some(NirError::UnsupportedTopology(
+                        "Output node as edge source",
+                    )),
+                    _ => None,
+                };
+                if let Some(e) = err {
+                    return Err(e);
+                }
+            }
+            if !nodes.iter().any(|n| n.kind == NirNodeKind::Lif) {
+                return Err(NirError::UnsupportedTopology(
+                    "graph without LIF: nothing to fire — encoder-only assembly deferred",
+                ));
+            }
+            for &(a, b) in &self.edges {
+                let (na, nb) = (&nodes[a as usize], &nodes[b as usize]);
+                let ok = match (na.kind, nb.kind) {
+                    (NirNodeKind::Input, NirNodeKind::Linear) => {
+                        na.shape_len == 1
+                            && na.shape[0] as usize == nb.linear.expect("checked").cols
+                    }
+                    (NirNodeKind::Linear, NirNodeKind::Linear) => {
+                        na.linear.expect("checked").rows == nb.linear.expect("checked").cols
+                    }
+                    (NirNodeKind::Linear, NirNodeKind::Lif) => {
+                        na.linear.expect("checked").rows == nb.lif.expect("checked").len
+                    }
+                    (NirNodeKind::Lif, NirNodeKind::Lif) => {
+                        na.lif.expect("checked").len == nb.lif.expect("checked").len
+                    }
+                    (NirNodeKind::Lif, NirNodeKind::Output) => {
+                        nb.shape_len == 1
+                            && nb.shape[0] as usize == na.lif.expect("checked").len
+                    }
+                    (NirNodeKind::Linear, NirNodeKind::Output) => {
+                        nb.shape_len == 1
+                            && nb.shape[0] as usize == na.linear.expect("checked").rows
+                    }
+                    _ => true, // rejected above
+                };
+                if !ok {
+                    return Err(NirError::EdgeShapeMismatch {
+                        src: na.name,
+                        dst: nb.name,
+                    });
+                }
+            }
+            let recurrent = self
+                .edges
+                .iter()
+                .any(|&(a, b)| matches!((nodes[a as usize].kind, nodes[b as usize].kind), (NirNodeKind::Lif, NirNodeKind::Lif)));
+            if recurrent && self.opts.resolution == VoltageResolution::Millivolt {
+                return Err(NirError::UnsupportedTopology(RECURRENT_MV_REMEDY));
+            }
+            Ok(())
+        }
+
+        /// Topological order of the Linear nodes over Linear→Linear
+        /// edges (iterative DFS — a hostile 10k-deep chain must not
+        /// overflow the stack). A cycle is a named rejection: no
+        /// feedforward evaluation order exists.
+        fn linear_order(&self) -> Result<Vec<usize>, NirError<'_>> {
+            let n = self.nodes.len();
+            // Linear-child adjacency (index -> Linear children)
+            let mut children: Vec<Vec<usize>> = vec![Vec::new(); n];
+            for &(a, b) in &self.edges {
+                if self.nodes[a as usize].kind == NirNodeKind::Linear
+                    && self.nodes[b as usize].kind == NirNodeKind::Linear
+                {
+                    children[a as usize].push(b as usize);
+                }
+            }
+            let mut state = vec![0u8; n]; // 0 new, 1 open, 2 done
+            let mut order = Vec::new();
+            for root in 0..n {
+                if self.nodes[root].kind != NirNodeKind::Linear || state[root] != 0 {
+                    continue;
+                }
+                state[root] = 1;
+                let mut stack = vec![(root, 0usize)];
+                while let Some(&mut (v, ref mut probe)) = stack.last_mut() {
+                    let mut descended = false;
+                    while *probe < children[v].len() {
+                        let w = children[v][*probe];
+                        *probe += 1;
+                        match state[w] {
+                            1 => {
+                                return Err(NirError::UnsupportedTopology(
+                                    "cycle through Linear nodes — no feedforward evaluation order exists",
+                                ));
+                            }
+                            0 => {
+                                state[w] = 1;
+                                stack.push((w, 0));
+                                descended = true;
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                    if !descended {
+                        state[v] = 2;
+                        order.push(v);
+                        stack.pop();
+                    }
+                }
+            }
+            order.reverse(); // DFS post-order is children-first
+            Ok(order)
+        }
+
+        /// Symbolically evaluate the Linear DAG (topological fold) and
+        /// quantize one matrix per (drive Linear, root Input) stage.
+        /// `G(L)[r]` is the transform arriving at `L`'s INPUT from
+        /// root `r` — identity from an Input parent, `W_p·G(p)[r]`
+        /// through a Linear parent (multi-parent sums are the linear
+        /// DAG's native semantics) — so the stage matrix is `W_L·G`.
+        /// D2 fusion records every stage composed from ≥2 matrices,
+        /// with each component tensor's scale.
+        // the symbolic DAG fold is one coherent unit; splitting the G
+        // accumulation from stage quantization would spread the
+        // borrowed-g map across two functions (nir_import precedent)
+        #[allow(clippy::too_many_lines)]
+        fn build_stages(
+            &self,
+            inputs: &[usize],
+            order: &[usize],
+            pop_base: &BTreeMap<usize, usize>,
+        ) -> Result<EncoderPlan<'_>, NirError<'_>> {
+            let n_nodes = self.nodes.len();
+            let mut incoming: Vec<Vec<usize>> = vec![Vec::new(); n_nodes];
+            let mut lif_children: Vec<Vec<usize>> = vec![Vec::new(); n_nodes];
+            for &(src, dst) in &self.edges {
+                incoming[dst as usize].push(src as usize);
+                if self.nodes[src as usize].kind == NirNodeKind::Linear
+                    && self.nodes[dst as usize].kind == NirNodeKind::Lif
+                {
+                    lif_children[src as usize].push(dst as usize);
+                }
+            }
+            // G: Linear -> (root -> (cols x feat matrix, contributors))
+            let mut g: BTreeMap<usize, GMap> = BTreeMap::new();
+            for &l in order {
+                let cols = self.nodes[l].linear.expect("checked").cols;
+                let mut acc: GMap = BTreeMap::new();
+                for &p in &incoming[l] {
+                    match self.nodes[p].kind {
+                        NirNodeKind::Input => {
+                            let n_feat = self.nodes[p].shape[0] as usize; // == cols (checked)
+                            let entry_val = acc
+                                .entry(p)
+                                .or_insert_with(|| (mat_zero(cols, n_feat), Vec::new()));
+                            for i in 0..cols {
+                                entry_val.0[i][i] += 1.0;
+                            }
+                        }
+                        NirNodeKind::Linear => {
+                            let lin_p = self.nodes[p].linear.expect("checked");
+                            let w = &self.weights[lin_p.weight_offset
+                                ..lin_p.weight_offset + lin_p.rows * lin_p.cols];
+                            for (root, (m, contrib)) in &g[&p] {
+                                let n_feat = m[0].len();
+                                let entry_val = acc
+                                    .entry(*root)
+                                    .or_insert_with(|| (mat_zero(cols, n_feat), Vec::new()));
+                                for row in 0..cols {
+                                    for col in 0..lin_p.cols {
+                                        // dequantized source value (q·scale) —
+                                        // the product composes the tensors the
+                                        // export renders, D2's f64 seam. NOTE:
+                                        // stride and bound are the PARENT's
+                                        // cols (row-major arena layout).
+                                        let wv =
+                                            f64::from(w[row * lin_p.cols + col]) * lin_p.scale;
+                                        if wv != 0.0 {
+                                            for (cell, &src) in
+                                                entry_val.0[row].iter_mut().zip(&m[col])
+                                            {
+                                                *cell += wv * src;
+                                            }
+                                        }
+                                    }
+                                }
+                                for &ci in contrib.iter().chain(core::iter::once(&p)) {
+                                    if !entry_val.1.contains(&ci) {
+                                        entry_val.1.push(ci);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {} // LIF parents are named-rejected already
+                    }
+                }
+                g.insert(l, acc);
+            }
+
+            let mut mats: Vec<QuantMat> = Vec::new();
+            let mut stages: Vec<DriveStage> = Vec::new();
+            let mut fused: Vec<LinearFusedRecord<'_>> = Vec::new();
+            let mut rooted: BTreeSet<usize> = BTreeSet::new();
+            for &lin_idx in order {
+                if g[&lin_idx].is_empty() {
+                    continue; // no root path — never invoked (noted)
+                }
+                rooted.insert(lin_idx); // has an Input-rooted path, whatever it feeds
+                if lif_children[lin_idx].is_empty() {
+                    continue; // feeds no LIF — stages come from its consumers
+                }
+                let lin_l = self.nodes[lin_idx].linear.expect("checked");
+                let rows = lin_l.rows;
+                let w = &self.weights
+                    [lin_l.weight_offset..lin_l.weight_offset + rows * lin_l.cols];
+                for (root, (m, contrib)) in &g[&lin_idx] {
+                    let f = m[0].len();
+                    // stage matrix: W_L · G  (rows x f, row-major)
+                    let mut flat = vec![0f64; rows * f];
+                    for r in 0..rows {
+                        for k in 0..f {
+                            let mut s = 0.0f64;
+                            for c in 0..lin_l.cols {
+                                s += f64::from(w[r * lin_l.cols + c]) * lin_l.scale * m[c][k];
+                            }
+                            flat[r * f + k] = s;
+                        }
+                    }
+                    let mut q = vec![0i16; rows * f];
+                    super::quantize_linear(&flat, rows, f, &mut q, 0)?;
+                    let mat = mats.len();
+                    mats.push(QuantMat { q, rows, cols: f });
+                    let root_ord = inputs.iter().position(|&i| i == *root).expect("root is an Input");
+                    for &pop in &lif_children[lin_idx] {
+                        stages.push(DriveStage {
+                            pop_base: pop_base[&pop],
+                            root: root_ord,
+                            mat,
+                        });
+                    }
+                    if !contrib.is_empty() {
+                        let mut chain: Vec<&str> =
+                            contrib.iter().map(|&i| self.nodes[i].name).collect();
+                        chain.push(self.nodes[lin_idx].name);
+                        let mut scales: Vec<f64> = contrib
+                            .iter()
+                            .map(|&i| self.nodes[i].linear.expect("checked").scale)
+                            .collect();
+                        scales.push(lin_l.scale);
+                        fused.push(LinearFusedRecord { chain, scales });
+                    }
+                }
+            }
+            let drive_linears = (0..n_nodes)
+                .filter(|&i| {
+                    self.nodes[i].kind == NirNodeKind::Linear && !lif_children[i].is_empty()
+                })
+                .count();
+            Ok(EncoderPlan {
+                mats,
+                stages,
+                fused,
+                rooted,
+                drive_linears,
+            })
+        }
+
+        /// `UndrivenPopulation` notes (structural, name-carrying): LIF
+        /// populations with no Input-rooted path (permanently silent)
+        /// and Linear nodes never invoked as encoders (no root path or
+        /// no path to any LIF). The reference tolerates AND auto-wires
+        /// such components at emission; we do not invent structure at
+        /// import — silence is documented, never silent.
+        fn undriven_notes(&self, inputs: &[usize], rooted: &BTreeSet<usize>) -> Vec<&'_ str> {
+            let n = self.nodes.len();
+            // forward closure from the Inputs, over all edges
+            let mut reached = vec![false; n];
+            let mut work: Vec<usize> = inputs.to_vec();
+            for &i in &work {
+                reached[i] = true;
+            }
+            while let Some(v) = work.pop() {
+                for &(a, b) in &self.edges {
+                    if a as usize == v && !reached[b as usize] {
+                        reached[b as usize] = true;
+                        work.push(b as usize);
+                    }
+                }
+            }
+            // backward closure from the LIF nodes (can reach a LIF)
+            let mut can_spike_feed = vec![false; n];
+            let mut work: Vec<usize> = (0..n)
+                .filter(|&i| self.nodes[i].kind == NirNodeKind::Lif)
+                .collect();
+            for &i in &work {
+                can_spike_feed[i] = true;
+            }
+            while let Some(v) = work.pop() {
+                for &(a, b) in &self.edges {
+                    if b as usize == v && !can_spike_feed[a as usize] {
+                        can_spike_feed[a as usize] = true;
+                        work.push(a as usize);
+                    }
+                }
+            }
+            (0..n)
+                .filter(|&i| match self.nodes[i].kind {
+                    NirNodeKind::Lif => !reached[i],
+                    NirNodeKind::Linear => !(rooted.contains(&i) && can_spike_feed[i]),
+                    _ => false,
+                })
+                .map(|i| self.nodes[i].name)
+                .collect()
+        }
     }
+
+    /// One quantized encoder matrix (row-major `q`, the stage's
+    /// `rows × cols` product quantized once via
+    /// [`quantize_linear`](super::quantize_linear)).
+    #[derive(Debug)]
+    struct QuantMat {
+        q: Vec<i16>,
+        rows: usize,
+        cols: usize,
+    }
+
+    /// What [`NirImport::build_network`] derives from the Linear DAG:
+    /// quantized stage matrices, stage wiring, fusion records, the
+    /// Input-rooted Linear set (for undriven notes), and the D6
+    /// drive-Linear count.
+    struct EncoderPlan<'a> {
+        mats: Vec<QuantMat>,
+        stages: Vec<DriveStage>,
+        fused: Vec<LinearFusedRecord<'a>>,
+        rooted: BTreeSet<usize>,
+        drive_linears: usize,
+    }
+
+    /// A drive stage: matrix `mat` drives the population at neuron
+    /// offset `pop_base` from root-Input ordinal `root`.
+    #[derive(Debug)]
+    struct DriveStage {
+        pop_base: usize,
+        root: usize,
+        mat: usize,
+    }
+
+    /// The Linear half of a general graph: root-Input feature
+    /// currents (μA) → the global per-step current vector (μA, one
+    /// entry per neuron). One quantized matrix per (drive Linear,
+    /// root) pair — fused chains arrive as a single composed matrix
+    /// (D2: no hop-by-hop i16 encode-composition) — with the
+    /// substrate's `/100` encoder gain and i64 row accumulation
+    /// (`ChainEncoder` semantics per stage), merged saturating-i16
+    /// across stages (D5's mechanical merge).
+    #[derive(Debug)]
+    pub struct NirGraphEncoder {
+        total: usize,
+        input_feats: Vec<usize>,
+        mats: Vec<QuantMat>,
+        stages: Vec<DriveStage>,
+    }
+
+    impl NirGraphEncoder {
+        /// Number of Input nodes the encoder reads (the `encode`
+        /// slice order — Input node order).
+        #[must_use]
+        pub fn input_count(&self) -> usize {
+            self.input_feats.len()
+        }
+
+        /// Feature count of Input `i` (the slice length `encode` reads).
+        #[must_use]
+        pub fn input_features(&self, i: usize) -> usize {
+            self.input_feats.get(i).copied().unwrap_or(0)
+        }
+
+        /// Encode per-Input feature currents into the global per-step
+        /// current vector. Missing Inputs / missing feature entries
+        /// read as 0 (the `ChainEncoder`'s graceful-zeros convention).
+        #[must_use]
+        pub fn encode(&self, per_input: &[&[i16]]) -> Vec<i16> {
+            let mut out = vec![0i16; self.total];
+            for st in &self.stages {
+                let m = &self.mats[st.mat];
+                let x = per_input.get(st.root).copied().unwrap_or(&[]);
+                for r in 0..m.rows {
+                    let mut acc: i64 = 0;
+                    for c in 0..m.cols {
+                        acc += i64::from(m.q[r * m.cols + c])
+                            * i64::from(x.get(c).copied().unwrap_or(0));
+                    }
+                    acc /= 100;
+                    let v = acc.clamp(i64::from(i16::MIN), i64::from(i16::MAX)) as i16;
+                    out[st.pop_base + r] = out[st.pop_base + r].saturating_add(v);
+                }
+            }
+            out
+        }
+    }
+
+    /// A fused encoder stage (D2): the composed Linear chain
+    /// (root-first, target last) with each component tensor's
+    /// quantization scale.
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct LinearFusedRecord<'a> {
+        pub chain: Vec<&'a str>,
+        pub scales: Vec<f64>,
+    }
+
+    /// The loud assembly report.
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct NirAssemblyReport<'a> {
+        /// Total neurons (all populations).
+        pub neurons: usize,
+        /// LIF→LIF synapse pairs at [`EDGE_PULSE_QUANTA`].
+        pub synapses: usize,
+        /// Input nodes (encoder entry points).
+        pub inputs: usize,
+        /// Linear nodes directly feeding a LIF stage (D6's note fires
+        /// when > 1: each tensor's absmax scale absorbs its branch's
+        /// true gain — the dequantizing global-scale encode is a
+        /// named follow-up, NOT this surface).
+        pub drive_linears: usize,
+        /// Quantized (drive Linear × root) encoder matrices.
+        pub stages: usize,
+        /// D2 fusion records (stages composed from ≥2 tensors).
+        pub fused: Vec<LinearFusedRecord<'a>>,
+        /// `UndrivenPopulation` notes, node order (permanently-silent
+        /// LIF populations; never-invoked Linear encoders).
+        pub undriven: Vec<&'a str>,
+        /// The D6 graph-level gain note: `drive_linears > 1`.
+        pub multi_linear_gain: bool,
+        /// Plasticity frozen at assembly (NIR has no plasticity term).
+        pub plasticity_frozen: bool,
+    }
+
+    /// The named mV-on-recurrent rejection, remedy verbatim and
+    /// copy-pasteable (D1 + the plan-gate ruling).
+    const RECURRENT_MV_REMEDY: &str = "recurrent graph on mV: pulses fall in the ~200 uA dead \
+     zone — re-import with NirImportOptions { resolution: \
+     VoltageResolution::CentiMillivolt, ..NirImportOptions::default() }";
+
+    /// The assembly's neuron mapping (`build_chain_network`'s, shared):
+    /// per-neuron quantized params onto an Excitatory substrate
+    /// neuron, deterministic (noise 0), minimum refractory.
+    fn substrate_neuron(id: u16, p: &NirLif, res: VoltageResolution) -> LIFNeuron {
+        let mut n = LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, res);
+        n.resting_potential = p.leak_q;
+        n.membrane_potential = p.leak_q;
+        n.threshold = p.threshold_q;
+        n.reset_potential = p.reset_q;
+        n.tau_membrane_us = p.tau_us;
+        n.tau_refractory_us = 1_000; // NIR LIF has no refractory → minimum
+        n.resistance_mohm = p.resistance_mohm;
+        n.capacitance_pf = p.capacitance_pf;
+        n.noise_amplitude_ua = 0; // import is deterministic
+        n
+    }
+
+    fn mat_zero(r: usize, c: usize) -> Vec<Vec<f64>> {
+        vec![vec![0.0; c]; r]
+    }
+
+    /// The value arriving at a Linear's input from one root Input:
+    /// the composed matrix (cols × feat) + the contributing Linear
+    /// node indices (topological order, deduplicated).
+    type GVal = (Vec<Vec<f64>>, Vec<usize>);
+
+    /// `G(L)`: root-Input index → arriving value.
+    type GMap = BTreeMap<usize, GVal>;
 
     /// The Linear half of the chain: feature currents (μA) →
     /// per-neuron currents (μA), saturating i16 — `y = W·x` in
@@ -2180,7 +3353,10 @@ mod std_assembly {
 }
 
 #[cfg(feature = "std")]
-pub use std_assembly::{ChainEncoder, NirBuilder, NirImport, EDGE_PULSE_QUANTA};
+pub use std_assembly::{
+    ChainEncoder, LinearFusedRecord, NirAssemblyReport, NirBuilder, NirGraphEncoder, NirImport,
+    EDGE_PULSE_QUANTA,
+};
 
 #[cfg(test)]
 #[allow(clippy::float_cmp)]

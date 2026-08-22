@@ -322,10 +322,13 @@ emit_graph(
 )
 
 # merge: 2 Inputs -> 2 Linears -> ONE LIF population -> 1 Output.
-# Weights 0.25 => q=8192 => x=100 feature current encodes to 81 uA:
-# one branch alone stalls below threshold climb (V_ss-rest = 810
-# centi-quanta < the 1500 gap), the summed fan-in (162 uA, V_ss-rest
-# 1620 >= 1520 climb bound) fires — the gate's sum-fires pin.
+# D6-aware drive math (absmax renormalization!): tensor absmax 1.0
+# pins row 0's 0.25 entry to q=8192, so feature x=1 encodes to 81 uA
+# per branch — V_ss-rest = 810 centi-quanta stalls below the 1500
+# threshold gap, while the summed fan-in (162 uA, V_ss-rest 1620)
+# crosses: single stalls, merge fires. Row 1 (weight 1.0, q=32767)
+# is the always-hot control; the gate drives x=[1,0].
+MERGE_W = np.array([[0.25, 0.0], [0.0, 1.0]])
 MERGE_LIF = dict(
     tau=np.array([0.02, 0.02]),
     r=np.array([1e8, 1e8]),
@@ -338,8 +341,8 @@ emit_graph(
     {
         "in1": nir.Input(input_type=np.array([2])),
         "in2": nir.Input(input_type=np.array([2])),
-        "la": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
-        "lb": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
+        "la": nir.Linear(weight=MERGE_W),
+        "lb": nir.Linear(weight=MERGE_W),
         "lif": nir.LIF(**MERGE_LIF),
         "out": nir.Output(output_type=np.array([2])),
     },
@@ -383,8 +386,8 @@ dump_h5("merge.nir", nir.NIRGraph(
     nodes={
         "in1": nir.Input(input_type=np.array([2])),
         "in2": nir.Input(input_type=np.array([2])),
-        "la": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
-        "lb": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
+        "la": nir.Linear(weight=MERGE_W),
+        "lb": nir.Linear(weight=MERGE_W),
         "lif": nir.LIF(**MERGE_LIF),
         "out": nir.Output(output_type=np.array([2])),
     },
@@ -394,8 +397,8 @@ dump_h5("merge_uncompressed.nir", nir.NIRGraph(
     nodes={
         "in1": nir.Input(input_type=np.array([2])),
         "in2": nir.Input(input_type=np.array([2])),
-        "la": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
-        "lb": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
+        "la": nir.Linear(weight=MERGE_W),
+        "lb": nir.Linear(weight=MERGE_W),
         "lif": nir.LIF(**MERGE_LIF),
         "out": nir.Output(output_type=np.array([2])),
     },
@@ -437,28 +440,34 @@ emit_graph(
     [("input", "linear"), ("linear", "output")],
 )
 # Input -> LIF -> Linear -> Output: the readout edge (LIF -> Linear).
+# The LIF is fed by its OWN Linear so the readout edge is the FIRST
+# rejectable kind pair in edge order (a direct Input->LIF feeder
+# would shadow it — edge-kind scan order is deterministic).
 emit_graph(
     "neg_asm_lif_to_linear.json",
     {"input": nir.Input(input_type=np.array([1])),
+     "l1": nir.Linear(weight=np.array([[0.5]])),
      "lif": nir.LIF(tau=np.array([0.02]), r=np.array([1e8]),
                     v_leak=np.array([-0.07]), v_threshold=np.array([-0.055]),
                     v_reset=np.array([-0.08])),
-     "linear": nir.Linear(weight=np.array([[0.5]])),
+     "l2": nir.Linear(weight=np.array([[0.5]])),
      "output": nir.Output(output_type=np.array([1]))},
-    [("input", "lif"), ("lif", "linear"), ("linear", "output")],
-    [("input", "lif"), ("lif", "linear"), ("linear", "output")],
+    [("input", "l1"), ("l1", "lif"), ("lif", "l2"), ("l2", "output")],
+    [("input", "l1"), ("l1", "lif"), ("lif", "l2"), ("l2", "output")],
 )
 # LIF self-loop: legal NIR (types trivially match), forbidden by the
-# substrate (no self-synapse).
+# substrate (no self-synapse). Fed by its own Linear so the self-loop
+# is the first rejectable kind pair in edge order.
 emit_graph(
     "neg_asm_self_loop.json",
     {"input": nir.Input(input_type=np.array([1])),
+     "l1": nir.Linear(weight=np.array([[0.5]])),
      "lif": nir.LIF(tau=np.array([0.02]), r=np.array([1e8]),
                     v_leak=np.array([-0.07]), v_threshold=np.array([-0.055]),
                     v_reset=np.array([-0.08])),
      "output": nir.Output(output_type=np.array([1]))},
-    [("input", "lif"), ("lif", "lif"), ("lif", "output")],
-    [("input", "lif"), ("lif", "lif"), ("lif", "output")],
+    [("input", "l1"), ("l1", "lif"), ("lif", "lif"), ("lif", "output")],
+    [("input", "l1"), ("l1", "lif"), ("lif", "lif"), ("lif", "output")],
 )
 # empty graph: zero nodes, zero edges (infer_types returns early).
 emit_graph("neg_asm_empty.json", {}, [], [])
