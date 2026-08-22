@@ -3,7 +3,7 @@
 
 Everything up to here drove the substrate with synthetic schedules. The
 question this section answers is whether the substrate still
-\emph{reads} --- and adapts under --- the shipped model's own activity:
+\emph{tracks} --- and adapts under --- the shipped model's own activity:
 the drive is $\mathrm{attn\_norm}(\mathrm{embedding})$ of a
 sha-pinned corpus slice, captured from the model's own forward pass
 (RMS-norm applied to the captured embeddings; no new dependencies).%
@@ -25,7 +25,7 @@ set so corpus-wide RMS current lands mid-band
 $N$-steps-per-token mapping, which would manufacture sustained
 same-step LTD --- the very mechanism the dead-wire era had run on only
 as an artifact (Sec.~\ref{sec:substrate}). The grid is CENTI: the
-arrangement-reading result's only lineage is on that grid, and a
+arrangement-tracking result's only lineage is on that grid, and a
 verbatim re-import on the mV build would absorb single weight pulses in
 the dead zone and fail spuriously.
 
@@ -63,9 +63,9 @@ H2 (single pass) & 41{,}555 & 30{,}724 & 1.35$\times$ & 1{,}309 vs 950 \\
 \end{tabular}
 \end{table}
 
-\paragraph{Tier 1: the substrate reads arrangement under the model's
+\paragraph{Tier 1: the substrate tracks arrangement under the model's
 own drive.}
-Table~\ref{tab:t1gates} gives the gate results. G0 --- firing reads
+Table~\ref{tab:t1gates} gives the gate results. G0 --- firing tracks
 model arrangement over census --- passes in both runs, with the
 metric battery (pairwise train Hammings, per-neuron rate-L1,
 per-population Hz) agreeing throughout; the wire-liveness tripwire

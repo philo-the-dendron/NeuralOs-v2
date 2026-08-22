@@ -8,10 +8,11 @@ artifacts) whose ternary format bridge round-trips BitNet
 \texttt{i2\_s} bit-exactly and a real 4B Q2\_0 LLM's tensor
 two-way. Driven by the model's own activations (a sign-dominant drive
 at this calibration --- 69.5\% of dim-steps railed at the clamp;
-stated in-text), the substrate's firing reads the model's weight
-arrangement over census (Hamming gap 1.35--1.36$\times$ under the
-in-vivo drive, 1.63$\times$ synthetic; one slice, one model, one
-seed), and local plasticity rewrites a declared $0.5\%$-of-one-layer
+stated in-text), the substrate's firing \emph{tracks} the model's
+weight arrangement over census (Hamming gap 1.35--1.36$\times$ under
+the in-vivo drive, 1.63$\times$ synthetic; one slice, one model, one
+seed --- a sensitivity result at $n{=}1$, not a population claim),
+and local plasticity rewrites a declared $0.5\%$-of-one-layer
 chunk of the shipped file, byte-audited and deterministic, which a
 pinned foreign runtime (a llama.cpp fork) then executes; a
 byte-identical control export rules out file-surgery artifacts.
@@ -26,7 +27,7 @@ the pre-registered null ladder --- committed before its authors could
 see the null tables --- killed the authors' own earlier capability
 reading before it could be published. The findings that stand are
 infrastructure and method: the closed loop itself, the
-arrangement-reading sensitivity, the falsification-driven discovery
+arrangement-tracking sensitivity, the falsification-driven discovery
 of a structural transmission bug and its mechanism reversal, a
 counted clamp-rectified plasticity decomposition, a
 composition-specific null-feasibility theorem proving content and

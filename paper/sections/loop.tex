@@ -58,9 +58,10 @@ baseline --- at a footprint of $0.5\%$ of one layer across 36
 measured layers. The Hebbian-era export (post transmission-fix,
 Sec.~\ref{sec:substrate}) shifted logits on 60/60 steps again (max
 $|\Delta|$ 0.42, mean 0.057--0.151), 0/60 flips. That is the loop's
-standing sensitivity result at synthetic footprints: the foreign
-runtime \emph{always} feels the substrate's write --- every judged
-export moved logits on 60/60 steps --- while greedy continuations do
+standing sensitivity result at synthetic footprints: every judged
+export in the record moved logits on 60/60 steps --- the foreign
+runtime registers the substrate's write at every step --- while
+greedy continuations do
 not change. The in-vivo writes (Sec.~\ref{sec:invivo}) break that
 second half on 2 of 5 prompts; whether those changes carry adaptation
 \emph{content} is precisely what Sec.~\ref{sec:adjudication}
