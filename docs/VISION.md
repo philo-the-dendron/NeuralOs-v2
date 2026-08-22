@@ -71,8 +71,9 @@ import/export (JSON container; HDF5 `.nir` IO via `neuralos-rt`).
 **Near-term — the starved original list, first-class again:** NIR
 import/export (interop with snnTorch/SpikingJelly — the #1 ecosystem
 recommendation), SIMD follow-up/hardening, lock-free + SIMD ports from
-the v0.1 archive, more property tests. The `no_std` claim gets its QEMU
-`riscv64gc` proof.
+the v0.1 archive, more property tests. The `no_std` claim **has** its
+QEMU `riscv64gc` proof (2026-08-21, both postures: bare-metal gate +
+full test suite under linux-user; `evidence/qemu-riscv-gate/`).
 
 ### 2. The ternary bridge — CLOSED (research record, honestly labeled)
 
@@ -111,8 +112,8 @@ roadmap).
 
 1. **Feed the spine:** NIR import/export, SIMD hardening, lock-free
    ports — the original Phase-1 list.
-2. **QEMU `riscv64gc` proof** of the `no_std` claim; ESP32-C3 when
-   budget allows.
+2. **QEMU `riscv64gc` proof of the `no_std` claim — DONE 2026-08-21**
+   (`evidence/qemu-riscv-gate/`); ESP32-C3 when budget allows.
 3. **Position publicly as Lava's spiritual successor**; cite the
    Neuromorphic-OS paper (arXiv:2603.26722), the Full-Integer-SNN
    paper (Deshpande et al., DCIS 2025), and NIR (Pedersen et al.,

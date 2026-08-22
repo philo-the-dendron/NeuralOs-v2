@@ -3784,3 +3784,68 @@ re-pin, docs truth. No new direction opened.
 - **Docs truth**: VISION claims all-sourced (see R17 Group C);
   paper carries its first \citep (DCIS 2025); READMEs/AGENTS at
   alpha.4 with measured counts. Remaining-unverified list: EMPTY.
+
+## Close-out (QEMU proof session — the no_std claim, on target, 2026-08-21)
+
+The VISION claim "runs on RISC-V edge silicon" proved on `riscv64gc`
+under QEMU, both postures. Evidence: `evidence/qemu-riscv-gate/`
+(README with corrected pre-flight + copy-pasteable rebuilds).
+
+- **Pre-flight corrected (arrival checks supersede the brief)**: the
+  commission's "NOTHING is installed" was stale — qemu-user-static +
+  qemu-system-misc 8.2.2 were installed with binfmt `qemu-riscv64`
+  registered (dpkg + binfmt_misc proof banked in the README). The
+  sudo apt line was skipped per ruling; only `rustup target add`
+  ran (userland).
+- **Commissioning error caught at execution**: linux-gnu + rust-lld +
+  static + no-toolchain is contradictory (rustup ships no riscv64
+  glibc sysroot — link fails on crt1.o/libc). Ruled: musl swap
+  (`riscv64gc-unknown-linux-musl`, `-C link-self-contained=yes -C
+  target-feature=+crt-static`, rust-lld, zero system deps). Triple
+  recorded honestly everywhere; claim language stays "riscv64gc
+  under QEMU".
+- **Leg A (bare-metal none-elf): PASS** — new standalone crate
+  `proofs/qemu-riscv-leg-a/` (own `[workspace]` table; repo workspace
+  untouched by construction — exclusion gate `cargo check --workspace
+  --all-targets` green from root, proof crate never compiled).
+  QEMU virt, `-bios none`, entry 0x8000_0000, no allocator, UART log,
+  sifive_test poweroff. **175/175 cited exact-value checks** — each
+  names its source unit test, values mirrored verbatim from
+  lif/synapse/bridge/trit/kernel/nir-quantizers (incl. the REAL Bonsai
+  Q2_0 first block: census +37/0×43/−48 + decode→encode byte identity,
+  on target). Neuron-level spike raster (same 300 µA drive: mV silent,
+  centi fires). exit 0. FAIL direction probed (exit 1, got/want
+  printed) then restored — the gate bites. Wall clock ~1 s.
+  - Harness gotchas found live (recorded for the next bare-metal
+    session): sifive_test is at **0x0010_0000** not 0x0100_0000
+    (one hex digit — writes vanish into unmapped space); mstatus.FS
+    must be set before any f64 (nir quantizers) or FP traps.
+- **Leg B (linux-user, the wire crosses): PASS, FULL SUITE — not a
+  subset** — `cargo test -p neuralos-snn --target
+  riscv64gc-unknown-linux-musl` via binfmt (qemu-riscv64-static 8.2.2
+  underneath): **187 unit + 8 integration = 195/195**, matching the
+  host count exactly; cargo exit 0; wall clock ~14 s (12.3 s unit
+  harness). Doctests: crate has 0 (reported clean). Threads under
+  qemu-user+musl behaved; `--test-threads=1` not needed.
+  - Named border-crossers, all `ok` in `leg-b.log`: the transmission
+    trio (`transmission_is_live_one_step_delayed_centimv` /
+    `..._mv_strong_weight` / `transmission_pulses_sum_across_presynaptic_spikes`),
+    both Leg-C pins (`plasticity_off_freezes_weights_under_adapting_drive`,
+    `adaptation_decay_runs_before_integration_exact`), the F1/R4(ii)
+    divisor pins, and the CSR pins (CSR is std-gated — crossed in Leg B,
+    not Leg A; the brief's Leg A list is corrected by the cfg gates).
+- **Zero cited-value divergence host-vs-riscv64**: every mirrored
+  number reproduced exactly. (One FAIL during bring-up was a harness
+  bug — `ck_f64_eps` with eps=0.0 is tautologically false — fixed in
+  the harness, never by touching the library or a cited value.)
+- **Battery on host unchanged after both legs**: workspace tests
+  294/0, clippy `-D warnings` clean, `cargo build --no-default-features
+  -p neuralos-snn` green; `git status` scope = `proofs/` +
+  `evidence/qemu-riscv-gate/` + evidence INDEX + ISA/AGENTS/ROADMAP/
+  VISION only — **zero edits under crates/**.
+- **Records**: INDEX row added; AGENTS workspace table names `proofs/`;
+  ROADMAP Phase 4 items 1–3 ticked (silicon remains, budget-gated);
+  VISION tense struck gets→has (full-suite shape earned the clean
+  form). **Parked follow-up (named, unstarted)**: QEMU riscv64 CI leg
+  — runner cost under TCG unmeasured; ci.yml untouched this session
+  by commission.

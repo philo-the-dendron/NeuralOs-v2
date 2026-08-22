@@ -1,0 +1,192 @@
+# neuralos-snn Leg A — QEMU riscv64gc bare-metal gate
+# date: 2026-08-22T02:32:16Z
+# commit: af40cce1dda50a7169f3417bad2f016836677224
+# build: cargo build (debug, panic=abort, default linker = self-contained rust-lld, link.x)
+# run:   timeout 120 qemu-system-riscv64 -machine virt -nographic -bios none -kernel target/riscv64gc-unknown-none-elf/debug/qemu-riscv-leg-a
+# gate:  QEMU exit code = 0 PASS / 1 FAIL (sifive_test @ 0x0010_0000; PASS=0x5555, FAIL=0x13333)
+neuralos-snn Leg A: bare-metal riscv64gc-unknown-none-elf, QEMU virt, no allocator
+cited asserts: values mirrored from crates/neuralos-snn unit tests
+ok [  1] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step1=-67
+ok [  2] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step1=-67
+ok [  3] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step2=-65
+ok [  4] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step2=-65
+ok [  5] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step3=-63
+ok [  6] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step3=-63
+ok [  7] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step4=-61
+ok [  8] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step4=-61
+ok [  9] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step5=-59
+ok [ 10] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step5=-59
+ok [ 11] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step6=-57
+ok [ 12] lif::millivolt_trace_is_pinned_to_the_historical_arithmetic step6=-57
+ok [ 13] lif::millivolt_trace step7 spikes 
+ok [ 14] lif::millivolt_trace step7 reset 
+ok [ 15] lif::the_dead_zone_12ua_pair mV 
+ok [ 16] lif::the_dead_zone_12ua_pair centi 
+ok [ 17] lif::leak_convergence from below 
+ok [ 18] lif::leak_convergence from above 
+ok [ 19] lif::leak_convergence stays at rest 
+ok [ 20] lif::adaptation_decay 3->2 
+ok [ 21] lif::adaptation_decay 2->1 
+ok [ 22] lif::adaptation_decay 1->0 
+ok [ 23] lif::adaptation_decay floor 0 
+ok [ 24] lif::spike_adds_two_quanta spiked 
+ok [ 25] lif::spike_adds_two_quanta +2 
+ok [ 26] lif::centi_mode membrane 
+ok [ 27] lif::centi_mode resting 
+ok [ 28] lif::centi_mode threshold 
+ok [ 29] lif::centi_mode reset 
+ok [ 30] lif::centi_mode clamp at scaled floor 
+ok [ 31] lif::rectification sticks at -59 
+ok [ 32] lif::rectification stays stuck 
+ok [ 33] lif::rectification +12ua ratchets 
+ok [ 34] lif::rectification -12ua absorbed 
+ok [ 35] synapse::default_params pre 
+ok [ 36] synapse::default_params post 
+ok [ 37] synapse::default_params weight 
+ok [ 38] synapse::default_params type 
+ok [ 39] synapse::default_params tau_rise 
+ok [ 40] synapse::default_params tau_decay 
+ok [ 41] synapse::default_params max 
+ok [ 42] synapse::default_params min 
+ok [ 43] synapse::negative_weight type 
+ok [ 44] synapse::negative_weight tau_rise 
+ok [ 45] synapse::negative_weight tau_decay 
+ok [ 46] synapse::negative_weight max 
+ok [ 47] synapse::negative_weight min 
+ok [ 48] synapse::self_connection_rejected 
+ok [ 49] synapse::stdp_zero_at_zero_dt 
+ok [ 50] synapse::stdp_zero_outside_window dt=-200000 
+ok [ 51] synapse::stdp_zero_outside_window dt=+200000 
+ok [ 52] synapse::weight_clamped_at_bounds max 
+ok [ 53] synapse::weight_clamped_at_bounds min 
+ok [ 54] bridge::i2_s_known_vector written 
+ok [ 55] bridge::i2_s_known_vector bytes 
+ok [ 56] bridge::i2_s_known_vector decode scale 
+ok [ 57] bridge::i2_s_known_vector decode trits 
+ok [ 58] bridge::q1_0_known_vector decodes 
+ok [ 59] bridge::q1_0_known_vector scale 
+ok [ 60] bridge::q1_0_known_vector trits 
+ok [ 61] bridge::q2_0_known_vector decodes 
+ok [ 62] bridge::q2_0_known_vector scale 
+ok [ 63] bridge::q2_0_known_vector trits 
+ok [ 64] bridge::q2_0_block_geometry Q2_0_BLOCK 
+ok [ 65] bridge::q2_0_block_geometry len(128) 
+ok [ 66] bridge::q2_0_block_geometry len(2560) 
+ok [ 67] bridge::q2_0_block_geometry len(384) 
+ok [ 68] bridge::q2_0_real_artifact decodes 
+ok [ 69] bridge::q2_0_real_artifact scale 
+ok [ 70] bridge::q2_0_real_artifact census 
+ok [ 71] bridge::q2_0_real_artifact encodes 
+ok [ 72] bridge::q2_0_real_artifact byte identity 
+ok [ 73] bridge::half_known_vectors f32 +0
+ok [ 74] bridge::half_known_vectors milli +0
+ok [ 75] bridge::half_known_vectors f32 -0
+ok [ 76] bridge::half_known_vectors milli -0
+ok [ 77] bridge::half_known_vectors f32 1.0
+ok [ 78] bridge::half_known_vectors milli 1.0
+ok [ 79] bridge::half_known_vectors f32 0.5
+ok [ 80] bridge::half_known_vectors milli 0.5
+ok [ 81] bridge::half_known_vectors f32 -2.0
+ok [ 82] bridge::half_known_vectors milli -2.0
+ok [ 83] bridge::half_known_vectors f32 4.0
+ok [ 84] bridge::half_known_vectors milli 4.0
+ok [ 85] bridge::half_known_vectors f32 max-finite
+ok [ 86] bridge::half_known_vectors milli max-finite
+ok [ 87] bridge::half_known_vectors f32 max-subnormal
+ok [ 88] bridge::half_known_vectors milli max-subnormal
+ok [ 89] bridge::half_known_vectors f32 min-normal
+ok [ 90] bridge::half_known_vectors milli min-normal
+ok [ 91] bridge::half_known_vectors f32 +inf
+ok [ 92] bridge::half_known_vectors milli +inf
+ok [ 93] bridge::half_known_vectors f32 -inf
+ok [ 94] bridge::half_known_vectors milli -inf
+ok [ 95] bridge::half_known_vectors f32 NaN
+ok [ 96] bridge::half_known_vectors milli NaN
+ok [ 97] bridge::wire_gamma 24 
+ok [ 98] bridge::wire_gamma 0 
+ok [ 99] bridge::wire_gamma 125 
+ok [100] bridge::wire_gamma fp16-max 
+ok [101] bridge::wire_gamma -40000 
+ok [102] bridge::wire_gamma -40000000 
+ok [103] bridge::wire_gamma -5 
+ok [104] bridge::scale_constant_is_pinned 
+ok [105] bridge::repack encodes 
+ok [106] bridge::repack repacks 
+ok [107] bridge::repack_known_vector order 
+ok [108] trit::from_weight_boundaries 62 
+ok [109] trit::from_weight_boundaries 63 
+ok [110] trit::from_weight_boundaries -62 
+ok [111] trit::from_weight_boundaries -63 
+ok [112] trit::from_weight_boundaries 125 
+ok [113] trit::from_weight_boundaries -125 
+ok [114] trit::from_weight_boundaries 0 
+ok [115] trit::odd_gamma 2@5 
+ok [116] trit::odd_gamma 3@5 
+ok [117] trit::tensor_scale [10,15] 
+ok [118] trit::tensor_scale [10,14] 
+ok [119] trit::project 130 
+ok [120] trit::project 60 
+ok [121] trit::project -200 
+ok [122] trit::flip draw0 -g ltp 
+ok [123] trit::flip draw0 0 ltp 
+ok [124] trit::flip draw0 +g ltp saturate 
+ok [125] trit::flip draw0 +g ltd 
+ok [126] trit::flip draw0 0 ltd 
+ok [127] trit::flip draw0 -g ltd saturate 
+ok [128] trit::flip draw_max_never_flips 
+ok [129] kernel::pack_known_vector len 
+ok [130] kernel::pack_known_vector byte 
+ok [131] kernel::pack_known_vector round-trip 
+ok [132] kernel::absmax_known_vector scale 
+ok [133] kernel::absmax_known_vector out 
+ok [134] kernel::absmax_i16_min scale 
+ok [135] kernel::absmax_i16_min out 
+ok [136] kernel::absmax_zero_vector scale 
+ok [137] kernel::absmax_zero_vector out 
+ok [138] kernel::matvec_known_vector runs 
+ok [139] kernel::matvec_known_vector out 
+ok [140] nir::lif_hard_failures tau=0 
+ok [141] nir::lif_hard_failures tau<0 
+ok [142] nir::lif_hard_failures r=0 
+ok [143] nir::lif_hard_failures threshold-zero 
+ok [144] nir::lif_hard_failures tau<dt 
+ok [145] nir::lif_hard_failures threshold out of range 
+ok [146] nir::lif_hard_failures centi threshold_q 
+ok [147] nir::round_half_away r one-ulp-below-half 
+ok [148] nir::quantize_linear dyadic shape 
+ok [149] nir::quantize_linear dyadic scale
+ok [150] nir::quantize_linear dyadic arena 
+ok [151] nir::quantize_linear dyadic bounded loss 
+ok [152] nir::quantize_linear offset 3 
+ok [153] nir::quantize_linear offset arena 
+ok [154] nir::quantize_linear same-tensor same-scale 
+ok [155] nir::quantize_linear exact scale 
+ok [156] nir::quantize_linear exact err 
+ok [157] nir::quantize_linear exact arena 
+ok [158] nir::quantize_linear zero_tensor 
+ok [159] nir::quantize_linear zero scale 
+ok [160] nir::quantize_linear zero err 
+ok [161] nir::quantize_linear zero arena 
+ok [162] nir::quantize_linear full_scale not zero 
+ok [163] nir::quantize_linear full_scale absmax 
+ok [164] nir::quantize_linear full_scale arena 
+ok [165] nir::denormal_absmax_is_loud 5e-324
+ok [166] nir::denormal_absmax_is_loud 1e-320
+ok [167] nir::denormal_absmax_is_loud 2.47e-321
+ok [168] nir::rejects_loudly non-finite NaN
+ok [169] nir::rejects_loudly non-finite +inf
+ok [170] nir::rejects_loudly non-finite -inf
+ok [171] nir::rejects_loudly len mismatch 
+ok [172] nir::rejects_loudly zero rows 
+ok [173] nir::rejects_loudly zero cols 
+ok [174] nir::rejects_loudly arena overflow 
+ok [175] nir::rejects_loudly offset overflow 
+raster: 4 LIFNeurons x 40 steps x 1ms (neuron-level; network.rs is std-gated — the network wire is Leg B)
+n0 mV  +600uA ......|............|............|.......
+n1 mV  +300uA ........................................
+n2 cmV +300uA (same drive as n1, finer ruler) .............|.....................|....
+n3 cmV  +12uA ........................................
+---
+checks: 175  failed: 0
+LEG A PASS
+# qemu_exit=0  wall_clock_seconds=1

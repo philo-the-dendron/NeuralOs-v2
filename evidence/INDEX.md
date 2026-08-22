@@ -17,6 +17,7 @@
 | `r4-baselines/` | R4(i) (2026-08-20) | Pre-refactor re-pin baselines for the frozen example family (the R4(iv) contract); judge p0 leg closed by r4-closeout | `README.md` (the protocol + verdict table), `*_run{1,2}.log` |
 | `r4-closeout/` | R4(iii/iv) (2026-08-21) | **R4 closed.** Leg-3 re-pins: null_patches 13/13 byte-identical; judge p0 0/12 flips max \|Δ\| +0.4207 exact; stale H1 invivo bar root-caused; H2 re-pin **byte-identical** (21,065.6 s, export tier by-design not run) | `README.md`, `h2_invivo_r4iii.log`, `p0_{base,loop}_run{1,2}.{log,err}`, `null_*`, `h1_invivo_r4iii.log` |
 | `nir-hdf5-gate/` | NIR slice 2 (2026-08-21) | **The HDF5 evidence gate.** Reference-written `.nir` read end-to-end in pure Rust (5/5: exact frozen quanta cross-container · fires 9/100@6 · lzf censused out named · export read-back semantically identical · JSON byte-stability untouched); interop leg: the reference's own `read()` loads our export (weights ≤ scale/2) | `README.md` (rebuild), `gate.log`, `verify.log`, `SHA256SUMS` |
+| `qemu-riscv-gate/` | QEMU proof (2026-08-21) | **The riscv64gc no_std proof, both postures.** Leg A bare-metal none-elf: 175/175 cited checks, exit 0 (harness: `proofs/qemu-riscv-leg-a/`). Leg B user-mode musl: the REAL full suite on riscv64gc — 195/195 incl. the transmission trio + both Leg-C pins, exit 0, ~14 s | `README.md` (corrected pre-flight + rebuild), `leg-a.log`, `leg-b.log`, `SHA256SUMS` |
 
 Seeds of record (pinned as constants in the frozen examples): census-
 matched control `0x5EED_C0DE_0000_0002` (Fisher–Yates); primary dose

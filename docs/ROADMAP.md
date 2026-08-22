@@ -10,9 +10,9 @@
 
 | # | Component | Status |
 |---|---|---|
-| **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again**. |
+| **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again** — NIR slices 1+2 landed 2026-08-21, QEMU proof landed 2026-08-21; lock-free + SIMD hardening remain. |
 | **2** | `neuralos-app` — Slint visualizer / lab bench | Untouched since 2026-08-08; Phase-2 items re-opened. |
-| **3** | RISC-V deployment proof | QEMU `riscv64gc` first, silicon after. Unstarted. |
+| **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). Silicon (ESP32-C3/HiFive) remains, budget-gated. |
 | **4** | Paper track | The Branch B article (in `paper/`) — finish, gate, submit. Must not displace 1–3. |
 | **5** | Bridge follow-ups | **Frozen record.** Reopening is the principal's call on the recorded forks. The one active bridge-adjacent task is R4 (harness extraction) below. |
 
@@ -65,9 +65,18 @@ Strict order — nothing new opens until the rung above is 100%.
 
 ## Phase 4 — RISC-V deployment proof
 
-1. QEMU `riscv64gc`, reproducible path
-2. `neuralos-snn` executing in that environment
-3. Documentation of what is truly `no_std`-portable vs host-only
+1. ✅ QEMU `riscv64gc`, reproducible path (2026-08-21: both legs green —
+   bare-metal none-elf gate + full suite under linux-user musl;
+   `evidence/qemu-riscv-gate/`)
+2. ✅ `neuralos-snn` executing in that environment (Leg A 175/175 cited
+   checks; Leg B 195/195 real tests incl. transmission trio + Leg-C pins)
+3. ✅ Documentation of what is truly `no_std`-portable vs host-only
+   (`network`/`csr`/`stats` are std-gated and ran in Leg B's linux-user
+   posture; Leg A's no_std surface is the six core modules — recorded in
+   `evidence/qemu-riscv-gate/README.md`)
+
+Remaining in this phase: silicon (ESP32-C3 / HiFive) when budget allows.
+CI leg parked as a named follow-up (runner cost under TCG unmeasured).
 
 ## Phase 5 — Paper + bridge follow-ups (gated, frozen)
 
@@ -91,8 +100,9 @@ displace substrate + lab bench + gated research.
 
 ## Practical next moves
 
-1. R4 (harness extraction) — closes the crust mechanism for good
-2. NIR import/export — smallest highest-value spine item
-3. QEMU proof — makes the `no_std` claim concrete
-4. Visualizer Phase-2 — the lab bench catches up to the substrate the
+1. R4 (harness extraction) — closed 2026-08-21
+2. NIR import/export — slices 1+2 landed; general graph assembly remains
+3. QEMU proof — **done 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`)
+4. Lock-free ports + SIMD hardening (the starved Phase-1 remainder)
+5. Visualizer Phase-2 — the lab bench catches up to the substrate the
    bridge arc hardened

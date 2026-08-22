@@ -1,0 +1,225 @@
+# neuralos-snn Leg B — the real test suite on riscv64gc under QEMU (user-mode)
+# date: 2026-08-22T02:35:06Z
+# commit: af40cce1dda50a7169f3417bad2f016836677224
+# target: riscv64gc-unknown-linux-musl, static (crt-static + link-self-contained), linker rust-lld, no system cross-toolchain
+# note:  commissioning triple riscv64gc-unknown-linux-gnu + rust-lld + static was contradictory (no glibc sysroot in rustup); musl is the ruling resolution — recorded honestly, claim stays 'riscv64gc under QEMU'
+# build: CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_LINKER=rust-lld CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_RUSTFLAGS='-C link-self-contained=yes -C target-feature=+crt-static' cargo test -p neuralos-snn --target riscv64gc-unknown-linux-musl
+# exec:  via binfmt_misc qemu-riscv64 (qemu-user-static 8.2.2) — transparent, no manual qemu invocation
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.77s
+     Running unittests src/lib.rs (target/riscv64gc-unknown-linux-musl/debug/deps/neuralos_snn-33eb2954935d940d)
+
+running 187 tests
+test bridge::tests::encode_q2_0_rejects_bad_input ... ok
+test bridge::tests::encode_q2_0_reproduces_golden_vector_bytes ... ok
+test bridge::tests::decoded_trits_feed_trit_substrate ... ok
+test bridge::tests::encode_q2_0_reproduces_known_vector_bytes ... ok
+test bridge::tests::half_known_vectors ... ok
+test bridge::tests::i2_s_rejects_bad_lengths ... ok
+test bridge::tests::i2_s_lane_order_golden_vector ... ok
+test bridge::tests::i2_s_known_vector ... ok
+test bridge::tests::i2_s_rejects_code_three ... ok
+test bridge::tests::i2_s_rejects_short_buffers ... ok
+test bridge::tests::half_to_milli_exhaustive_vs_f64 ... ok
+test bridge::tests::prop_half_widening_matches_f32_reference ... ok
+test bridge::tests::q1_0_byte_order_golden_vector ... ok
+test bridge::tests::q1_0_known_vector ... ok
+test bridge::tests::q1_0_rejects_bad_input ... ok
+test bridge::tests::q2_0_block_geometry_is_pinned ... ok
+test bridge::tests::q2_0_byte_and_lane_order_golden_vector ... ok
+test bridge::tests::q2_0_code3_rejected ... ok
+test bridge::tests::q2_0_known_vector ... ok
+test bridge::tests::q2_0_real_artifact_first_block_decodes_and_round_trips ... ok
+test bridge::tests::q2_0_rejects_bad_input ... ok
+test bridge::tests::repack_known_vector ... ok
+test bridge::tests::repack_rejects_bad_input ... ok
+test bridge::tests::scale_constant_is_pinned ... ok
+test bridge::tests::wire_gamma_known_vectors ... ok
+test kernel::tests::absmax_i16_min_returns_32768_not_wrapped ... ok
+test kernel::tests::absmax_known_vector ... ok
+test kernel::tests::absmax_zero_vector_is_zeros ... ok
+test kernel::tests::matvec_known_vector ... ok
+test kernel::tests::matvec_rejects_bad_input ... ok
+test kernel::tests::pack_known_vector ... ok
+test kernel::tests::pack_rejects_bad_input ... ok
+test bridge::tests::prop_i2_s_round_trip ... ok
+test bridge::tests::prop_repack_round_trip ... ok
+test bridge::tests::prop_q2_0_round_trip ... ok
+test lif_neuron::tests::above_threshold_current_blind_on_mv_spikes_on_centi ... ok
+test lif_neuron::tests::adaptation_decay_is_exact_minus_one_with_floor_zero ... ok
+test lif_neuron::tests::centi_mode_constants_and_bounds ... ok
+test lif_neuron::tests::firing_rate_uses_last_update_time_not_last_spike ... ok
+test lif_neuron::tests::inhibitory_neuron_has_different_params ... ok
+test lif_neuron::tests::isi_stats_computed_with_two_spikes ... ok
+test lif_neuron::tests::isi_stats_none_with_fewer_than_two_spikes ... ok
+test lif_neuron::tests::large_current_triggers_spike_and_refractory ... ok
+test lif_neuron::tests::leak_convergence_large_dt_lands_on_rest_exactly ... ok
+test lif_neuron::tests::millivolt_trace_is_pinned_to_the_historical_arithmetic ... ok
+test lif_neuron::tests::neuron_fields_directly_configurable ... ok
+test lif_neuron::tests::new_excitatory_neuron_has_default_params ... ok
+test lif_neuron::tests::noise_is_zero_when_amplitude_is_zero ... ok
+test lif_neuron::tests::noise_varies_with_time_for_same_id ... ok
+test lif_neuron::tests::positive_current_raises_membrane_potential ... ok
+test kernel::tests::prop_absmax_bounds_and_attainment ... ok
+test kernel::tests::prop_matvec_matches_scalar_reference ... ok
+test kernel::tests::prop_pack_unpack_round_trip ... ok
+test lif_neuron::tests::prop_firing_rate_respects_refractory_bound ... ok
+test lif_neuron::tests::rectification_at_the_sticking_point ... ok
+test lif_neuron::tests::refractory_blocks_repeated_spikes ... ok
+test lif_neuron::tests::reset_restores_initial_state ... ok
+test lif_neuron::tests::resolution_switch_rescales_stored_potentials ... ok
+test lif_neuron::tests::spike_adds_exactly_two_adaptation_quanta ... ok
+test lif_neuron::tests::synaptic_current_accumulates_then_clears ... ok
+test lif_neuron::tests::the_dead_zone_12ua_pair ... ok
+test network::tests::adaptation_decay_each_step_keeps_a_driven_net_alive ... ok
+test network::tests::adaptation_decay_runs_before_integration_exact ... ok
+test network::tests::add_synapse_rejects_out_of_bounds ... ok
+test network::tests::add_synapse_rejects_self_connection ... ok
+test network::tests::balanced_topology_produces_synapses ... ok
+test network::tests::balanced_zero_inhibitory_rejected ... ok
+test network::tests::build_topology_is_idempotent_no_accumulation ... ok
+test network::tests::csr_connections_pre_id_consistent_after_build ... ok
+test network::tests::csr_finalize_recovers_correct_members_for_unsorted_insertion ... ok
+test lif_neuron::tests::prop_membrane_potential_stays_bounded ... ok
+test network::tests::csr_weight_stays_in_sync_with_synapse_after_plasticity ... ok
+test lif_neuron::tests::prop_reset_clears_all_state ... ok
+test network::tests::divisor_five_doubles_the_transmitted_pulse_centimv ... ok
+test network::tests::empty_network_rejected ... ok
+test network::tests::feedforward_wrong_total_rejected ... ok
+test network::tests::feedforward_topology_produces_synapses ... ok
+test network::tests::finalize_synapses_makes_ltp_reachable_on_external_wiring ... ok
+test network::tests::finalize_synapses_sorts_external_adds_and_builds_both_csrs ... ok
+test network::tests::lfsr_is_deterministic_same_seed ... ok
+test network::tests::ltd_pre_after_post_still_depresses_under_full_stdp ... ok
+test network::tests::ltp_pass_does_not_double_count_same_step_cofire ... ok
+test network::tests::ltp_post_firing_strengthens_synapse_when_pre_fired_earlier ... ok
+test network::tests::network_propagates_centimillivolt_resolution_to_every_neuron ... ok
+test network::tests::new_network_has_correct_neuron_count ... ok
+test network::tests::plasticity_off_freezes_weights_under_adapting_drive ... ok
+test network::tests::plasticity_updated_weight_affects_future_propagation ... ok
+test network::tests::csr_weight_index_of_keeps_slots_synced_in_multi_synapse_net ... ok
+test lif_neuron::tests::prop_history_never_exceeds_capacity ... ok
+test network::tests::prop_lfsr_deterministic ... ok
+test network::tests::prop_sparse_matrix_iter_matches_count ... ok
+test network::tests::full_stdp_is_bidirectional_in_orchestration ... ok
+test network::tests::prop_valid_network_constructs ... ok
+test network::tests::random_topology_produces_synapses ... ok
+test network::tests::reset_clears_time_and_spikes ... ok
+test network::tests::reverse_csr_incoming_lists_correct_edges_after_finalize ... ok
+test network::tests::same_step_cofire_biases_toward_ltd ... ok
+test network::tests::smallworld_rewiring_conserves_edge_count ... ok
+test network::tests::smallworld_topology_produces_synapses ... ok
+test network::tests::sparse_matrix_iter_returns_added_synapses ... ok
+test network::tests::step_advances_time_by_time_step ... ok
+test network::tests::step_with_strong_input_produces_spikes ... ok
+test network::tests::sub_dead_zone_drive_spikes_only_in_centimillivolt_network ... ok
+test network::tests::synaptic_input_divisor_defaults_to_ten_and_rejects_zero ... ok
+test network::tests::prop_no_self_connections ... ok
+test network::tests::prop_topology_weights_respect_presynaptic_type ... ok
+test network::tests::prop_step_advances_time ... ok
+test network::tests::topology_default_is_balanced_80_20 ... ok
+test network::tests::transmission_is_live_one_step_delayed_centimv ... ok
+test network::tests::transmission_is_live_one_step_delayed_mv_strong_weight ... ok
+test network::tests::transmission_pulses_sum_across_presynaptic_spikes ... ok
+test network::tests::zero_time_step_rejected ... ok
+test nir::tests::ascii_gate_fires_at_export_only ... ok
+test nir::tests::buffer_overflow_is_loud ... ok
+test nir::tests::builder_chain_assembles_and_exports ... ok
+test nir::tests::builder_matches_the_json_path_exactly ... ok
+test nir::tests::builder_parity_checks_and_rejections ... ok
+test nir::tests::denormal_absmax_scale_is_a_loud_error ... ok
+test nir::tests::edges_before_nodes_resolve ... ok
+test nir::tests::encoder_saturates_instead_of_wrapping ... ok
+test nir::tests::export_rejects_dangling_edge_indices ... ok
+test nir::tests::export_then_import_is_idempotent ... ok
+test nir::tests::exported_json_is_valid_shape ... ok
+test nir::tests::failed_adds_leave_no_zombie_state ... ok
+test nir::tests::import_quantizes_the_chain ... ok
+test nir::tests::lif_hard_failures ... ok
+test nir::tests::lif_population_semantics ... ok
+test network::tests::ternary_gate_stage1_5b_stochastic_unfreezes_learning ... ok
+test nir::tests::quantize_linear_denormal_absmax_is_loud ... ok
+test nir::tests::quantize_linear_dyadic_vector_is_exact ... ok
+test nir::tests::quantize_linear_rejects_loudly ... ok
+test nir::tests::quantize_linear_zero_tensor_and_full_scale ... ok
+test nir::tests::round_half_away_pins_half_boundaries ... ok
+test nir::tests::scan_counts_the_chain ... ok
+test nir::tests::scan_rejects_malformed ... ok
+test nir::tests::scan_rejects_non_2d_weight_shapes ... ok
+test nir::tests::skip_value_is_depth_capped ... ok
+test nir::tests::structural_rejections ... ok
+test nir::tests::trailing_content_after_root_is_rejected ... ok
+test nir::tests::unknown_kinds_and_affine_reject_loudly ... ok
+test nir::tests::v_reset_defaults_to_zero_with_note ... ok
+test nir::tests::zero_tensor_and_lossy_notes ... ok
+test synapse::tests::biological_params_map_modulatory_type ... ok
+test synapse::tests::negative_weight_makes_inhibitory ... ok
+test synapse::tests::new_excitatory_synapse_has_default_params ... ok
+test synapse::tests::normalized_weight_is_percentage_of_max ... ok
+test synapse::tests::prop_self_connection_always_rejected ... ok
+test network::tests::ternary_gate_stage1_deterministic_is_frozen ... ok
+test nir::tests::prop_quantize_linear_round_trip ... ok
+test synapse::tests::prop_stdp_sign_convention ... ok
+test synapse::tests::self_connection_rejected ... ok
+test synapse::tests::stdp_decay_monotonic_with_abs_dt ... ok
+test synapse::tests::stdp_ltd_when_post_before_pre ... ok
+test synapse::tests::stdp_ltp_when_pre_before_post ... ok
+test synapse::tests::stdp_zero_at_zero_dt ... ok
+test synapse::tests::stdp_zero_outside_window ... ok
+test synapse::tests::weight_bounds_directly_configurable ... ok
+test synapse::tests::weight_clamped_at_bounds ... ok
+test trit::tests::from_weight_boundaries_at_half_gamma ... ok
+test trit::tests::from_weight_degenerate_scale_is_zero ... ok
+test trit::tests::odd_gamma_boundary_rounds_up ... ok
+test trit::tests::project_is_identity_on_grid ... ok
+test trit::tests::project_snaps_off_grid_to_nearest ... ok
+test synapse::tests::prop_stdp_zero_outside_window ... ok
+test synapse::tests::prop_weight_clamped ... ok
+test trit::tests::prop_project_idempotent ... ok
+test trit::tests::prop_scale_bounded ... ok
+test trit::tests::prop_stochastic_flip_p_range ... ok
+test trit::tests::prop_stochastic_flip_output_on_grid ... ok
+test trit::tests::prop_stochastic_flip_sign_correct ... ok
+test trit::tests::prop_ternarize_output_on_grid ... ok
+test network::tests::ternary_gate_stage1_5c_selectivity_under_structured_input ... ok
+test trit::tests::stochastic_flip_draw_max_never_flips ... ok
+test trit::tests::stochastic_flip_draw_zero_always_flips ... ok
+test trit::tests::stochastic_flip_output_always_on_grid ... ok
+test trit::tests::stochastic_flip_saturates_at_extremes ... ok
+test trit::tests::stochastic_flip_sign_correctness ... ok
+test trit::tests::stochastic_flip_zero_gamma_is_no_op ... ok
+test trit::tests::stochastic_flip_zero_residual_is_no_op ... ok
+test trit::tests::tensor_scale_rounds_half_up ... ok
+test trit::tests::ternarize_balanced_weights_to_three_levels ... ok
+test trit::tests::ternarize_empty_returns_zero ... ok
+test trit::tests::ternarize_then_project_at_same_gamma_is_stable ... ok
+test trit::tests::to_weight_round_trips_all_three ... ok
+test trit::tests::prop_stochastic_flip_zero_residual_noop ... ok
+test trit::tests::prop_trit_round_trip ... ok
+test trit::tests::prop_ternarize_preserves_sign ... ok
+
+test result: ok. 187 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.32s
+
+     Running tests/nir_fixtures.rs (target/riscv64gc-unknown-linux-musl/debug/deps/nir_fixtures-f4e4977e78a52c63)
+
+running 8 tests
+test absent_v_reset_is_reference_semantics_with_note ... ok
+test non_chain_topology_rejects_at_assembly_only ... ok
+test buffer_api_consumes_reference_emission ... ok
+test negative_fixtures_reject_with_the_named_error ... ok
+test reference_chain_assembles_and_fires ... ok
+test reference_chain_imports_with_exact_quantization ... ok
+test reference_chain_export_round_trips ... ok
+test reference_population_chain_imports_per_neuron ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+   Doc-tests neuralos_snn
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+# cargo_test_exit=0  wall_clock_seconds=14
+# architecture proof — binary that ran under binfmt/qemu is RISC-V gc, static
+# principal-side `file` (independently verified, banked verbatim 2026-08-21):
+# target/riscv64gc-unknown-linux-musl/debug/deps/neuralos_snn-33eb2954935d940d: ELF 64-bit LSB executable, UCB RISC-V, RVC, double-float ABI, version 1 (GNU/Linux), statically linked, with debug_info, not stripped
