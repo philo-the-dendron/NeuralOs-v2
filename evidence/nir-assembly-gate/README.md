@@ -43,3 +43,14 @@ numeric-parity claim is made or implied.
 Companion frozen-pin re-verification this session: `nir_format_gate`
 4/4 (826 B export) and `nir_hdf5_gate` 5/5 (941 B JSON export) —
 byte-identical to their banked records.
+
+## Cross-container leg (R18 P4)
+
+`crosscontainer.log` — `cargo run -p neuralos-rt --features hdf5
+--example nir_hdf5_assembly_gate` (PATH carries .nirenv's cmake):
+3/3 — the gzip/uncompressed `.nir` pair imports to identical
+records, the HDF5 and JSON paths quantize identically, and the merge
+graph assembles from the HDF5 path with the exact snn-side pins
+(single stalls, summed fires at step 52). Mirrored in
+`neuralos-rt/tests/nir_hdf5_fixtures.rs`. The frozen
+`nir_hdf5_gate` re-ran 5/5 green, unchanged, this session.

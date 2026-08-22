@@ -474,3 +474,45 @@ fn json_export_stays_byte_stable_from_the_hdf5_import() {
     let g2 = NirImport::from_json(&a[..na], NirImportOptions::default()).unwrap();
     assert_semantically_equal(&g, &g2);
 }
+
+/// The merge graph (R18): multi-Input reference emission reads,
+/// assembles with the GENERAL builder, and fires with the exact
+/// snn-side pins — single branch stalls, summed fan-in fires at
+/// step 52. Mirrors the `nir_hdf5_assembly_gate` example's leg 3.
+#[test]
+fn merge_graph_assembles_and_fires_from_the_hdf5_path() {
+    use neuralos_snn::lif_neuron::VoltageResolution;
+    let centi = NirImportOptions::new(1_000, VoltageResolution::CentiMillivolt);
+    let gz_doc = nir_hdf5_read(&fixture("merge.nir")).expect("reference file reads");
+    let gz = gz_doc.import(centi).expect("imports");
+    let raw_doc =
+        nir_hdf5_read(&fixture("merge_uncompressed.nir")).expect("uncompressed reads");
+    let raw = raw_doc.import(centi).expect("imports");
+    assert_eq!(gz.weights, raw.weights, "compression is container-only");
+    assert_eq!(gz.lifs, raw.lifs);
+
+    let (mut net, enc, rep) = gz.build_network().expect("general assembly");
+    assert_eq!((rep.neurons, rep.synapses, rep.drive_linears), (2, 0, 2));
+    assert!(rep.multi_linear_gain);
+
+    let mut n0 = 0usize;
+    for _ in 0..200 {
+        for s in net.step(&enc.encode(&[&[1, 1], &[]])).unwrap() {
+            if s.neuron_id == 0 {
+                n0 += 1;
+            }
+        }
+    }
+    assert_eq!(n0, 0, "a single 81 uA branch stalls below the climb");
+
+    let (mut net2, enc2, _) = raw.build_network().expect("assembly (uncompressed)");
+    let mut first = usize::MAX;
+    for t in 0..100 {
+        for s in net2.step(&enc2.encode(&[&[1, 1], &[1, 1]])).unwrap() {
+            if s.neuron_id == 0 {
+                first = first.min(t);
+            }
+        }
+    }
+    assert_eq!(first, 52, "summed 162 uA crosses at step 52 exactly");
+}

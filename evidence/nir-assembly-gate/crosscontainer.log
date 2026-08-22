@@ -1,0 +1,11 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.37s
+     Running `target/debug/examples/nir_hdf5_assembly_gate`
+=== NIR HDF5 assembly gate — the merge graph, three containers ===
+ref     : neuromorphs/NIR @ 7883c3c85f1be27ed113ccc9e8d6ab47ab541df4
+
+fixture : merge.nir (gzip) + merge_uncompressed.nir — 6 nodes / 5 edges
+gate 1  : PASS — gzip and uncompressed import to identical records (8 weight cells)
+gate 2  : PASS — HDF5 and JSON paths produce the same records (["in1", "in2", "la", "lb", "lif", "out"] node order)
+gate 3  : PASS — assembles from the HDF5 path: single stalls (0/200), summed fires at step 52
+
+NIR HDF5 ASSEMBLY GATE: PASS — 3/3 gates, one graph across three containers
