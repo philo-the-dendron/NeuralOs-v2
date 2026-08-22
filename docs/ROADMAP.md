@@ -10,9 +10,9 @@
 
 | # | Component | Status |
 |---|---|---|
-| **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again** — NIR slices 1+2 landed 2026-08-21, QEMU proof landed 2026-08-21; lock-free + SIMD hardening remain. |
+| **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again** — NIR DONE through general assembly (slices 1+2 + `build_network`, 2026-08-22 @ alpha.5), QEMU proof landed 2026-08-21; lock-free (re-scoped, below) + SIMD hardening remain. |
 | **2** | `neuralos-app` — Slint visualizer / lab bench | Untouched since 2026-08-08; Phase-2 items re-opened. |
-| **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). Silicon (ESP32-C3/HiFive) remains, budget-gated. |
+| **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). Silicon (ESP32-C3/HiFive) remains, priority-gated (board decided 2026-08-22 — merged-plan step 3). |
 | **4** | Paper track | The Branch B article (in `paper/`) — finish, gate, submit. Must not displace 1–3. |
 | **5** | Bridge follow-ups | **Frozen record.** Reopening is the principal's call on the recorded forks. The one active bridge-adjacent task is R4 (harness extraction) below. |
 
@@ -20,7 +20,7 @@
 
 ```bash
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; 288 executed green (3 app, 192 snn, 93 rt) + 5 rt model-gated #[ignore]
+cargo test   --workspace                          # offline; 307 executed green (3 app, 208 snn, 96 rt) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate
 ```
@@ -42,14 +42,14 @@ Strict order — nothing new opens until the rung above is 100%.
 | R4 | Extract the shared hybrid harness; rewrite the 6 hybrid examples on it; re-run pins recorded verdicts | ✅ done (2026-08-21; all re-pins exact — `evidence/r4-closeout/`; the stale H1 invivo bar root-caused + the H2 record re-pinned byte-identical) |
 | R5 | `evidence/INDEX.md` — session → claim → files | ✅ done |
 | R6 | Merge `paper-draft` → main; paper builds from main | ✅ done |
-| R7 | Original roadmap work, in order (below) | ⬜ **open — R4 closed 2026-08-21** |
+| R7 | Original roadmap work, in order (below) | ⬜ **open — NIR general assembly landed 2026-08-22 (alpha.5); lock-free + SIMD hardening remain** |
 
 ## Phase 1 — Substrate hardening (the starved list, now first)
 
 | Work item | Why it matters |
 |---|---|
-| NIR import/export | Interop with snnTorch/SpikingJelly; the #1 ecosystem recommendation. **First move.** **Slices 1+2 LANDED 2026-08-21** (slice 1 in `neuralos-snn::nir` — JSON container, Input/Linear/LIF/Output, explicit quant records, reference-emitted fixtures + 4/4 format gate, schema pinned to `neuromorphs/NIR@7883c3c`; slice 2 in `neuralos-rt` behind the `hdf5` feature — `.nir` HDF5 read/write, pre-read filter census, reference-written fixtures, the 5/5 `nir_hdf5_gate` + reference-side interop; populations + the structured-entry seam landed with slice 1's phases). Remaining: general multi-node graph assembly (arbitrary topologies beyond the canonical chain). |
-| Lock-free ports from v0.1 archive | Throughput and future concurrency experiments |
+| NIR import/export | Interop with snnTorch/SpikingJelly; the #1 ecosystem recommendation. **DONE through general graph assembly (slices 1+2 2026-08-21, `build_network` 2026-08-22 @ alpha.5; gates: format 4/4, hdf5 5/5, assembly 6/6 + cross-container 3/3 — evidence/INDEX.md).** Remaining: the R18 deferral family — readout edges (LIF→Linear), direct drive (Input→LIF), encoder-only (lowest pull). |
+| Lock-free ports from v0.1 archive | Throughput and future concurrency experiments. Re-scoped (2026-08-22 ruling): A-extension-capable targets only — rv32imc / ESP32-C3 are NOT (no atomics); name the target before porting |
 | SIMD follow-up / hardening | `simd.rs` untouched since 2026-08-07; keep the performance path honest |
 | Additional regression/property tests | The transmission-wire lesson: no unit test had ever exercised live transmission until session F |
 | `no_std` discipline checks | Preserve the embedded/RISC-V posture (CI gate already green) |
@@ -75,7 +75,8 @@ Strict order — nothing new opens until the rung above is 100%.
    posture; Leg A's no_std surface is the six core modules — recorded in
    `evidence/qemu-riscv-gate/README.md`)
 
-Remaining in this phase: silicon (ESP32-C3 / HiFive) when budget allows.
+Remaining in this phase: silicon (ESP32-C3 / HiFive), priority-gated
+(board decided 2026-08-22 — merged-plan step 3).
 CI leg parked as a named follow-up (runner cost under TCG unmeasured).
 
 ## Phase 5 — Paper + bridge follow-ups (gated, frozen)
@@ -101,8 +102,11 @@ displace substrate + lab bench + gated research.
 ## Practical next moves
 
 1. R4 (harness extraction) — closed 2026-08-21
-2. NIR import/export — slices 1+2 landed; general graph assembly remains
+2. NIR import/export — **DONE through general graph assembly
+   (2026-08-22, alpha.5)**; the R18 deferral family remains (readout
+   edges / direct drive / encoder-only)
 3. QEMU proof — **done 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`)
-4. Lock-free ports + SIMD hardening (the starved Phase-1 remainder)
+4. Lock-free ports (A-extension targets only — re-scoped above) +
+   SIMD hardening (the starved Phase-1 remainder)
 5. Visualizer Phase-2 — the lab bench catches up to the substrate the
    bridge arc hardened
