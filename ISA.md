@@ -4031,3 +4031,102 @@ and 3/3. Pushed per group (6492e02, c3e30dd, 71d811b, 4ac0c5e,
   `--dry-run` from the new tip supersedes the 9b9aea9 dry-run
   (identical package content class; the record of record is the new
   one). Real publish remains the principal's call.
+
+## Decision (M1 — the merged ship-then-measure plan, 2026-08-22)
+
+The council-vetted, cross-examined, principal-ratified merged plan:
+two prior plan sequences merged into one 8-step arc, ship-then-
+measure. This session (consolidation, step 1) is its first session.
+Standing rule from four analysis rounds: no session ends
+additive-empty. Recorded verbatim as ratified.
+
+**THE THREE GUARDS (binding on the whole 8-step arc):**
+
+- GUARD 1 (active in step 1): `paper/figs/mechanism.py` regex-parses
+  ISA.md's ISC-78 entry — ISA is APPEND-ONLY until submission; the
+  ledger trim is a standing post-submission item.
+- GUARD 2: any session touching a frozen example's recorded verdict
+  or re-litigating Branch B IS a reopening — stop, no discretion.
+  The bridge record stays closed; the principal's call alone opens
+  it.
+- GUARD 3: no outreach before the exporter exists (step 4 gates
+  step 7) — recruiting researchers into the JSON-only wall bounces
+  them at minute fifteen. (Cross-exam addition: the board landing —
+  step 3 — gates outreach alongside the exporter; both measured
+  assets in hand before the first public claim.)
+
+**THE 8-STEP SEQUENCE:**
+
+1. Consolidation (the M1 session, 2026-08-22).
+2. Paper pre-submission pass → SUBMIT ("reads"→honest verb; CIs
+   bootstrapped from frozen logs; figure scripts de-circulated;
+   mechanism-scoped learning language; the null submits pristine).
+3. ESP32-C3 bring-up — board day-zero; core deliverable = target-add
+   + UART + one network stepping on metal; jitter/throughput
+   histogram = stretch, not promise.
+4. Python .nir→JSON exporter — serves the snnTorch→RISC-V workflow
+   at ~1% of the port cost; in-crate HDF5 only on demand evidence
+   (demand-gated feature-gated native reader named as the third
+   path).
+5. Readout benchmark (FUNDED) — calibration FIRST: positive control
+   via the existing harness.rs splice machinery (lesion/graft
+   known-functional; if the graft lands inside the null family, the
+   readout is uninformative by construction); then discrimination
+   benchmark, arms = plasticity-on / off / dose-matched
+   shuffled-drift null; threshold pre-registered before the first
+   run; outcome-independent of the paper; delta-zero publishable.
+6. Visualizer measurement features — spike-rate histograms, latency
+   distributions, CSV export; the instrument for step 8,
+   measurement not polish. (Cadence clause: if benchmark session 1
+   stalls, swapping 5/6 is a legal move, not drift.)
+7. Outreach — ONM listing + one post; measured claims only (QEMU
+   proof, C3 numbers, alpha.5); cites the published arXiv
+   reference; downloads vs the 56 baseline (2026-08-22, registry) =
+   the falsifiable demand signal.
+8. CONDITIONAL (opens only if 5's margin survives AND the charter
+   ruling holds in the research register): judge calibration →
+   STDP-active vs frozen controls → adaptation-under-drift on the
+   QEMU riscv64 gate (on/off/dose-matched arms,
+   adaptation-trajectory metric, pre-registered arms + kill
+   criteria + session cap before any run).
+
+**EXIT CONDITIONS (written now, honored later):** demand-silence →
+Path B (submit/pin/tag/archive gracefully — success, not failure) ·
+margin-kill (5's margin dies → 8 never opens, the learning question
+rests evidenced) · sequence-kill (any consolidation debt reappears
+→ the next session is consolidation again, mechanically).
+
+**Baselines and funding state at plan-open (2026-08-22):**
+downloads baseline = 56 (2026-08-22, crates.io registry, alpha.4) ·
+readout benchmark FUNDED · ESP32-C3 board DECIDED — purchase
+planned within 1–2 weeks (2026-08-22 ruling; NOT yet ordered —
+update this record when the purchase is fact).
+
+Step-1 session state: GUARD 1 honored (appends only — this entry is
+itself the proof); the ISA ledger TRIM remains deferred to
+post-submission as a standing item.
+
+## Ruling (the layered charter — two registers, 2026-08-22)
+
+Recorded verbatim as ratified: synthetic-to-natural transfer is
+IN-SCOPE as paper-track research record, OUT-OF-SCOPE as
+roadmap/product claim; empirical gating decides whether the step-8
+arc RUNS, the two-register ruling decides what may ever be
+ASSERTED.
+
+## Record (the learning council's four endorsed claims, 2026-08-22)
+
+Recorded verbatim as endorsed:
+
+- uncalibrated null licenses nothing;
+- calibration precedes interpretation;
+- measurable ≠ capable;
+- delta-zero publishable.
+
+## Record (R18 rider severity note — MED not HIGH, 2026-08-22)
+
+Severity ruling on the STDP dt-overflow bug (fixed at 103fa59,
+Verification above): **MED, not HIGH**, on the reachability bound —
+the u32 clock saturates and dt is pre-clamped; only the *SCALE
+product wrapped. Fix shipped in alpha.5 (published 2026-08-22T13:59Z,
+registry-verified). Record-only; no code action.
