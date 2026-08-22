@@ -14,6 +14,9 @@ jobs:
   check:
     name: check + test + clippy + no_std
     runs-on: ubuntu-latest
+    # Hard ceiling: the battery is ~15 min warm; 90 min absorbs a cold
+    # cache + Slint system-dep install without a hung job burning runners.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -60,6 +63,9 @@ jobs:
   hdf5:
     name: hdf5 gate (neuralos-rt)
     runs-on: ubuntu-latest
+    # Vendored HDF5 cold build (~3 min) + full rt suite + the evidence
+    # gate + feature clippy; 120 min covers the no-rust-cache worst case.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
