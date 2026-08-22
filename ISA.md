@@ -4192,3 +4192,82 @@ Anti-claims (binding): no ISA-history edits (GUARD 1); no
 verdict/number re-litigation (GUARD 2); no learning-capability
 implication anywhere; no commit of models/ or fork-build/ artifacts;
 no venue decision recorded as made.
+
+## Verification (P2 — the paper pre-submission pass, 2026-08-22)
+
+- **W1 (verb fix)**: arrangement-sense "reads" → "tracks" at all six
+  claim-sites (abstract:11 + the arrangement-reading compounds in
+  abstract/intro/invivo/substrate/discussion/limitations);
+  machinery-sense "reads" (byte-exact import, the title's claim)
+  kept; loop.tex's bare "always feels" re-sized to "every judged
+  export in the record moved logits on 60/60 steps". Abstract now
+  carries "a sensitivity result at n=1, not a population claim"
+  inline. Remaining "reads/reading" grep hits: interpretation-sense
+  prose + one thREADS false positive. make + make gate green.
+  Commit d567725.
+- **W2 (CIs from frozen logs)**: figs/flip_cis.py — Clopper–Pearson
+  95% exact binomial CIs, pure stdlib, deterministic (bisection
+  200 iters; defining-property asserts per cell; rule-of-three
+  anchor 0/10 → upper 0.3085 asserted). Every judge log sha-verified
+  against its banked SHA256SUMS before parsing (session-f-judge ×5,
+  session-h2 ×5, primary ×65, stress ×50). Counts asserted == the
+  README tables; output figs/flip_cis.tex pinned in-tree, joined to
+  FIGS + clean in the Makefile, included as Table 2 at §primary
+  with the no-interval note for the margin leaf. Verified rendered
+  (pdftotext carries the caption + CI cells). Commit fb6986b.
+- **W3 (figure chain de-circulared)**: leaf (b) 8/10 now DERIVED
+  from the sha-verified logs in adjudication_table.py + ladder.py
+  (README prose parsing gone); basins.py annotations derived from
+  its tallies (values asserted: 8, 4/10, 3/3, 0). Leaf (a) pinned to
+  the banked ruling + the in-tree cross-check: with the f-judge
+  base (p3s1 margin +0.0711), H2 |Δmargin| = 0.1418 and null-max =
+  0.2874 (d6) — exactly the banked 0.0798/0.2254 + 0.0620 constant
+  (asserted equal for both; the recorded cross-build 4th-decimal
+  class); ordering + FAIL verdict invariant. Stated in the paper:
+  §primary "Provenance of the margin leaf" + the ladder caption.
+  Makefile: SOURCE_DATE_EPOCH=1700000000 — `make figs` verified
+  byte-deterministic (two runs, identical bytes). The three
+  regenerated PDFs (basins/ladder/adjudication_table) raster-
+  identical to committed (pdftoppm + cmp); byte diff =
+  CreationDate-only (first regen under the fixed epoch), justified
+  in the commit. mechanism.py untouched. Commit 2f5dabd.
+- **W4 (limitations armor)**: the uncalibrated-instrument paragraph
+  (limitations.tex, before the closing armor) — names the one-judge
+  scope with denominators (Table ref), the calibration caveat in
+  its strongest form (the null licenses exactly "does not exceed
+  equal-dose random perturbation under this protocol", no internal-
+  magnitude claim), lesion/graft calibration as the readout
+  benchmark's first arm, and the deferral family (readout/direct-
+  drive/encoder-only) as mechanism-scoped work bearing on nothing
+  adjudicated. The null submits pristine. Commit 004b055.
+- **W5 (venues — PRESENTED, NOT DECIDED)**: three candidates with
+  mechanics verified live 2026-08-22 (jmlr.org/tmlr + FAQ;
+  ijcnn.org/2027 CFP; NICE 2026 CFP via WikiCFP/niceworkshop.org,
+  2027 listed): TMLR (rolling, correctness-over-significance,
+  arXiv-preprint compatible per FAQ, replications welcome, ~9-week
+  target, JmlR-to-Conference track); IJCNN 2027 (Cape Town, Jun
+  14–18 2027, papers due 2027-01-31, 6pp IEEE two-column, CMT;
+  topics 3/7/12 all in-scope); NICE 2027 (annual, expect ~Dec 2026
+  deadline, 4–8pp, "sole quality and clarity" review, IEEE
+  proceedings, Local Learning and Plasticity an explicit topic;
+  2027 CFP not yet posted). Table delivered in the session end
+  report. The pick + submission = the principal's stamps.
+
+## Close-out (P2 — 2026-08-22)
+
+Step 2 of the M1 arc complete: the paper's claims are verb-honest
+and interval-visible, the figure chain parses the SHA256SUMS-backed
+evidence (banked pins asserted, one banking gap found and recorded),
+and the limitations carry the council's convergent position. The
+venue table is presented, not decided. New finding of record: the
+session-h2-era base-side margin dump was never banked — the (a)
+leaf's +0.0091 base margin is reproducible only as a constant
++0.0620 offset against the in-tree f-judge base; verdict
+base-side-invariant; cross-check asserted at every figure render.
+GUARD 1 held all session (ISA append-only; mechanism.py regex
+re-verified green after every append). GUARD 2 held: every number
+the paper renders is either banked-pinned or log-derived-and-
+asserted. Rust tree untouched (cargo check --workspace --all-targets
+green as the zero-change proof). Measures: 5 work commits
+(15d8942, d567725, fb6986b, 2f5dabd, 004b055) + this record.
+Push: both remotes, post-commit, per standing practice.
