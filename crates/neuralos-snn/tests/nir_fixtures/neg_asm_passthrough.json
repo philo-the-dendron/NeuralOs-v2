@@ -1,0 +1,1 @@
+{"version":"1.0.0","node":{"metadata":{},"nodes":{"input":{"metadata":{},"type":"Input","shape":[1]},"output":{"metadata":{},"type":"Output","shape":[1]}},"edges":[["input","output"]],"type":"NIRGraph"}}

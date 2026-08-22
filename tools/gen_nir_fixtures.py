@@ -264,4 +264,232 @@ escaped = base.replace('"lif"', '"l\\u0069f1"', 1)
 (OUT / "neg_escaped_name.json").write_text(escaped + "\n")
 print(f"wrote {OUT.relative_to(ROOT)}/neg_escaped_name.json")
 
+# --- positive 3: general graphs (assembly slice, R18 P0) -------------
+# Doctrine: constructed with EXPLICIT Input/Output nodes — the pinned
+# trap is that infer_types silently auto-wires input_<n>/<n>_output
+# junctions around any implicit boundary, rewriting merges into
+# fork-shaped emissions. Every graph below self-asserts its exact
+# node/edge set after construction (the reference must not have
+# rewritten anything) before the bytes land in a fixture.
+#
+# The frozen POP values ride branch's first LIF population so quanta
+# stay cross-fixture comparable; the recurrent pops pin the D1
+# contract point (tau=20 ms, R=100 MOhm -> dt_over_tau=50 at dt=1 ms).
+
+POP_W1 = np.array([[0.5, -1.0, 0.25], [-0.25, 1.0, 0.5]])  # 3->2
+
+
+def emit_graph(name, nodes, edges, expect_edges):
+    g = nir.NIRGraph(nodes=nodes, edges=edges)  # type_check=True (default)
+    d = to_jsonable(g.to_dict())
+    assert set(d["nodes"]) == set(nodes), f"{name}: node set rewritten!"
+    got = sorted(tuple(e) for e in d["edges"])
+    assert got == sorted(expect_edges), f"{name}: edges rewritten: {got}"
+    dump(name, {"version": "1.0.0", "node": d})
+
+
+# branch: 1 Input -> (Linear->Linear fused) and (Linear) -> 2 LIF pops
+# -> 2 Outputs. Branch 2 (input->l3->lif2) is the plain chain shape;
+# branch 1 carries the Linear->Linear chain the assembly fuses.
+emit_graph(
+    "branch.json",
+    {
+        "input": nir.Input(input_type=np.array([3])),
+        "l1": nir.Linear(weight=POP_W1),                       # 3->2
+        "l2": nir.Linear(weight=np.array([[1.0, 0.0], [0.0, -0.5]])),  # 2->2
+        "l3": nir.Linear(weight=np.array([[0.25, 0.5, -0.25], [0.5, -0.25, 1.0]])),  # 3->2
+        "lif1": nir.LIF(**{k: v for k, v in POP_LIF.items()}),  # pop 2 (frozen values)
+        "lif2": nir.LIF(
+            tau=np.array([0.01, 0.02]),
+            r=np.array([2e8, 1e8]),
+            v_leak=np.array([-0.065, -0.07]),
+            v_threshold=np.array([-0.05, -0.055]),
+            v_reset=np.array([-0.075, -0.08]),
+        ),
+        "out1": nir.Output(output_type=np.array([2])),
+        "out2": nir.Output(output_type=np.array([2])),
+    },
+    [
+        ("input", "l1"), ("l1", "l2"), ("l2", "lif1"),
+        ("input", "l3"), ("l3", "lif2"),
+        ("lif1", "out1"), ("lif2", "out2"),
+    ],
+    [
+        ("input", "l1"), ("l1", "l2"), ("l2", "lif1"),
+        ("input", "l3"), ("l3", "lif2"),
+        ("lif1", "out1"), ("lif2", "out2"),
+    ],
+)
+
+# merge: 2 Inputs -> 2 Linears -> ONE LIF population -> 1 Output.
+# Weights 0.25 => q=8192 => x=100 feature current encodes to 81 uA:
+# one branch alone stalls below threshold climb (V_ss-rest = 810
+# centi-quanta < the 1500 gap), the summed fan-in (162 uA, V_ss-rest
+# 1620 >= 1520 climb bound) fires — the gate's sum-fires pin.
+MERGE_LIF = dict(
+    tau=np.array([0.02, 0.02]),
+    r=np.array([1e8, 1e8]),
+    v_leak=np.array([-0.07, -0.07]),
+    v_threshold=np.array([-0.055, -0.055]),
+    v_reset=np.array([-0.08, -0.08]),
+)
+emit_graph(
+    "merge.json",
+    {
+        "in1": nir.Input(input_type=np.array([2])),
+        "in2": nir.Input(input_type=np.array([2])),
+        "la": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
+        "lb": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
+        "lif": nir.LIF(**MERGE_LIF),
+        "out": nir.Output(output_type=np.array([2])),
+    },
+    [("in1", "la"), ("in2", "lb"), ("la", "lif"), ("lb", "lif"), ("lif", "out")],
+    [("in1", "la"), ("in2", "lb"), ("la", "lif"), ("lb", "lif"), ("lif", "out")],
+)
+
+# recurrent: 2 LIF populations mutually edged behind an explicit
+# Input/Output (cycle tolerated by the reference exactly when an
+# Input-rooted path and an Output leaf exist — both present here).
+REC_LIF = dict(
+    tau=np.array([0.02, 0.02]),
+    r=np.array([1e8, 1e8]),
+    v_leak=np.array([-0.07, -0.07]),
+    v_threshold=np.array([-0.055, -0.055]),
+    v_reset=np.array([-0.08, -0.08]),
+)
+recurrent_graph = nir.NIRGraph(
+    nodes={
+        "input": nir.Input(input_type=np.array([2])),
+        "linear": nir.Linear(weight=np.array([[0.5, 0.0], [0.0, 0.5]])),
+        "lif_a": nir.LIF(**REC_LIF),
+        "lif_b": nir.LIF(**REC_LIF),
+        "output": nir.Output(output_type=np.array([2])),
+    },
+    edges=[
+        ("input", "linear"), ("linear", "lif_a"),
+        ("lif_a", "lif_b"), ("lif_b", "lif_a"), ("lif_b", "output"),
+    ],
+)
+recurrent_doc = to_jsonable(recurrent_graph.to_dict())
+assert set(recurrent_doc["nodes"]) == {"input", "linear", "lif_a", "lif_b", "output"}
+assert sorted(tuple(e) for e in recurrent_doc["edges"]) == sorted(
+    [("input", "linear"), ("linear", "lif_a"), ("lif_a", "lif_b"),
+     ("lif_b", "lif_a"), ("lif_b", "output")]
+)
+dump("recurrent.json", {"version": "1.0.0", "node": recurrent_doc})
+
+# HDF5 pair for the merge graph (cross-container leg, R18 P4)
+dump_h5("merge.nir", nir.NIRGraph(
+    nodes={
+        "in1": nir.Input(input_type=np.array([2])),
+        "in2": nir.Input(input_type=np.array([2])),
+        "la": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
+        "lb": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
+        "lif": nir.LIF(**MERGE_LIF),
+        "out": nir.Output(output_type=np.array([2])),
+    },
+    edges=[("in1", "la"), ("in2", "lb"), ("la", "lif"), ("lb", "lif"), ("lif", "out")],
+))  # gzip default
+dump_h5("merge_uncompressed.nir", nir.NIRGraph(
+    nodes={
+        "in1": nir.Input(input_type=np.array([2])),
+        "in2": nir.Input(input_type=np.array([2])),
+        "la": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
+        "lb": nir.Linear(weight=np.array([[0.25, 0.0], [0.0, 0.25]])),
+        "lif": nir.LIF(**MERGE_LIF),
+        "out": nir.Output(output_type=np.array([2])),
+    },
+    edges=[("in1", "la"), ("in2", "lb"), ("la", "lif"), ("lb", "lif"), ("lif", "out")],
+), compression=None)
+
+# --- negative: ASSEMBLY-class rejections ----------------------------
+# The reference-legal shapes our assembly rejects BY NAME this slice.
+# Constructible ones are reference emissions (explicit NIRGraph, type
+# check on); the reference's own constructor rejects the rest, so
+# those are mutations — same doctrine as the format negatives.
+
+# Input -> Output pass-through: reference-legal (types match).
+emit_graph(
+    "neg_asm_passthrough.json",
+    {"input": nir.Input(input_type=np.array([1])),
+     "output": nir.Output(output_type=np.array([1]))},
+    [("input", "output")],
+    [("input", "output")],
+)
+# Input -> LIF direct drive: legal NIR, no Linear between.
+emit_graph(
+    "neg_asm_direct_drive.json",
+    {"input": nir.Input(input_type=np.array([1])),
+     "lif": nir.LIF(tau=np.array([0.02]), r=np.array([1e8]),
+                    v_leak=np.array([-0.07]), v_threshold=np.array([-0.055]),
+                    v_reset=np.array([-0.08])),
+     "output": nir.Output(output_type=np.array([1]))},
+    [("input", "lif"), ("lif", "output")],
+    [("input", "lif"), ("lif", "output")],
+)
+# Input -> Linear -> Output: legal, but nothing fires (encoder-only).
+emit_graph(
+    "neg_asm_no_lif.json",
+    {"input": nir.Input(input_type=np.array([1])),
+     "linear": nir.Linear(weight=np.array([[0.5]])),
+     "output": nir.Output(output_type=np.array([1]))},
+    [("input", "linear"), ("linear", "output")],
+    [("input", "linear"), ("linear", "output")],
+)
+# Input -> LIF -> Linear -> Output: the readout edge (LIF -> Linear).
+emit_graph(
+    "neg_asm_lif_to_linear.json",
+    {"input": nir.Input(input_type=np.array([1])),
+     "lif": nir.LIF(tau=np.array([0.02]), r=np.array([1e8]),
+                    v_leak=np.array([-0.07]), v_threshold=np.array([-0.055]),
+                    v_reset=np.array([-0.08])),
+     "linear": nir.Linear(weight=np.array([[0.5]])),
+     "output": nir.Output(output_type=np.array([1]))},
+    [("input", "lif"), ("lif", "linear"), ("linear", "output")],
+    [("input", "lif"), ("lif", "linear"), ("linear", "output")],
+)
+# LIF self-loop: legal NIR (types trivially match), forbidden by the
+# substrate (no self-synapse).
+emit_graph(
+    "neg_asm_self_loop.json",
+    {"input": nir.Input(input_type=np.array([1])),
+     "lif": nir.LIF(tau=np.array([0.02]), r=np.array([1e8]),
+                    v_leak=np.array([-0.07]), v_threshold=np.array([-0.055]),
+                    v_reset=np.array([-0.08])),
+     "output": nir.Output(output_type=np.array([1]))},
+    [("input", "lif"), ("lif", "lif"), ("lif", "output")],
+    [("input", "lif"), ("lif", "lif"), ("lif", "output")],
+)
+# empty graph: zero nodes, zero edges (infer_types returns early).
+emit_graph("neg_asm_empty.json", {}, [], [])
+
+# mid-graph shape mismatch: l1 mutated 2x3 -> 2x4 (cols != Input [3]).
+# The reference constructor would reject the type break, so this is a
+# mutation of branch.json's emission.
+with open(OUT / "branch.json") as f:
+    _branch_doc = json.load(f)
+_branch_doc["node"]["nodes"]["l1"]["weight"] = [
+    [0.5, -1.0, 0.25, 0.125],
+    [-0.25, 1.0, 0.5, 0.5],
+]
+dump("neg_asm_shape_mismatch.json", _branch_doc)
+
+# cycle with no Output leaf: recurrent minus output (+ its edge) —
+# the reference constructor rejects it ("No output nodes found").
+with open(OUT / "recurrent.json") as f:
+    _rec_doc = json.load(f)
+del _rec_doc["node"]["nodes"]["output"]
+_rec_doc["node"]["edges"] = [e for e in _rec_doc["node"]["edges"] if "output" not in e]
+dump("neg_asm_cycle_no_output.json", _rec_doc)
+
+# no Input at all: recurrent minus input+linear (+ their edges) — the
+# reference constructor rejects it ("No input nodes found").
+del _rec_doc["node"]["nodes"]["input"]
+del _rec_doc["node"]["nodes"]["linear"]
+_rec_doc["node"]["edges"] = [
+    e for e in _rec_doc["node"]["edges"]
+    if "input" not in e and "linear" not in e
+]
+dump("neg_asm_no_input.json", _rec_doc)
+
 print("done — reference:", nir.version if hasattr(nir, "version") else "?")

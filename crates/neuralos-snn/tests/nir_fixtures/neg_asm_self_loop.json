@@ -1,0 +1,1 @@
+{"version":"1.0.0","node":{"metadata":{},"nodes":{"input":{"metadata":{},"type":"Input","shape":[1]},"lif":{"metadata":{},"tau":[0.02],"r":[100000000.0],"v_leak":[-0.07],"v_threshold":[-0.055],"v_reset":[-0.08],"type":"LIF"},"output":{"metadata":{},"type":"Output","shape":[1]}},"edges":[["input","lif"],["lif","lif"],["lif","output"]],"type":"NIRGraph"}}
