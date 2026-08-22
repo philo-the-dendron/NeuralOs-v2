@@ -19,7 +19,8 @@
 //! externalizes, it does not re-tune).
 
 use neuralos_snn::{
-    decode_q2_0, NetworkTopology, SpikingNeuralNetwork, SynapseType, Trit, VoltageResolution,
+    decode_q2_0, encode_q2_0, NetworkTopology, SpikingNeuralNetwork, SynapseType, Trit,
+    VoltageResolution,
 };
 
 use crate::{GgufFile, GGML_TYPE_Q2_0};
@@ -222,6 +223,132 @@ pub fn tensor_abs(f: &GgufFile, p: &ExperimentParams) -> usize {
     (f.data_start + info.offset) as usize
 }
 
+/// Splice an n×n row-major trit patch over the surgery window of a
+/// parsed GGUF buffer — the shared surgery core (R4-style
+/// extraction; was inlined ×3 in hybrid_loop / hybrid_invivo /
+/// null_patches).
+///
+/// Per output row: decode the original chunk (keeping the model's
+/// own fp16 scale bits — magnitudes stay the model's, recorded
+/// decision), re-encode the patch row against those scales, count
+/// changed bytes split code-vs-scale by the q2_0 block layout
+/// (bytes 0..2 of each 34-byte block are scales), splice into
+/// `buf`. Scale-byte changes are asserted ZERO here.
+///
+/// `expect_src: Some(src)` additionally asserts every decoded
+/// original row equals `src` (the loop's chunk==slice codec
+/// transparency check); `None` skips it (invivo/null_patches never
+/// asserted it).
+///
+/// Returns `(code_bytes_changed, scale_bytes_changed)`; the second
+/// is always 0 (else the assert fired).
+///
+/// # Panics
+///
+/// GGUF/codec invariant failure, any scale-byte change, tensor
+/// window outside the buffer, or (with `expect_src`) any original
+/// chunk that differs from `src`.
+pub fn splice_trits(
+    buf: &mut [u8],
+    patch: &[Trit],
+    expect_src: Option<&[Trit]>,
+    p: &ExperimentParams,
+) -> (u64, u64) {
+    let N = p.n;
+    let ROW_BYTES = p.row_bytes();
+    let CHUNK_BYTES = p.chunk_bytes();
+    let f2 = GgufFile::parse(buf).expect("re-parse");
+    let abs = tensor_abs(&f2, p);
+    assert!(abs + p.tensor_bytes() <= buf.len(), "tensor window inside file");
+    let mut row_orig = vec![Trit::Zero; N];
+    let mut scales = vec![0u16; N / 128];
+    let mut enc = vec![0u8; CHUNK_BYTES];
+    let mut code_changed = 0u64;
+    let mut scale_changed = 0u64;
+    for r in 0..N {
+        let off = abs + r * ROW_BYTES;
+        decode_q2_0(&buf[off..off + CHUNK_BYTES], &mut row_orig, &mut scales)
+            .expect("original chunk decodes");
+        if let Some(src) = expect_src {
+            assert_eq!(
+                &row_orig[..],
+                &src[r * N..(r + 1) * N],
+                "row {r}: chunk == decoded slice"
+            );
+        }
+        encode_q2_0(&patch[r * N..(r + 1) * N], &scales, &mut enc).expect("encode patch row");
+        for (b, (&old, &new)) in buf[off..off + CHUNK_BYTES]
+            .iter()
+            .zip(enc.iter())
+            .enumerate()
+        {
+            if old != new {
+                if b % 34 < 2 {
+                    scale_changed += 1;
+                } else {
+                    code_changed += 1;
+                }
+            }
+        }
+        buf[off..off + CHUNK_BYTES].copy_from_slice(&enc);
+    }
+    assert_eq!(scale_changed, 0, "scale bytes must pass through");
+    (code_changed, scale_changed)
+}
+
+/// S2 disk round-trip: re-read a written file, parse it, and prove
+/// every trit of the surgery window decodes back to `patch`.
+///
+/// # Panics
+///
+/// Unreadable file, GGUF parse failure, codec failure, or any
+/// post-write decode mismatch.
+pub fn verify_disk_roundtrip(out: &str, patch: &[Trit], p: &ExperimentParams) {
+    let N = p.n;
+    let ROW_BYTES = p.row_bytes();
+    let CHUNK_BYTES = p.chunk_bytes();
+    let check = std::fs::read(out).expect("re-read patched");
+    let f3 = GgufFile::parse(&check).expect("patched file parses");
+    let abs3 = tensor_abs(&f3, p);
+    let mut rt = vec![Trit::Zero; N];
+    let mut sc = vec![0u16; N / 128];
+    let mut mism = 0u64;
+    for r in 0..N {
+        let off = abs3 + r * ROW_BYTES;
+        decode_q2_0(&check[off..off + CHUNK_BYTES], &mut rt, &mut sc)
+            .expect("patched chunk decodes post-write");
+        for c in 0..N {
+            if rt[c] != patch[r * N + c] {
+                mism += 1;
+            }
+        }
+    }
+    assert_eq!(mism, 0, "S2: post-write decode != patch");
+}
+
+/// Read `path`, splice `patch` in, write `out`, S2-verify — the
+/// one-call form for callers with no work between splice and write
+/// (null_patches, hybrid_invivo's per-snapshot exports). Returns
+/// `(code_bytes_changed, scale_bytes_changed)`.
+///
+/// # Panics
+///
+/// Everything [`splice_trits`] and [`verify_disk_roundtrip`] panic
+/// on, plus unreadable base / unwritable out.
+pub fn splice_and_verify(
+    path: &str,
+    out: &str,
+    patch: &[Trit],
+    expect_src: Option<&[Trit]>,
+    p: &ExperimentParams,
+) -> (u64, u64) {
+    let mut buf = std::fs::read(path).expect("read base");
+    let counts = splice_trits(&mut buf, patch, expect_src, p);
+    std::fs::write(out, &buf).expect("write patched");
+    verify_disk_roundtrip(out, patch, p);
+    counts
+}
+
 /// Excitatory population size (truncating, matching `build_balanced`'s
 /// partition — bit-identical at non-integer `n·ratio` boundaries).
 #[must_use]
@@ -323,7 +450,7 @@ pub fn trit_val(t: Trit) -> f64 {
 
 /// Trit bucket as census index: 0=−1, 1=0, 2=+1.
 #[must_use]
-fn tix(t: Trit) -> usize {
+pub fn tix(t: Trit) -> usize {
     match t {
         Trit::MinusOne => 0,
         Trit::Zero => 1,
@@ -1283,4 +1410,157 @@ pub fn run_amplitude_sweep(
         t0.elapsed().as_secs_f64(),
         peak_rss_mb()
     );
+}
+
+/// The R7-named gap, closed: harness machinery had zero direct unit
+/// tests (its pins were the example re-runs). These exercise the
+/// shared surgery unit on a synthetic GGUF-shaped buffer — offline,
+/// no model file needed.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Small surgery geometry: n=128 (chunk = one 34 B q2_0 block),
+    /// model 256×128 — tensor window 128 rows × 68 B.
+    fn small_params() -> ExperimentParams {
+        ExperimentParams {
+            n: 128,
+            model_cols: 256,
+            model_rows: 128,
+            ..ExperimentParams::default()
+        }
+    }
+
+    /// Minimal GGUF writer: header + one Q2_0 tensor, no KVs
+    /// (default alignment 32). Spec type codes: UINT32=4.
+    fn gguf_one_tensor(p: &ExperimentParams, data: &[u8]) -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend_from_slice(b"GGUF");
+        b.extend_from_slice(&3u32.to_le_bytes()); // version
+        b.extend_from_slice(&1u64.to_le_bytes()); // tensor count
+        b.extend_from_slice(&0u64.to_le_bytes()); // kv count
+        // tensor info: name, 2 dims, type, offset
+        let name = p.tensor;
+        b.extend_from_slice(&(name.len() as u64).to_le_bytes());
+        b.extend_from_slice(name.as_bytes());
+        b.extend_from_slice(&2u32.to_le_bytes());
+        b.extend_from_slice(&(p.model_cols as u64).to_le_bytes());
+        b.extend_from_slice(&(p.model_rows as u64).to_le_bytes());
+        b.extend_from_slice(&crate::GGML_TYPE_Q2_0.to_le_bytes());
+        b.extend_from_slice(&0u64.to_le_bytes()); // offset
+        // pad to 32, then data
+        while b.len() % 32 != 0 {
+            b.push(0);
+        }
+        b.extend_from_slice(data);
+        b
+    }
+
+    /// Original tensor data: every row's surgery chunk encodes 128
+    /// `Zero` trits at scale fp16 1.0; the row tail beyond the chunk
+    /// (cols 128..256) is a 0xA5 sentinel — the splice must never
+    /// touch it.
+    fn original_data(p: &ExperimentParams) -> Vec<u8> {
+        let chunk = p.chunk_bytes();
+        let row_bytes = p.row_bytes();
+        let mut data = Vec::with_capacity(p.tensor_bytes());
+        for _ in 0..p.n {
+            let mut chunk_buf = vec![0u8; chunk];
+            let zeros = vec![Trit::Zero; p.n];
+            let scales = vec![0x3C00u16; p.n / 128]; // fp16 1.0
+            encode_q2_0(&zeros, &scales, &mut chunk_buf).expect("encode zeros");
+            data.extend_from_slice(&chunk_buf);
+            data.extend(std::iter::repeat_n(0xA5u8, row_bytes - chunk));
+        }
+        // rows n..model_rows: entire rows of sentinel
+        data.extend(std::iter::repeat_n(
+            0xA5u8,
+            (p.model_rows - p.n) * row_bytes,
+        ));
+        data
+    }
+
+    #[test]
+    fn tix_maps_minus_zero_plus() {
+        assert_eq!(
+            (tix(Trit::MinusOne), tix(Trit::Zero), tix(Trit::One)),
+            (0, 1, 2)
+        );
+    }
+
+    #[test]
+    fn splice_and_verify_round_trip_on_synthetic_gguf() {
+        let p = small_params();
+        let (n, chunk, row_bytes) = (p.n, p.chunk_bytes(), p.row_bytes());
+        let mut buf = gguf_one_tensor(&p, &original_data(&p));
+        let before = buf.clone();
+
+        // src = what the file decodes to (all Zero, scales 1.0)
+        let f = GgufFile::parse(&buf).expect("synthetic parses");
+        let abs = tensor_abs(&f, &p);
+        let mut src = vec![Trit::Zero; n * n];
+        let mut scales = vec![0u16; n / 128];
+        for r in 0..n {
+            decode_q2_0(&buf[abs + r * row_bytes..][..chunk], &mut src[r * n..(r + 1) * n], &mut scales)
+                .expect("decode row");
+        }
+        assert!(src.iter().all(|&t| t == Trit::Zero));
+        assert!(scales.iter().all(|&s| s == 0x3C00));
+
+        // patch: three flips in three different rows
+        let mut patch = src.clone();
+        patch[0] = Trit::One;
+        patch[5 * n + 127] = Trit::MinusOne;
+        patch[n * n - 1] = Trit::One;
+
+        // control property first: splicing src over src changes nothing
+        let (c0, s0) = splice_trits(&mut buf, &src, Some(&src), &p);
+        assert_eq!((c0, s0), (0, 0), "identity splice must be byte-neutral");
+        assert_eq!(buf, before, "identity splice left the buffer identical");
+
+        // the real splice: code bytes change, scale bytes never
+        let (code, scale) = splice_trits(&mut buf, &patch, Some(&src), &p);
+        assert_eq!(scale, 0);
+        assert!(code > 0, "three flips must change code bytes");
+        // containment: only chunk-region bytes moved
+        for (pos, (a, b)) in buf.iter().zip(before.iter()).enumerate() {
+            if a != b {
+                let rel = pos - abs;
+                assert!(
+                    rel / row_bytes < n && rel % row_bytes < chunk,
+                    "byte changed outside a declared chunk at rel {rel}"
+                );
+            }
+        }
+
+        // write + S2 disk round-trip
+        let dir = std::path::Path::new("/tmp/opencode");
+        std::fs::create_dir_all(dir).expect("temp dir");
+        let out = dir.join("harness_splice_test.gguf");
+        std::fs::write(&out, &buf).expect("write");
+        verify_disk_roundtrip(out.to_str().unwrap(), &patch, &p);
+        std::fs::remove_file(&out).expect("cleanup");
+
+        // the one-call form agrees on the same inputs
+        let base_path = dir.join("harness_splice_base.gguf");
+        std::fs::write(&base_path, &before).expect("write base");
+        let (code2, scale2) =
+            splice_and_verify(base_path.to_str().unwrap(), out.to_str().unwrap(), &patch, Some(&src), &p);
+        assert_eq!((code2, scale2), (code, scale));
+        std::fs::remove_file(&base_path).expect("cleanup base");
+        std::fs::remove_file(&out).expect("cleanup out");
+    }
+
+    #[test]
+    fn splice_rejects_src_mismatch_loudly() {
+        let p = small_params();
+        let buf = gguf_one_tensor(&p, &original_data(&p));
+        let mut buf = buf;
+        // expect_src that lies: claims the file held One trits
+        let lie = vec![Trit::One; p.n * p.n];
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            splice_trits(&mut buf, &lie, Some(&lie), &p);
+        }));
+        assert!(result.is_err(), "the chunk==slice assert must fire on a lying src");
+    }
 }

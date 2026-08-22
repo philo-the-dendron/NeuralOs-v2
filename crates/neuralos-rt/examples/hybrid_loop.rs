@@ -56,10 +56,11 @@
 #![allow(non_snake_case)] // phase-2 locals keep the frozen original's const names
 
 use neuralos_rt::harness::{
-    decode_slice, peak_rss_mb, run_gate_phase, tensor_abs, ExperimentParams,
+    decode_slice, peak_rss_mb, run_gate_phase, splice_trits, tensor_abs,
+    verify_disk_roundtrip, ExperimentParams,
 };
 use neuralos_rt::GgufFile;
-use neuralos_snn::{decode_q2_0, encode_q2_0, Trit};
+use neuralos_snn::Trit;
 
 // ----- D-2 pinned state (session F re-run on the live-wire substrate —
 // the surgery runs only on the exact recorded adapted state). The pre-fix
@@ -199,41 +200,14 @@ fn main() {
         "  tensor window: abs {abs} + {TENSOR_BYTES} B (dims-derived, not slice-inferred)"
     );
 
-    // Splice: per output row, re-encode the first 4 blocks from the EXPORT
-    // trits (adapted, or source in control mode) with the ORIGINAL fp16
-    // scale bits (magnitudes stay the model's own — recorded decision).
-    // Scales pass through bit-exactly: asserted.
-    let mut row_orig = vec![Trit::Zero; N];
-    let mut scales = vec![0u16; N / 128];
-    let mut enc = vec![0u8; CHUNK_BYTES];
-    let mut code_bytes_changed = 0u64;
-    let mut scale_bytes_changed = 0u64;
-    for r in 0..N {
-        let off = abs + r * ROW_BYTES;
-        decode_q2_0(
-            &buf[off..off + CHUNK_BYTES],
-            &mut row_orig,
-            &mut scales,
-        )
-        .expect("original chunk decodes");
-        assert_eq!(&row_orig[..], &src[r * N..(r + 1) * N], "row {r}: chunk == decoded slice");
-        encode_q2_0(&export_trits[r * N..(r + 1) * N], &scales, &mut enc).expect("encode export row");
-        for (b, (&old, &new)) in buf[off..off + CHUNK_BYTES]
-            .iter()
-            .zip(enc.iter())
-            .enumerate()
-        {
-            if old != new {
-                if b % 34 < 2 {
-                    scale_bytes_changed += 1;
-                } else {
-                    code_bytes_changed += 1;
-                }
-            }
-        }
-        assert_eq!(scale_bytes_changed, 0, "row {r}: scale bytes must pass through");
-        buf[off..off + CHUNK_BYTES].copy_from_slice(&enc);
-    }
+    // Splice via the shared surgery unit (R4-extracted): re-encode the
+    // first 4 blocks from the EXPORT trits (adapted, or source in
+    // control mode) with the ORIGINAL fp16 scale bits (magnitudes stay
+    // the model's own — recorded decision). `expect_src` carries the
+    // loop's chunk==slice codec-transparency assert; scales pass
+    // through bit-exactly (asserted in the unit).
+    let (code_bytes_changed, scale_bytes_changed) =
+        splice_trits(&mut buf, export_trits, Some(src.as_slice()), &p);
     println!(
         "  spliced: {N} chunks × {CHUNK_BYTES} B = {} B declared region",
         N * CHUNK_BYTES
@@ -281,38 +255,23 @@ fn main() {
     }
     drop(orig);
 
-    // Write the patched copy, then S2: re-read from disk and prove what was
-    // written is what loads — byte-equal buffer AND decode == export trits.
+    // Write the patched copy, then S2 via the shared unit: re-read
+    // from disk and prove what was written is what loads.
     std::fs::write(&out_path, &buf).unwrap_or_else(|e| {
         eprintln!("cannot write {out_path}: {e}");
         std::process::exit(1);
     });
     println!("  wrote: {out_path} ({} B)", buf.len());
     drop(buf);
-    let check = std::fs::read(&out_path).expect("re-read patched");
-    let f3 = GgufFile::parse(&check).expect("patched file parses as GGUF");
-    let abs3 = tensor_abs(&f3, &p);
-    let mut rt = vec![Trit::Zero; N];
-    let mut sc = vec![0u16; N / 128];
-    let mut disk_mismatch = 0u64;
-    for r in 0..N {
-        let off = abs3 + r * ROW_BYTES;
-        decode_q2_0(&check[off..off + CHUNK_BYTES], &mut rt, &mut sc)
-            .expect("patched chunk decodes (code 3 would mean the encoder lied)");
-        for c in 0..N {
-            if rt[c] != export_trits[r * N + c] {
-                disk_mismatch += 1;
-            }
-        }
-    }
+    verify_disk_roundtrip(&out_path, export_trits, &p);
     println!(
-        "  S2 disk round-trip: patched file parses; {} trits decoded from disk vs export trits — {disk_mismatch} mismatches",
+        "  S2 disk round-trip: patched file parses; {} trits decoded from disk vs export trits — 0 mismatches",
         N * N
     );
-    assert_eq!(disk_mismatch, 0, "disk decode != export trits");
     if control_mode {
         // The full-file money assert: control output == original, byte for
         // byte, re-read from disk after the write.
+        let check = std::fs::read(&out_path).expect("re-read written control");
         let orig_full = std::fs::read(&path).expect("re-read original for control identity");
         assert!(
             check == orig_full,

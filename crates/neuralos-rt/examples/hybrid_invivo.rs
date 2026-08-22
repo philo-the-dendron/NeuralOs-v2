@@ -86,10 +86,11 @@
 
 use neuralos_rt::harness::{
     build_from_trits, decode_slice, exc_count, group_of, peak_rss_mb, rate_l1,
-    run_and_capture, shuffled_copy, train_hamming, trit_val, ExperimentParams, Train,
+    run_and_capture, shuffled_copy, splice_and_verify, tix, train_hamming, trit_val,
+    ExperimentParams, Train,
 };
 use neuralos_rt::{rms_norm_milli, GgufFile, Qwen3, Tokenizer};
-use neuralos_snn::{decode_q2_0, encode_q2_0, Trit, VoltageResolution};
+use neuralos_snn::{Trit, VoltageResolution};
 
 /// The in-vivo learning run (STDP on, one token per step) with the
 /// full counter battery: pairing histogram + per-class raw/absorbed/
@@ -168,13 +169,6 @@ fn run_vivo_ck(
         v
     };
     let mut ck_i = 0usize;
-    let tix = |t: Trit| -> usize {
-        match t {
-            Trit::MinusOne => 0,
-            Trit::Zero => 1,
-            Trit::One => 2,
-        }
-    };
     let is_intra = group_pair_classes(&net, exc, p);
     let mut raw_intra = 0_i64;
     let mut raw_inter = 0_i64;
@@ -247,7 +241,6 @@ fn main() {
     let (N, GAMMA, DT_US, STEPS, I_INH) = (p.n, p.gamma, p.dt_us, p.steps, p.i_inh);
     let (SI_FLOOR, RSS_BUDGET_MB, CONTROL_SEED) = (p.si_floor, p.rss_budget_mb, p.control_seed);
     let (TARGET_RMS_UA, CLAMP_UA, CLAMP_WARN_FRAC) = (p.target_rms_ua, p.clamp_ua, p.clamp_warn_frac);
-    let (TENSOR, ROW_BYTES) = (p.tensor, p.row_bytes());
     let DRIVEN_DIMS = exc_count(&p);
     let path = std::env::args().nth(1).unwrap_or_else(|| {
         "models/Ternary-Bonsai-4B-Q2_0.gguf".into()
@@ -547,15 +540,18 @@ fn main() {
     // flag `export` writes the patched GGUF for the fork judge) -----
     if export_mode {
         println!();
-        println!("--- TIER-2 export (hybrid_loop surgery machinery; S2 re-read on EVERY file) ---");
-        // The surgery as a reusable unit: writes `out` from a synapse-order
-        // trit snapshot; returns (cells changed, code bytes, scale bytes);
-        // asserts scales-passthrough + S2 post-write re-read internally.
-        let base = std::fs::read(&path).unwrap_or_else(|e| {
-            eprintln!("cannot re-read {path}: {e}");
-            std::process::exit(1);
-        });
+        println!("--- TIER-2 export (the shared harness surgery unit; S2 re-read on EVERY file) ---");
+        // The surgery as a reusable unit (R4-extracted
+        // `splice_and_verify`): writes `out` from a synapse-order
+        // trit snapshot; returns (cells changed, code bytes, scale
+        // bytes); asserts scales-passthrough + S2 post-write
+        // re-read internally. The synapse-order → N×N
+        // reconstruction (k-walk + diagonal-from-src) stays here —
+        // it is invivo's own graph shape.
         let do_surgery = |syn_trits: &[Trit], out: &str| -> (u64, u64, u64) {
+            // synapse-order (j outer, i inner, i≠j) → N×N row-major;
+            // the diagonal carried no synapse (full-minus-diagonal
+            // build) → keeps its source trit.
             let adapted = {
                 let mut a = vec![Trit::Zero; N * N];
                 let mut k = 0usize;
@@ -573,62 +569,8 @@ fn main() {
                 a
             };
             let changed = adapted.iter().zip(&src).filter(|(a, b)| a != b).count() as u64;
-            let mut buf = base.clone();
-            let f2 = GgufFile::parse(&buf).expect("re-parse");
-            let info2 = f2
-                .tensors
-                .iter()
-                .find(|t| t.name == TENSOR)
-                .unwrap_or_else(|| panic!("tensor {TENSOR} not found"));
-            let abs = (f2.data_start + info2.offset) as usize;
-            let chunk: usize = p.chunk_bytes(); // first 4 blocks = the 512 driven/row cols
-            let mut row_orig = vec![Trit::Zero; N];
-            let mut scales = vec![0u16; N / 128];
-            let mut enc = vec![0u8; chunk];
-            let mut code_changed = 0u64;
-            let mut scale_changed = 0u64;
-            for r in 0..N {
-                let off = abs + r * ROW_BYTES;
-                decode_q2_0(&buf[off..off + chunk], &mut row_orig, &mut scales)
-                    .expect("original chunk decodes");
-                encode_q2_0(&adapted[r * N..(r + 1) * N], &scales, &mut enc)
-                    .expect("encode row");
-                for (b, (&old, &new)) in buf[off..off + chunk].iter().zip(enc.iter()).enumerate() {
-                    if old != new {
-                        if b % 34 < 2 {
-                            scale_changed += 1;
-                        } else {
-                            code_changed += 1;
-                        }
-                    }
-                }
-                assert_eq!(scale_changed, 0, "scales pass through");
-                buf[off..off + chunk].copy_from_slice(&enc);
-            }
-            std::fs::write(out, &buf).expect("write patched");
-            // S2 post-write re-read — EVERY export, nulls included.
-            let check = std::fs::read(out).expect("re-read patched");
-            let f3 = GgufFile::parse(&check).expect("patched file parses");
-            let info3 = f3
-                .tensors
-                .iter()
-                .find(|t| t.name == TENSOR)
-                .unwrap_or_else(|| panic!("tensor {TENSOR} missing post-write"));
-            let abs3 = (f3.data_start + info3.offset) as usize;
-            let mut rt = vec![Trit::Zero; N];
-            let mut sc = vec![0u16; N / 128];
-            let mut mism = 0u64;
-            for r in 0..N {
-                let off = abs3 + r * ROW_BYTES;
-                decode_q2_0(&check[off..off + chunk], &mut rt, &mut sc)
-                    .expect("patched chunk decodes post-write");
-                for c in 0..N {
-                    if rt[c] != adapted[r * N + c] {
-                        mism += 1;
-                    }
-                }
-            }
-            assert_eq!(mism, 0, "S2: post-write decode != exported trits");
+            let (code_changed, scale_changed) =
+                splice_and_verify(&path, out, &adapted, None, &p);
             (changed, code_changed, scale_changed)
         };
 

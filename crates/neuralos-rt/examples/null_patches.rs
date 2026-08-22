@@ -28,14 +28,15 @@
 //! [orig.gguf] [h2-patched.gguf]` — writes models/null-dose-<s>.gguf and
 //! models/null-flip-<s>.gguf, all S2-asserted.
 
-use neuralos_rt::harness::{decode_slice, tensor_abs, xorshift64, ExperimentParams};
-use neuralos_rt::GgufFile;
-use neuralos_snn::{decode_q2_0, encode_q2_0, Trit};
+use neuralos_rt::harness::{
+    decode_slice, splice_and_verify, tix, xorshift64, ExperimentParams,
+};
+use neuralos_snn::Trit;
 
 #[allow(non_snake_case)]
 fn main() {
     let p = ExperimentParams::default();
-    let (N, ROW_BYTES) = (p.n, p.row_bytes());
+    let N = p.n;
     let orig_path = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "models/Ternary-Bonsai-4B-Q2_0.gguf".into());
@@ -54,13 +55,6 @@ fn main() {
     let h2_cells = changed_idx.len();
     // per (from,to) class composition of the terminal diff
     let mut comp: [u64; 9] = [0; 9]; // (from*3 + to), values 0..2 minus/zero/one
-    let tix = |t: Trit| -> usize {
-        match t {
-            Trit::MinusOne => 0,
-            Trit::Zero => 1,
-            Trit::One => 2,
-        }
-    };
     for &i in &changed_idx {
         comp[tix(src[i]) * 3 + tix(h2[i])] += 1;
     }
@@ -77,39 +71,10 @@ fn main() {
         }).count()
     );
 
-    // ----- The surgery unit (S2-asserted, identical to hybrid_invivo) -----
+    // ----- The surgery unit (shared harness splice_and_verify; S2
+    // re-read on EVERY file — the R4-extracted core) -----
     let do_surgery = |patched: &[Trit], out: &str| {
-        let mut buf = std::fs::read(&orig_path).expect("re-read base");
-        let f2 = GgufFile::parse(&buf).expect("re-parse");
-        let abs = tensor_abs(&f2, &p);
-        let chunk: usize = p.chunk_bytes();
-        let mut row_orig = vec![Trit::Zero; N];
-        let mut scales = vec![0u16; N / 128];
-        let mut enc = vec![0u8; chunk];
-        for r in 0..N {
-            let off = abs + r * ROW_BYTES;
-            decode_q2_0(&buf[off..off + chunk], &mut row_orig, &mut scales)
-                .expect("orig decodes");
-            encode_q2_0(&patched[r * N..(r + 1) * N], &scales, &mut enc).expect("encode");
-            buf[off..off + chunk].copy_from_slice(&enc);
-        }
-        std::fs::write(out, &buf).expect("write");
-        let check = std::fs::read(out).expect("re-read");
-        let f3 = GgufFile::parse(&check).expect("parse post-write");
-        let abs3 = tensor_abs(&f3, &p);
-        let mut rt = vec![Trit::Zero; N];
-        let mut sc = vec![0u16; N / 128];
-        let mut mism = 0u64;
-        for r in 0..N {
-            let off = abs3 + r * ROW_BYTES;
-            decode_q2_0(&check[off..off + chunk], &mut rt, &mut sc).expect("decode post");
-            for c in 0..N {
-                if rt[c] != patched[r * N + c] {
-                    mism += 1;
-                }
-            }
-        }
-        assert_eq!(mism, 0, "S2: post-write decode != patch");
+        splice_and_verify(&orig_path, out, patched, None, &p);
     };
 
     // ----- PRIMARY: dose-matched ×10 (exact H2 composition, uniform cells) -----
