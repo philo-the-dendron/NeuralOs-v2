@@ -3638,3 +3638,107 @@ Milestone-review findings (de8c7cf..03720dd review), all closed:
   289/0 (3 app, 93 rt, 185+8 snn); no_std builds; simd 197/0
   (188+8+1); hdf5 leg 116/0 (101 inline + 15 fixture) + gate 5/5 +
   feature clippy clean.
+
+## Verification (R17 — consolidation, Group B: the R7/audit backlog, 2026-08-22)
+
+- **Surgery extraction landed** (R4-style; was the R7 "surgery unit
+  ×3" finding): `harness.rs` gains `splice_trits` (per-row
+  decode-scales/encode/splice, code-vs-scale byte counting by the
+  q2_0 block layout, optional `expect_src` chunk==slice
+  transparency assert, scale-passthrough assert),
+  `verify_disk_roundtrip` (S2), `splice_and_verify` (one-call form).
+  hybrid_loop/invivo/null_patches drop their inlined copies; invivo
+  keeps only its synapse-order→N×N reconstruction (its own graph
+  shape). `tix` closures ×2 deduped onto the now-pub harness fn.
+- **Output-neutrality proof (freeze-evidence doctrine)**: gate
+  ADAPTS @ +0.1075 with spikes 35115/35136/35157 · events
+  18,817,891 · flips 708,029 — all byte-exact vs the bank;
+  loop export sha 24ffe5f3… (pinned); null_patches 13/13
+  byte-identical to `evidence/r4-closeout/null_shas_before.txt`
+  (sha-verified, only the path prefix differs).
+- **Adjudicated, not extracted — `run_vivo_ck` vs `run_hybrid`**
+  (the R7 "mirrors" finding): the mirror is loop-shape only; four
+  axes diverge (grid mV/cMv, init semantics p.init_steps vs D-2
+  min-400, group-schedule vs in-vivo drive, bitsets/containment vs
+  checkpoints/raw-absorbed). Unification would be a parameterized
+  framework with high pin risk over ~10 truly-shared lines.
+  Documented here; finding closed as rejected-with-reasons.
+- **Harness direct unit tests** (the R7 "zero direct tests" gap):
+  synthetic-GGUF builder + splice round-trip (identity splice
+  byte-neutral, containment outside chunks, S2 disk verify,
+  one-call form agrees) + lying-`expect_src` rejection + tix pin.
+  rt offline 93 → 96.
+- **Census deferrals EXECUTED** (principal ruling 2026-08-22;
+  zero-consumer re-verified at tip first — every
+  NeuronBuilder/SynapseBuilder caller was in-module tests, NirBuilder
+  is a different type): builders + setter surface + root re-exports
+  DELETED (−226/+109); test-only introspection quartet +
+  `set_voltage_resolution` + `isqrt_u64` relocated under
+  `#[cfg(test)]`; `Synapse::normalized_weight` relocated + pinned
+  (`normalized_weight_is_percentage_of_max`; default max_weight
+  grep-verified 2000 — my first draft asserted 32000 from recall and
+  failed: the R7 criterion applies to my own tests).
+  `LIFNeuron::spikes()` deleted outright (zero callers anywhere,
+  missed by the R8 enumeration — same class). Recovery sha: f13c2ce.
+  API break rides alpha.5.
+- **Leg-C gaps closed** (the R8 inventory's two): (i)
+  `plasticity_off_freezes_weights_under_adapting_drive` — the stuck-ON
+  detector: same drive that moves the weight with ON (post-leads LTD
+  at dt=+1000μs) leaves it byte-identical + 0 events with OFF; (ii)
+  `adaptation_decay_runs_before_integration_exact` — ΔV = 1 − A_eff
+  constants (membrane −56, threshold −55 SET [default is −50 — found
+  by debug-print, not recall], resting −70, R=1MΩ, tau=dt, 15μA):
+  A=1 spikes (decay-first proven; decay-after would silence), A=2
+  silent (A_eff = A_start−1 exactly), post-step adaptation 2/1.
+- **Battery**: workspace 294/0 (3 app, 195 snn, 96 rt); clippy clean;
+  no_std; simd 199/0; hdf5 119/0 + gate 5/5; AUTO_SMOKE tier 2 PASS.
+
+## Verification (R17 — consolidation, Group C: docs truth + probes, 2026-08-22)
+
+- **VISION defensible-claims rewritten, every claim sourced**:
+  Lava (banner verbatim: archived 2026-05-13, read-only, 739★, Intel
+  → closed next-gen SDK, slot vacant); frontier + Tsinghua async
+  RISC-V SNN (ASYNC 2025, 10.1109/ASYNC65240.2025.00009) + FlexBits-
+  SNN (MWSCAS 2025, 10.1109/MWSCAS53549.2025.11244476); the 27-count
+  re-anchored to the LIVE guide URL
+  (open-neuromorphic.org/neuromorphic-computing/software/
+  snn-frameworks/ — the old /tools/ path is dead; live fetch
+  2026-08-22 lists 27, footer's own count); IEEE claim now the full
+  citation — Deshpande, Grandi, Schoenfeldt, Lurz (Infineon/
+  Codasip/OvGU), DCIS 2025, pp. 114–119, 10.1109/DCIS67520.2025.
+  11281920; NIR added — Pedersen et al., Nat Comms 15, 4962 (2024),
+  10.1038/s41467-024-52259-9, "9 simulators + 5 hardware platforms"
+  (repo claim). Version bump alpha.2 → alpha.4.
+- **Paper (principal ruling)**: `deshpande2025fullinteger` bib entry
+  + substrate.tex prose → \citep (the paper's first cite); pedersen
+  NOT in the paper (closed Branch-B record, no natural home; NIR
+  citation lives in VISION + READMEs). `make` green, `make gate`
+  clean, 0 undefined refs.
+- **crates.io SNN spot-check** (the remaining survey leg): no other
+  Rust SNN crate carries the `no-std` category. Named near-misses:
+  `hebb` 0.1.0 ("embed-anywhere" prose only; keywords stdp/snn, no
+  no_std), `neuburn` (Burn-based, std), `spiking_neural_networks`
+  0.24.0 (29k dl, std — the guide's single low-quality Rust entry).
+  Also notable: `nir-rs` 0.4.2 (pure-Rust NIR impl — ecosystem
+  signal, not a competitor). The vacant-slot claim survives its
+  recount.
+- **README/AGENTS/snn-README alpha.4 refresh**: current-status row,
+  published-crate section (+ intentionally-ahead-of-.4 note, alpha.5
+  break banked), battery counts 294 (measured: 3/195/96 — a draft
+  said 198/93 from prediction; corrected against the actual run),
+  NIR principle added to root README design principles.
+- **QEMU pre-flight fact (next-session note)**: NO qemu and NO riscv
+  rustup targets on this box (checked 2026-08-22). The QEMU proof
+  session opens with an install phase — apt qemu needs sudo;
+  `rustup target add riscv64gc-unknown-none-elf` is userland.
+- **Observation**: the open-neuromorphic guide still lists Lava as a
+  live framework (stale); VISION carries the note that the repo
+  banner is authoritative.
+
+## Remaining-unverified list
+
+Empty — every claim written this session was verified at its source
+or carried in verbatim from the principal's probe results
+(2026-08-22): IEEE/DCIS, ASYNC, MWSCAS DOIs; the 27-framework live
+recount; Lava banner; NIR citation + platform count; arXiv 2603.26722
+(verified live in the prior pass).

@@ -9,7 +9,7 @@ crates.io. Integer-only computation is not an aesthetic choice: it is
 the regime ternary weights live in natively (an \texttt{i16} state
 holds a $\{-1,0,+1\}$ alphabet without conversion), and float-free SNN
 computation has been independently motivated for FPU-less edge silicon
-(IEEE 2025, \emph{Full-Integer SNN Inference with RISC-V ISA}). The
+\citep{deshpande2025fullinteger}. The
 library forbids allocation and unwraps on the hot path; every number
 in this paper is produced by that integer path.
 

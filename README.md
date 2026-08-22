@@ -50,7 +50,7 @@ NeuralOs-v2/
 
 | Component | State |
 |---|---|
-| `neuralos-snn` | Active and validated. `cargo test -p neuralos-snn`, `cargo check --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass. Published on crates.io (currently `0.1.0-alpha.3`; `alpha.4` staged in-repo). |
+| `neuralos-snn` | Active and validated. `cargo test -p neuralos-snn`, `cargo check --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass. Published on crates.io at `0.1.0-alpha.4` (2026-08-22; NIR structured entry + HDF5 evidence gate). |
 | `neuralos-app` | Active Slint visualizer wired directly to `neuralos-snn`. |
 | `neuralos-rt` | Research runtime that proved the ternary bridge. `publish = false`; kept as the executable record behind `paper/`. |
 | Ternary bridge | **Closed chapter** — gates adjudicated, record in `docs/RESEARCH_LOG.md`, article in `paper/`. Reopening is a recorded fork, not default work. |
@@ -61,6 +61,7 @@ NeuralOs-v2/
 - **Pure Rust.** No webview stack, no cloud runtime, no black-box platform layer.
 - **`no_std` by default for the library.** The hot path stays compatible with embedded and RISC-V targets.
 - **i16 fixed-point in the hot path.** No floating-point creep in neuron/synapse core logic.
+- **Interoperable, not insular.** The library speaks NIR — the Neuromorphic Intermediate Representation (Pedersen et al., Nature Communications 15, 4962 (2024), DOI 10.1038/s41467-024-52259-9) — so snnTorch/SpikingJelly-class graphs load and export.
 - **Visualizer as microscope, not product theater.** The app exists to reveal the substrate.
 - **One source of truth.** No parallel copies, no empty scaffolding, no fake architecture.
 - **Tests must prove real behavior.** Regressions should be caught by unit/property tests, not hope.

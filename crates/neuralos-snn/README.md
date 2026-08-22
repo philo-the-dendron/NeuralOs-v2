@@ -4,7 +4,7 @@
 > silicon — LIF neurons, pairwise STDP, CSR synapses, ternary weight
 > codecs, and an AVX2 batch kernel.
 
-Published on crates.io as `0.1.0-alpha.3` (AGPL-3.0-or-later).
+Published on crates.io as `0.1.0-alpha.4` (AGPL-3.0-or-later).
 
 ## What this crate is
 
@@ -95,7 +95,7 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   see the alpha.3 audit record in the repo's `ISA.md`.
 - SIMD gate runs in CI; the batch kernel is documented mV-grid-only.
 
-## Since alpha.3 (the alpha.4 notes — staged, unreleased)
+## Since alpha.3 (the alpha.4 notes — PUBLISHED 2026-08-22)
 
 - **NIR slice 1 shipped *in* alpha.3** (missing from the notes
   above): `neuralos_snn::nir` — JSON import/export of
@@ -146,17 +146,26 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
 
 ## Status
 
-`0.1.0-alpha.3` — the substrate-hardening release: the
+**`0.1.0-alpha.4` is live on crates.io** (published 2026-08-22): NIR
+structured entry (pub quantizers, `NirBuilder`, per-neuron
+populations) + the R9 review fixes. The alpha.3 record: the
 adaptation-decay contract pinned by unit + live tests (equilibrates,
 never silences the net); `synaptic_input_divisor` — **the coupling
 knob**, new public API (default 10 = the historical weight/10 pulse;
 0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
 published path unchanged; the simd batch kernel doc'd mV-grid-only.
-**`alpha.4` is staged in-repo** (NIR structured entry + HDF5 via the
-workspace's `neuralos-rt`, R9 review fixes). 288 offline
-unit/property tests (3 app, 192 snn, 93 rt) + 196 simd-gated + 116
+
+**The tree is ahead of the published crate** (since the 2026-08-22
+consolidation, rides `alpha.5`): builder types (`NeuronBuilder`,
+`SynapseBuilder`) deleted, the test-only introspection quartet
+relocated under `#[cfg(test)]` — API breaks. 294 offline
+unit/property tests (3 app, 195 snn, 96 rt) + 199 simd-gated + 119
 hdf5-gated (in `neuralos-rt`) + 5 model-gated `#[ignore]`; the API
 may still move within alpha semver.
+
+NIR itself: Pedersen et al., Nature Communications 15, 4962 (2024),
+DOI 10.1038/s41467-024-52259-9 — this crate's `nir` module speaks
+the schema pinned to `neuromorphs/NIR@7883c3c`.
 
 ## License
 

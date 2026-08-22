@@ -25,26 +25,48 @@ coordinates the hardware frontier needs.
 
 ## Why it's defensible (the evidence)
 
-- **Intel archived Lava on 2026-05-13.** The reference i16 fixed-point SNN
+Every claim here verified at its source (2026-08-22 consolidation
+pass; verification method in parentheses):
+
+- **Intel archived Lava on 2026-05-13** (repo banner read verbatim:
+  archived, read-only; 739★; Intel points to a closed next-gen SDK —
+  the open slot stays vacant). The reference i16 fixed-point SNN
   framework is gone. NeuralOS positions as its spiritual successor.
+  (The open-neuromorphic guide still lists Lava — stale; the repo
+  banner is authoritative.)
 - **The SNN-on-RISC-V frontier is real and software-starved** —
-  SpikeStream, FeNN, SNAP-V, Kraken SoC, IzhiRISC-V: a 2024–2026 burst
-  of hardware work with no mature open software library to run on it.
-- **The `no_std`/embedded SNN slot is vacant across all languages** —
-  27 SNN frameworks listed in the open-neuromorphic guide; every one
+  SpikeStream, FeNN, SNAP-V, Kraken SoC, IzhiRISC-V, plus 2025's
+  burst: a Tsinghua asynchronous RISC-V SNN processor (ASYNC 2025,
+  DOI 10.1109/ASYNC65240.2025.00009) and FlexBits-SNN (MWSCAS 2025,
+  DOI 10.1109/MWSCAS53549.2025.11244476) — hardware work with no
+  mature open software library to run on it.
+- **The `no_std`/embedded SNN slot is vacant across all languages**
+  — the open-neuromorphic SNN Software Guide
+  (open-neuromorphic.org/neuromorphic-computing/software/snn-frameworks/,
+  live recount 2026-08-22) lists 27 SNN frameworks; every one
   Python/C++/JAX except one low-quality Rust entry.
-- **The i16 fixed-point design is externally validated** — IEEE 2025
-  *"Full-Integer SNN Inference with RISC-V ISA"*: float-free integer SNN
-  is *required* for FPU-less edge silicon.
+- **The i16 fixed-point design is externally validated** — Deshpande,
+  Grandi, Schoenfeldt & Lurz (Infineon/Codasip/OvGU), *"Full-Integer
+  SNN Inference with RISC-V ISA Extensions for Radar-Based Gesture
+  Recognition"*, DCIS 2025, pp. 114–119, DOI
+  10.1109/DCIS67520.2025.11281920: float-free integer SNN is
+  *required* for FPU-less edge silicon.
+- **NIR (Neuromorphic Intermediate Representation) is the interop
+  layer** — Pedersen et al., Nature Communications 15, 4962 (2024),
+  DOI 10.1038/s41467-024-52259-9; today 9 simulators + 5 hardware
+  platforms speak it (repo claim, neuromorphs/NIR). NeuralOS imports
+  and exports it.
 
 ## The three chapters
 
 ### 1. The substrate (now — the active front)
 
-`neuralos-snn` on crates.io (`0.1.0-alpha.2`): `no_std`, i16 fixed-point,
+`neuralos-snn` on crates.io (`0.1.0-alpha.4`, published 2026-08-22):
+`no_std`, i16 fixed-point,
 LIF + full pairwise STDP + 4 topologies + CSR sparse matrix + AVX2 kernel
 + the ternary bridge codecs (`i2_s`/`q1_0`/`q2_0`) + shared ternary
-matmul + live synaptic transmission (the session-F fix).
+matmul + live synaptic transmission (the session-F fix) + NIR
+import/export (JSON container; HDF5 `.nir` IO via `neuralos-rt`).
 
 **Near-term — the starved original list, first-class again:** NIR
 import/export (interop with snnTorch/SpikingJelly — the #1 ecosystem
@@ -92,8 +114,9 @@ roadmap).
 2. **QEMU `riscv64gc` proof** of the `no_std` claim; ESP32-C3 when
    budget allows.
 3. **Position publicly as Lava's spiritual successor**; cite the
-   Neuromorphic-OS paper (arXiv:2603.26722) and the Full-Integer-SNN
-   paper (IEEE 2025).
+   Neuromorphic-OS paper (arXiv:2603.26722), the Full-Integer-SNN
+   paper (Deshpande et al., DCIS 2025), and NIR (Pedersen et al.,
+   Nature Comms 2024).
 4. **Outreach to ETH Zürich Benini / PULP** — they have the hardware;
    NeuralOS brings the open software library.
 5. **Paper track:** finish and submit the Branch B article from `paper/`
