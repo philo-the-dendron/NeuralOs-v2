@@ -1,9 +1,9 @@
 # Paper novelty verification — the plasticity-loop claim
 
-> Status: SEAM HOLDS (as surveyed 2026-08-20, pass 3 — the
-> pre-submission gate, run). This document is the paper's novelty
+> Status: SEAM HOLDS (as surveyed 2026-08-22, pass 4 — the
+> arXiv-preprint gate, run). This document is the paper's novelty
 > evidence and carries its own provenance. Fresh re-verification is
-> still wise if submission slips months beyond pass 3.
+> still wise if submission slips months beyond pass 4.
 
 ## The claim under test
 
@@ -187,3 +187,84 @@ Supporting signal: the 2025 SNN↔LLM survey (Synergies and
 Divergences) independently lists "biologically inspired local
 plasticity rules" as a training-methodology class with no
 shipped-LLM adaptation demonstrated — corroborating 2409.02111.
+
+Pass 4 — arXiv preprint gate: 2026-08-22. **Verdict: SEAM
+HOLDS.** Engines: arXiv Atom API (export.arxiv.org, working
+clean this session), OpenReview V1 API, GitHub repo search,
+Semantic Scholar citations (unthrottled today, unlike pass 3) +
+OpenAlex cross-check. 41 engine queries total; ~160 abstracts/titles
+adjudicated against the matrix. Zero L1∧L2 candidates; zero
+all-four. Two near-misses added below.
+
+Query log (engine · query · count · disposition):
+
+- arXiv, pass-1 rerun (15 queries, relevance order): SpikingLLM 1
+  · SpikeLLM 1 · SpikeGPT 1 · SpikingBERT 2 · Hebbian+LLM 9 ·
+  STDP+LM 5 · "local plasticity"+LM 1 (LLM-Ideoplasticity —
+  behavioral politics measurement, weights untouched) ·
+  forward-forward+LM 2 · "model editing"+gradient-free 2 ·
+  TTT+LM 62 (all gradient inner-loop class) · BitNet+ternary+ft
+  2 · SNN+LLM survey 5 · memristor+LLM 4 · ternary+spiking+LM 2 ·
+  on-chip+quantized+neuromorphic 1 (EqProp oscillator Ising —
+  local rule, non-LLM). **Totals match pass 1 exactly.**
+- arXiv, 2026-targeted (10 queries, submittedDate desc):
+  "knowledge editing"+"biologically plausible" **0** (the risk
+  pair itself) · "local plasticity"+LLM 1 (same Ideoplasticity)
+  · Hebbian+fine-tuning 15 (all vision/CNN/neuro: NM-Hebb=CNN,
+  NM-Hebb-TTT=vision — pass-2 known) · STDP+transformer 8
+  (S²TDPT + vision/hardware/RSA) · neuromorphic+"model editing"
+  **0** · "weight editing"+quantized 2 (GROM + GUARD-IT, below)
+  · "training-free"+weights+LLM 158 → top-30 date-ordered
+  scanned: refusal-neuron/steering/decoding/merging class, zero
+  plasticity · Hebbian+LLaMA 1 (Obliviate eval) · STDP+GGUF **0**
+  · plasticity+llama.cpp **0** (direct seam probes hold).
+- OpenReview V1 (8 terms × top-1,000 relevance slice = 8,000
+  notes, keyword matrix + high-risk title scan): 6 unique flags →
+  2 abstract-verified false-positives (r-STDP RL sim-to-real,
+  ICONS 2022 — surrogate-gradient BP on control tasks, not an
+  LLM; Neuromodulation Gated Transformer, ICLR-2023 Tiny —
+  scratch SuperGLUE arch) + STDP-Net (vision PAR) + SpikeGPT +
+  Spike-driven Transformer + Synaptic-Flow NAS. **Zero L1∧L2.**
+  Boundary unchanged: server 10k matches/term, top-1k scanned.
+- GitHub repo search (8 queries): STDP+gguf 0 · STDP+llama.cpp 0
+  · STDP+bitnet 0 · Hebbian+gguf 0 · Hebbian+llama.cpp 0 ·
+  Hebbian+bitnet 0 · plasticity+gguf 0 · spiking+llama.cpp+
+  on-device+learning 0. Code search 401 (auth) — not covered,
+  same boundary as pass 3.
+- Citation forward-sweep (S2, all six graphs pulled full): citing
+  Dragon Hatchling 7 (3 new since pass 3: Parity-Bottleneck
+  interpretable transformers, AI-subject philosophy, BambooKG
+  KG-weighting — no joiner) · citing QES 2 (both ES/ZO-family)
+  · citing BitDistill 2 (embeddings + VHDL) · citing SpikeLLM 40
+  (20×2026: SpikeVLA, LongSpike, Otters++, BiSpikCLM, Matterhorn,
+  TPipe, surveys — all conversion/compression/encoding family;
+  BiSpikCLM abstract-fetched: binary MatMul-free LM by
+  **distillation**, L1 ✗ L2 ✗) · citing BitNet b1.58 448 (111×
+  2026 — zero plasticity-titled; all PTQ/QAT/LUT/accelerator
+  class; nearest flavor: EqProp-for-Kuramoto = local rule on
+  non-LLM hardware) · citing AlphaEdit 265 (114×2026 — the
+  risk-class anchor: the "training-free/gradient-free" 2026
+  trend is closed-form optimization (GROM, Soft-RLS), model
+  merging (RAIN-Merging), and BP (DOW-KE) — **no plasticity
+  joiner**). OpenAlex cites: cross-check consistent (thinner
+  graphs, no contradicting signal).
+
+New matrix rows (pass 4, abstract-fetched):
+
+| Work | L1 | L2 | L3 | L4 |
+|---|---|---|---|---|
+| GROM [2608.05783](https://arxiv.org/abs/2608.05783) | ✗ closed-form ridge least-squares (AlphaEdit class) | ✓ | ~ quantization-*robust* edit, not quantized-format-native | ✗ own PyTorch harness |
+| HeLa-Mem [2604.16839](https://arxiv.org/abs/2604.16839) | ~ Hebbian dynamics on an **external memory graph** | ✗ LLM weights untouched | ✗ | ✗ |
+| GUARD-IT [2605.12765](https://arxiv.org/abs/2605.12765) | ✗ activation steering, no weight change | ✓ | ✗ | ✗ |
+| DOW-KE [2608.16932](https://arxiv.org/abs/2608.16932) | ✗ explicit backprop of editing objective | ✓ | ✗ | ✗ |
+| BiSpikCLM [2605.13859](https://arxiv.org/abs/2605.13859) | ✗ ANN→SNN distillation | ✗ scratch spiking LM | ~ fully binary, own format | ✗ |
+| Fact-writes study [2607.11020](https://arxiv.org/abs/2607.11020) | ✗ BP training writes (analysis paper) | ✓ Qwen3 | ✗ | ✗ |
+
+Pass-4 signal (supports the paper's framing): the 2026 editing
+literature is independently converging on "edits must survive
+quantization" — GROM's low-bit quantization-recovery attack,
+DurableUn (2026, AlphaEdit-citing, quantization-induced recovery
+attacks on unlearning) — while the plasticity side stays on
+scratch/hybrid models. The L1∧L3 conjunction is now visible as
+an acknowledged *problem* in editing, with no local-rule solution
+attempted. GO for the arXiv preprint (principal stamp pending).

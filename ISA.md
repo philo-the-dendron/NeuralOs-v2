@@ -4271,3 +4271,41 @@ asserted. Rust tree untouched (cargo check --workspace --all-targets
 green as the zero-change proof). Measures: 5 work commits
 (15d8942, d567725, fb6986b, 2f5dabd, 004b055) + this record.
 Push: both remotes, post-commit, per standing practice.
+
+## Paper novelty pass 4 — the arXiv-preprint gate (2026-08-22)
+
+Session arrived at 740cded (paper pass landed, remotes aligned).
+Pass 4 of the PAPER_NOVELTY.md provenance: the claim under test
+unchanged (backprop-free local-plasticity adaptation of a shipped
+quantized LLM, re-exported, foreign-executed — L1∧L2∧L3∧L4).
+
+Engines + coverage: arXiv Atom API clean all session (25 queries:
+15 pass-1 reruns matching pass-1 totals exactly + 10 2026-targeted
+incl. the risk pair "knowledge editing"+"biologically plausible"
+→ 0) · OpenReview V1 (8 terms × top-1k = 8,000 notes, zero
+L1∧L2, 10k/term boundary stated) · GitHub repo search (8 seam
+intersections, all 0; code search 401-auth, boundary carried) ·
+S2 citations unthrottled today (unlike pass 3): all six graphs
+full — DH 7 (+3 since pass 3, no joiner), QES 2, BitDistill 2,
+SpikeLLM 40 (20×2026, conversion family only), BitNet 448 (111×
+2026, zero plasticity-titled), AlphaEdit 265 (114×2026: the
+"gradient-free" 2026 trend is closed-form LS + merging + BP, no
+plasticity joiner) + OpenAlex cross-check. 9 abstracts fetched
+for adjudication.
+
+**Verdict: SEAM HOLDS.** Zero L1∧L2 candidates, zero all-four.
+6 new matrix rows logged (GROM = strongest near-miss: L2 ✓ +
+quantization-robustness adjacency, L1 ✗ closed-form ridge-LS).
+Pass-4 signal recorded: 2026 editing literature converging on
+"edits must survive quantization" (GROM, DurableUn) with no
+local-rule attempt — our L1∧L3 conjunction is now an acknowledged
+open problem in theirs. Related-work candidates PRESENTED for
+principal ratification (GROM, HeLa-Mem, BiSpikCLM, DurableUn);
+related.tex untouched this session per scope. GO for the arXiv
+preprint — next principal stamp.
+
+Write surfaces: docs/PAPER_NOVELTY.md (pass-4 section + status
+header) + this ISA entry only. paper/ make gate green (doc lives
+outside paper/). Rust tree untouched — git status proves zero
+source changes. Push: both remotes, post-commit, per standing
+practice.
