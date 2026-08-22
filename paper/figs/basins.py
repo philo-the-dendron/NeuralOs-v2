@@ -6,10 +6,13 @@ value-flip x3, stress arm) plus the baseline (session-f-judge), bucket
 each draw by destination, and render the grid: rows = prompts,
 columns = draws grouped by family. Colors: grey = baseline-identical,
 one accent = H2's exact destination, other hues = other destinations.
+Every log is sha-verified against its dir's banked SHA256SUMS before
+parsing (P2-W3).
 
 Numbers gate: the script PRINTS the parsed tallies and ASSERTS the
 README-recorded counts (evidence/session-i-primary/README.md). If an
-assertion fires, the evidence moved — do not publish.
+assertion fires, the evidence moved — do not publish. Displayed
+annotations are derived from the tallies, never hardcoded.
 """
 import hashlib
 import sys
@@ -33,8 +36,25 @@ PRIMARY = EV / "session-i-primary"
 STRESS_DIR = EV / "session-i-stress"
 
 
-def read_continuation(rundir: Path, prompt: str, run: str = "run1") -> str:
+def sha_ok(path: Path, session_dir: Path) -> None:
+    sums = {}
+    for line in (session_dir / "SHA256SUMS").read_text().splitlines():
+        if line.strip():
+            h, _, name = line.partition("  ")
+            sums[name.strip().lstrip("./")] = h
+    rel = str(path.relative_to(session_dir))
+    want = sums.get(rel)
+    if want is None:
+        raise SystemExit(f"no banked sha for {rel}")
+    got = hashlib.sha256(path.read_bytes()).hexdigest()
+    if got != want:
+        raise SystemExit(f"SHA MISMATCH {rel}: {got} != {want}")
+
+
+def read_continuation(rundir: Path, prompt: str, session_dir: Path,
+                      run: str = "run1") -> str:
     f = rundir / f"{prompt}_{run}.log"
+    sha_ok(f, session_dir)
     return f.read_text()
 
 
@@ -45,8 +65,9 @@ def dest_id(text: str) -> str:
 def main() -> None:
     # --- parse ---------------------------------------------------------
     data = {}  # data[family][prompt] = list of (label, dest_id, changed)
-    baseline = {p: read_continuation(BASELINE_DIR, p) for p in PROMPTS}
-    h2 = {p: read_continuation(H2_DIR, p) for p in PROMPTS}
+    baseline = {p: read_continuation(BASELINE_DIR, p, BASELINE_DIR)
+                for p in PROMPTS}
+    h2 = {p: read_continuation(H2_DIR, p, H2_DIR) for p in PROMPTS}
 
     def fam(name, rundir, members, run="run1"):
         rows = {}
@@ -54,7 +75,7 @@ def main() -> None:
             draws = []
             for m in members:
                 try:
-                    t = read_continuation(rundir / m, p, run)
+                    t = read_continuation(rundir / m, p, rundir, run)
                 except FileNotFoundError:  # missing = void (seal 1)
                     draws.append((m, None, False))
                     continue
@@ -105,6 +126,17 @@ def main() -> None:
     assert len(valid) == 9 and sum(1 for d in valid if d[2]) == 8, \
         "stress p3 != 8/9 valid (r10 void)"
     print("assertions: primary-family table matches the README")
+
+    # derived annotation numbers (displayed values come from the
+    # tallies, never hardcoded — the asserts above pin them)
+    p3_h2 = sum(1 for d in data["dose-matched x10"]["p3"]
+                if d[2] and d[1] == dest_id(h2["p3"]))
+    n_dose = len(data["dose-matched x10"]["p4"])
+    p4_dose = sum(1 for d in data["dose-matched x10"]["p4"] if d[2])
+    p4_flip = sum(1 for d in data["value-flip x3"]["p4"] if d[2])
+    n_flip = len(data["value-flip x3"]["p4"])
+    h2_p4_changed = int(h2["p4"] != baseline["p4"])
+    assert h2_p4_changed == 0
 
     # --- figure ----------------------------------------------------------
     fams = [("dose-matched x10", "dose nulls\n(exact 87,119 cells)", DOSE),
@@ -174,12 +206,15 @@ def main() -> None:
         s.set_visible(False)
     ax.tick_params(length=0)
 
-    # annotations: the two headline reads
-    ax.annotate("8/10 land H2's EXACT destination\n(the basin is generic)",
+    # annotations: the two headline reads (derived, asserted above)
+    ax.annotate(f"{p3_h2}/{n_dose} land H2's EXACT destination\n"
+                "(the basin is generic)",
                 xy=(6.5, 0.9), xytext=(6.5, -1.05), ha="center",
                 fontsize=8.5, annotation_clip=False,
                 arrowprops=dict(arrowstyle="-", lw=0.7))
-    ax.annotate("noise reaches doors H2 did not:\n4/10 dose + 3/3 flips here,\nH2 opened 0",
+    ax.annotate(f"noise reaches doors H2 did not:\n"
+                f"{p4_dose}/{n_dose} dose + {p4_flip}/{n_flip} flips here,\n"
+                f"H2 opened {h2_p4_changed}",
                 xy=(19.5, 1.4), xytext=(23.8, -1.0), ha="center",
                 fontsize=8.5, annotation_clip=False,
                 arrowprops=dict(arrowstyle="-", lw=0.7))

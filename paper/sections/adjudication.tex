@@ -51,8 +51,10 @@ debated.
 \includegraphics[width=0.88\linewidth]{figs/ladder.pdf}
 \caption{The null ladder: rungs, the structurally impossible shuffle
 rung (Thm.~\ref{thm:shuffle}), the three seals, and the sealed
-conjunct flowing to the ruling. Quantitative leaves are parsed from
-the banked README table at render time.}
+conjunct flowing to the ruling. The flip-count leaf is derived from
+the sha-verified judge logs at render time; the margin leaf is
+pinned to the banked ruling table (its base-side dump was never
+banked --- Sec.~\ref{sec:primary} states the cross-check).}
 \label{fig:ladder}
 \end{figure}
 
@@ -201,6 +203,17 @@ all dose nulls at the same edge is $0.2254$ (null d6). Arm (a):
 \textbf{FAIL} --- $0.0798 < 0.2254$. Arm (b): \textbf{FAIL} decisively
 --- 8/10 null flips against a $\le 1/10$ bar; escalation is moot.
 Arm (c): moot. Arm (d): MIXED per seal 2. The conjunct fails.
+
+\paragraph{Provenance of the margin leaf.}
+The margins of record were computed by the adjudication session's
+own tooling against its base-side dump, which was not banked (only
+the candidate-side dumps were). Re-deriving $|\Delta\mathrm{margin}|$
+at p3s1 against the in-tree baseline bank shifts both compared
+values by the same constant ($+0.0620$ --- the cross-build
+fourth-decimal variation class recorded in the evidence record) and
+preserves the ordering and the verdict: H2 $0.1418$ vs.\ re-derived
+null-max $0.2874$, still (a) FAIL. The figure scripts assert this
+invariance at render time; the paper reports the banked numbers.
 
 \subsection{The ruling}
 \label{sec:ruling}

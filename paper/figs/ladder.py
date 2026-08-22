@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """The null-ladder diagram (Sec 6) — rungs, seals, and the ruling flow.
 
-Structure comes from the sealed decisions (ISA, 2026-08-19/20/21);
-the two quantitative leaves (0.0798 vs 0.2254; 8/10) are parsed from
-evidence/session-i-primary/README.md so the figure cannot drift from
-the record. Prints what it parsed (numbers gate).
+Structure comes from the sealed decisions (ISA, 2026-08-19/20/21).
+De-circulared (P2-W3): the quantitative leaf 8/10 is DERIVED from the
+banked judge logs (sha-verified); the margin leaf (0.0798 vs 0.2254)
+is pinned to the README ruling block — the banked record — because
+the base-side dump that produced it was never banked (the in-tree
+re-derivation and its verdict-invariance cross-check live in
+adjudication_table.py). Prints what it parsed (numbers gate).
 """
+import hashlib
 import re
 from pathlib import Path
 
@@ -16,16 +20,41 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 
 ROOT = Path(__file__).resolve().parents[2]
-README = ROOT / "evidence" / "session-i-primary" / "README.md"
+EV = ROOT / "evidence"
+README = EV / "session-i-primary" / "README.md"
+
+
+def sha_ok(session_dir: Path, rel: str) -> None:
+    sums = {}
+    for line in (session_dir / "SHA256SUMS").read_text().splitlines():
+        if line.strip():
+            h, _, name = line.partition("  ")
+            sums[name.strip().lstrip("./")] = h
+    want = sums.get(rel)
+    if want is None:
+        raise SystemExit(f"no banked sha for {rel}")
+    got = hashlib.sha256((session_dir / rel).read_bytes()).hexdigest()
+    if got != want:
+        raise SystemExit(f"SHA MISMATCH {rel}: {got} != {want}")
+
 
 text = README.read_text()
 m_a = re.search(r"\(a\) FAIL — ([\d.]+) < ([\d.]+)", text)
-m_b = re.search(r"\(b\) FAIL — (\d+)/10", text)
-assert m_a and m_b, "ruling leaves not found in README"
+assert m_a, "banked (a) ruling not found in README"
 DMARGIN_H2, DMARGIN_NULL = m_a.group(1), m_a.group(2)
-FLIPS = m_b.group(1)
-print(f"parsed from README: (a) {DMARGIN_H2} < {DMARGIN_NULL} ; "
-      f"(b) {FLIPS}/10")
+
+sha_ok(EV / "session-f-judge", "p3_run1.log")
+base_p3 = (EV / "session-f-judge" / "p3_run1.log").read_text()
+flips = 0
+for i in range(1, 11):
+    sha_ok(EV / "session-i-primary", f"null-d{i}/p3_run1.log")
+    f = EV / "session-i-primary" / f"null-d{i}" / "p3_run1.log"
+    if f.read_text() != base_p3:
+        flips += 1
+assert flips == 8, f"leaf (b): {flips}/10 != 8/10"
+FLIPS = str(flips)
+print(f"parsed: (a) banked {DMARGIN_H2} < {DMARGIN_NULL} ; "
+      f"(b) derived from logs {FLIPS}/10")
 
 fig, ax = plt.subplots(figsize=(9.2, 6.4))
 ax.set_xlim(0, 100)

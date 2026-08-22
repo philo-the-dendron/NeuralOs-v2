@@ -1,6 +1,9 @@
 # NeuralOS v2 paper — build, figures, gates.
 # Figures python: repo-local venv if present (python3 -m venv .figvenv &&
 # .figvenv/bin/pip install matplotlib), else system python3.
+# Fixed epoch: matplotlib clamps PDF CreationDate to it, so `make figs`
+# regenerates byte-stably (P2-W3; verified: two runs, identical bytes).
+export SOURCE_DATE_EPOCH ?= 1700000000
 FIGPYTHON ?= $(shell if [ -x $(PWD)/.figvenv/bin/python ]; then echo $(PWD)/.figvenv/bin/python; else echo python3; fi)
 TEX := $(shell if command -v tectonic >/dev/null; then echo tectonic; \
         elif command -v latexmk >/dev/null; then echo latexmk -pdf; \
