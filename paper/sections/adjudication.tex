@@ -149,12 +149,38 @@ reaches doors H2 did not open (p4).}
 Figure~\ref{fig:basins} shows every draw's fate; the numbers here are
 the README-recorded table the figure asserts against.
 
-\paragraph{Flip counts.}
-p0/p1: quiet everywhere (0/10, 0/3). p3: 8/10 dose nulls flip ---
-\emph{and all eight land H2's exact destination} (``\,'Thursday' plus
-ten newlines). p2: 4/10 (d3, d4, d6, d8). p4: 4/10 (d1, d4, d5, d6)
---- a MIXED band under seal 2: reported, no claim. Value-flips: p2
-3/3, p3 3/3, p4 3/3.
+\begin{table}[t]
+\centering
+\caption{Flip rates with exact binomial (Clopper--Pearson) 95\%
+confidence intervals, computed from the banked judge logs (every
+file sha-verified against the evidence record before parsing; counts
+asserted equal to the README tables of record). H2 is a single draw
+--- one draw admits no interval, which is itself part of the
+design's honesty. The stress arm is report-only (seal 1: p3
+denominator 9 after one void). The margin leaf (arm (a)) carries no
+interval by record: only H2's $|\Delta\mathrm{margin}|$ and the
+null-family maximum were banked, so no per-null margin distribution
+exists to interval-ize --- the CIs here quantify the flip-rate
+families. Script: \texttt{figs/flip\_cis.py} (deterministic, pure
+stdlib, zero re-runs).}
+\label{tab:flipcis}
+\small
+\input{figs/flip_cis}
+\end{table}
+
+\paragraph{Flip counts, with intervals.}
+Table~\ref{tab:flipcis} gives every family's flip rate with its
+exact binomial interval. The reading the conjunct uses: p0/p1 are
+quiet everywhere ($0/10$, CI upper $0.31$ --- the rule-of-three
+bound at this $n$; the pre-registered escalation rule anticipated
+exactly this width). p3: 8/10 dose nulls flip --- \emph{and all
+eight land H2's exact destination} (``\,'Thursday' plus ten
+newlines; CI $[0.44, 0.97]$ --- the interval's lower bound alone sits
+far above the $1/10$ arm-(b) bar). p2: 4/10 (d3, d4, d6, d8; CI
+$[0.12, 0.74]$). p4: 4/10 (d1, d4, d5, d6) --- a MIXED band under
+seal 2: reported, no claim. Value-flips: p2 3/3, p3 3/3, p4 3/3
+(each $[0.29, 1.00]$ --- three draws cannot bound a rate from
+above; the family's weight is its destinations, not its rates).
 
 \paragraph{Destinations --- p2's full denominator.}
 The four dose-null p2 flips do \emph{not} form a degradation blob;

@@ -25,6 +25,7 @@ Generated PDFs are committed so the paper builds LaTeX-only.
 | `basins.py` | `evidence/session-i-primary/null-*/p*_run1.log` + `README.md` table | Destination basins: 8/10 dose nulls land H2's exact p3 destination; p4's flips land a different basin (the paper's highest-leverage visual) |
 | `ladder.py` | the sealed rule (ISA Decisions 2026-08-19/20) | Null-ladder flow: families → seals → conjunct → ruling |
 | `adjudication_table.py` | `evidence/session-i-primary/README.md` | The conjunct (a)–(d) rows and the FAIL marks |
+| `flip_cis.py` | judge `p*_run1.log` across `session-f-judge`, `session-h2`, `session-i-primary/null-*`, `session-i-stress/null-*` + each dir's `SHA256SUMS` | Flip-rate table with exact binomial (Clopper–Pearson) 95% CIs; sha-verifies every log before parsing, asserts the banked counts; writes `flip_cis.tex` (included from Sec 6) |
 | `mechanism.py` | ISA-recorded mechanism decomposition | The two rectifiers (pairing-selective → clamp-rectified) |
 
 Scripts print the numbers they parsed before writing the PDF —
