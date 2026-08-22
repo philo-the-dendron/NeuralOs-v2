@@ -3896,3 +3896,95 @@ recurrent positives; 10 assembly-class negatives; HDF5 merge pair),
 all explicit-Input/Output constructions, every emission self-asserted
 (no infer_types rewrite); regeneration byte-stable — all 19 frozen
 fixtures unchanged. Commit 6492e02, pushed both remotes.
+
+## Verification (R18 — NIR general graph assembly, P2-P5, 2026-08-22)
+
+- **The surface** (P2, commit 71d811b): pub
+  `NirImport::build_network() -> (SpikingNeuralNetwork,
+  NirGraphEncoder, NirAssemblyReport)` beside build_chain_network
+  (left INTACT per the commission's option; equivalence proven
+  instead — see below). LIF pops → neurons (per-neuron params,
+  global ids, D7's u16 bound loud); LIF→LIF edges → EDGE_PULSE_QUANTA
+  synapse pairs (identity element mapping — the reference defines
+  no element semantics at this sha; equal sizes shape-checked);
+  the Linear DAG folded symbolically in topological order
+  (iterative DFS — a hostile 10k chain must not overflow) with G(L)
+  = the transform arriving at L's input per root (identity from an
+  Input parent, W_p·G(p) through Linear parents, multi-parent sums
+  native), stages quantized ONCE via the pub quantize_linear seam
+  (D2), merged saturating per stage (D5). Plasticity frozen +
+  reported. Named rejections in deterministic order (empty /
+  no-Input / no-Output / dead-Input / edge kinds / no-LIF / per-edge
+  EdgeShapeMismatch / mV-on-recurrent with the remedy verbatim /
+  Linear cycles); UndrivenPopulation notes per ruling iii,
+  generalized to never-invoked Linears through the same walks.
+  New error variant `EdgeShapeMismatch { src, dst }` (breaking,
+  alpha.5-bound).
+- **Bugs found by the tests, fixed** (the honest list): (i) the
+  first topological order was reversed-forest post-order — valid
+  topo but surprising stage order; now reversed post-order with the
+  property pinned by the fusion test; (ii) the parent-matrix
+  multiply indexed the parent's arena with the CHILD's column
+  stride — wrong elements read whenever parent cols ≠ child cols
+  (chain never fired it: single Linear). Caught by the fusion-
+  exactness assert, fixed to stride/bound by lin_p.cols, pinned by
+  branch's [8192,16384,−8192|…] → [16384,−32767,8192,4096,−16384,
+  −8192]; (iii) `rooted` conflated has-root-path with feeds-a-LIF
+  (l1 falsely noted undriven); (iv) two fixtures were
+  emission-order-shadowed (direct-drive fired before
+  readout/self-loop) — re-emitted with Linear feeders so each
+  negative's FIRST rejectable edge is its own; (v) merge fixture
+  weights corrected to the D6-aware drive math ([[0.25,0],[0,1.0]]
+  absmax-1.0 tensors: 81 μA stalls / 162 μA fires at x=1) — the
+  original [[0.25,0],[0,0.25]] renormalizes to q=32767 and single
+  branches fired.
+- **The gate** (P3, commit 4ac0c5e): `nir_assembly_gate` 6/6 —
+  (1) branch fires all 4 neurons, first-spike pins [3,14,1,3]
+  (each hand-verified: n0/n3 ct=98 V_ss=+28 g≤83 step 3; n1
+  1-quanta/step crawl 49→34 step 14; n2 g/10 decay step 1);
+  (2) merge single stalls 0/200, summed fires step 52 EXACT (g:
+  1620→116 by g/20 over 53 integrations); (3) recurrent: b0 =
+  −6990 exactly one step after a0's spike (a0 first spike t=11
+  hand-verified: g 3270→1770), b1 unmoved, edge quanta frozen;
+  (4) the fused stage IS quantize_linear(W₂·W₁) through the same
+  pub seam; (5) 10 named rejections one fixture each; (6) frozen
+  chain byte-identical through BOTH builders: 9 spikes/100 @ step
+  6, export 826 B, raster bit-identical. Honest-claim language in
+  the gate header + evidence README — no numeric-parity sentence
+  anywhere. Evidence: `evidence/nir-assembly-gate/` (README,
+  gate.log, SHA256SUMS; 12 JSON fixtures pinned).
+- **Cross-container** (P4, commit 64d77c4):
+  `nir_hdf5_assembly_gate` 3/3 — gzip/uncompressed merge.nir pair
+  imports to identical records (compression is container-only);
+  HDF5 and JSON paths quantize identically (the cross-container
+  contract, one graph three containers); assembles from the HDF5
+  path with the exact snn pins (stall / step 52). Mirrored #[test]
+  in rt (fixture leg 16 green). Frozen `nir_hdf5_gate` re-ran 5/5
+  unchanged; `nir_format_gate` 4/4 (826 B) — every banked pin
+  byte-stable through the session.
+- **alpha.5 staging** (P5): root version 0.1.0-alpha.5; snn README
+  "Since alpha.4" (assembly + the banked consolidation breaks +
+  the honest-claim paragraph); README/VISION/AGENTS truth touches;
+  measured battery counts (a first draft said 306 from prediction —
+  corrected against the run: 304 offline (3 app, 205 snn, 96 rt) +
+  209 simd + 120 hdf5). Publish dry-run verbatim captured in the
+  session end report; REAL PUBLISH = the principal's call, NOT
+  executed this session.
+
+## Close-out (R18 — the general-assembly session, 2026-08-22)
+
+Roadmap move #2 complete: any reference-emitted four-kind graph
+assembles and fires, the alpha.5 carrier staged. All pre-registered
+rulings (D1-D7) + three plan-gate rulings executed as written; no
+contradiction surfaced (the two STOP-checks were design forks,
+resolved by the principal before coding). Named deferrals for the
+NEXT slice, one family: readout edges (LIF→Linear, the snnTorch MLP
+ending — spike-count readout convention is its open design axis),
+direct drive (Input→LIF), encoder-only (ranked lowest — no interop
+pull). D6's named follow-up stands: the dequantizing global-scale
+encode (would move frozen chain pins — never ridden along).
+
+Battery final: workspace 304/0; clippy -D warnings clean; no_std
+builds; simd 209/0; hdf5 120/0 + both frozen gates + the new 6/6
+and 3/3. Pushed per group (6492e02, c3e30dd, 71d811b, 4ac0c5e,
+64d77c45, + P5) to both remotes.

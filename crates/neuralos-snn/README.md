@@ -4,7 +4,7 @@
 > silicon — LIF neurons, pairwise STDP, CSR synapses, ternary weight
 > codecs, and an AVX2 batch kernel.
 
-Published on crates.io as `0.1.0-alpha.4` (AGPL-3.0-or-later).
+Published on crates.io as `0.1.0-alpha.4`; the tree carries the alpha.5 changes (AGPL-3.0-or-later).
 
 ## What this crate is
 
@@ -95,6 +95,45 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   see the alpha.3 audit record in the repo's `ISA.md`.
 - SIMD gate runs in CI; the batch kernel is documented mV-grid-only.
 
+## Since alpha.4 (the alpha.5 notes)
+
+- **General graph assembly — `NirImport::build_network`**: any
+  reference-emitted `Input`/`Linear`/`LIF`/`Output` graph assembles
+  onto a real `SpikingNeuralNetwork` and fires. Every LIF
+  population becomes neurons (its own quantized params); every
+  LIF→LIF edge becomes an `EDGE_PULSE_QUANTA` synapse pair (the
+  ratified D1 contract: 200 → a 20 μA pulse at the default divisor
+  10, +10 centi-quanta exactly one step later — exact-pinned on
+  both grids, the mV grid dead 10× over, which is why recurrent
+  graphs reject mV options BY NAME with the copy-pasteable re-import
+  remedy); the Linear DAG folds symbolically at setup and quantizes
+  ONCE per (drive Linear, root Input) stage (D2 fusion — no
+  hop-by-hop i16 composition), merged saturating into the global
+  per-step current vector (D5 multi-Input). Plasticity frozen at
+  assembly (NIR has no plasticity term). New public surface:
+  `build_network`, `NirGraphEncoder`, `NirAssemblyReport`,
+  `LinearFusedRecord`, `EDGE_PULSE_QUANTA`, and
+  `NirError::EdgeShapeMismatch` (per-edge reference type-check
+  parity). Every out-of-slice shape is a NAMED rejection (readout,
+  direct drive, encoder-only, self-loop, Output-as-source, Linear
+  cycles, pass-through, empty/no-Input/no-Output, the D7
+  population bound); Input-unreachable structure assembles with
+  structural `UndrivenPopulation` notes — silence documented, never
+  silent. The frozen chain is proven bit-exact through both
+  builders (`nir_assembly_gate`, 6/6, evidence of record).
+- **Honest-claim language of record** (assembly): structure,
+  per-edge type shapes, and quantization records are exact w.r.t.
+  the pinned document; dynamics are named substrate conventions
+  (`EDGE_PULSE_QUANTA`, divisor, grid, one-step delay, frozen
+  plasticity) pinned by exact-value tests; the reference defines
+  no execution semantics at this sha.
+- **The banked consolidation breaks ride here** (2026-08-22): the
+  `NeuronBuilder`/`SynapseBuilder` types and the setter surface
+  deleted, the test-only introspection quartet relocated under
+  `#[cfg(test)]`, `LIFNeuron::spikes()` deleted (zero callers),
+  `Synapse::normalized_weight` test-relocated — API breaks with no
+  known consumers.
+
 ## Since alpha.3 (the alpha.4 notes — PUBLISHED 2026-08-22)
 
 - **NIR slice 1 shipped *in* alpha.3** (missing from the notes
@@ -148,20 +187,20 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
 
 **`0.1.0-alpha.4` is live on crates.io** (published 2026-08-22): NIR
 structured entry (pub quantizers, `NirBuilder`, per-neuron
-populations) + the R9 review fixes. The alpha.3 record: the
+populations) + the R9 review fixes. Alpha.5 adds the general
+four-kind graph assembly (see "Since alpha.4"). The alpha.3 record: the
 adaptation-decay contract pinned by unit + live tests (equilibrates,
 never silences the net); `synaptic_input_divisor` — **the coupling
 knob**, new public API (default 10 = the historical weight/10 pulse;
 0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
 published path unchanged; the simd batch kernel doc'd mV-grid-only.
 
-**The tree is ahead of the published crate** (since the 2026-08-22
-consolidation, rides `alpha.5`): builder types (`NeuronBuilder`,
-`SynapseBuilder`) deleted, the test-only introspection quartet
-relocated under `#[cfg(test)]` — API breaks. 294 offline
-unit/property tests (3 app, 195 snn, 96 rt) + 199 simd-gated + 119
-hdf5-gated (in `neuralos-rt`) + 5 model-gated `#[ignore]`; the API
-may still move within alpha semver.
+**The tree is ahead of the published crate** (rides `alpha.5`): the
+general assembly above + the consolidation breaks (builders deleted,
+introspection relocated). 306 offline unit/property tests (3 app,
+199 snn, 104 rt) + 208 simd-gated + 121 hdf5-gated (in
+`neuralos-rt`) + 5 model-gated `#[ignore]`; the API may still move
+within alpha semver.
 
 NIR itself: Pedersen et al., Nature Communications 15, 4962 (2024),
 DOI 10.1038/s41467-024-52259-9 — this crate's `nir` module speaks

@@ -35,5 +35,9 @@ ndarray = { version = "0.15", optional = true }
 name = "nir_hdf5_gate"
 required-features = ["hdf5"]
 
+[[example]]
+name = "nir_hdf5_assembly_gate"
+required-features = ["hdf5"]
+
 [package.metadata.docs.rs]
 all-features = true

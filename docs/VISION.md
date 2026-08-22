@@ -61,12 +61,17 @@ pass; verification method in parentheses):
 
 ### 1. The substrate (now — the active front)
 
-`neuralos-snn` on crates.io (`0.1.0-alpha.4`, published 2026-08-22):
+`neuralos-snn` on crates.io (`0.1.0-alpha.4`, published 2026-08-22;
+the tree carries the alpha.5 changes):
 `no_std`, i16 fixed-point,
 LIF + full pairwise STDP + 4 topologies + CSR sparse matrix + AVX2 kernel
 + the ternary bridge codecs (`i2_s`/`q1_0`/`q2_0`) + shared ternary
 matmul + live synaptic transmission (the session-F fix) + NIR
-import/export (JSON container; HDF5 `.nir` IO via `neuralos-rt`).
+import/export (JSON container; HDF5 `.nir` IO via `neuralos-rt`) +
+general four-kind graph assembly — any reference-emitted
+Input/Linear/LIF/Output graph builds and fires on the substrate
+(`build_network`, the ratified EDGE_PULSE_QUANTA edge contract,
+`nir_assembly_gate` 6/6).
 
 **Near-term — the starved original list, first-class again:** NIR
 import/export (interop with snnTorch/SpikingJelly — the #1 ecosystem
