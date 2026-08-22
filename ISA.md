@@ -5,7 +5,7 @@ project: NeuralOS v2
 phase: climbing
 progress: 85/85
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-21T20:25:00Z
+updated: 2026-08-22T16:45:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -4130,3 +4130,65 @@ Verification above): **MED, not HIGH**, on the reachability bound —
 the u32 clock saturates and dt is pre-clamped; only the *SCALE
 product wrapped. Fix shipped in alpha.5 (published 2026-08-22T13:59Z,
 registry-verified). Record-only; no code action.
+
+## Decision (P2 — paper pre-submission pass, session scope + claims, 2026-08-22)
+
+M1 step 2 of 8. paper/ only: no Rust-tree changes, no evidence
+regeneration, no experiment re-runs (cargo check once at close as the
+zero-change proof). Arrival gate re-confirmed green on 6437f22
+(make && make figs && make gate — PDF 276.7 KiB, figs up-to-date,
+language clean). GUARD 1 honored (this append is the proof; the
+ISC-78 regex target untouched). GUARD 2 binds every item: the paper
+DESCRIBES frozen verdicts; numbers come from the banked record.
+
+- **P2-W1 (verb fix + overclaim sweep)**: every arrangement-sense
+  "reads" claim-site becomes "tracks" (the ratified n=1 verb);
+  machinery-sense "reads" (byte-exact import) keeps its honest
+  universal. Sweep covers abstract/intro/invivo/substrate/discussion/
+  limitations + the one bare "always" (loop.tex) — each claim sized
+  to 5 prompts / 1 judge / 1 slice of 36 / dose ×10 + flip ×3.
+  Falsifier: `make gate` clean + grep shows zero unsized
+  arrangement-sense "reads" remains.
+- **P2-W2 (CIs from frozen logs)**: exact binomial (Clopper–Pearson)
+  95% intervals on the session-i flip tables, computed by
+  paper/figs/flip_cis.py from the banked .log files (SHA256SUMS
+  verified before parsing), asserted equal to the README-recorded
+  counts, emitted as a LaTeX table included at adjudication §primary.
+  Zero re-runs; output pinned in-tree; deterministic (pure stdlib).
+  Falsifier: script exits nonzero on any count/CI mismatch or sha
+  miss; `make figs` regenerates the table byte-identically.
+- **P2-W3 (de-circular the figure chain)**: adjudication_table.py +
+  ladder.py derive leaf (b) 8/10 from the .log files (not README
+  prose); leaf (a) stays pinned to the banked ruling numbers and
+  gains an in-tree verdict-invariance cross-check; basins.py display
+  annotations derived from its own tallies; all four figure scripts
+  verify SHA256SUMS before parsing. KNOWN BANKING GAP (found this
+  session): the +0.0091 base-side margin leaf came from the
+  session-h2-era judge binary's base-side dump, which was NOT banked
+  — the in-tree f-judge base re-derives Δmargin 0.1418 (H2) / 0.2874
+  (d6 max) = banked values + exactly 0.0620 (the recorded cross-build
+  base-side gap, r4-closeout's 4th-decimal class); ordering and the
+  (a) FAIL verdict are base-side-invariant. Recorded here; figure
+  renders the banked numbers. Makefile gains SOURCE_DATE_EPOCH for
+  byte-stable figs. Falsifier: regenerated figures raster-identical
+  to committed (pdftoppm cmp); any content diff surfaces and is
+  justified or the figure reverts.
+- **P2-W4 (limitations armor)**: one paragraph naming (a)
+  single-judge/single-slice scope, (b) the instrument-calibration
+  caveat — the null licenses no internal-magnitude claim (the
+  strongest form of the negative; the council's "uncalibrated null
+  licenses nothing"), (c) the deferral family (readout/direct-drive/
+  encoder-only) as mechanism-scoped future work. Learning language
+  stays MECHANISM-SCOPED throughout — no sentence implies pending
+  learning-capability work softens the null. Falsifier: `make gate`;
+  RedTeam-style read of the paragraph against the four endorsed
+  claims.
+- **P2-W5 (venues — PRESENTED, NOT DECIDED)**: 2-3 candidates with
+  fit rationale + mechanics, sources verified live this session;
+  lands in the session end report + this ledger only. The pick and
+  the submission are the principal's stamps.
+
+Anti-claims (binding): no ISA-history edits (GUARD 1); no
+verdict/number re-litigation (GUARD 2); no learning-capability
+implication anywhere; no commit of models/ or fork-build/ artifacts;
+no venue decision recorded as made.
