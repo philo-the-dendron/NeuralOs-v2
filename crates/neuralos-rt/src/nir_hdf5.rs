@@ -185,7 +185,18 @@ pub fn census_dataset(ds: &Dataset, dataset: &str) -> Result<usize, NirHdfError>
             )));
         }
         let nfilters = unsafe { H5Pget_nfilters(plist) };
-        let mut verdict = Ok(nfilters.max(0) as usize);
+        // Fail-closed: a negative count means the introspection
+        // itself failed — clamping to 0 would wave an
+        // uninspectable dataset through as "unfiltered".
+        let mut verdict = if nfilters < 0 {
+            Err(NirHdfError::Read(format!(
+                "H5Pget_nfilters failed for '{dataset}'"
+            )))
+        } else {
+            Ok(nfilters as usize)
+        };
+        // (on the error path nfilters.max(0) == 0: the loop is
+        // skipped, the plist below still closes, the verdict rides)
         for i in 0..nfilters.max(0) {
             let mut flags: c_uint = 0;
             let mut nvals: usize = 0;

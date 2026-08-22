@@ -3580,3 +3580,61 @@ alpha.4 staged, 2026-08-21)
   93 prior inline + 15 fixture), workspace 288/0 untouched, no_std
   untouched, simd 196. Gate artifacts: `evidence/nir-hdf5-gate/`
   (gate.log 5/5, verify.log, SHA256SUMS, the export, the dry-run).
+
+## Amendment (R16 close-out — alpha.4 PUBLISHED, registry-verified, 2026-08-22)
+
+- **`neuralos-snn` 0.1.0-alpha.4 is live on crates.io, published
+  2026-08-22T00:14:45Z from 03720dd** (principal-executed). Registry
+  verification this session (crates.io API, 2026-08-22):
+  `max_version = default_version = 0.1.0-alpha.4`, version record
+  `created_at 2026-08-22T00:14:45.135280Z`, `num_versions 4`
+  (alpha.1→alpha.4 lineage intact, none yanked). Package shape
+  matches `evidence/nir-hdf5-gate/publish_dryrun_alpha4.log`
+  verbatim: 43 files, 488.9 KiB (128.5 KiB compressed).
+- This supersedes the Close-out's "STOP per commission" state: the
+  publish call was made and completed. Workspace @ 03720dd ==
+  published alpha.4 exactly.
+
+## Verification + Findings (R17 — consolidation, Group A: milestone-review fixes, 2026-08-22)
+
+Milestone-review findings (de8c7cf..03720dd review), all closed:
+
+- **A1 · census fail-closed** (`nir_hdf5.rs` census_dataset):
+  `H5Pget_nfilters < 0` previously clamped via `nfilters.max(0)` →
+  an introspection failure read as "zero filters" = fail-open. Now
+  `< 0` → `NirHdfError::Read` naming the dataset; the plist still
+  closes on every path (the loop is skipped on error). Test
+  feasibility note, honestly: the negative FFI return cannot be
+  forced from Rust on a valid HDF5 id — the falsifier is the
+  116-test hdf5 leg green + gate 5/5 on the changed code.
+- **A2 · zombie nodes, both entries, one mechanism** (nir.rs):
+  `add_linear` and `add_lif_population` both pushed the node BEFORE
+  quantizing — any quantize failure left a zombie node (and, for
+  linear, a zero-extended weights arena tail; for LIF, half-appended
+  population records). Fixed by quantize-then-push (matches the
+  module's no-rollback error conventions): linear quantizes into a
+  local scratch then patches `weight_offset` after the (now
+  infallible) `push_node`; LIF builds the whole population in a
+  local Vec first. Doc contracts now say "Atomic". Falsifier:
+  `failed_adds_leave_no_zombie_state` — a NaN-weight add_linear AND
+  a mid-population tau failure, then the identical clean chain
+  builds to state exactly equal to `builder_chain()` (nodes/weights/
+  lifs/edges all compared). Workspace 288 → 289.
+- **A3 · dead dev-dep dropped**: rt's `proptest` (Cargo.toml
+  dev-dependencies; zero `.rs` references — grep-verified) removed.
+  Lockfile diff = exactly 1 line (the rt→proptest edge); the
+  proptest PACKAGE stays — snn legitimately dev-depends on it.
+- **A4 · informational notes (no code change), from the review:**
+  (a) the writer's v_reset handling population-ORs the
+  `v_reset_defaulted` flag across the population — unreachable via
+  the sanctioned entry points (import + builder enforce per-array
+  uniformity), noted as a latent sharp edge if a mixed-default
+  population ever becomes constructible; (b) JSON export renders an
+  explicit v_reset as `[0.0]` where the reference's absent-v_reset
+  form omits the key — re-import flips `v_reset_defaulted` (present
+  pre-alpha.3 record; the HDF5 writer's dataset-OMISSION form is
+  the clean fix and is what slice 2 shipped).
+- **Battery on the fixed tree**: workspace check/clippy clean, test
+  289/0 (3 app, 93 rt, 185+8 snn); no_std builds; simd 197/0
+  (188+8+1); hdf5 leg 116/0 (101 inline + 15 fixture) + gate 5/5 +
+  feature clippy clean.

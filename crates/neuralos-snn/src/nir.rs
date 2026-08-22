@@ -1926,6 +1926,9 @@ mod std_assembly {
         /// length ≥ 1; `v_reset_v` `None` = the reference's
         /// absent-`v_reset` zeros semantics.
         ///
+        /// Atomic: a failed add (including a mid-population
+        /// quantize failure) leaves the builder exactly as it was.
+        ///
         /// # Errors
         ///
         /// [`NirError::BadShape("LIF param")`] on length mismatch or
@@ -1945,14 +1948,17 @@ mod std_assembly {
             {
                 return Err(NirError::BadShape("LIF param"));
             }
-            let idx = self.push_node(name, NirNodeKind::Lif, &[])?;
-            let offset = self.lifs.len();
+            // Quantize the whole population into scratch FIRST: a
+            // mid-population failure must leave the builder
+            // untouched (no zombie node, no half-appended lif
+            // records).
+            let mut pop = Vec::with_capacity(n);
             for i in 0..n {
                 let v_reset = match params.v_reset_v {
                     Some(v) => v[i],
                     None => 0.0,
                 };
-                let lif = super::quantize_lif(
+                pop.push(super::quantize_lif(
                     params.tau_s[i],
                     params.r_ohm[i],
                     params.v_leak_v[i],
@@ -1960,9 +1966,12 @@ mod std_assembly {
                     v_reset,
                     params.v_reset_v.is_none(),
                     self.opts,
-                )?;
-                self.lifs.push(lif);
+                )?);
             }
+            // Past this point nothing can fail (see add_linear).
+            let idx = self.push_node(name, NirNodeKind::Lif, &[])?;
+            let offset = self.lifs.len();
+            self.lifs.extend_from_slice(&pop);
             self.nodes[idx].lif = Some(NirLifPopulation { offset, len: n });
             Ok(idx)
         }
@@ -1970,6 +1979,9 @@ mod std_assembly {
         /// Add a `Linear` node from materialized row-major f64
         /// weights — quantized into the arena via
         /// [`quantize_linear`](super::quantize_linear).
+        ///
+        /// Atomic: a failed add leaves the builder exactly as it
+        /// was — no node, no arena growth.
         ///
         /// # Errors
         ///
@@ -1981,11 +1993,17 @@ mod std_assembly {
             rows: usize,
             cols: usize,
         ) -> Result<usize, NirError<'a>> {
-            let idx = self.push_node(name, NirNodeKind::Linear, &[])?;
-            let offset = self.weights.len();
+            // Quantize into scratch FIRST: any failure must leave
+            // the builder untouched (no zombie node, no zero tail
+            // on the weights arena).
             let n = rows.checked_mul(cols).ok_or(NirError::BadShape("weight"))?;
-            self.weights.resize(offset + n, 0);
-            let lin = super::quantize_linear(values, rows, cols, &mut self.weights, offset)?;
+            let mut scratch = vec![0i16; n];
+            let mut lin = super::quantize_linear(values, rows, cols, &mut scratch, 0)?;
+            // Past this point nothing can fail: push_node with an
+            // empty shape is infallible.
+            let idx = self.push_node(name, NirNodeKind::Linear, &[])?;
+            lin.weight_offset = self.weights.len();
+            self.weights.extend_from_slice(&scratch);
             self.nodes[idx].linear = Some(lin);
             Ok(idx)
         }
@@ -3125,5 +3143,70 @@ mod tests {
         // validate_structure parity)
         b2.add_edge(i2, o2).expect("edge");
         assert!(matches!(b2.build(), Err(NirError::DuplicateEdge)));
+    }
+
+    #[test]
+    fn failed_adds_leave_no_zombie_state() {
+        let mut b = NirBuilder::new(NirImportOptions::default());
+        let inp = b.add_input("input", &[3]).expect("input");
+        // (a) failed add_linear: NaN weight — quantize_linear
+        //     hard-fails AFTER the old push-first shape would have
+        //     created the node and zero-extended the arena
+        assert_eq!(
+            b.add_linear("zombie", &[0.5, f64::NAN, 0.25], 1, 3),
+            Err(NirError::BadNumber("weight"))
+        );
+        // (b) failed add_lif_population: neuron 2's tau ≤ 0 fails
+        //     mid-population — neuron 1 quantized fine, the exact
+        //     half-appended shape the old push-first code produced
+        assert_eq!(
+            b.add_lif_population(
+                "zombie-lif",
+                &NirLifParams {
+                    tau_s: &[0.02, -0.02],
+                    r_ohm: &[1e8, 1e8],
+                    v_leak_v: &[-0.07, -0.07],
+                    v_threshold_v: &[-0.055, -0.055],
+                    v_reset_v: Some(&[-0.08, -0.08]),
+                },
+            ),
+            Err(NirError::BadNumber("tau"))
+        );
+        // The builder is still usable and carries no zombie: the
+        // identical clean chain (builder_chain's graph) builds to
+        // exactly the same state as if the failures never happened.
+        let lin = b
+            .add_linear("linear", &[0.5, -1.0, 0.25, 0.0, 0.75, -0.5], 2, 3)
+            .expect("linear");
+        let lif = b
+            .add_lif_population(
+                "lif",
+                &NirLifParams {
+                    tau_s: &[0.02, 0.02],
+                    r_ohm: &[1e8, 1e8],
+                    v_leak_v: &[-0.07, -0.07],
+                    v_threshold_v: &[-0.055, -0.055],
+                    v_reset_v: Some(&[-0.08, -0.08]),
+                },
+            )
+            .expect("lif");
+        let out = b.add_output("output", &[2]).expect("output");
+        for (a, c) in [(inp, lin), (lin, lif), (lif, out)] {
+            b.add_edge(a, c).expect("edge");
+        }
+        let g = b.build().expect("builds");
+        let clean = builder_chain();
+        // no zombie nodes (count + no zombie names)
+        assert_eq!(g.nodes.len(), clean.nodes.len());
+        assert!(
+            g.nodes
+                .iter()
+                .all(|n| n.name != "zombie" && n.name != "zombie-lif")
+        );
+        // no arena tail from the failed linear, no half-appended
+        // lif records from the failed population
+        assert_eq!(g.weights, clean.weights);
+        assert_eq!(g.lifs, clean.lifs);
+        assert_eq!(g.edges, clean.edges);
     }
 }

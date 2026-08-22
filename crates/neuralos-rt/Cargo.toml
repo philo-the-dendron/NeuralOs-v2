@@ -31,9 +31,6 @@ hdf5-sys = { version = "0.8", features = ["static", "zlib"], optional = true }
 # matches hdf5 0.8's ndarray (0.15) — array construction in the writer
 ndarray = { version = "0.15", optional = true }
 
-[dev-dependencies]
-proptest = "1.5"
-
 [[example]]
 name = "nir_hdf5_gate"
 required-features = ["hdf5"]
