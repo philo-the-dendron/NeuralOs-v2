@@ -3742,3 +3742,45 @@ or carried in verbatim from the principal's probe results
 (2026-08-22): IEEE/DCIS, ASYNC, MWSCAS DOIs; the 27-framework live
 recount; Lava banner; NIR citation + platform count; arXiv 2603.26722
 (verified live in the prior pass).
+
+## Close-out (R17 — the consolidation session, 2026-08-22)
+
+The autopsy-cadence session over 03720dd..2b3c084: dedupe, delete,
+re-pin, docs truth. No new direction opened.
+
+- **The measures** (the autopsy demands line counts): session diff
+  911 insertions / 445 deletions across 19 files — insertions are
+  dominated by tests (+8 new: 1 zombie-falsifier, 3 harness, 2
+  Leg-C, 1 normalized_weight pin, 1 tix pin) and the ISA/docs
+  records. Examples shrank: hybrid_loop 337→296, hybrid_invivo
+  662→604, null_patches 212→177 (−134 net; 174 raw lines deleted);
+  the ~150-line surgery unit now exists ONCE in harness.rs (+284
+  there: unit + S2 + one-call form + the first direct test module).
+  Builders + setter surface + spikes() + pub introspection: −226
+  lines deleted vs +109 rewritten tests/pins (017d45b). The
+  2026-08-20 pairwise audit's remaining block-duplication (surgery
+  ×3, tix ×2) is gone; unique-line overlap between example pairs
+  now sits at 8–24 lines (mostly prints + arg handling).
+- **Findings closed**: milestone-review A1 (fail-closed census), A2
+  (zombie nodes, both entries, one mechanism), A3 (dead dev-dep),
+  A4 (informational, banked); R7 backlog — surgery ×3 extraction,
+  tix ×2, run_vivo_ck mirror ADJUDICATED (rejected-with-reasons),
+  harness zero-direct-tests gap closed; census deferrals EXECUTED
+  per ruling (builders deleted, introspection relocated + pinned,
+  spikes() deleted); R8's two Leg-C invariant gaps closed with
+  direct CI tests.
+- **Re-pins (freeze-evidence doctrine)**: gate ADAPTS @ +0.1075 with
+  every banked counter byte-exact; loop export sha 24ffe5f3…;
+  null_patches 13/13 byte-identical; AUTO_SMOKE tier 2 PASS — twice
+  this session (post-B1, post-D), identical verdicts.
+- **Final battery on 2b3c084**: workspace 294/0 (3 app, 195 snn,
+  96 rt); clippy -D warnings clean (both legs); no_std builds; simd
+  199/0; hdf5 119/0 + nir_hdf5_gate 5/5; app NEURALOS_SMOKE_MS
+  clean-exit.
+- **Publish state**: alpha.4 live (registry-verified, amended into
+  R16's close-out); tree intentionally ahead → the builder deletion
+  + introspection relocation ride alpha.5. No publish this session
+  (the break banks toward it; the principal calls the version).
+- **Docs truth**: VISION claims all-sourced (see R17 Group C);
+  paper carries its first \citep (DCIS 2025); READMEs/AGENTS at
+  alpha.4 with measured counts. Remaining-unverified list: EMPTY.
