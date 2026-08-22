@@ -237,25 +237,39 @@ impl STDPRule {
     /// (LTP returns negative, LTD returns positive). The property test
     /// `prop_stdp_sign_convention` catches this at `dt = -24000`. Fix: clamp
     /// `factor` to `≥ 0` — the linear exp approximation naturally floors at zero.
+    ///
+    /// # Bug fix (R18 rider, 2026-08-22)
+    ///
+    /// `dt_us.abs() * SCALE` overflowed i32 at `|dt|` > ~2.15 s (release:
+    /// silent wrap → spurious deltas far outside the window, e.g. −560 at
+    /// dt = ±2 200 000 μs where 0 is required; debug: panic) — and
+    /// `dt_us.abs()` itself is UB-adjacent at `i32::MIN`. The whole
+    /// expression now runs in i64, cast BEFORE the abs (total at
+    /// `i32::MIN`), which also covers the tail product
+    /// `a · factor · learning_rate` overflowing i32 at extreme
+    /// `learning_rate` (u16 max). Observable values identical everywhere
+    /// the old code didn't overflow.
     #[must_use]
     pub fn calculate_weight_change(&self, dt_us: i32) -> i16 {
         if dt_us > 0 {
             // Post fired before pre → LTD (depress the synapse).
-            let decay = (dt_us.abs() * SCALE) / self.tau_minus_us as i32;
+            let decay =
+                (i64::from(dt_us).abs() * i64::from(SCALE)) / i64::from(self.tau_minus_us);
             if decay < 10_000 {
-                let factor = (SCALE - decay).max(0); // Clamp to ≥ 0
-                ((i32::from(self.a_minus) * factor * i32::from(self.learning_rate))
-                    / (SCALE * SCALE)) as i16
+                let factor = (i64::from(SCALE) - decay).max(0); // Clamp to ≥ 0
+                ((i64::from(self.a_minus) * factor * i64::from(self.learning_rate))
+                    / (i64::from(SCALE) * i64::from(SCALE))) as i16
             } else {
                 0
             }
         } else {
             // Pre fired before post (or simultaneous) → LTP (potentiate).
-            let decay = (dt_us.abs() * SCALE) / self.tau_plus_us as i32;
+            let decay =
+                (i64::from(dt_us).abs() * i64::from(SCALE)) / i64::from(self.tau_plus_us);
             if decay < 10_000 {
-                let factor = (SCALE - decay).max(0); // Clamp to ≥ 0
-                ((i32::from(self.a_plus) * factor * i32::from(self.learning_rate))
-                    / (SCALE * SCALE)) as i16
+                let factor = (i64::from(SCALE) - decay).max(0); // Clamp to ≥ 0
+                ((i64::from(self.a_plus) * factor * i64::from(self.learning_rate))
+                    / (i64::from(SCALE) * i64::from(SCALE))) as i16
             } else {
                 0
             }
@@ -397,6 +411,37 @@ mod tests {
         );
     }
 
+    // ----- R18 rider: the i32 dt-overflow fix, pinned -----
+
+    #[test]
+    fn stdp_zero_just_past_the_old_overflow_boundary() {
+        // dt = ±2_200_000 μs: past 10·tau (200 ms) AND past the old
+        // i32 product boundary (~2.147 s), where the wrapped decay
+        // produced −560 instead of 0. Exact pins, both branches.
+        let rule = STDPRule::new();
+        assert_eq!(rule.calculate_weight_change(2_200_000), 0, "LTD branch");
+        assert_eq!(rule.calculate_weight_change(-2_200_000), 0, "LTP branch");
+        // The extremes: cast-before-abs must be total at i32::MIN
+        // (`.abs()` on i32::MIN panics in debug, wraps in release).
+        assert_eq!(rule.calculate_weight_change(i32::MAX), 0);
+        assert_eq!(rule.calculate_weight_change(i32::MIN), 0);
+    }
+
+    #[test]
+    fn stdp_extreme_learning_rate_does_not_overflow_the_product() {
+        // The subsumed tail edge: a · factor · learning_rate in i32
+        // overflows at learning_rate = u16::MAX (53 · 1000 · 65535 ≈
+        // 3.5e9 > i32::MAX). The i64 expression must carry it.
+        let mut rule = STDPRule::new();
+        rule.learning_rate = u16::MAX;
+        // dt = 0 → factor = SCALE exactly (the maximal product).
+        let delta = rule.calculate_weight_change(0);
+        let expected =
+            (i64::from(rule.a_plus) * i64::from(SCALE) * i64::from(u16::MAX))
+                / (i64::from(SCALE) * i64::from(SCALE));
+        assert_eq!(i64::from(delta), expected, "no wrap at lr = u16::MAX, dt = 0");
+    }
+
     // ----- Property tests (Cardano-grade rigor) -----
 
     proptest! {
@@ -442,6 +487,26 @@ mod tests {
             let far_dt_neg = -((rule.tau_plus_us * multiplier) as i32);
             prop_assert_eq!(rule.calculate_weight_change(far_dt_pos), 0);
             prop_assert_eq!(rule.calculate_weight_change(far_dt_neg), 0);
+        }
+
+        /// R18 rider: across the FULL i32 dt range — beyond the 10·tau
+        /// window the delta is exactly 0 (no wrap artifacts at any
+        /// magnitude, either sign), and inside the window the sign
+        /// convention holds. The old i32 product wrapped at |dt| >
+        /// ~2.15 s, producing spurious in-window-looking deltas.
+        #[test]
+        fn prop_stdp_dt_full_i32_range(dt_us in i32::MIN..=i32::MAX) {
+            let rule = STDPRule::new();
+            let delta = rule.calculate_weight_change(dt_us);
+            let outside =
+                i64::from(dt_us).abs() >= 10 * i64::from(rule.tau_plus_us.max(rule.tau_minus_us));
+            if outside {
+                prop_assert_eq!(delta, 0, "outside the window at dt={}", dt_us);
+            } else if dt_us > 0 {
+                prop_assert!(delta <= 0, "in-window post-before-pre must be LTD at dt={}", dt_us);
+            } else {
+                prop_assert!(delta >= 0, "in-window pre-before-post must be LTP at dt={}", dt_us);
+            }
         }
     }
 }

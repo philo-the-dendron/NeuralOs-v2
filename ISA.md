@@ -3988,3 +3988,46 @@ Battery final: workspace 304/0; clippy -D warnings clean; no_std
 builds; simd 209/0; hdf5 120/0 + both frozen gates + the new 6/6
 and 3/3. Pushed per group (6492e02, c3e30dd, 71d811b, 4ac0c5e,
 64d77c45, + P5) to both remotes.
+
+## Verification (R18 rider — the STDP dt-overflow fix, 2026-08-22)
+
+- **Bug** (commissioned, verified still-live at 9b9aea9):
+  `STDPRule::calculate_weight_change` computed `dt_us.abs() * SCALE`
+  in i32 (synapse.rs:244/:254) — overflow at |dt| > 2 147 483 μs
+  (~2.15 s). Release: silent wrap → `decay < 10_000` passed
+  falsely → spurious deltas far outside the 10·τ window (e.g.
+  dt = ±2 200 000 μs returned −560 where 0 is required). Debug:
+  overflow panic. Survived every prior gate because the existing
+  `prop_stdp_zero_outside_window` tops out at 100·τ = 2 000 000 μs,
+  just under the boundary.
+- **Fix** (principal-ratified ordering): the whole expression runs
+  in i64, cast BEFORE the abs — `i64::from(dt_us).abs()` is total
+  at `i32::MIN` (the `.abs()`-on-MIN edge panics in debug, wraps in
+  release — subsumed edge #1, named in the ratification); the
+  widening also covers the tail product `a · factor · learning_rate`
+  overflowing i32 at extreme learning_rate (53·1000·65535 ≈ 3.5e9 —
+  subsumed edge #2). Both branches; observable values identical
+  everywhere the old code didn't overflow. Doc block carries the
+  record.
+- **Falsifiers** (+3 tests, snn 205→208 workspace-side): exact pins
+  just past the old boundary — `±2_200_000 μs → 0` both branches,
+  plus `i32::MIN/i32::MAX → 0` (the cast-before-abs totality pin);
+  `lr = u16 max, dt = 0` product pin (expected from the i64
+  expression, no wrap); `prop_stdp_dt_full_i32_range` — dt across
+  i32::MIN..=i32::MAX: outside 10·τ ⟺ delta == 0, in-window sign
+  convention holds (the property's own boundary math runs in i64 —
+  the test must not carry the bug it pins). The sign-convention
+  proptest unchanged, green.
+- **Battery all legs on the fixed tree**: workspace 307/0 (3 app,
+  208 snn, 96 rt); clippy -D warnings clean; no_std builds; simd
+  212/0; hdf5 120/0. **Four gates re-run green, frozen pins
+  byte-identical** (format 4/4 @ 826 B; assembly 6/6 — chain
+  9 spikes/100 @ step 6 through both builders; hdf5 5/5 @ 941 B;
+  cross-container 3/3 — step 52 exact). No gate path exercises
+  STDP deltas (the chain carries no synapses; NIR assembly freezes
+  plasticity) — the battery is the no-regression proof.
+- **Publish state**: version stays `0.1.0-alpha.5` (the fix rides
+  the staged alpha — the crate is NOT yet published at .5). Fresh
+  `--dry-run` from the new tip supersedes the 9b9aea9 dry-run
+  (identical package content class; the record of record is the new
+  one). Real publish remains the principal's call.
