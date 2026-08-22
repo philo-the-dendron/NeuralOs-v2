@@ -135,10 +135,16 @@ impl Synapse {
         self.absorbed_delta += i64::from(delta_weight) - i64::from(applied);
         self.weight = target;
     }
+}
 
-    /// Weight as a percentage of `max_weight` (for visualization).
-    #[must_use]
-    pub fn normalized_weight(&self) -> i16 {
+/// Test-only visualization helper (was pub; zero callers anywhere —
+/// the R8 census deferral, ruled in the 2026-08-22 consolidation:
+/// relocated under cfg(test) and pinned, not kept as dead pub
+/// surface).
+#[cfg(test)]
+impl Synapse {
+    /// Weight as a percentage of `max_weight`.
+    fn normalized_weight(&self) -> i16 {
         let abs_max = self.max_weight.unsigned_abs();
         if abs_max > 0 {
             (i32::from(self.weight) * 100 / i32::from(abs_max)) as i16
@@ -263,49 +269,6 @@ impl Default for STDPRule {
     }
 }
 
-/// Builder for custom synapse configurations.
-#[derive(Debug)]
-pub struct SynapseBuilder {
-    synapse: Synapse,
-}
-
-impl SynapseBuilder {
-    pub fn new(pre_id: u16, post_id: u16, weight: i16) -> Result<Self, Error> {
-        Ok(Self {
-            synapse: Synapse::new(pre_id, post_id, weight)?,
-        })
-    }
-
-    #[must_use]
-    pub fn tau_decay_us(mut self, tau: u16) -> Self {
-        self.synapse.tau_decay_us = tau;
-        self
-    }
-
-    #[must_use]
-    pub fn weight_bounds(mut self, min: i16, max: i16) -> Self {
-        self.synapse.min_weight = min;
-        self.synapse.max_weight = max;
-        self
-    }
-
-    #[must_use]
-    pub fn synapse_type(mut self, t: SynapseType) -> Self {
-        let (tau_rise, tau_decay, max_w, min_w) = biological_params(t);
-        self.synapse.synapse_type = t;
-        self.synapse.tau_rise_us = tau_rise;
-        self.synapse.tau_decay_us = tau_decay;
-        self.synapse.max_weight = max_w;
-        self.synapse.min_weight = min_w;
-        self
-    }
-
-    #[must_use]
-    pub fn build(self) -> Synapse {
-        self.synapse
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::shadow_unrelated)]
@@ -344,23 +307,33 @@ mod tests {
     }
 
     #[test]
-    fn builder_overrides_params() {
-        let s = SynapseBuilder::new(1, 2, 150)
-            .expect("valid ids")
-            .weight_bounds(-500, 500)
-            .build();
+    fn weight_bounds_directly_configurable() {
+        let mut s = Synapse::new(1, 2, 150).expect("valid ids");
+        s.min_weight = -500;
+        s.max_weight = 500;
         assert_eq!(s.max_weight, 500);
         assert_eq!(s.min_weight, -500);
     }
 
     #[test]
-    fn builder_sets_modulatory_type() {
-        let s = SynapseBuilder::new(1, 2, 50)
-            .expect("valid ids")
-            .synapse_type(SynapseType::Modulatory)
-            .build();
-        assert_eq!(s.synapse_type, SynapseType::Modulatory);
-        assert_eq!(s.tau_decay_us, 50_000);
+    fn biological_params_map_modulatory_type() {
+        let (tau_rise, tau_decay, _max_w, _min_w) = biological_params(SynapseType::Modulatory);
+        assert_eq!(tau_decay, 50_000);
+        assert!(tau_rise > 0);
+    }
+
+    #[test]
+    fn normalized_weight_is_percentage_of_max() {
+        let mut s = Synapse::new(1, 2, 100).expect("valid ids");
+        assert_eq!(s.max_weight, 2000);
+        // 100/2000 = 5%
+        assert_eq!(s.normalized_weight(), 5);
+        s.weight = s.max_weight;
+        assert_eq!(s.normalized_weight(), 100);
+        s.weight = -s.max_weight;
+        assert_eq!(s.normalized_weight(), -100);
+        s.max_weight = 0;
+        assert_eq!(s.normalized_weight(), 0, "zero max must not divide by zero");
     }
 
     #[test]

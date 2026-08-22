@@ -222,20 +222,6 @@ impl LIFNeuron {
     /// Switch the voltage grid in place, rescaling the four stored potentials
     /// (values are preserved exactly: ×100 or ÷100 on whole-quanta values).
     /// Call before stepping; spikes/history/currents are grid-independent.
-    fn set_voltage_resolution(&mut self, resolution: VoltageResolution) {
-        if resolution == self.voltage_resolution {
-            return;
-        }
-        let new_s = resolution.scale();
-        let old_s = self.voltage_resolution.scale();
-        let rescale = |v: i16| -> i16 { ((i32::from(v) * new_s) / old_s) as i16 };
-        self.membrane_potential = rescale(self.membrane_potential);
-        self.resting_potential = rescale(self.resting_potential);
-        self.threshold = rescale(self.threshold);
-        self.reset_potential = rescale(self.reset_potential);
-        self.voltage_resolution = resolution;
-    }
-
     /// Integrate the membrane equation for one time step, return `true` if a spike fired.
     ///
     /// # Parameters
@@ -347,28 +333,69 @@ impl LIFNeuron {
         self.last_update_time_us = 0;
         self.last_spike_time_us = 0;
         self.synaptic_current_ua = 0;
-        self.adaptation_current_ua = 0;
-        self.spike_history.clear();
-    }
+         self.adaptation_current_ua = 0;
+         self.spike_history.clear();
+     }
 
-    /// Is the neuron currently in its refractory period?
-    #[must_use]
-    pub fn is_refractory(&self) -> bool {
-        self.refractory_time_us > 0
-    }
-
-    /// Firing rate within a recent window, in **millihertz** (no float in hot path).
-    ///
-    /// Returns `spikes/sec × 1000`. For Hz: `rate_mhz as f32 / 1000.0`.
-    ///
-    /// Reference time = `last_update_time_us` (set by `integrate_and_fire`).
+     /// Deterministic LFSR noise seeded by `id XOR current_time_us`.
     ///
     /// # Bug fix vs v0.1
     ///
-    /// v0.1 used `last_spike_time_us` as reference, which never advanced between
-    /// spikes, breaking the window filter. Now uses `last_update_time_us`.
-    #[must_use]
-    pub fn firing_rate_mhz(&self, window_us: u32) -> u32 {
+    /// v0.1 seeded only by `id`, so every neuron with the same id produced
+    /// identical "noise" forever (deterministic, not noise). Now seeded by
+    /// `id XOR current_time_us` — different each step, still reproducible for tests.
+    fn generate_noise(&self, current_time_us: u32) -> i16 {
+        if self.noise_amplitude_ua == 0 {
+            return 0;
+        }
+        let mut lfsr = u32::from(self.id) ^ current_time_us;
+        // 16-bit Galois LFSR, taps 0xB400, period 65_535. Iterate 4x for diffusion.
+        for _ in 0..4 {
+            lfsr = (lfsr >> 1) ^ (if lfsr & 1 != 0 { 0xB400_u32 } else { 0 });
+        }
+        let raw = (lfsr & 0xFF) as i16 - 128; // -128..=127
+        (raw * i16::from(self.noise_amplitude_ua)) / 128
+    }
+}
+
+impl Default for LIFNeuron {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
+
+/// Grid-switch rescaling (was the builder's `voltage_resolution`
+/// step; test-only since the builder deletion — the resolution a
+/// neuron lives on is fixed at construction).
+#[cfg(test)]
+impl LIFNeuron {
+    fn set_voltage_resolution(&mut self, resolution: VoltageResolution) {
+        if resolution == self.voltage_resolution {
+            return;
+        }
+        let new_s = resolution.scale();
+        let old_s = self.voltage_resolution.scale();
+        let rescale = |v: i16| -> i16 { ((i32::from(v) * new_s) / old_s) as i16 };
+        self.membrane_potential = rescale(self.membrane_potential);
+        self.resting_potential = rescale(self.resting_potential);
+        self.threshold = rescale(self.threshold);
+        self.reset_potential = rescale(self.reset_potential);
+        self.voltage_resolution = resolution;
+    }
+
+    /// Test-only introspection quartet (was pub; zero non-test
+    /// callers — the R8 census deferral, ruled in the 2026-08-22
+    /// consolidation). `spikes()` was deleted outright: zero
+    /// callers anywhere, and `spike_count()` + the quartet cover
+    /// every read the tests need.
+    fn is_refractory(&self) -> bool {
+        self.refractory_time_us > 0
+    }
+
+    /// Firing rate within a recent window, in millihertz. Reference
+    /// time = `last_update_time_us` (the v0.1 bug fix: window filter
+    /// keyed on advancing time, not last-spike).
+    fn firing_rate_mhz(&self, window_us: u32) -> u32 {
         if self.spike_history.is_empty() || window_us == 0 {
             return 0;
         }
@@ -385,12 +412,10 @@ impl LIFNeuron {
             .unwrap_or(0)
     }
 
-    /// Inter-spike-interval statistics: `(mean_us, std_dev_us)`, or `None` if `< 2` spikes.
-    ///
-    /// Pure integer math (no float, `no_std`-safe). Std-dev via the sum-of-squares
-    /// formula; for very long spike trains, consider computing stats at network level.
-    #[must_use]
-    pub fn isi_stats_us(&self) -> Option<(u32, u32)> {
+    /// Inter-spike-interval statistics: `(mean_us, std_dev_us)`, or
+    /// `None` if `< 2` spikes. Pure integer math; std-dev via
+    /// sum-of-squares.
+    fn isi_stats_us(&self) -> Option<(u32, u32)> {
         if self.spike_history.len() < 2 {
             return None;
         }
@@ -420,120 +445,14 @@ impl LIFNeuron {
         Some((mean as u32, std as u32))
     }
 
-    /// Iterate over spike timestamps (oldest first).
-    pub fn spikes(&self) -> impl Iterator<Item = &u32> {
-        self.spike_history.iter()
-    }
-
-    /// Number of recorded spikes (bounded by `MAX_SPIKE_HISTORY`).
-    #[must_use]
-    pub fn spike_count(&self) -> usize {
+    fn spike_count(&self) -> usize {
         self.spike_history.len()
     }
-
-    /// Deterministic LFSR noise seeded by `id XOR current_time_us`.
-    ///
-    /// # Bug fix vs v0.1
-    ///
-    /// v0.1 seeded only by `id`, so every neuron with the same id produced
-    /// identical "noise" forever (deterministic, not noise). Now seeded by
-    /// `id XOR current_time_us` — different each step, still reproducible for tests.
-    fn generate_noise(&self, current_time_us: u32) -> i16 {
-        if self.noise_amplitude_ua == 0 {
-            return 0;
-        }
-        let mut lfsr = u32::from(self.id) ^ current_time_us;
-        // 16-bit Galois LFSR, taps 0xB400, period 65_535. Iterate 4x for diffusion.
-        for _ in 0..4 {
-            lfsr = (lfsr >> 1) ^ (if lfsr & 1 != 0 { 0xB400_u32 } else { 0 });
-        }
-        let raw = (lfsr & 0xFF) as i16 - 128; // -128..=127
-        (raw * i16::from(self.noise_amplitude_ua)) / 128
-    }
 }
 
-impl Default for LIFNeuron {
-    fn default() -> Self {
-        Self::new(0)
-    }
-}
-
-/// Builder for custom neuron configurations.
-#[derive(Debug)]
-pub struct NeuronBuilder {
-    neuron: LIFNeuron,
-}
-
-impl NeuronBuilder {
-    #[must_use]
-    pub fn new(id: u16) -> Self {
-        Self {
-            neuron: LIFNeuron::new(id),
-        }
-    }
-
-    #[must_use]
-    pub fn neuron_type(mut self, t: NeuronType) -> Self {
-        let id = self.neuron.id;
-        self.neuron = LIFNeuron::new_with_type(id, t);
-        self
-    }
-
-    /// Threshold in mV — stored on the neuron's grid (×scale), so the
-    /// builder's contract stays mV in every resolution.
-    #[must_use]
-    pub fn threshold_mv(mut self, threshold: i16) -> Self {
-        let s = self.neuron.voltage_resolution.scale();
-        self.neuron.threshold = threshold * s as i16;
-        self
-    }
-
-    /// Switch the voltage grid, rescaling all four stored potentials
-    /// (preserves values; order-independent with the other setters).
-    #[must_use]
-    pub fn voltage_resolution(mut self, resolution: VoltageResolution) -> Self {
-        self.neuron.set_voltage_resolution(resolution);
-        self
-    }
-
-    #[must_use]
-    pub fn tau_membrane_us(mut self, tau: u32) -> Self {
-        self.neuron.tau_membrane_us = tau;
-        self
-    }
-
-    #[must_use]
-    pub fn tau_refractory_us(mut self, tau: u32) -> Self {
-        self.neuron.tau_refractory_us = tau;
-        self
-    }
-
-    #[must_use]
-    pub fn capacitance_pf(mut self, c: u16) -> Self {
-        self.neuron.capacitance_pf = c;
-        self
-    }
-
-    #[must_use]
-    pub fn resistance_mohm(mut self, r: u16) -> Self {
-        self.neuron.resistance_mohm = r;
-        self
-    }
-
-    #[must_use]
-    pub fn noise_amplitude_ua(mut self, a: u8) -> Self {
-        self.neuron.noise_amplitude_ua = a;
-        self
-    }
-
-    #[must_use]
-    pub fn build(self) -> LIFNeuron {
-        self.neuron
-    }
-}
-
-/// Integer square root (`no_std`-safe, no float).
-#[inline]
+/// Integer square root (`no_std`-safe, no float). Only consumer is
+/// the test-gated `isi_stats_us`.
+#[cfg(test)]
 fn isqrt_u64(n: u64) -> u64 {
     if n == 0 {
         return 0;
@@ -573,26 +492,14 @@ mod tests {
     }
 
     #[test]
-    fn builder_overrides_params() {
-        let n = NeuronBuilder::new(3)
-            .neuron_type(NeuronType::Inhibitory)
-            .threshold_mv(-45)
-            .tau_membrane_us(15_000)
-            .build();
+    fn neuron_fields_directly_configurable() {
+        let mut n = LIFNeuron::new_with_type(3, NeuronType::Inhibitory);
+        n.threshold = -45;
+        n.tau_membrane_us = 15_000;
         assert_eq!(n.id, 3);
         assert_eq!(n.neuron_type, NeuronType::Inhibitory);
         assert_eq!(n.threshold, -45);
         assert_eq!(n.tau_membrane_us, 15_000);
-    }
-
-    #[test]
-    fn builder_threshold_is_mv_in_every_resolution() {
-        let n = NeuronBuilder::new(9)
-            .voltage_resolution(VoltageResolution::CentiMillivolt)
-            .threshold_mv(-45)
-            .build();
-        assert_eq!(n.threshold, -4_500, "−45 mV stored as centi-mV");
-        assert_eq!(n.resting_potential, -7_000);
     }
 
     #[test]
@@ -741,7 +648,8 @@ mod tests {
 
     #[test]
     fn large_current_triggers_spike_and_refractory() {
-        let mut n = NeuronBuilder::new(5).threshold_mv(-65).build();
+        let mut n = LIFNeuron::new(5);
+        n.threshold = -65;
         // 200 μA over repeated 10 ms steps must eventually trigger a spike.
         let mut spiked = false;
         let mut t = 0_u32;
@@ -834,7 +742,8 @@ mod tests {
 
     #[test]
     fn noise_is_zero_when_amplitude_is_zero() {
-        let n = NeuronBuilder::new(12).noise_amplitude_ua(0).build();
+        let mut n = LIFNeuron::new(12);
+        n.noise_amplitude_ua = 0;
         for t in 0..1000_u32 {
             assert_eq!(n.generate_noise(t), 0);
         }
@@ -906,7 +815,8 @@ mod tests {
             id in 0u16..=50,
             tau_ref in 500u32..=10_000,
         ) {
-            let mut n = NeuronBuilder::new(id).tau_refractory_us(tau_ref).build();
+            let mut n = LIFNeuron::new(id);
+            n.tau_refractory_us = tau_ref;
             n.threshold = -100; // force spiking with any input
             let mut t = 0_u32;
             for _ in 0..100 {
