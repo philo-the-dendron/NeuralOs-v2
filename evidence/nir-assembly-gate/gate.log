@@ -1,0 +1,19 @@
+   Compiling neuralos-snn v0.1.0-alpha.4 (/home/student/projets/NeuralOs-v2/crates/neuralos-snn)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.70s
+     Running `target/debug/examples/nir_assembly_gate`
+=== NIR assembly gate — general four-kind graphs, reference-emitted vectors ===
+ref     : neuromorphs/NIR @ 7883c3c85f1be27ed113ccc9e8d6ab47ab541df4
+contract: EDGE_PULSE_QUANTA = 200 (20 uA pulse @ divisor 10)
+
+report  : 4 neurons · 0 synapses · 1 inputs · 2 drive Linears · 2 stages
+fused   : l1·l2 (scales 3.051850947599719e-5)
+quant   : D6 note — >1 drive Linear; per-tensor absmax scales absorb branch gain
+pins    : first-spike per neuron [3, 14, 1, 3] · counts [14, 4, 25, 14]
+gate 1  : PASS — all 4 neurons fire; first-spike steps pinned [3, 14, 1, 3]
+gate 2  : PASS — single stalls (0/200), summed fires: neuron 0 first at step 52
+gate 3  : PASS — pulse moves b0 exactly +10 quanta one step after a0 fires (t=11)
+gate 4  : PASS — W2·W1 composed in f64, quantized ONCE: [16384, -32767, 8192, 4096, -16384, -8192]
+gate 5  : PASS — 10 named rejections, one negative fixture each
+gate 6  : PASS — frozen pins byte-identical: 9 spikes/100 @ step 6, export 826 B, general-builder raster bit-identical
+
+NIR ASSEMBLY GATE: PASS — 6/6 gates on reference-emitted general graphs

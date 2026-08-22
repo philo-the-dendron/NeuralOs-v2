@@ -1922,6 +1922,24 @@ mod std_assembly {
             assert!(fired.iter().all(|&f| f), "all four neurons fire: {fired:?}");
         }
 
+        /// Mirror of the assembly gate's leg-1 pin: the branch
+        /// fixture's first-spike steps per neuron under x=[6,0,0] on
+        /// mV — hand-verified integer dynamics (n0/n3: ct=98, `V_ss`
+        /// +28, fires at g≤83, step 3; n1: 1-quanta/step crawl 49→34,
+        /// step 14; n2: g/10 decay, −48≥−50, step 1).
+        #[test]
+        fn branch_first_spike_pins_match_the_gate() {
+            let g = NirImport::from_json(BRANCH, NirImportOptions::default()).unwrap();
+            let (mut net, enc, _) = g.build_network().unwrap();
+            let mut firsts = vec![usize::MAX; 4];
+            for t in 0..100 {
+                for s in net.step(&enc.encode(&[&[6, 0, 0]])).unwrap() {
+                    firsts[s.neuron_id as usize] = firsts[s.neuron_id as usize].min(t);
+                }
+            }
+            assert_eq!(firsts, vec![3, 14, 1, 3]);
+        }
+
         /// The merge fixture at graph scale: one branch stalls below
         /// the climb (81 μA → `V_ss−rest` 810 < the 1500 gap), the
         /// summed fan-in fires (162 μA) — the `transmission_pulses_sum`
@@ -3001,6 +3019,19 @@ mod std_assembly {
         #[must_use]
         pub fn input_features(&self, i: usize) -> usize {
             self.input_feats.get(i).copied().unwrap_or(0)
+        }
+
+        /// The quantized matrix of stage `i` (row-major), for exact
+        /// external pins (fusion exactness gates read this).
+        #[must_use]
+        pub fn stage_quanta(&self, i: usize) -> Option<&[i16]> {
+            self.mats.get(i).map(|m| m.q.as_slice())
+        }
+
+        /// Number of quantized stage matrices.
+        #[must_use]
+        pub fn stage_count(&self) -> usize {
+            self.mats.len()
         }
 
         /// Encode per-Input feature currents into the global per-step
