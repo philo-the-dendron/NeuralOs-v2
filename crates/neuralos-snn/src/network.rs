@@ -2332,4 +2332,142 @@ mod tests {
             "adaptation must equilibrate under the 600 μA drive (peaked at {max_adaptation})"
         );
     }
+
+    #[test]
+    fn plasticity_off_freezes_weights_under_adapting_drive() {
+        // The R8 inventory's named gap: stuck-ON plasticity (the OFF
+        // toggle silently ignored) was invisible to CI. Falsifier: the
+        // identical drive that demonstrably moves the weight with
+        // plasticity ON must leave it byte-identical, with zero
+        // plasticity events, with it OFF.
+        let build = || {
+            let mut net = SpikingNeuralNetwork::new(
+                2,
+                1000,
+                NetworkTopology::Balanced {
+                    excitatory_ratio: 0.5,
+                },
+            )
+            .expect("valid");
+            // deterministic constants: noise off, no refractory,
+            // tau=dt → ΔV = leak + (I−A)·R/1000 per step
+            for n in &mut net.neurons {
+                n.noise_amplitude_ua = 0;
+                n.tau_refractory_us = 0;
+                n.tau_membrane_us = 1000;
+                n.resistance_mohm = 1000;
+            }
+            net.add_synapse(0, 1, 100).expect("synapse");
+            net.synapse_matrix.finalize();
+            net
+        };
+        // init cycle plasticity-OFF with both neurons firing (the
+        // harness recipe: makes last_spike times real), then one
+        // pre-only step → LTD pairing at dt = +1000 μs (inside the
+        // 20 ms window)
+        let run = |net: &mut SpikingNeuralNetwork, enable: bool| {
+            net.set_plasticity_enabled(false);
+            for _ in 0..4 {
+                net.step(&[600, 600]).expect("init step");
+            }
+            assert_eq!(
+                net.synapses[0].weight, 100,
+                "the OFF init cycle must not touch the weight"
+            );
+            if enable {
+                net.set_plasticity_enabled(true);
+            }
+            net.step(&[1000, 0]).expect("pairing step")
+        };
+
+        let mut on = build();
+        let on_spikes = run(&mut on, true);
+        assert_eq!(on_spikes.len(), 1, "the pre neuron must fire the pairing step");
+        assert!(
+            on.synapses[0].weight < 100,
+            "ON leg adapts (post-leads LTD at dt=+1000): weight now {}",
+            on.synapses[0].weight
+        );
+        assert!(on.stats().plasticity_events > 0);
+
+        let mut off = build();
+        let off_spikes = run(&mut off, false);
+        assert_eq!(off_spikes.len(), 1, "spiking is plasticity-independent");
+        assert_eq!(
+            off.synapses[0].weight, 100,
+            "OFF must freeze the weight exactly (stuck-ON detector)"
+        );
+        assert_eq!(
+            off.stats().plasticity_events, 0,
+            "no plasticity events may accumulate while OFF"
+        );
+    }
+
+    #[test]
+    fn adaptation_decay_runs_before_integration_exact() {
+        // The R8 inventory's other named gap: the session-F step order
+        // (decay → integrate) was pinned at unit + liveness level only.
+        // Exact-value orchestration pin. Constants chosen so one step
+        // computes ΔV = 1 − A_effective:
+        //   membrane −56, threshold −55 (SET — default is −50),
+        //   resting −70 (leak −14),
+        //   R = 1000 mΩ, tau = dt = 1000 μs, drive 15 μA
+        //     → current_term = (15 − A)·1000/1000 = 15 − A
+        //     → ΔV = 1000·(−14 + 15 − A)/1000 = 1 − A
+        // A_start = 1: decay-first → integrate sees 0 → ΔV = +1 →
+        //   V = −55 → SPIKES (if decay ran after integrate, it would
+        //   see 1 → ΔV = 0 → silent — the spike proves the position).
+        // A_start = 2: integrate sees exactly 1 → ΔV = 0 → silent
+        //   (pins the effective adaptation at exactly A_start − 1).
+        let mut net1 = SpikingNeuralNetwork::new_with_voltage_resolution(
+            1,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+            VoltageResolution::Millivolt,
+        )
+        .expect("constructs");
+        net1.build_topology().expect("empty build");
+        for n in &mut net1.neurons {
+            n.noise_amplitude_ua = 0;
+            n.tau_refractory_us = 0;
+            n.tau_membrane_us = 1000;
+            n.resistance_mohm = 1000;
+            n.membrane_potential = -56;
+            n.threshold = -55;
+        }
+        net1.neurons[0].adaptation_current_ua = 1;
+        let spikes1 = net1.step(&[15]).expect("step A=1");
+        assert_eq!(spikes1.len(), 1, "decayed-to-0 adaptation must let V reach −55");
+        assert_eq!(
+            net1.neurons[0].membrane_potential,
+            net1.neurons[0].reset_potential,
+            "spike resets to reset potential"
+        );
+        assert_eq!(
+            net1.neurons[0].adaptation_current_ua, 2,
+            "decay 1→0 then +2 on spike"
+        );
+
+        let mut net2 = SpikingNeuralNetwork::new_with_voltage_resolution(
+            1,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+            VoltageResolution::Millivolt,
+        )
+        .expect("constructs");
+        net2.build_topology().expect("empty build");
+        for n in &mut net2.neurons {
+            n.noise_amplitude_ua = 0;
+            n.tau_refractory_us = 0;
+            n.tau_membrane_us = 1000;
+            n.resistance_mohm = 1000;
+            n.membrane_potential = -56;
+            n.threshold = -55;
+        }
+        net2.neurons[0].adaptation_current_ua = 2;
+        let spikes2 = net2.step(&[15]).expect("step A=2");
+        assert_eq!(spikes2.len(), 0, "integrate must see exactly A_start − 1 = 1");
+        assert_eq!(net2.neurons[0].membrane_potential, -56, "ΔV = 0 exactly");
+        assert_eq!(net2.neurons[0].adaptation_current_ua, 1, "decay 2→1, no spike");
+    }
 }
