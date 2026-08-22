@@ -3849,3 +3849,50 @@ under QEMU, both postures. Evidence: `evidence/qemu-riscv-gate/`
   form). **Parked follow-up (named, unstarted)**: QEMU riscv64 CI leg
   — runner cost under TCG unmeasured; ci.yml untouched this session
   by commission.
+
+## Decision (R18 — NIR general graph assembly, P1: the EDGE_PULSE_QUANTA contract, 2026-08-22)
+
+Session: any reference-emitted four-kind graph assembles and fires
+(roadmap move #2; alpha.5 carrier). Pre-registered rulings D1-D7
+commissioned; three execution rulings added at plan gate (all
+principal-side): (i) D1's "centi BY DEFAULT" resolves to
+loud-rejection-with-remedy via the single opts channel — no
+Option<grid> parameter, no re-quantization fork of the truth; (ii) a
+four-kind graph with NO LIF node is a named deferral alongside D3
+readout / D5 direct drive (the deferral family; encoder-only ranked
+lowest — no interop pull); (iii) Input-unreachable LIF populations
+assemble with a STRUCTURAL UndrivenPopulation note (the reference
+tolerates and auto-wires such components at emission; we do not
+invent structure at import — silence documented, never silent).
+
+**The D1 derivation, ratified before wiring (EDGE_PULSE_QUANTA =
+200).** Integration wire (lif_neuron.rs:266-269, network.rs:392-396):
+pulse I = w/divisor μA (divisor default 10 ⇒ 20 μA), one-step delay
+(session-F order), ΔV = trunc(dt_over_tau · trunc(I·R·s/1000)/1000),
+dt_over_tau = trunc(dt·1000/τ). At the reference-typical point
+(dt=1 ms, τ=20 ms ⇒ dt_over_tau=50, R=100 MΩ):
+
+| axis | mV (s=1) | centi-mV (s=100) |
+|---|---|---|
+| dead zone at rest | 200 μA | 2 μA |
+| one 20 μA pulse | 50·2/1000 → **0 quanta (dead 10×)** | 50·200/1000 → **+10 quanta (10× live)** |
+| V_ss lift per spiking neighbor | +2.0 mV — coupling, NOT ignition (honest) | +200 quanta |
+| ≥1 quantum/pulse headroom | — | to τ=200 ms @ R=100 |
+| saturation | 1638 coincident pulses saturate i16 | |
+
+The number rides NO learning weight (plasticity frozen at assembly —
+NIR has no plasticity term; STDP's ±32767 clamp would corrupt the
+quanta on first touch). Alternatives rejected on the record: 100
+(5× dead-zone margin, 1 mV climb — thin), 1000 (mV graphs nearly
+transmit — blurs the rejection rationale). Falsifier (network
+exact-pin style, both grids in ONE test):
+`edge_pulse_moves_post_exact_one_step_later_both_grids` — pre fires
+step 0 @3000 μA, post unmoved that step (delay), then centi
+−7000→−6990 exactly, mV −70→−70 exactly. Green on first run (189/0
+snn unit leg).
+
+P0 record: 16 new reference-emitted fixtures (branch / merge /
+recurrent positives; 10 assembly-class negatives; HDF5 merge pair),
+all explicit-Input/Output constructions, every emission self-asserted
+(no infer_types rewrite); regeneration byte-stable — all 19 frozen
+fixtures unchanged. Commit 6492e02, pushed both remotes.

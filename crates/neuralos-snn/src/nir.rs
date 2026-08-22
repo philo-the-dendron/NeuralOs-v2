@@ -1666,6 +1666,106 @@ mod std_assembly {
     use crate::lif_neuron::{LIFNeuron, NeuronType};
     use crate::network::SpikingNeuralNetwork;
 
+    /// **THE D1 edge-semantics contract (principal-ratified 2026-08-22).**
+    ///
+    /// A spiking-stage edge (LIF→LIF) transmits ONE spike as ONE current
+    /// pulse of this many μA, divided by the network's
+    /// `synaptic_input_divisor` (default 10 → a 20 μA pulse), accumulated
+    /// saturating-i16 across fan-in, integrated exactly one step later
+    /// (the pinned session-F step order).
+    ///
+    /// Derivation at the reference-typical point (dt = 1 ms, τ = 20 ms →
+    /// `dt_over_tau = 50`, R = 100 MΩ), on the integration wire
+    /// `ΔV = trunc(dt_over_tau · trunc(I·R·s/1000) / 1000)`:
+    ///
+    /// | axis | mV grid (s=1) | centi-mV grid (s=100) |
+    /// |---|---|---|
+    /// | dead zone at rest | trunc(I/200) = 0 ⇒ **200 μA** | trunc(I/2) = 0 ⇒ **2 μA** |
+    /// | one 20 μA pulse | trunc(50·2/1000) = **0 quanta — dead** | trunc(50·200/1000) = **+10 quanta** |
+    /// | sustained `V_ss` lift/spiking neighbor | +2.0 mV (coupling, not ignition) | +200 quanta |
+    /// | ≥ 1 quantum/pulse headroom | — | holds to τ = 200 ms |
+    ///
+    /// Saturation: 1638 coincident pulses saturate the i16 accumulator;
+    /// plasticity is FROZEN at NIR assembly (NIR has no plasticity
+    /// term — STDP's ±32767 clamp would corrupt the quanta on first
+    /// touch), so the constant never rides a learning weight.
+    ///
+    /// Consequence (named, never silent): any graph with a LIF→LIF
+    /// edge assembles only under `CentiMillivolt` import options — a
+    /// single 20 μA pulse is dead 10× over on the mV grid. Explicit mV
+    /// options on such a graph are rejected BY NAME with the remedy.
+    pub const EDGE_PULSE_QUANTA: i16 = 200;
+
+    #[cfg(test)]
+    mod edge_contract_tests {
+        use super::EDGE_PULSE_QUANTA;
+        use crate::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
+        use crate::network::SpikingNeuralNetwork;
+
+        /// An imported-style substrate neuron (the assembly's param
+        /// mapping): τ=20 ms, R=100 MΩ, −70/−55/−80 V, deterministic.
+        fn substrate_neuron(id: u16, res: VoltageResolution) -> LIFNeuron {
+            let s = res.scale() as i16;
+            let mut n = LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, res);
+            n.resting_potential = -70 * s;
+            n.membrane_potential = -70 * s;
+            n.threshold = -55 * s;
+            n.reset_potential = -80 * s;
+            n.tau_membrane_us = 20_000;
+            n.tau_refractory_us = 1_000;
+            n.resistance_mohm = 100;
+            n.capacitance_pf = 200;
+            n.noise_amplitude_ua = 0;
+            n
+        }
+
+        /// **THE D1 exact-value pin, both grids in one test** (network
+        /// `transmission_is_live_*` style). Pre driven over threshold on
+        /// step 0 (3000 μA ⇒ +1500 centi / +15 mV — exactly threshold);
+        /// the `EDGE_PULSE_QUANTA` synapse (200 / default divisor 10 =
+        /// a 20 μA pulse) moves the post exactly one step later:
+        /// centi +10 quanta (`dt_over_tau`=50: 50·200/1000), mV exactly
+        /// ZERO (50·2/1000 truncates) — the dead-zone math that makes
+        /// recurrent graphs a centi-only, named-rejection surface.
+        #[test]
+        fn edge_pulse_moves_post_exact_one_step_later_both_grids() {
+            for (label, res, unmoved, moved) in [
+                ("centi", VoltageResolution::CentiMillivolt, -7_000, -6_990),
+                ("mV", VoltageResolution::Millivolt, -70, -70),
+            ] {
+                let mut net = SpikingNeuralNetwork::from_neurons(
+                    vec![substrate_neuron(0, res), substrate_neuron(1, res)],
+                    1_000,
+                )
+                .expect("two neurons");
+                net.set_plasticity_enabled(false); // the assembly convention
+                net.add_synapse(0, 1, EDGE_PULSE_QUANTA)
+                    .expect("edge");
+                net.finalize_synapses();
+
+                let spikes = net.step(&[3000, 0]).expect("step 0");
+                assert_eq!(spikes.len(), 1, "{label}: pre fires on step 0");
+                assert_eq!(
+                    net.neurons()[1].membrane_potential, unmoved,
+                    "{label}: post unmoved on the spike step — one-step delay"
+                );
+
+                net.step(&[0, 0]).expect("step 1");
+                assert_eq!(
+                    net.neurons()[1].membrane_potential, moved,
+                    "{label}: post integrates the 20 uA pulse one step later \
+                     (centi: +10 quanta; mV: dead — the named-rejection math)"
+                );
+            }
+        }
+
+        /// The constant itself is part of the public contract — pin it.
+        #[test]
+        fn edge_pulse_quanta_is_two_hundred() {
+            assert_eq!(EDGE_PULSE_QUANTA, 200);
+        }
+    }
+
     /// An imported graph in owned buffers (std convenience over the
     /// two-pass buffer API).
     #[derive(Debug)]
@@ -2080,7 +2180,7 @@ mod std_assembly {
 }
 
 #[cfg(feature = "std")]
-pub use std_assembly::{ChainEncoder, NirBuilder, NirImport};
+pub use std_assembly::{ChainEncoder, NirBuilder, NirImport, EDGE_PULSE_QUANTA};
 
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
