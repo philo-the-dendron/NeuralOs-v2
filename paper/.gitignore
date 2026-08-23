@@ -7,3 +7,4 @@ main.blg
 main.fls
 main.fdb_latexmk
 figs/__pycache__/
+dist/

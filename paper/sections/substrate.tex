@@ -70,7 +70,8 @@ Phase 1's integration, and the next step's opening loop called the
 accumulator clear \emph{before} Phase 1 --- every recurrent pulse was
 born and destroyed without ever reaching \texttt{integrate\_and\_fire}.
 The canary test
-(\texttt{recurrent\_current\_is\_never\_integrated\_in\_step\_bug\_pinned})
+(\texttt{recurrent\_current\_is\_never\_}\allowbreak
+\texttt{integrated\_in\_}\allowbreak\texttt{step\_bug\_pinned})
 pinned it empirically: a 2-neuron net, the presynaptic cell fires, the
 postsynaptic membrane never leaves $-70$\,mV. The wire had been cut
 since the original port; the mV dead zone (real, unit-proven) had been

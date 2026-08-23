@@ -18,7 +18,7 @@ running them unmodified.
 (branch \texttt{prism}; clone HEAD $==$ pin verified at build), plus
 the \texttt{NEURALOS\_DUMP} patch: env-gated, hook at the completion
 sample site, printing raw top-10 pre-sampler logits (one API rename,
-\texttt{llama\_vocab\_n\_tokens}). Built CPU-only (cmake 4.4.2);
+\texttt{llama\_}\allowbreak\texttt{vocab\_}\allowbreak\texttt{n\_tokens}). Built CPU-only (cmake 4.4.2);
 judge flags: greedy forced, \texttt{-t 4 -c 512 -n 12}, double-run
 per variant. Version-bump robustness is a named follow-up, untested.
 
@@ -44,9 +44,9 @@ failed decisively). All pinned as constants in the frozen examples.
 \item In-vivo H2 export: \texttt{71f2518a2d783cb409a3c06907a20bed
   1f1b5688378fc7ea7e8a0f6e16d9749b} (dose checkpoints 61{,}210 / 71{,}381 /
   80{,}391 / 87{,}119 cells; every export S2-clean).
-\item Null families: \texttt{evidence/session-i-primary/}
+\item Null families: \texttt{evidence/}\allowbreak\texttt{session-i-primary/}
   (dose $\times$10, value-flip $\times$3) and
-  \texttt{evidence/session-i-stress/} ($\approx$2$\times$ arm) ---
+  \texttt{evidence/}\allowbreak\texttt{session-i-stress/} ($\approx$2$\times$ arm) ---
   full judge logs, every draw.
 \end{itemize}
 
