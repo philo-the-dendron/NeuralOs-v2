@@ -62,6 +62,7 @@ NeuralOs-v2/
 - **`no_std` by default for the library.** The hot path stays compatible with embedded and RISC-V targets.
 - **i16 fixed-point in the hot path.** No floating-point creep in neuron/synapse core logic.
 - **Interoperable, not insular.** The library speaks NIR — the Neuromorphic Intermediate Representation (Pedersen et al., Nature Communications 15, 4962 (2024), DOI 10.1038/s41467-024-52259-9) — so snnTorch/SpikingJelly-class graphs load and export.
+- **DOI-stamped record.** The Branch B paper: [DOI 10.5281/zenodo.22064018](https://doi.org/10.5281/zenodo.22064018); this repository's source archive at the alpha.5 tree: [DOI 10.5281/zenodo.22064020](https://doi.org/10.5281/zenodo.22064020).
 - **Visualizer as microscope, not product theater.** The app exists to reveal the substrate.
 - **One source of truth.** No parallel copies, no empty scaffolding, no fake architecture.
 - **Tests must prove real behavior.** Regressions should be caught by unit/property tests, not hope.

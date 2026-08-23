@@ -4309,3 +4309,50 @@ header) + this ISA entry only. paper/ make gate green (doc lives
 outside paper/). Rust tree untouched — git status proves zero
 source changes. Push: both remotes, post-commit, per standing
 practice.
+
+## Verification (Z3 — the dual Zenodo DOI, 2026-08-22)
+
+- **PUBLISHED, both records live and cross-linked:**
+  - Paper (preprint, CC-BY-4.0):
+    **DOI 10.5281/zenodo.22064018**
+    https://zenodo.org/records/22064018
+    File: neuralos-branchb-paper-42f8d52.zip (410,083 B;
+    sha256 330256be016517d1f7eb3245d1d8be62dc4dc1de4e8bd287dab479788884327e;
+    inner PDF sha256 15baa85ae407ac0c76ef20daadfedcb74a748414cf84685bfb47cad8bfaa3d1a)
+  - Repo artifact (software, AGPL-3.0-or-later):
+    **DOI 10.5281/zenodo.22064020**
+    https://zenodo.org/records/22064020
+    File: neuralos-repo-103fa59.tar.gz (862,191 B; sha256
+    33563ae0a63be6209a8c7d296b7186db061655665c4957c3a968f6e501c6204e)
+- Upload path: Path B (API drafts principal-side, token-scoped
+  deposit:write+actions; md5 cross-checked local==remote on both
+  files before publish); the principal clicked Publish on both.
+- Peer catches folded pre-publish: resource type corrected
+  publication/article → **preprint** (the unreviewed-paper
+  overclaim class); descriptions verified present (1,196/678 ch).
+  Post-publish: edit→PUT→republish cycle applied the cross-links
+  (each record's description cites the other's DOI); placeholders
+  XXXXXXX/YYYYYYY gone, verified from the live records API.
+- **The three sealed rulings, verbatim, of record:**
+  1. Byline: "philo-the-dendron" solo, affiliation Independent;
+     Caramoussin = code identity, appears ONLY inside the repo URL.
+  2. Acknowledgments (in the PDF, Variant A): friend Soushi888
+     named; AI-assistance line IN (merged single-line form:
+     "The work was developed with AI-assisted tooling under the
+     sole author's direction; every experimental decision,
+     adjudication, and verdict in the evidence record — and every
+     error — is the author's.").
+  3. Replicates: PRE-COMMITTED yes — run only if TMLR reviewers
+     ask (~25 h, apparatus exists; upgrades substrate/sensitivity
+     claims, touches nothing adjudicated).
+- Provenance chain closed: the paper zip is named by commit
+  42f8d52 (a real commit containing every file in the zip); the
+  repo tarball is the git archive of 103fa59 (the alpha.5
+  publish commit; tree == published crate). W0+Z1 = 42f8d52,
+  Z2 kit = e0ef884; both pushed both remotes before upload.
+- Z0 findings banked in docs/ZENODO_UPLOAD.md (pseudonymous
+  creators fine; ORCID optional; CC-BY-4.0 default; 50 GB quota).
+- Next on the paper track (separate sessions): TMLR submission
+  (EiC byline inquiry optional — creators field precedent now
+  exists on a DOI record), arXiv deferred to the real-name
+  reveal, replicates on reviewer request only.
