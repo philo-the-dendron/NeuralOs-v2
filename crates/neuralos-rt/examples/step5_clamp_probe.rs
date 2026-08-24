@@ -197,19 +197,17 @@ fn main() {
         println!(
             "corrected-domain (k on norm units): clamp@±1000 = {:.3}% — RMS post-clamp {:.1} µA",
             corrected_clamped as f64 / total as f64 * 100.0,
-            pct(1.0).min(f64::INFINITY) * 0.0
-                + (sum_sq.sqrt() / total as f64).sqrt() * 0.0
-                + {
-                    // true RMS of the corrected pre-clamp drive:
-                    let mut s = 0.0_f64;
-                    for row in win {
-                        for &v in &row[..DRIVEN_DIMS] {
-                            let r = v as f64 / 1000.0 * k;
-                            s += r * r;
-                        }
+            {
+                // true RMS of the corrected pre-clamp drive:
+                let mut s = 0.0_f64;
+                for row in win {
+                    for &v in &row[..DRIVEN_DIMS] {
+                        let r = v as f64 / 1000.0 * k;
+                        s += r * r;
                     }
-                    (s / total as f64).sqrt()
                 }
+                (s / total as f64).sqrt()
+            }
         );
 
         if off == 0 {

@@ -22,12 +22,30 @@
 //!   cargo run -p neuralos-rt --release --example step5_aggregate -- --calibrate
 //!   cargo run -p neuralos-rt --release --example step5_aggregate -- evidence/step5-readout/burn
 
+use neuralos_rt::harness::{decode_slice, ExperimentParams};
 use neuralos_rt::judge::{
     parse_dump_file, step5_band, step5_classify, step5_continuation, step5_max_margin_delta,
     step5_read_dir, Step5Band, Step5FileReadout,
 };
 use std::path::{Path, PathBuf};
 use std::process::exit;
+
+/// FREE-arm pre-judge re-verification (PREREG §3): the banked H2b
+/// checkpoints decoded against the base — cell counts MUST match the
+/// H2-banked values (61,210 / 71,381 / 80,391) before judging.
+fn verify_free() {
+    let p = ExperimentParams::default();
+    let n = p.n;
+    let orig = decode_slice("models/Ternary-Bonsai-4B-Q2_0.gguf", &p);
+    for (ck, want) in [(400usize, 61_210u64), (800, 71_381), (1200, 80_391)] {
+        let path = format!("models/Ternary-Bonsai-4B-Q2_0-invivo-ck{ck}.gguf");
+        let trits = decode_slice(&path, &p);
+        let cells = (0..n * n).filter(|&i| trits[i] != orig[i]).count() as u64;
+        assert_eq!(cells, want, "ck{ck}: decoded {cells} changed cells != H2-banked {want} — artifact drifted, FREE arm voids");
+        println!("  ck{ck}: {cells} cells == banked {want} : PASS");
+    }
+    println!("verify-free: ALL ck cell counts re-verified — FREE arm may be judged");
+}
 
 fn base_dir(root: &Path) -> PathBuf {
     let d = root.join("base");
@@ -210,9 +228,10 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("--calibrate") => calibrate(),
+        Some("--verify-free") => verify_free(),
         Some(dir) => aggregate(Path::new(dir)),
         None => {
-            eprintln!("usage: step5_aggregate --calibrate | <burn-root>");
+            eprintln!("usage: step5_aggregate --calibrate | --verify-free | <burn-root>");
             exit(1);
         }
     }

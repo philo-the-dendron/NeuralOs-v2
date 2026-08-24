@@ -4530,3 +4530,51 @@ above; make gate red.
   seed-parameterized nulls reading null_seeds.txt, judge chain
   script, DOMAIN-CORRECTED variant + N1/N2 riders) gates the arm
   launches; arms = ON r0-r2 + OFF-r0 + DOMAIN + FREE (~28-38 h).
+
+## Session open (step-5 burn-builds, 2026-08-24)
+
+Scope: the four builds PREREG §3/§8 require + riders; NO arm runs
+this session (launch is the principal's call after review).
+
+- **Relay deviations folded BEFORE build** (principal's review of the
+  todo list — three catches, none reached code): (1) OFF is ONE
+  driven run (r0) + ISC-68-class identity surgeries for r1/r2 —
+  `--off --window 1|2` is REFUSED loudly (a driven OFF on r1/r2 would
+  void the arm per PREREG's no-deviation clause); (2) the unbanked
+  guard (`harness::is_banked_model_path`/`assert_unbanked`,
+  test-pinned) refuses every banked artifact path before any write —
+  the r4-closeout lesson made structural; (3) per-build tests: the
+  pre-burn k cross-check (window-derived k must equal the probe
+  expectations r0 10060.46 / r1 10101.90 / r2 10007.65, tol 0.005 —
+  catches off-by-one offsets in seconds, not hours), OFF-r0 byte-≡
+  base asserted in-pipeline against the LIVE base file, exact-dose +
+  full-composition asserts inside `dose_matched_null`, seeds parsed
+  from null_seeds.txt only (201–230 by decade; 231–240 refused as
+  escalation-reserved).
+- **Builds**: B1 hybrid_invivo step-5 modes (`--window r`, `--off`,
+  `--identity r`, `--domain-corrected`) — flagless invocation
+  BYTE-UNTOUCHED (the r0 re-pin contract); ON-r0 export HARD-ASSERTS
+  the banked H2 sha 71f2518a…. B2 `harness::dose_matched_null` (the
+  session-I PRIMARY algorithm extracted verbatim; for seeds 1..=10 on
+  the H2 diff it is the banked null-dose family's generator — the
+  r4-closeout 13/13 regeneration is its pin) + `step5_nulls` example
+  (per-replicate families from each ON's own terminal diff). B3
+  `tools/run_prompts.sh` (banked invocation verbatim; --double with
+  cmp assert; SHA256SUMS per dir). B4 `step5_aggregate --verify-free`
+  (ck cell counts 61,210/71,381/80,391 re-verified via surgery decode
+  before judging).
+- **Riders**: N1 probe dead-code removed (corrected-domain RMS print
+  was adding two ×0.0 terms — output always correct, the wart gone);
+  N2 M3-convention note in PREP.md (signed-pair provenance pins vs
+  sorted-margin discrimination M3 — both test-pinned, deliberately
+  different, do-not-reconcile); BURN.md orchestration chain (ON-r →
+  nulls-r → judge-r; ON-r0 re-pin load-bearing; exporter/R18 parallel
+  per the sequencing ruling).
+- **Guards**: GUARD 1 honored (this append; the ISC-78 regex target
+  untouched). GUARD 2 honored structurally — no banked artifact is
+  writable by any step-5 path (the guard's own test is the proof);
+  session-I/H2 adjudications untouched. Void protocol §6 inherited.
+- Claims close at session end on the battery output (check/test/
+  clippy/no_std; hdf5 leg if touched — judge.rs/harness.rs are
+  feature-neutral but the leg runs anyway per CI parity). No commit
+  until the principal's review of the working-tree diff.

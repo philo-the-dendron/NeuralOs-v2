@@ -65,3 +65,33 @@ M3 provenance pins test-enforced in judge.rs.
 `PREREG.md` (ratified 2026-08-23). ISA entries: sequencing + Tier-3
 criteria; drive-domain finding + CLAMP-RELAXED→DOMAIN-CORRECTED
 ruling; paper pre-submission fix (invivo.tex ×2, limitations.tex).
+
+## M3 convention note (N2 — do not "reconcile")
+
+Two margin conventions coexist in the step-5 instruments, BOTH
+test-pinned, deliberately different:
+
+- **Calibration provenance pins** (judge.rs
+  `step5_calibration_gate_passes_on_banked_logs`): the P3′ site is
+  step-1-specific, signed on the BASE's top-2 pair measured in the
+  candidate dump — the session-I `+0.0091 → −0.0707` crossing class.
+  Used ONLY to reproduce the paper's banked numbers (f-judge base
+  +0.0711; H2 0.1418; d6 0.2874; ordering invariant).
+- **Discrimination M3** (`step5_max_margin_delta`): max |Δmargin| over
+  the BASE knife-edge steps (margin < θ=0.05, sorted-top1−top2
+  semantics) — applied identically to ON and every NULL of a family,
+  so the comparison is internally consistent by construction.
+
+They answer different questions (reproduce-the-record vs
+discriminate-the-arms); neither is a bug in the other. Do not merge.
+
+## Model-file naming (the unbanked guard)
+
+Step-5 outputs are arm-named and structurally distinct from every
+banked artifact (`harness::is_banked_model_path` + `assert_unbanked`,
+test-pinned): `…-invivo-r{r}.gguf` (ON) · `…-invivo-off-r0.gguf`
+(driven OFF) · `…-invivo-identity-r{r}.gguf` (tripwires) ·
+`…-invivo-domain.gguf` · `null-r{r}-s{seed}.gguf`. The banked
+families (`null-dose-*`, `null-flip-*`, `null-random-*`,
+`*-invivo.gguf`, `*-invivo-ck*`, `*-loop.gguf`, `*-control.gguf`,
+the base model) are refused loudly before any write.

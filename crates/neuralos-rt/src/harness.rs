@@ -438,6 +438,74 @@ pub fn shuffled_copy(src: &[Trit], seed: u64) -> Vec<Trit> {
     v
 }
 
+/// One dose-matched shuffled-drift null — the session-I PRIMARY-family
+/// algorithm, extracted VERBATIM from `null_patches.rs` at the step-5
+/// burn-build session (2026-08-24) so the per-replicate families share
+/// one implementation. Contract:
+///
+/// - the terminal diff is `patched` vs `src` (the ADAPTED file's slice
+///   decoded against the original — positions AND values from the
+///   artifact, never re-run);
+/// - the null carries EXACTLY that changed-cell count with the diff's
+///   FULL per-class composition (crossovers included — the exact-dose
+///   assert once caught a family that silently dropped them);
+/// - placements draw uniformly over SRC-class cells via a seeded FY
+///   shuffle with the changed-once guard (a cell consumed by one class
+///   is never redrawn by another);
+/// - rng seeding is the session-I scheme `0xD05E_0000_0000_0001 ^ seed`
+///   — `dose_matched_null(src, h2, s)` for s ∈ 1..=10 reproduces the
+///   banked `null-dose-{s}` family byte-identically (the regeneration
+///   proof of evidence/r4-closeout is this function's pin).
+///
+/// Panics (loudly, never silently) if the exact-dose assert fails.
+#[must_use]
+pub fn dose_matched_null(src: &[Trit], patched: &[Trit], seed: u64) -> Vec<Trit> {
+    assert_eq!(src.len(), patched.len(), "slice length mismatch");
+    let n = src.len();
+    // per (from,to) class composition of the terminal diff
+    let mut comp: [u64; 9] = [0; 9];
+    let mut diff_cells = 0u64;
+    for i in 0..n {
+        if patched[i] != src[i] {
+            comp[tix(src[i]) * 3 + tix(patched[i])] += 1;
+            diff_cells += 1;
+        }
+    }
+    let tr_of = |i: usize| -> Trit {
+        match i {
+            0 => Trit::MinusOne,
+            1 => Trit::Zero,
+            _ => Trit::One,
+        }
+    };
+    let classes: Vec<(Trit, Trit, u64)> = (0..9)
+        .filter(|&k| comp[k] > 0 && k / 3 != k % 3)
+        .map(|k| (tr_of(k / 3), tr_of(k % 3), comp[k]))
+        .collect();
+    let mut rng = 0xD05E_0000_0000_0001_u64 ^ seed;
+    let mut out = src.to_vec();
+    let mut used = vec![false; n];
+    for (from, to, count) in &classes {
+        let mut idxs: Vec<usize> = (0..n).filter(|&i| !used[i] && src[i] == *from).collect();
+        for i in (1..idxs.len()).rev() {
+            rng = xorshift64(rng);
+            let j = (rng % (i as u64 + 1)) as usize;
+            idxs.swap(i, j);
+        }
+        let take = (*count).min(idxs.len() as u64) as usize;
+        for &cell in idxs.iter().take(take) {
+            out[cell] = *to;
+            used[cell] = true;
+        }
+    }
+    let changed = out.iter().zip(src).filter(|(a, b)| a != b).count() as u64;
+    assert_eq!(
+        changed, diff_cells,
+        "dose must match EXACTLY ({changed} != {diff_cells}) — never shrink silently"
+    );
+    out
+}
+
 /// Trit bucket as −1/0/+1 for means and deltas.
 #[must_use]
 pub fn trit_val(t: Trit) -> f64 {
@@ -446,6 +514,51 @@ pub fn trit_val(t: Trit) -> f64 {
         Trit::Zero => 0.0,
         Trit::One => 1.0,
     }
+}
+
+/// Is this output path a BANKED (sha-pinned, of-record) model artifact?
+/// The burn must never write one — the r4-closeout lesson: this exact
+/// family once required plain-mode runs purely to protect adjudicated
+/// artifacts. Patterns of record (evidence/INDEX.md, PREP.md):
+///
+/// - the base model itself (`Ternary-Bonsai-4B-Q2_0.gguf`, ISC-68 pin);
+/// - the H2 terminal export (`*-invivo.gguf` exact suffix) + its
+///   checkpoints (`*-invivo-ck*.gguf`) + the loop export
+///   (`*-loop.gguf`) + the attribution control (`*-control.gguf`);
+/// - the session-I/stress null families (`null-dose-*`, `null-flip-*`,
+///   `null-random-*.gguf`).
+///
+/// Step-5 arm outputs (`*-invivo-r{r}.gguf`, `*-invivo-off-r0.gguf`,
+/// `*-invivo-identity-r{r}.gguf`, `*-invivo-domain.gguf`,
+/// `null-r{r}-s{seed}.gguf`) do NOT match any pattern — the test pins
+/// that separation.
+#[must_use]
+pub fn is_banked_model_path(path: &str) -> bool {
+    let base = path.rsplit('/').next().unwrap_or(path);
+    let pat = |p: &str| {
+        if let Some(prefix) = p.strip_suffix('*') {
+            base.starts_with(prefix)
+        } else {
+            base == p
+        }
+    };
+    pat("Ternary-Bonsai-4B-Q2_0.gguf")
+        || base.ends_with("-invivo.gguf")
+        || base.ends_with("-loop.gguf")
+        || base.ends_with("-control.gguf")
+        || (base.starts_with("null-dose-")
+            || base.starts_with("null-flip-")
+            || base.starts_with("null-random-"))
+        || (base.starts_with("Ternary-Bonsai-4B-Q2_0-invivo-ck") && base.ends_with(".gguf"))
+}
+
+/// Loud guard: panic before writing any banked artifact path.
+pub fn assert_unbanked(path: &str) {
+    assert!(
+        !is_banked_model_path(path),
+        "REFUSING to write banked artifact {path} — sha-pinned of record (the r4-closeout lesson). \
+         Step-5 arms write arm-named files only."
+    );
 }
 
 /// Trit bucket as census index: 0=−1, 1=0, 2=+1.
@@ -1419,6 +1532,91 @@ pub fn run_amplitude_sweep(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dose_matched_null_exact_dose_and_composition() {
+        // 16-cell toy: diff carries −1→0 ×1, 0→+1 ×2, +1→0 ×1 (4 cells).
+        use Trit::{MinusOne, One, Zero};
+        let src = vec![
+            MinusOne, Zero, Zero, One, // the diff cells…
+            MinusOne, Zero, One, MinusOne, // …and 12 same-class spares
+            Zero, One, Zero, One, MinusOne, Zero, One, MinusOne,
+        ];
+        let patched = vec![
+            Zero, One, One, Zero, // −1→0 · 0→+1 · 0→+1 · +1→0
+            MinusOne, Zero, One, MinusOne, Zero, One, Zero, One, MinusOne, Zero, One, MinusOne,
+        ];
+        let null = dose_matched_null(&src, &patched, 201);
+        let changed = null.iter().zip(&src).filter(|(a, b)| a != b).count();
+        assert_eq!(changed, 4, "exact dose");
+        // composition: exactly 1 −1→0, 2 0→+1, 1 +1→0
+        let mut c = [0u32; 9];
+        for i in 0..src.len() {
+            if null[i] != src[i] {
+                c[tix(src[i]) * 3 + tix(null[i])] += 1;
+            }
+        }
+        assert_eq!(c[tix(MinusOne) * 3 + tix(Zero)], 1);
+        assert_eq!(c[tix(Zero) * 3 + tix(One)], 2);
+        assert_eq!(c[tix(One) * 3 + tix(Zero)], 1);
+        assert_eq!(c.iter().sum::<u32>(), 4);
+    }
+
+    #[test]
+    fn dose_matched_null_deterministic_and_seed_sensitive() {
+        use Trit::{One, Zero};
+        let src = vec![Zero; 64];
+        let mut patched = vec![Zero; 64];
+        for slot in patched.iter_mut().take(8) {
+            *slot = One;
+        }        let a = dose_matched_null(&src, &patched, 201);
+        let b = dose_matched_null(&src, &patched, 201);
+        let c = dose_matched_null(&src, &patched, 202);
+        assert_eq!(a, b, "same seed → identical null");
+        assert_ne!(a, c, "different seed → different placement family");
+    }
+
+    #[test]
+    fn dose_matched_null_identity_diff_is_identity() {
+        let src = vec![Trit::One, Trit::Zero, Trit::MinusOne];
+        let null = dose_matched_null(&src, &src, 205);
+        assert_eq!(null, src, "zero-cell diff → zero-cell null");
+    }
+
+    #[test]
+    fn banked_paths_are_refused_and_arm_paths_pass() {
+        // Every banked family of record:
+        for banked in [
+            "models/Ternary-Bonsai-4B-Q2_0.gguf",
+            "models/Ternary-Bonsai-4B-Q2_0-invivo.gguf",
+            "models/Ternary-Bonsai-4B-Q2_0-invivo-ck400.gguf",
+            "models/Ternary-Bonsai-4B-Q2_0-invivo-ck1200.gguf",
+            "models/Ternary-Bonsai-4B-Q2_0-loop.gguf",
+            "models/Ternary-Bonsai-4B-Q2_0-control.gguf",
+            "models/null-dose-7.gguf",
+            "models/null-flip-2.gguf",
+            "models/null-random-10.gguf",
+        ] {
+            assert!(is_banked_model_path(banked), "{banked} must be guarded");
+        }
+        // Step-5 arm outputs — none may trip the guard:
+        for arm in [
+            "models/Ternary-Bonsai-4B-Q2_0-invivo-r0.gguf",
+            "models/Ternary-Bonsai-4B-Q2_0-invivo-r2.gguf",
+            "models/Ternary-Bonsai-4B-Q2_0-invivo-off-r0.gguf",
+            "models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r1.gguf",
+            "models/Ternary-Bonsai-4B-Q2_0-invivo-domain.gguf",
+            "models/null-r0-s201.gguf",
+            "models/null-r2-s230.gguf",
+        ] {
+            assert!(!is_banked_model_path(arm), "{arm} is a legal arm output");
+        }
+        // The guard fires loudly (never silently writes):
+        assert!(std::panic::catch_unwind(|| assert_unbanked("models/null-dose-1.gguf"))
+            .is_err());
+        // Bare basenames (no dir component) are still recognized:
+        assert!(is_banked_model_path("null-random-3.gguf"));
+    }
 
     /// Small surgery geometry: n=128 (chunk = one 34 B q2_0 block),
     /// model 256×128 — tensor window 128 rows × 68 B.

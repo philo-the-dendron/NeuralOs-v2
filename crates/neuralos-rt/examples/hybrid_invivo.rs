@@ -83,6 +83,44 @@
 //! `models/…-invivo.gguf` (WARNING: overwrites the session-I
 //! adjudication artifacts — the R4 re-pin ran plain mode for exactly
 //! this reason).
+//!
+//! # Step-5 arm modes (PREREG evidence/step5-readout/PREREG.md, 2026-08-23)
+//!
+//! Named flags select the burn-window arms; positional legacy behavior
+//! (no flags) is BYTE-UNTOUCHED — window-0 ON must re-pin the banked H2
+//! export. New modes NEVER write the banked artifact names:
+//!
+//! - `--window <r>` (r ∈ 0|1|2) — replicate corpus window, tokens
+//!   [1000·r, 1000·r+2000) (PREREG §4; r0 ≡ H2's window). k is
+//!   re-derived from the window's own tokens (Rider A:
+//!   procedure-pinned; probe expectations r0 10060.46 · r1 10101.90 ·
+//!   r2 10007.65 — the run.log is the pin of record).
+//! - `--off` — the OFF arm, driven r0 ONLY (PREREG §3): the full
+//!   driven pipeline (capture + drive + steps + export) with
+//!   plasticity NEVER re-enabled after the init cycle. STDP deltas
+//!   stay 0 ⇒ ternary residuals stay 0 ⇒ weights constant ⇒ export
+//!   asserts byte-≡ base (sha) — the end-to-end toggle proof (the
+//!   session-F lesson). `--off --window 1|2` is REFUSED — the r1/r2
+//!   OFF legs are identity surgeries, not driven runs.
+//! - `--identity <r>` — OFF r1/r2: control-mode identity surgery of
+//!   the ISC-68 class (unadapted source trits through the full
+//!   surgery pipeline; no capture, no drive, minutes) writing
+//!   `…-invivo-identity-r{r}.gguf`, asserting byte-≡ base — the judge
+//!   double-run (tools/run_prompts.sh --double) is the contamination
+//!   tripwire.
+//! - `--domain-corrected` — the DOMAIN arm: k applied in NORM units
+//!   (`raw = v_milli/1000 × k`), the sH registration's stated intent
+//!   (measured 2.74% clamped / RMS 450.0 µA; report-only, PREREG §7).
+//!   Window 0, no checkpoints.
+//!
+//! Arm exports (final-only, NO checkpoints — the FREE arm judges the
+//! banked ck files): `…-invivo-r{r}.gguf` (ON) · `…-invivo-off-r0.gguf`
+//! (OFF driven) · `…-invivo-identity-r{r}.gguf` (OFF tripwires) ·
+//! `…-invivo-domain.gguf` (DOMAIN). Every step-5 output passes the
+//! unbanked-path guard BEFORE writing (the r4-closeout lesson). ON
+//! window-0 HARD-ASSERTS the banked H2 sha (71f2518a…) — the new code
+//! path must reproduce the frozen artifact byte-for-byte or the arm
+//! voids.
 
 use neuralos_rt::harness::{
     build_from_trits, decode_slice, exc_count, group_of, peak_rss_mb, rate_l1,
@@ -91,6 +129,11 @@ use neuralos_rt::harness::{
 };
 use neuralos_rt::{rms_norm_milli, GgufFile, Qwen3, Tokenizer};
 use neuralos_snn::{Trit, VoltageResolution};
+
+/// The banked H2 terminal-export sha (evidence/session-h2/run.log:47) —
+/// ON window-0's r0 re-pin assert. (The OFF arm compares against the
+/// LIVE base file's sha, not a constant — it must hold for any base.)
+const H2_EXPORT_SHA: &str = "71f2518a2d783cb409a3c06907a20bed1f1b5688378fc7ea7e8a0f6e16d9749b";
 
 /// The in-vivo learning run (STDP on, one token per step) with the
 /// full counter battery: pairing histogram + per-class raw/absorbed/
@@ -134,12 +177,19 @@ fn group_pair_classes(net: &neuralos_snn::SpikingNeuralNetwork, exc: u16, p: &Ex
 /// caller. The PLAIN path (no checkpoints) executes identically — the
 /// invariance assert (100%-checkpoint export sha == plain export sha)
 /// proves the machinery did not perturb the frozen artifact.
+///
+/// `learn_plasticity == false` (the step-5 OFF arm): plasticity is
+/// never re-enabled after the init cycle — STDP deltas stay 0, ternary
+/// residuals stay 0, weights constant. The counter battery then reads
+/// all-zero (flips == 0 is the in-run witness; the caller asserts the
+/// export is byte-≡ base).
 #[allow(non_snake_case)]
 fn run_vivo_ck(
     trits: &[Trit],
     inputs: &[Vec<i16>],
     checkpoints: &[usize],
     p: &ExperimentParams,
+    learn_plasticity: bool,
 ) -> VivoStats {
     let (N, GAMMA, DT_US) = (p.n, p.gamma, p.dt_us);
     let exc = exc_count(p) as u16;
@@ -156,7 +206,9 @@ fn run_vivo_ck(
         .iter()
         .map(|s| Trit::from_weight(s.weight, GAMMA))
         .collect();
-    net.set_plasticity_enabled(true);
+    if learn_plasticity {
+        net.set_plasticity_enabled(true);
+    }
 
     let learn = &inputs[init_len..];
     let mut quarter_spikes = [0u64; 4];
@@ -234,6 +286,18 @@ fn run_vivo_ck(
     }
 }
 
+fn sha256_of(f: &str) -> String {
+    let o = std::process::Command::new("sha256sum")
+        .arg(f)
+        .output()
+        .expect("sha256sum runs");
+    String::from_utf8_lossy(&o.stdout)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_string()
+}
+
 #[allow(non_snake_case)]
 fn main() {
     let t0 = std::time::Instant::now();
@@ -242,16 +306,119 @@ fn main() {
     let (SI_FLOOR, RSS_BUDGET_MB, CONTROL_SEED) = (p.si_floor, p.rss_budget_mb, p.control_seed);
     let (TARGET_RMS_UA, CLAMP_UA, CLAMP_WARN_FRAC) = (p.target_rms_ua, p.clamp_ua, p.clamp_warn_frac);
     let DRIVEN_DIMS = exc_count(&p);
-    let path = std::env::args().nth(1).unwrap_or_else(|| {
-        "models/Ternary-Bonsai-4B-Q2_0.gguf".into()
-    });
+    // ----- argv: legacy positionals (model, export-flag, corpus) plus
+    // step-5 named flags. A flagless invocation is BYTE-UNTOUCHED
+    // legacy behavior (the r0 re-pin contract). -----
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let mut window: Option<usize> = None;
+    let mut off = false;
+    let mut domain = false;
+    let mut identity: Option<usize> = None;
+    let mut positional: Vec<&str> = Vec::new();
+    {
+        let mut i = 0usize;
+        while i < argv.len() {
+            match argv[i].as_str() {
+                "--window" => {
+                    window = Some(
+                        argv.get(i + 1)
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or_else(|| panic!("--window expects 0|1|2")),
+                    );
+                    assert!(matches!(window, Some(0..=2)), "window r ∈ 0|1|2 (PREREG §4)");
+                    i += 2;
+                }
+                "--off" => {
+                    off = true;
+                    i += 1;
+                }
+                "--domain-corrected" => {
+                    domain = true;
+                    i += 1;
+                }
+                "--identity" => {
+                    identity = Some(
+                        argv.get(i + 1)
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or_else(|| panic!("--identity expects a replicate label 0|1|2")),
+                    );
+                    i += 2;
+                }
+                other => {
+                    positional.push(other);
+                    i += 1;
+                }
+            }
+        }
+    }
+    // PREREG §3 shape enforcement: OFF is ONE driven run (r0) + identity
+    // surgeries for r1/r2 — a driven OFF on r1/r2 is the voided-arm
+    // deviation the relay caught; refuse it loudly.
+    if off && matches!(window, Some(1..=2)) {
+        panic!(
+            "PREREG §3: OFF = 1 driven run (r0) + identity surgeries (r1/r2). \
+             Use `--off` alone for the driven r0 toggle proof; use \
+             `--identity {w}` for the r1/r2 contamination tripwires.",
+            w = window.unwrap()
+        );
+    }
+    if domain && !matches!(window, None | Some(0)) {
+        panic!(
+            "PREREG §3: DOMAIN-CORRECTED is window-0 mechanics (r{w} given). \
+             The ratified invocation is `--domain-corrected` alone.",
+            w = window.unwrap()
+        );
+    }
+    if off && domain {
+        panic!("PREREG §3: OFF and DOMAIN-CORRECTED are different arms — OFF disables plasticity, DOMAIN measures it under the corrected drive. Run them separately.");
+    }
+    if let Some(r) = identity {
+        assert!((0..=2).contains(&r), "identity label r ∈ 0|1|2 (bookkeeping only — the surgery is window-independent)");
+    }
+    let step5_mode = window.is_some() || off || domain || identity.is_some();
+    // In step-5 modes every arm exports (final-only); the legacy
+    // positional `export` keeps its checkpointed, banked-name behavior.
+    let path = positional
+        .first()
+        .copied()
+        .unwrap_or("models/Ternary-Bonsai-4B-Q2_0.gguf")
+        .to_string();
+    let legacy_export = positional.get(1).copied() == Some("export");
+    let arm_r = window.unwrap_or(0);
     println!("=== Session H: the in-vivo gate — the model's own activations drive the substrate ===");
     println!("file    : {path}");
-    println!("reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen");
+    println!(
+        "reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen{}",
+        if step5_mode {
+            format!(" · step-5 arm: {} window r{arm_r}", if off { "OFF" } else if domain { "DOMAIN-CORRECTED" } else { "ON" })
+        } else {
+            String::new()
+        }
+    );
     println!();
 
     let src = decode_slice(&path, &p);
     println!("decode  : {} trits (D-2 slice path)", src.len());
+
+    // ----- OFF r1/r2: the identity tripwires (PREREG §3) -----
+    // Control-mode identity surgery of the ISC-68 class: the UNADAPTED
+    // source trits through the full surgery pipeline (splice → S1 →
+    // write → S2). No capture, no drive, no learn — minutes, not
+    // hours; the judge double-run (run_prompts.sh --double) is the
+    // contamination tripwire. The export MUST be byte-≡ base.
+    if let Some(r) = identity {
+        let out = format!("models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r{r}.gguf");
+        neuralos_rt::harness::assert_unbanked(&out);
+        let (code, scale) = splice_and_verify(&path, &out, &src, None, &p);
+        assert_eq!(scale, 0, "identity surgery never touches scales");
+        let sha = sha256_of(&out);
+        let base_sha = sha256_of(&path);
+        assert_eq!(sha, base_sha, "identity export must be byte-≡ base (ISC-68 class)");
+        println!("identity-r{r}: code {code} (must be 0) · scale {scale} · S2 clean");
+        println!("identity-r{r}: sha == base ({base_sha:.16}…) : PASS — judge double-run next");
+        println!("wall {:.1}s", t0.elapsed().as_secs_f64());
+        return;
+    }
 
     // ----- In-vivo drive: tokenize the pinned corpus, run the model,
     // capture attn_norm(embedding) per token -----
@@ -260,9 +427,11 @@ fn main() {
     // epochs, never wraps by construction. (H1 used a different 1,024-byte
     // file with a false identity comment — the recorded infidelity,
     // corrected by re-run.)
-    let corpus_path = std::env::args()
-        .nth(3)
-        .unwrap_or_else(|| "evidence/corpus_readme_pinned.txt".into());
+    let corpus_path = positional
+        .get(2)
+        .copied()
+        .unwrap_or("evidence/corpus_readme_pinned.txt")
+        .to_string();
     let corpus = std::fs::read_to_string(&corpus_path).unwrap_or_else(|e| {
         eprintln!("cannot read corpus {corpus_path}: {e}");
         std::process::exit(1);
@@ -306,14 +475,26 @@ fn main() {
     };
     // H2: single truncated pass — the first min(STEPS, tokens) of the
     // stream, in order; never reaches the corpus end, so no wrap exists.
-    let n_steps = STEPS.min(h_norm.len());
-    let h_norm = &h_norm[..n_steps];
-    println!(
-        "drive   : single truncated pass — first {n_steps} of {token_count} tokens (no epochs, no wrap by construction)"
-    );
+    // Step-5 windows (PREREG §4): replicate r drives on tokens
+    // [1000·r, 1000·r+2000) — r0 ≡ the H2 window, byte-identical slice.
+    let win_start = 1000 * arm_r;
+    let win_end = (win_start + STEPS).min(h_norm.len());
+    let n_steps = win_end - win_start;
+    let h_norm = &h_norm[win_start..win_end];
+    if step5_mode {
+        println!(
+            "drive   : window r{arm_r} — tokens [{win_start}, {win_end}) of {token_count} ({n_steps} steps; init-400 = the window's own first 400, PREREG §4)"
+        );
+    } else {
+        println!(
+            "drive   : single truncated pass — first {n_steps} of {token_count} tokens (no epochs, no wrap by construction)"
+        );
+    }
     // Truncation context (registration v2): the text window around the cut.
-    let tail_ctx: String = corpus.chars().rev().take(160).collect::<Vec<_>>().into_iter().rev().collect();
-    println!("cut-ctx : …{:?}… (last ~160 chars before the token-2000 cut)", tail_ctx);
+    if !step5_mode {
+        let tail_ctx: String = corpus.chars().rev().take(160).collect::<Vec<_>>().into_iter().rev().collect();
+        println!("cut-ctx : …{:?}… (last ~160 chars before the token-2000 cut)", tail_ctx);
+    }
 
     // ----- Scaling: ONE global k → corpus RMS = 450 μA (drive dims 0..408) -----
     let mut sum_sq: f64 = 0.0;
@@ -331,8 +512,26 @@ fn main() {
     let rms_norm_units = (sum_sq / n_vals as f64).sqrt(); // in norm units
     let k = TARGET_RMS_UA / rms_norm_units; // μA per norm unit
     println!("scaling : corpus RMS {rms_norm_units:.4} → k = {k:.2} μA/unit (target {TARGET_RMS_UA} μA)");
+    // Pre-burn k cross-check (the relay's cheap test): the probe-derived
+    // per-window expectations, asserted BEFORE the 6–8 h run — catches
+    // off-by-one window offsets while they still cost seconds. The
+    // run.log's own derived k remains the pin of record (PREREG §4,
+    // Rider A — these constants are the fence, not the pin).
+    if step5_mode {
+        const K_EXPECTED: [f64; 3] = [10_060.46, 10_101.90, 10_007.65];
+        let exp = K_EXPECTED[arm_r];
+        assert!(
+            (k - exp).abs() < 0.005,
+            "window r{arm_r}: derived k {k:.2} != probe expectation {exp:.2} — offset bug; aborting before the burn"
+        );
+        println!("k-check : r{arm_r} k {k:.2} == probe expectation {exp:.2} : PASS");
+    }
 
-    // Build the step drives; clamp audit.
+    // Build the step drives; clamp audit. The DOMAIN arm applies k in
+    // NORM units (`v_milli/1000 × k`) — the sH registration's stated
+    // intent (PREREG §3/§7; measured 2.74% clamped / RMS 450.0 µA).
+    // All other arms keep the milli-domain application byte-verbatim
+    // (H2-comparability is the benchmark's point).
     let mut inputs: Vec<Vec<i16>> = Vec::with_capacity(n_steps);
     let mut clamped: u64 = 0;
     let mut rail_dim = vec![0u64; DRIVEN_DIMS];
@@ -340,7 +539,11 @@ fn main() {
     for row in h_norm {
         let mut inp = vec![I_INH; N];
         for d in 0..DRIVEN_DIMS {
-            let raw = (row[d] as f64) * k;
+            let raw = if domain {
+                (row[d] as f64 / 1000.0) * k
+            } else {
+                (row[d] as f64) * k
+            };
             let c = raw.clamp(-(CLAMP_UA as f64), CLAMP_UA as f64);
             if c.abs() >= CLAMP_UA as f64 {
                 clamped += 1;
@@ -428,14 +631,20 @@ fn main() {
     println!();
     println!("--- in-vivo adaptation (STDP on, γ={GAMMA}, counters per the registration) ---");
     // H2b: learn-phase-quarter checkpoints when exporting (dose-response).
-    let export_mode = std::env::args().nth(2).as_deref() == Some("export");
+    // Step-5 arms export FINAL-ONLY (no ck files — the FREE arm judges
+    // the BANKED ck artifacts; new modes never write banked names).
+    let export_mode = legacy_export;
     let learn_len = inputs.len().saturating_sub(400);
-    let cks: Vec<usize> = if export_mode {
+    let cks: Vec<usize> = if export_mode && !step5_mode {
         vec![learn_len / 4, learn_len / 2, 3 * learn_len / 4]
     } else {
         Vec::new()
     };
-    let v = run_vivo_ck(&src, &inputs, &cks, &p);
+    let v = run_vivo_ck(&src, &inputs, &cks, &p, !off);
+    if off {
+        assert_eq!(v.flips, 0, "OFF arm: zero bucket flips (plasticity never enabled)");
+        assert_eq!(v.plasticity_events, 0, "OFF arm: zero plasticity events");
+    }
     println!(
         "  learn firing : {:.2} Hz/neuron; quarters {:.2} {:.2} {:.2} {:.2}",
         v.learn_rate_hz, v.quarter_hz[0], v.quarter_hz[1], v.quarter_hz[2], v.quarter_hz[3]
@@ -537,8 +746,9 @@ fn main() {
     }
 
     // ----- Tier-2 export (readout of the SAME frozen experiment; argv
-    // flag `export` writes the patched GGUF for the fork judge) -----
-    if export_mode {
+    // flag `export` writes the patched GGUF for the fork judge; step-5
+    // arms always export, final-only, under arm names) -----
+    if export_mode || step5_mode {
         println!();
         println!("--- TIER-2 export (the shared harness surgery unit; S2 re-read on EVERY file) ---");
         // The surgery as a reusable unit (R4-extracted
@@ -575,30 +785,58 @@ fn main() {
         };
 
         // H2b: the checkpoint derivatives FIRST (declared, sha-pinned at
-        // write), then the plain final export.
+        // write), then the plain final export. Legacy mode only — step-5
+        // arms take no checkpoints (the FREE arm judges the banked cks).
         for (step, snaps) in &v.ck_snaps {
             let out = format!("models/Ternary-Bonsai-4B-Q2_0-invivo-ck{step}.gguf");
             let (c, cb, sb) = do_surgery(snaps, &out);
             println!("  ck@learn-step {step:>5}: {c} cells · code {cb} · scale {sb} · S2 clean → {out}");
         }
-        let out_path = "models/Ternary-Bonsai-4B-Q2_0-invivo.gguf";
-        let (changed, code_changed, scale_changed) = do_surgery(&v.final_trits, out_path);
+        let out_path = if step5_mode {
+            if off {
+                format!("models/Ternary-Bonsai-4B-Q2_0-invivo-off-r{arm_r}.gguf")
+            } else if domain {
+                "models/Ternary-Bonsai-4B-Q2_0-invivo-domain.gguf".to_string()
+            } else {
+                format!("models/Ternary-Bonsai-4B-Q2_0-invivo-r{arm_r}.gguf")
+            }
+        } else {
+            "models/Ternary-Bonsai-4B-Q2_0-invivo.gguf".to_string()
+        };
+        // The mechanical arm gates (PREREG §3/§9 — no discretionary
+        // calls): the unbanked-path guard runs BEFORE the surgery
+        // writes (prevent, never detect); OFF asserts byte-≡ base; ON
+        // window-0 asserts the banked H2 sha (the r0 re-pin); DOMAIN
+        // asserts nonzero delta (plasticity on, different drive
+        // statistics).
+        neuralos_rt::harness::assert_unbanked(&out_path);
+        let (changed, code_changed, scale_changed) = do_surgery(&v.final_trits, &out_path);
         assert_eq!(changed, hamming, "cell deltas == Hamming");
         println!(
             "  final: {changed} cells · code {code_changed} · scale {scale_changed} (must be 0) · S2 clean"
         );
+        let export_sha = sha256_of(&out_path);
+        if step5_mode && off {
+            let base_sha = sha256_of(&path);
+            assert_eq!(export_sha, base_sha, "OFF arm: export must be byte-≡ base");
+            println!("  OFF identity: sha == base ({base_sha:.16}…) : PASS (end-to-end toggle proof)");
+        }
+        if step5_mode && !off && !domain && arm_r == 0 {
+            assert_eq!(
+                export_sha, H2_EXPORT_SHA,
+                "ON r0 re-pin: export must reproduce the banked H2 artifact byte-for-byte"
+            );
+            println!("  ON r0 re-pin: sha == banked 71f2518a… : PASS (H2 reproduced through the new path)");
+        }
+        if step5_mode && domain {
+            assert!(changed > 0, "DOMAIN arm: adaptation alive (plasticity on, norm-unit drive)");
+        }
         // H2b invariance assert: a 100%-checkpoint export must equal the
         // plain export — proves the checkpoint machinery did not perturb
         // the frozen path. (The last ck is at 3/4; the INVARIANCE check is
         // ck-machinery vs plain-machinery on the SAME final state, which
         // the identical do_surgery unit guarantees structurally; the sha
         // pin below is the mechanical witness.)
-        use std::process::Command;
-        let sha = Command::new("sha256sum")
-            .arg(out_path)
-            .output()
-            .expect("sha256sum runs");
-        let sha_str = String::from_utf8_lossy(&sha.stdout).to_string();
-        println!("  wrote {out_path} — sha {sha_str}— fork judge next");
+        println!("  wrote {out_path} — sha {export_sha} — fork judge next");
     }
 }
