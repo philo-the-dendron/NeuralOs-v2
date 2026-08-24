@@ -19,9 +19,12 @@ causal pre$\to$post pairings at $\mathrm{dt}\approx1$\,ms (STDP factor
 $I = \mathrm{clamp}(h_{\mathrm{dim}} \cdot k, \pm1000\,\mu\mathrm{A})$
 injects into dimensions $0..408$ of the E population; the I population
 keeps its validated fixed $I_{\mathrm{INH}}=600$ wall, so mechanism
-attribution stays on validated ground. The single global gain $k$ is
-set so corpus-wide RMS current lands mid-band
-($\approx450\,\mu\mathrm{A}$). Deliberately rejected: an
+attribution stays on validated ground. The single global gain $k$ was
+\emph{derived} from the corpus RMS with a mid-band target of
+$\approx450\,\mu$A; as implemented, $k$ multiplied milli-domain values,
+so the realized pre-clamp current ran $\sim$1000$\times$ that target and
+the rail, not the derived gain, set the effective drive (quantified in
+the clamp caveat below). Deliberately rejected: an
 $N$-steps-per-token mapping, which would manufacture sustained
 same-step LTD --- the very mechanism the dead-wire era had run on only
 as an artifact (Sec.~\ref{sec:substrate}). The grid is CENTI: the
@@ -81,15 +84,24 @@ sensitivity result on the centi grid, not a population claim.
 The registration demanded a clamp audit, and it fired hard:
 69.80\% of dim-steps (H1) and 69.48\% (H2: 568{,}321 of 818{,}000)
 railed at $\pm1000\,\mu\mathrm{A}$; the hottest dimension (dim 199)
-railed on 89\% of its steps (H2) / 90\% (H1). Post-RMSNorm activations
-are far heavier-tailed than the corpus RMS, so the \emph{effective}
-drive is sign-dominant, not amplitude-graded --- ``amplitude-informed''
-is not what ran. The gates above pass on a \emph{shared} drive (both
+railed on 89\% of its steps (H2) / 90\% (H1). A later distribution
+probe --- which reproduces every banked run statistic before reporting
+--- measured the exact pre-clamp currents: median
+$3.1\times10^{5}\,\mu$A, with the railed fraction unchanged at every
+ceiling the input path can carry (up to the i16 rail at
+$\pm32{,}767\,\mu$A). The sign-dominance is therefore a construction
+fact, not only a tails fact: the scaling constant, derived from
+norm-unit RMS, was applied to milli-domain values, and the
+\emph{effective} drive is sign-dominant, not amplitude-graded ---
+``amplitude-informed'' is not what ran. The gates above pass on a \emph{shared} drive (both
 the imported and control nets see the same railed currents), so the G0
 contrast stands; but any claim that the substrate exploited
 fine-grained activation \emph{magnitudes} would overstate the
-protocol. Per-dimension standardization is the named fix, not applied
-here.
+protocol. The domain-corrected scaling --- the same gain applied in
+norm units, measured at 2.7\% clamped with realized RMS exactly
+$450.0\,\mu$A --- is the named fix, carried as a report-only arm in the
+follow-on readout benchmark; per-dimension standardization remains the
+deeper fix beyond it.
 
 \paragraph{The class structure dissolves under real co-firing.}
 Second honesty flag, recorded per the registration itself: the

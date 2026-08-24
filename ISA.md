@@ -4429,3 +4429,68 @@ Principal-ratified, same micro-commit as the step-4 amendment:
   stack and the bridge harness stack are disjoint; step 5 does not
   wait on R18. (Reported unverified during red-team synthesis;
   corrected on code inspection.)
+
+## Finding + Decision (step-5 prep — the drive-domain measurement + CLAMP-RELAXED redesign, 2026-08-23)
+
+Rider B asked for a projection of the post-relief clamp fraction from
+banked stats before burning the CLAMP-RELAXED run. The banked H2
+histogram could not answer (buckets 100–600 μA all zero, everything
+above merged with "railed" — run.log:13), but the drive source is
+attn_norm(embedding): layer-0 arithmetic only, computable without the
+8-h full-forward. New instrument `examples/step5_clamp_probe.rs`
+(pure-Rust, pub-surface only: q2_0_row_to_milli — the same decode
+QuantData delegates to — + rms_norm_milli + f32_bits_to_milli):
+decodes token_embd rows for the window tokens, applies
+blk.0.attn_norm, derives k by the frozen H2 procedure, measures the
+true pre-clamp distribution. **Self-verification: window r0
+reproduces EVERY banked H2 pin exactly** — k 10060.46, 4411 tokens,
+clamp 568321/818000 = 69.477%, hist [249679,0,0,0,568321], dim 199
+railed 1786× — the probe's distribution IS H2 as-run. Evidence:
+`evidence/step5-readout/clamp_probe.log` (sha 61e04bbb…).
+
+- **THE FINDING (affects the paper's pending submission):** H2's
+  scaling multiplies MILLI-domain values by a k derived from
+  NORM-UNIT RMS (hybrid_invivo.rs:343 vs :325) — the pre-clamp drive
+  ran ~1000× the registration's 450 μA target: measured p50 311,874 μA
+  · p90 523,144 · p99 1,881,305 · max 4,839,080 (window r0). The
+  ±1000 rail — not the derived gain — set the effective drive: sign ×
+  1000 μA on 69.5% of dim-steps, ≈0 elsewhere; amplitude information
+  rail-destroyed by construction. The sH registration's stated intent
+  ("corpus-wide RMS lands mid-band ~450 μA") did NOT run; the
+  corrected domain measures RMS 450.0 μA post-clamp at 2.74% clamped
+  — the registration's number, arriving 1000× off in code.
+- **Rider-B disposition (measured, not projected): the ceiling ladder
+  is dead at every reachable value.** Clamped fraction is 69.477% at
+  ceilings ±1000/2000/3000/10000/32767 — the i16 input rail itself
+  (`c as i16` saturates at ±32,767 regardless of clamp config); the
+  railed mass lives at 3×10⁵–4.8×10⁶ μA. CLAMP-RELAXED as drafted
+  (ceiling ×2) was mechanically incapable of its own §7 <50%
+  condition; the cheap check saved the 6–8 h run.
+- **DECISION (principal, 2026-08-23): CLAMP-RELAXED re-designed as
+  the DOMAIN-CORRECTED arm** — k applied to norm units
+  (raw = v_milli/1000 × k), measured 2.74% clamped / RMS 450.0 μA;
+  the sH registration's frozen intent faithfully executed, report-only
+  still, seeding step-8's design. ON arms r0–r2 stay H2-verbatim
+  (milli-domain, sign-dominant): comparability with the adjudicated
+  record is the benchmark's point; the finding rides as the measured
+  clamp covariate. H2/session-I records stand UNTOUCHED (GUARD 2) —
+  the caveat they carried is now measured and cause-attributed.
+- **Paper corrected pre-submission (principal-stamped):** invivo.tex
+  k-sentence (derivation vs realized ~1000× outcome), invivo.tex
+  caveat cause (measured distribution + domain mismatch replacing the
+  heavy-tails-only attribution), limitations.tex sign-dominant
+  paragraph aligned. `make` + `make gate` green (PDF 290.7 KiB).
+  GUARD 1 honored (this append the proof; the ISC-78 regex target
+  untouched).
+- **Rider-A pins landed:** per-window k by the frozen procedure —
+  r0 10060.46 (= H2's own) · r1 10101.90 · r2 10007.65, each to be
+  re-derived and logged from its run.log in the burn window.
+- **FREE-arm files verified on disk + pinned:** final invivo
+  71f2518a… == banked pin ✓ · base 4e0bf8b7… ✓ (ISC-68) · loop
+  24ffe5f3… ✓ (sF re-export) · ck400 7378e978… · ck800 c985656c… ·
+  ck1200 dccc79fc… (fresh prep pins — H2 banked cell counts, not
+  shas; gap named, counts re-verifiable via the surgery decode).
+
+Falsifier: the probe's own pin asserts (any H2 number failing to
+reproduce voids the probe); clamp_probe.log contradicting any number
+above; make gate red.
