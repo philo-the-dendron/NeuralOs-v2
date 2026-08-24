@@ -4738,3 +4738,24 @@ APPROVED as built; two non-blocking findings, both recorded:
   durable pin is metadata.provenance.v_reset_defaulted). Exactly the
   class the "a real bugfix warrants the next alpha" rule covers —
   named here as the next spine session's candidate line item.
+
+## Decision (the merge-gate protocol, 2026-08-24)
+
+Principal-ratified after the third gate incident of the day (red CI
+on main at 1938b99 — /tmp/opencode hardcodes in corpus_v2.rs; caught
+by the independent runner, missed by every local battery; healed at
+c54177d, CI #67 green, verified from the API):
+
+- main is MERGE-GATED: work lands on branches; CI runs on the branch
+  (trigger widened to '**'); merge = branch-CI green + review passed,
+  mechanical, no discretion. The builder may merge on those
+  conditions alone.
+- Principal stamps remain on: releases, publishes, arm launches,
+  public claims, frozen-record reopenings.
+- The review doctrine (roles, verify-first, interrupt rule, findings
+  taxonomy) now lives in AGENTS.md § Session protocol.
+- Bootstrap precedent: THIS entry + the AGENTS.md section + the
+  trigger widening land on work/merge-gate-protocol, CI-gated on the
+  branch, merged on green — the protocol's first exercise is itself.
+
+GUARD 1 honored (this append; the ISC-78 regex target untouched).

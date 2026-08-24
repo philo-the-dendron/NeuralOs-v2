@@ -213,3 +213,32 @@ pinned by tests).
   above).
 - Don't reopen bridge research without the principal's call on the
   recorded forks — the record is closed and adjudicated.
+
+## Session protocol (builder / reviewer / principal — ratified 2026-08-24)
+
+Three roles, one worker at a time. The **builder** executes a
+mission-scoped brief. The **reviewer** holds spec fidelity: reviews
+the diff hunk by hunk, never the builder's summary. The **principal**
+stamps the irreversible: releases, publishes, arm launches, public
+claims, reopening frozen records.
+
+- **Verify-first, always.** Every authoritative claim is verified at
+  its source this session (file:line, sha, grep, live read) — recall
+  and inference don't count. A negative from one tool is not a
+  verified negative (the glob/gitignore lesson, 2026-08-24). A second
+  model agreeing is not a source.
+- **Interrupt rule.** Spec deviations are relayed mid-flight, the
+  moment they're spotted; style notes wait for review.
+- **Git discipline — main is merge-gated.** Work lands on
+  `work/<name>` / `fix/<name>` branches; CI runs on the branch
+  (trigger widened to `**`); merge to main requires branch-CI green +
+  review passed — mechanical conditions, no discretion, the builder
+  may merge on them. Local green is one machine's opinion; CI on the
+  pushed ref is the gate. Never force-push Gitea. Branches are
+  deleted after merge (git history is the archive).
+- **Findings taxonomy.** Blocking (fix before merge) · cosmetic-list
+  (rides a later commit) · record-only (ISA entry, no code). Every
+  review states which is which.
+- **Every session leaves its trail:** an ISA append (scope, claims,
+  guards) rides the work; evidence sha-pinned; frozen records never
+  re-litigated.
