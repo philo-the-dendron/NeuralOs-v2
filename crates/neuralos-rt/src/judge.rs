@@ -296,6 +296,172 @@ pub fn margin_census(inputs: &[(&str, &Dump)]) -> String {
     out
 }
 
+// ---- Step-5 readout benchmark (evidence/step5-readout/PREREG.md) --
+//
+// The step-5 aggregator: mechanical classification + bands over judge
+// logs, per the ratified pre-registration. Every constant here is
+// byte-frozen from the banked record (session-f-judge base legs,
+// session-i-primary family, session-h2); the tests pin the full
+// 13-null classification table against the sha-verified logs.
+
+/// The frozen five prompts (session-h2 README § Rebuild, in-artifact).
+pub const STEP5_PROMPTS: [&str; 5] = [
+    "1 2 3 4 5 6 7",
+    "10 11 12 13",
+    "one two three four",
+    "Monday Tuesday Wednesday",
+    "The capital of France is",
+];
+
+/// Base (unflipped) continuations, byte-exact from
+/// evidence/session-f-judge/pX_run1.log (`\n` = U+000A).
+pub const STEP5_BASE_CONTINUATIONS: [&str; 5] = [
+    " 8 9 10 11 1\n\n",
+    " 14 15 16 17\n\n",
+    " five six seven eight nine ten eleven twelve thirteen fifteen fifteen seventeen\n\n",
+    " Thursday04/05/2018 \n\n",
+    " Paris. The capital of Japan is Tokyo. The capital of\n\n",
+];
+
+/// The frozen basin list (PREREG §5): (prompt index, basin id,
+/// byte-exact destination). `\\n` entries are LITERAL backslash-n.
+const STEP5_BASINS: [(usize, &str, &str); 7] = [
+    (3, "B1", " Thursday \\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\n\n"),
+    (2, "B2a", " five six seven eight nine ten eleven twelve fifteen seventeen seventeen eighteen\n\n"),
+    (2, "B2b", " five six seven eight nine ten eleven twelve fifteen seventeen twenty one\n\n"),
+    (2, "B3", " five six seven eight nine ten\n\nWhat is the sum of\n\n"),
+    (4, "B4", " Paris. The capital of the United States is Washington, D\n\n"),
+    (3, "B5a", " Thursday04:00 PM\n\nThe following is a\n\n"),
+    (3, "B5b", " Thursday04:00 PM\n10:0\n\n"),
+];
+
+/// A judged file's destination classification for one prompt.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Step5Destination {
+    /// Continuation byte-equal to base — no flip.
+    Identical,
+    /// Byte-equal to a frozen basin member.
+    Basin(&'static str),
+    /// Flipped, and the exact string is not in the frozen list.
+    Novel,
+}
+
+/// Continuation of one judge log: the whole file text minus the frozen
+/// prompt prefix. `None` = the log does not start with its prompt
+/// (wrong-file / void-class evidence, never silently classified).
+pub fn step5_continuation(prompt_idx: usize, log_text: &str) -> Option<&str> {
+    log_text.strip_prefix(STEP5_PROMPTS[prompt_idx])
+}
+
+/// Classify a continuation against base + the frozen basin list.
+pub fn step5_classify(prompt_idx: usize, cont: &str) -> Step5Destination {
+    if cont == STEP5_BASE_CONTINUATIONS[prompt_idx] {
+        return Step5Destination::Identical;
+    }
+    for (p, id, dest) in STEP5_BASINS {
+        if p == prompt_idx && cont == dest {
+            return Step5Destination::Basin(id);
+        }
+    }
+    Step5Destination::Novel
+}
+
+/// Step margin: top1 − top2 over the step's values (sorted-descending
+/// semantics — the margin_census convention; ties give 0).
+fn step_margin(step: &DumpStep) -> Option<f64> {
+    if step.len() < 2 {
+        return None;
+    }
+    let mut vals: Vec<f64> = step.iter().map(|(_, v)| *v).collect();
+    vals.sort_by(|a, b| b.partial_cmp(a).expect("finite logits"));
+    Some(vals[0] - vals[1])
+}
+
+/// M3: max |Δmargin| over the BASE knife-edge steps (margin < θ,
+/// session-I ruling: the knife-edge set is computed on BASELINE
+/// margins; the patched side is an outcome, never a key). `None` when
+/// the base carries no knife-edge steps — the prompt contributes
+/// nothing to M3 (recorded, not zero).
+pub fn step5_max_margin_delta(base: &Dump, cand: &Dump) -> Option<f64> {
+    let mut max: Option<f64> = None;
+    for (&s, bstep) in base.iter() {
+        let bm = step_margin(bstep)?;
+        if bm >= THETA {
+            continue;
+        }
+        let cstep = cand.get(&s)?;
+        let cm = step_margin(cstep)?;
+        let d = (cm - bm).abs();
+        max = Some(max.map_or(d, |m: f64| m.max(d)));
+    }
+    max
+}
+
+/// One judged file's readout across the frozen five.
+#[derive(Debug, Default, Clone)]
+pub struct Step5FileReadout {
+    /// (prompt index, exact destination string) for every FLIPPED
+    /// prompt, in prompt order.
+    pub flips: Vec<(usize, String)>,
+    /// Prompts whose log lacked the prompt prefix (void-class).
+    pub voids: Vec<usize>,
+}
+
+/// Read + classify one judge run directory (`p0..p4_run1.log`).
+pub fn step5_read_dir(dir: &str) -> Step5FileReadout {
+    let mut out = Step5FileReadout::default();
+    for p in 0..5 {
+        let path = format!("{dir}/p{p}_run1.log");
+        let Ok(text) = fs::read_to_string(&path) else {
+            out.voids.push(p);
+            continue;
+        };
+        match step5_continuation(p, &text) {
+            Some(cont) => {
+                if step5_classify(p, cont) != Step5Destination::Identical {
+                    out.flips.push((p, cont.to_string()));
+                }
+            }
+            None => out.voids.push(p),
+        }
+    }
+    out
+}
+
+/// The §5 discrimination bands.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Step5Band {
+    Separated,
+    Mixed,
+    NullConsistent,
+}
+
+/// Band for one ON replicate vs its own NULL family (PREREG §5:
+/// SEPARATED = M2 ∧ M3; MIXED = exactly one; NullConsistent = neither).
+///
+/// M2 fires ⟺ some ON flip-destination (exact string) appears nowhere
+/// among the NULL family's flip-destinations. M3 fires ⟺ ON
+/// max|Δmargin| strictly exceeds the NULL family's max.
+pub fn step5_band(
+    on: &Step5FileReadout,
+    on_m3: Option<f64>,
+    nulls: &[Step5FileReadout],
+    null_m3s: &[Option<f64>],
+) -> Step5Band {
+    let null_dests: Vec<&(usize, String)> = nulls.iter().flat_map(|n| n.flips.iter()).collect();
+    let m2 = on
+        .flips
+        .iter()
+        .any(|f| !null_dests.iter().any(|n| n.0 == f.0 && n.1 == f.1));
+    let null_m3_max = null_m3s.iter().flatten().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let m3 = on_m3.is_some_and(|v| v > null_m3_max);
+    match (m2, m3) {
+        (true, true) => Step5Band::Separated,
+        (true, false) | (false, true) => Step5Band::Mixed,
+        (false, false) => Step5Band::NullConsistent,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -564,5 +730,187 @@ mod tests {
                 "knife-edge set (margin < 0.05): 0 entries across all files\n",
             )
         );
+    }
+
+    // ---- Step-5 aggregator tests -----------------------------------
+
+    fn step5_root(p: &str) -> String {
+        ["evidence/", "../../evidence/"]
+            .iter()
+            .map(|d| format!("{d}{p}"))
+            .find(|f| std::path::Path::new(f).exists())
+            .unwrap_or_else(|| panic!("banked artifact {p} not found"))
+    }
+
+    #[test]
+    fn step5_basin_bytes_are_log_exact() {
+        // B1 carries LITERAL backslash-n bytes (a Qwen text artifact)
+        // plus a real \n\n tail — byte-level, never normalized.
+        assert!(STEP5_BASINS[0].2.contains("\\n"));
+        assert!(STEP5_BASINS[0].2.ends_with("\n\n"));
+        assert_eq!(STEP5_BASINS[0].2.matches("\\n").count(), 10);
+        // B3 carries real U+000A newlines mid-string.
+        assert!(STEP5_BASINS[3].2.contains("\n\nWhat is the sum of\n\n"));
+        // Classification is byte-exact: one byte off → Novel.
+        assert_eq!(
+            step5_classify(3, " Thursday \\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\n\n"),
+            Step5Destination::Basin("B1")
+        );
+        assert_eq!(
+            step5_classify(3, " Thursday \\n\\n\\n\\n\\n\\n\\n\\n\\n\n\n"),
+            Step5Destination::Novel
+        );
+    }
+
+    #[test]
+    fn step5_classifies_the_entire_banked_family() {
+        // The full 13-null dry-run table, byte-frozen from the
+        // sha-verified session-i-primary logs (computed twice: once at
+        // pre-registration review, once here — the aggregator's
+        // classification parity pin).
+        let expect: &[(&str, &[(usize, &str)])] = &[
+            ("null-d1", &[(3, "B1"), (4, "B4")]),
+            ("null-d2", &[(3, "B1")]),
+            ("null-d3", &[(2, "B2b"), (3, "B1")]),
+            ("null-d4", &[(2, "B3"), (4, "B4")]),
+            ("null-d5", &[(3, "B1"), (4, "B4")]),
+            ("null-d6", &[(2, "B3"), (3, "B1"), (4, "B4")]),
+            ("null-d7", &[]),
+            ("null-d8", &[(2, "B3"), (3, "B1")]),
+            ("null-d9", &[(3, "B1")]),
+            ("null-d10", &[(3, "B1")]),
+            // flip family: p3 destinations are B5-class; p2 are novel.
+            ("null-f1", &[(2, "NOVEL"), (3, "B5a"), (4, "B4")]),
+            ("null-f2", &[(2, "NOVEL"), (3, "B5b"), (4, "B4")]),
+            ("null-f3", &[(2, "NOVEL"), (3, "B5a"), (4, "B4")]),
+        ];
+        for (fam, want) in expect {
+            let dir = step5_root(&format!("session-i-primary/{fam}"));
+            let ro = step5_read_dir(&dir);
+            assert!(ro.voids.is_empty(), "{fam}: unexpected voids {:#?}", ro.voids);
+            let got: Vec<(usize, String)> = ro
+                .flips
+                .iter()
+                .map(|(p, s)| {
+                    let class = match step5_classify(*p, s) {
+                        Step5Destination::Basin(id) => id.to_string(),
+                        _ => "NOVEL".to_string(),
+                    };
+                    (*p, class)
+                })
+                .collect();
+            let want_v: Vec<(usize, String)> =
+                want.iter().map(|(p, c)| (*p, c.to_string())).collect();
+            assert_eq!(got, want_v, "{fam} classification mismatch");
+        }
+        // d7 is genuinely readout-silent — the quiet probe.
+        let d7 = step5_read_dir(&step5_root("session-i-primary/null-d7"));
+        assert!(d7.flips.is_empty());
+    }
+
+    #[test]
+    fn step5_band_matrix_is_m2_and_m3() {
+        let on = Step5FileReadout {
+            flips: vec![(3, " Thursday \\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\n\n".into())],
+            voids: vec![],
+        };
+        let null_same = vec![on.clone()];
+        let null_other = vec![Step5FileReadout {
+            flips: vec![(3, "elsewhere".into())],
+            voids: vec![],
+        }];
+        // M2 fires (dest absent from family B), M3 fires (0.3 > 0.2):
+        assert_eq!(
+            step5_band(&on, Some(0.3), &null_other, &[Some(0.2)]),
+            Step5Band::Separated
+        );
+        // M2 fires, M3 does not (0.1 ≤ 0.2):
+        assert_eq!(
+            step5_band(&on, Some(0.1), &null_other, &[Some(0.2)]),
+            Step5Band::Mixed
+        );
+        // M3 fires, M2 does not (dest present in family A):
+        assert_eq!(
+            step5_band(&on, Some(0.3), &null_same, &[Some(0.2)]),
+            Step5Band::Mixed
+        );
+        // Neither fires:
+        assert_eq!(
+            step5_band(&on, Some(0.1), &null_same, &[Some(0.2)]),
+            Step5Band::NullConsistent
+        );
+        // No knife-edges anywhere (M3 None): M2 alone → Mixed, never
+        // Separated — the conjunct is load-bearing.
+        assert_eq!(
+            step5_band(&on, None, &null_other, &[None]),
+            Step5Band::Mixed
+        );
+    }
+
+    #[test]
+    fn step5_margin_delta_uses_base_knife_edges_only() {
+        let mut base = Dump::new();
+        // step 0: margin 0.02 — knife-edge.
+        base.insert(0, vec![(16, 10.02), (220, 10.00)]);
+        // step 1: margin 3.0 — NOT knife-edge; big candidate shifts
+        // here must be ignored entirely.
+        base.insert(1, vec![(5, 13.0), (7, 10.0)]);
+        let mut cand = Dump::new();
+        // candidate margin 0.10 → |Δmargin| = 0.08 at the knife step.
+        cand.insert(0, vec![(16, 9.90), (220, 10.00)]);
+        cand.insert(1, vec![(5, 20.0), (7, 10.0)]);
+        let m = step5_max_margin_delta(&base, &cand).expect("one knife step");
+        assert!((m - 0.08).abs() < 1e-12, "step-0 |Δmargin| = 0.08, got {m}");
+        // No knife-edges → None (the prompt contributes nothing).
+        let mut wide = Dump::new();
+        wide.insert(0, vec![(16, 10.0), (220, 5.0)]);
+        let mut wide_c = Dump::new();
+        wide_c.insert(0, vec![(16, 9.0), (220, 5.0)]);
+        assert_eq!(step5_max_margin_delta(&wide, &wide_c), None);
+    }
+
+    /// The P3′ knife-edge convention: the margin of the BASE's top-2
+    /// pair, signed, measured in the candidate dump — how a margin
+    /// "crosses" (the session-I `+0.0091 → −0.0707` class).
+    fn signed_pair_margin(base_step: &DumpStep, cand_step: &DumpStep) -> Option<f64> {
+        let a = argmax(base_step)?;
+        let b = max_entry(base_step, |i| i == a).map(|(id, _)| id)?;
+        Some(value(cand_step, a)? - value(cand_step, b)?)
+    }
+
+    /// The calibration gate, end-to-end on banked logs (PREREG §5,
+    /// mechanical-parity design): loud probes classify, quiet probes
+    /// are silent, M3 reproduces the paper's provenance pins (the
+    /// f-judge-base convention: margin p3s1 +0.0711; H2 −0.1418; d6
+    /// −0.2874; ordering invariant — the P2-W3 cross-check).
+    #[test]
+    fn step5_calibration_gate_passes_on_banked_logs() {
+        let fbase = parse_dump_file(&step5_root("session-f-judge/p3_run1.err"));
+        let h2 = parse_dump_file(&step5_root("session-h2/p3_run1.err"));
+        let d6 = parse_dump_file(&step5_root("session-i-primary/null-d6/p3_run1.err"));
+        let bm = step_margin(fbase.get(&1).expect("step 1")).expect("≥2 entries");
+        assert!((bm - 0.0711).abs() < 0.0005, "f-judge base p3s1 margin {bm} != +0.0711");
+        // The P3′ site is step-1-specific (the pre-registered
+        // |Δmargin at p3 step-1|), signed on the base's top-2 pair —
+        // not max-over-knife.
+        let h2m = signed_pair_margin(&fbase[&1], &h2[&1]).expect("pair present");
+        let d6m = signed_pair_margin(&fbase[&1], &d6[&1]).expect("pair present");
+        let dh2 = (h2m - bm).abs();
+        let dd6 = (d6m - bm).abs();
+        assert!((dh2 - 0.1418).abs() < 0.0005, "H2 Δmargin {dh2} != 0.1418");
+        assert!((dd6 - 0.2874).abs() < 0.0005, "d6 Δmargin {dd6} != 0.2874");
+        assert!(dd6 > dh2, "ordering invariant: d6 max-null exceeds H2");
+
+        // Loop probe: zero flips on all five (session-f-judge legs).
+        for p in 0..5 {
+            let text = fs::read_to_string(step5_root(&format!("session-f-judge/p{p}_run1.log")))
+                .expect("banked loop log");
+            let cont = step5_continuation(p, &text).expect("prompt prefix present");
+            assert_eq!(
+                step5_classify(p, cont),
+                Step5Destination::Identical,
+                "loop probe p{p} must be base-identical"
+            );
+        }
     }
 }
