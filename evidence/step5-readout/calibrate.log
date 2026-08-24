@@ -1,0 +1,10 @@
+== step-5 calibration gate (banked logs, mechanical parity) ==
+  loud  session-i-primary/null-d1: [p3:B1 p4:B4] want [p3:B1 p4:B4] : PASS
+  loud  session-i-primary/null-d3: [p2:B2b p3:B1] want [p2:B2b p3:B1] : PASS
+  quiet session-i-primary/null-d7: 0 flips : PASS
+  quiet loop p0: base-identical : PASS
+  quiet loop p1: base-identical : PASS
+  quiet loop p2: base-identical : PASS
+  quiet loop p3: base-identical : PASS
+  quiet loop p4: base-identical : PASS
+calibration: GATE PASS — arms may be trusted

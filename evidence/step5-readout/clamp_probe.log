@@ -1,0 +1,41 @@
+    Finished `release` profile [optimized] target(s) in 0.24s
+     Running `target/release/examples/step5_clamp_probe`
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+tokens  : 4411 (pin 4411)
+
+=== window r0 (tokens [0, 2000) ===
+scaling : rms 0.0447 → k = 10060.46 µA/unit (target 450 µA)
+clamp@±1000 : 568321/818000 = 69.477%  hist [249679, 0, 0, 0, 568321]
+hottest dim: 199 railed 1786×
+|I| pre-clamp µA: p50 311874.2 · p75 402418.3 · p90 523143.7 · p95 684111.1 · p99 1881305.4 · max 4839079.7
+ceiling ±   1000: clamped 69.477%  ⚠ fails §7
+ceiling ±   2000: clamped 69.477%  ⚠ fails §7
+ceiling ±   3000: clamped 69.477%  ⚠ fails §7
+ceiling ±  10000: clamped 69.477%  ⚠ fails §7
+ceiling ±  32767: clamped 69.477%  ⚠ fails §7
+corrected-domain (k on norm units): clamp@±1000 = 2.740% — RMS post-clamp 450.0 µA
+pins    : ALL H2 banked pins reproduced — probe == H2 as-run
+
+=== window r1 (tokens [1000, 3000) ===
+scaling : rms 0.0445 → k = 10101.90 µA/unit (target 450 µA)
+clamp@±1000 : 567112/818000 = 69.329%  hist [250888, 0, 0, 0, 567112]
+hottest dim: 199 railed 1784×
+|I| pre-clamp µA: p50 313159.0 · p75 404076.1 · p90 525298.9 · p95 686929.4 · p99 1878953.9 · max 4859015.2
+ceiling ±   1000: clamped 69.329%  ⚠ fails §7
+ceiling ±   2000: clamped 69.329%  ⚠ fails §7
+ceiling ±   3000: clamped 69.329%  ⚠ fails §7
+ceiling ±  10000: clamped 69.329%  ⚠ fails §7
+ceiling ±  32767: clamped 69.329%  ⚠ fails §7
+corrected-domain (k on norm units): clamp@±1000 = 2.730% — RMS post-clamp 450.0 µA
+
+=== window r2 (tokens [2000, 4000) ===
+scaling : rms 0.0450 → k = 10007.65 µA/unit (target 450 µA)
+clamp@±1000 : 570467/818000 = 69.739%  hist [247533, 0, 0, 0, 570467]
+hottest dim: 4 railed 1802×
+|I| pre-clamp µA: p50 320244.9 · p75 400306.1 · p90 520398.0 · p95 680520.4 · p99 1871431.2 · max 4813681.3
+ceiling ±   1000: clamped 69.739%  ⚠ fails §7
+ceiling ±   2000: clamped 69.739%  ⚠ fails §7
+ceiling ±   3000: clamped 69.739%  ⚠ fails §7
+ceiling ±  10000: clamped 69.739%  ⚠ fails §7
+ceiling ±  32767: clamped 69.739%  ⚠ fails §7
+corrected-domain (k on norm units): clamp@±1000 = 2.720% — RMS post-clamp 450.0 µA
