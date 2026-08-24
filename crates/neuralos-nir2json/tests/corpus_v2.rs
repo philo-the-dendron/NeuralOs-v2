@@ -31,6 +31,16 @@ fn rt_fixture(name: &str) -> std::path::PathBuf {
     p
 }
 
+/// CI-portable scratch path (no /tmp/opencode — that's one harness's
+/// local convention): the system temp dir + a test-unique name.
+/// Stale files from an earlier same-pid run are swept best-effort.
+fn tmp(name: &str) -> std::path::PathBuf {
+    let p = std::env::temp_dir().join(format!("nir2json-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_file(format!("{}.meta.json", p.display()));
+    let _ = std::fs::remove_file(&p);
+    p
+}
+
 /// Recursively compare two JSON documents at f32-precision tolerance:
 /// numbers must satisfy |a−b| ≤ 8 · f32::EPSILON · max(1, |a|, |b|)
 /// (f32 widening error is ≤ 1 ulp; the factor covers the dequantized
@@ -96,7 +106,7 @@ fn f32_twin_still_imports_into_snn() {
 fn binary_refuses_lzf_with_named_exit_2() {
     let out = Command::new(env!("CARGO_BIN_EXE_neuralos-nir2json"))
         .arg(fixture("neg_filter_lzf.nir"))
-        .arg("/tmp/opencode/nir2json-lzf-refusal.json")
+        .arg(tmp("lzf-refusal"))
         .output()
         .expect("binary runs");
     assert_eq!(out.status.code(), Some(2), "exit 2 on refusal");
@@ -309,19 +319,21 @@ fn stranger_wall_probes_are_all_named_rejections() {
 
 #[test]
 fn binary_end_to_end_smoke_happy_and_sad() {
+    let e2e = tmp("e2e.json");
     let out = Command::new(env!("CARGO_BIN_EXE_neuralos-nir2json"))
         .arg(fixture("community/snnTorch_linear_head.nir"))
-        .arg("/tmp/opencode/nir2json-e2e.json")
+        .arg(&e2e)
         .output()
         .expect("binary runs");
     assert_eq!(out.status.code(), Some(0), "happy path exits 0: {}", String::from_utf8_lossy(&out.stderr));
 
     // the transform through the binary: two_lif + --sim-units exits 0
     // and stamps the sidecar
+    let sim_path = tmp("sim.json");
     let sim = Command::new(env!("CARGO_BIN_EXE_neuralos-nir2json"))
         .arg("--sim-units")
         .arg(fixture("community/two_lif_neurons.nir"))
-        .arg("/tmp/opencode/nir2json-sim.json")
+        .arg(&sim_path)
         .output()
         .expect("binary runs");
     assert_eq!(
@@ -330,25 +342,27 @@ fn binary_end_to_end_smoke_happy_and_sad() {
         "sim-units happy path exits 0: {}",
         String::from_utf8_lossy(&sim.stderr)
     );
-    let sidecar = std::fs::read_to_string("/tmp/opencode/nir2json-sim.json.meta.json").unwrap();
+    let sidecar_path = std::path::PathBuf::from(format!("{}.meta.json", sim_path.display()));
+    let sidecar = std::fs::read_to_string(&sidecar_path).unwrap();
     assert!(sidecar.contains("\"sim_units\":true"), "stamped: {sidecar}");
     assert!(sidecar.contains("\"resolution\":\"centi-mv\""), "centi recorded: {sidecar}");
 
     // without the flag: exit 2, message names the flag + both walls
+    let refused = tmp("should-not-exist.json");
     let sad = Command::new(env!("CARGO_BIN_EXE_neuralos-nir2json"))
         .arg(fixture("community/two_lif_neurons.nir"))
-        .arg("/tmp/opencode/nir2json-should-not-exist.json")
+        .arg(&refused)
         .output()
         .expect("binary runs");
     assert_eq!(sad.status.code(), Some(2), "sim-unit refusal exits 2");
     let stderr = String::from_utf8_lossy(&sad.stderr);
     assert!(stderr.contains("--sim-units"), "suggests the flag: {stderr}");
     assert!(stderr.contains("mV"), "names the voltage wall: {stderr}");
-    assert!(!Path::new("/tmp/opencode/nir2json-should-not-exist.json").exists(), "no partial output");
-    assert!(Path::new("/tmp/opencode/nir2json-e2e.json").exists());
-    assert!(Path::new("/tmp/opencode/nir2json-e2e.json.meta.json").exists(), "sidecar written");
+    assert!(!refused.exists(), "no partial output");
+    assert!(e2e.exists());
+    assert!(e2e.exists() && std::path::PathBuf::from(format!("{}.meta.json", e2e.display())).exists(), "sidecar written");
     assert!(
-        !Path::new("/tmp/opencode/nir2json-should-not-exist.json.meta.json").exists(),
+        !std::path::PathBuf::from(format!("{}.meta.json", refused.display())).exists(),
         "no partial sidecar"
     );
 }
