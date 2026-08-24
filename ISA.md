@@ -5,7 +5,7 @@ project: NeuralOS v2
 phase: climbing
 progress: 85/85
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-22T16:45:00Z
+updated: 2026-08-23T00:00:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -4356,3 +4356,76 @@ practice.
   (EiC byline inquiry optional — creators field precedent now
   exists on a DOI record), arXiv deferred to the real-name
   reveal, replicates on reviewer request only.
+
+## Decision (M1 step-4 amendment — the pure-Rust exporter ruling, 2026-08-23)
+
+Six adversarial agents + cross-examination (plan-v2 red team), claims
+independently re-verified in-tree before ratification; principal
+ratified 2026-08-23. Supersedes the M1 step-4 language by date order;
+steps 1–3 and 5–8 untouched.
+
+- **Step 4 re-scoped:** Python .nir→JSON exporter → **pure-Rust leaf
+  tool `neuralos-nir2json` via `hdf5-pure`** (registry-verified this
+  session: 0.39.0, MIT, MSRV 1.89 < our 1.92, unyanked, 46 releases,
+  deps reduce to byteorder + miniz_oxide — no C anywhere). Rationale:
+  Rust stays sole quantizer — the council's dual-implementation drift
+  class dies by construction; the snn schema parser already skips
+  unknown fields (nir.rs skip_value, code-verified), so the dtype
+  stamp rides free. Cost named: audience friction for Python-side
+  strangers — mitigated BELOW.
+- **Distribution ruling (the one-way door):** crates.io publish of the
+  tool DEFERRED until after the step-7 demand measurement (or explicit
+  early-publish ruling). Outreach is served by `cargo install --git`
+  PLUS **prebuilt static binaries on the Gitea/GitHub release — part
+  of step 4's definition of done** (a stranger-usable artifact, not a
+  build recipe).
+- **GUARD 3 (widened, verbatim):** no outreach before the exporter
+  exists AND is stranger-usable (binaries on the release); step 4 and
+  the board landing together gate step 7.
+- **Spike corpus v2 (gates the stranger-emission leg):** f32 cast-down
+  twins of the fixtures — oracle = the tool widens to f64 and compares
+  at f32-precision tolerance against the f64 origin (rt CANNOT serve
+  as f32 oracle: nir_hdf5.rs hard-rejects non-f64, code-pinned); an
+  lzf-stranger refusal test; a large-graph JSON-blowup check; and ONE
+  real community .nir fetched and run through the tool — the only
+  true stranger emission before a human stranger.
+- **Stamp policy:** the f32 dtype stamp is a file-level audit
+  annotation, dropped on re-export — no durability illusion.
+- **Measurement window:** baseline 56 re-pinned at outreach-fire;
+  pre-outreach Zenodo/TMLR accrual recorded as pollution (FIX-5).
+- **Tool mechanics:** the tool crate opts out of version.workspace
+  inheritance; the registry-vs-path dep subtlety (post-alpha spine
+  changes reach the published tool only on spine republish) commented
+  in its manifest.
+
+Falsifier: this append itself — grep finds no Python-exporter command
+in step 4 after it; mechanism.py's GUARD-1 regex re-verified green
+after the append.
+
+## Decision (same session — sequencing + step-5 success criteria, 2026-08-23)
+
+Principal-ratified, same micro-commit as the step-4 amendment:
+
+- **Sequencing (5 may precede 4):** step 5 has NO verified dependency
+  on step 4/4b — the benchmark runs the bridge stack
+  (hybrid_invivo/null_patches/judge), the exporter runs the NIR
+  stack; zero shared surface (code-verified). Order becomes
+  prep-5 → launch runs → exporter session (4) + R18 (4b) slot into
+  the burn window. 4/4b still gate step 7 alone.
+- **Step-5 success criterion (Tier 3):** "real learning" = plasticity-
+  on separates from BOTH controls (plasticity-off AND dose-matched
+  shuffled-drift) on metrics the calibration proved can tell loud
+  from quiet. Clean null = the question rests evidenced; step 8
+  (QEMU drift regime) holds the theoretically favored court.
+- **Step-5 prep scope additions:** clamp-fraction recorded per arm as
+  a covariate (H2's 69.477% clamped drive + clamp-rectified applied
+  STDP is the record's own named caveat); ONE pre-registered
+  clamp-relaxed drive arm (wider ceiling / RMS-scaled) so "the first
+  test was clamp-starved" is testable, not lingering. New arms under
+  new pre-registration — GUARD 2 intact (no re-litigation of frozen
+  records).
+- **Correction of record:** the plan-v2 claim "R18 readout edges
+  feeds step 5's calibration graft" was WRONG — the NIR importer
+  stack and the bridge harness stack are disjoint; step 5 does not
+  wait on R18. (Reported unverified during red-team synthesis;
+  corrected on code inspection.)
