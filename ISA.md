@@ -4494,3 +4494,39 @@ railed 1786× — the probe's distribution IS H2 as-run. Evidence:
 Falsifier: the probe's own pin asserts (any H2 number failing to
 reproduce voids the probe); clamp_probe.log contradicting any number
 above; make gate red.
+
+## Verification (Z4 — the Zenodo v2 correction, 2026-08-24)
+
+- **PUBLISHED:** paper record **DOI 10.5281/zenodo.22075383**
+  (version 2.0 under concept 10.5281/zenodo.22064018; v1/22064018
+  remains citable, superseded in-place by the concept chain).
+  File: neuralos-branchb-paper-73cb614.zip (411,892 B; md5
+  46477f4669654cc96373c5e8fdd9e590, cross-checked local==remote
+  pre-publish; inner PDF sha256 fa3a1b913052ad67dbe4db3a73e0b40f1b36bcb45c659562713b290ea85626b0).
+- **What v2 corrects:** the in-vivo drive-calibration description —
+  the clamp railing traced to the unit-domain mismatch (measured
+  pre-clamp median ~3.1e5 µA, ~1000x the 450 µA target), effective
+  drive sign-dominant by construction. NO measured number, figure,
+  or adjudicated result changes (the drive-domain finding ISA entry,
+  commits bfa0f98..73cb614).
+- Upload path: Path B (API draft via newversion action; md5 verified;
+  metadata PUT preserving creators/license/keywords/preprint type;
+  v2 note prepended to description; notes' bundle commit ref updated
+  42f8d52 -> 73cb614). The principal clicked Publish. Token
+  header-only from ~/.zenodo_token, never in URLs.
+- **Repo-artifact record 22064020 unchanged BY PROOF:** the dist
+  pipeline's fresh rebuild of neuralos-repo-103fa59.tar.gz is
+  byte-identical (sha256 33563ae0a63be6209a8c7d296b7186db061655665c
+  4957c3a968f6e501c6204e) to the published v1 — no v2 needed.
+- Pre-publish gates: workspace 312 green / clippy -D warnings clean /
+  no_std builds / hdf5 125 green (independently re-run this session,
+  build mode); make dist twice-stable; calibration GATE PASS banked
+  (calibrate.log sha 4558674f…).
+- Push state: bfa0f98, a466670, bd8abfd, 73cb614 pushed both remotes
+  BEFORE publish (record sync precedes public correction — the
+  provenance chain names real commits only).
+- Next: TMLR submission (same corrected manuscript — principal
+  stamp); burn-build session (the four builds: OFF-arm flag,
+  seed-parameterized nulls reading null_seeds.txt, judge chain
+  script, DOMAIN-CORRECTED variant + N1/N2 riders) gates the arm
+  launches; arms = ON r0-r2 + OFF-r0 + DOMAIN + FREE (~28-38 h).
