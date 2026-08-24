@@ -77,3 +77,27 @@ cargo run -p neuralos-rt --release --example step5_aggregate -- "$B"
 5 driven-class runs (ON ×3, OFF-r0, DOMAIN) ≈ 29–41 h · 30 nulls +
 15 judged files × 2–4 min judge · aggregator renders the verdict table
 mechanically (no hand-counted verdicts).
+
+## Power-loss / reboot recovery
+
+Nothing in the burn can corrupt a banked artifact (unbanked guard,
+in-pipeline asserts) — worst case is wall-time, never correctness.
+
+1. **Forensics (seconds):** `ls evidence/step5-readout/burn/logs/` —
+   the last leg with a `start` line and no `done` line is the
+   interrupted one. HALT present = a command failed (read it); no HALT
+   + dead process = crash/reboot.
+2. **Paranoia pin (~1 min):** re-sha the five banked files against
+   PREP.md (base, invivo, ck400/800/1200) — proves the frozen record
+   untouched:
+   ```bash
+   sha256sum models/Ternary-Bonsai-4B-Q2_0{,-invivo,-invivo-ck400,-invivo-ck800,-invivo-ck1200}.gguf
+   ```
+3. **Resume from the interrupted leg only.** Deterministic runs re-pin
+   byte-identical; judge legs overwrite their own outputs. Never
+   re-run `all` blindly. Interrupted mid-rep with the ON export
+   already complete (the final sha line in the log is the witness —
+   existence on disk alone is NOT)? Run that replicate's nulls + judge
+   commands manually (chain steps 4–5) and skip the 6–8 h re-run.
+4. **Relaunch detached:** `tmux new -s burn 'tools/burn.sh <leg>'` —
+   then continue the remaining legs in order.
