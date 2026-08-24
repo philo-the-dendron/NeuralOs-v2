@@ -1849,6 +1849,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hdf5-pure"
+version = "0.39.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c52d1aea1524a67e87bf7a755ed7cb7bdca52ac6a439815ec78890031c27d002"
+dependencies = [
+ "byteorder",
+ "flate2",
+]
+
+[[package]]
 name = "hdf5-src"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3042,6 +3052,15 @@ dependencies = [
  "neuralos-snn",
  "slint",
  "slint-build",
+]
+
+[[package]]
+name = "neuralos-nir2json"
+version = "0.1.0"
+dependencies = [
+ "hdf5-pure",
+ "neuralos-snn",
+ "serde_json",
 ]
 
 [[package]]

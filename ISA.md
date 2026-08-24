@@ -4578,3 +4578,163 @@ this session (launch is the principal's call after review).
   clippy/no_std; hdf5 leg if touched — judge.rs/harness.rs are
   feature-neutral but the leg runs anyway per CI parity). No commit
   until the principal's review of the working-tree diff.
+
+## Session open (M1 step 4 — the pure-Rust exporter, 2026-08-24)
+
+Authority: the 2026-08-23 step-4 amendment + the amended stranger-file
+ruling (principal-ratified this date). The step-5 burn runs LIVE
+alongside (off leg in compute phase at open) — zero shared surface;
+every cargo invocation this session is timed against leg transitions.
+
+- **CORRECTION OF RECORD (verify-first lesson):** a prior session
+  stated "nir-ref ships zero committed .nir files." That was a
+  tool-blind negative — the glob respected gitignore and nir-ref/ is
+  gitignored. EIGHT .nir files exist under nir-ref/paper/ (01_lif:
+  two_lif_neurons, lif_rockpool, lif_norse · 02_cnn: cnn_sinabs ·
+  03_rnn: braille ×4 + 2 subgraphs... 8 total), all genuine HDF5, all
+  at the pinned neuromorphs/NIR@7883c3c85f1be27ed113ccc9e8d6ab47ab541df4
+  the whole NIR stack cites. Retracted and corrected. Lesson: a
+  negative from one instrument is not a verified negative.
+- **Stranger-file nomination (SEALED before build, seals-before-
+  tables):** SMOKE two_lif_neurons.nir · EMITTER-SKEW PAIR
+  lif_norse.nir + lif_rockpool.nir (third-party to_nir writers) ·
+  HONEST-WALL PROBES the braille quartet + cnn_sinabs.nir (out-of-
+  subset node types → loud named rejection = recorded result).
+  Anti-circularity rule: no self-generated stand-ins on this leg.
+- **Scope:** crates/neuralos-nir2json (hdf5-pure 0.39.0, deps reduce
+  to byteorder + miniz_oxide, no C anywhere; registry-verified prior
+  session) reading .nir → typed values → snn's own nir_export writes
+  the JSON (single quantizer/schema writer by construction). Corpus
+  v2: f32 cast-down twins (oracle: widen + compare at f32-precision
+  tolerance vs the f64 origin; rt CANNOT oracle f32 — code-pinned),
+  lzf refusal by name, large-graph bound, the nominated stranger set
+  with provenance + sha256 as committed fixtures. f32 stamp =
+  file-level audit annotation, no durability illusion. Static
+  linux-x86_64 binary staged for the release; cargo install --git
+  posture; NO crates.io publish (deferred past step-7 measurement).
+- **Guards:** GUARD 1 (append-only; regex re-verified after this
+  entry). GUARD 2 (untouched — no frozen record read-for-adjudication
+  here). Zero touch: models/, evidence/step5-readout/burn/, frozen
+  examples, paper/. Workspace grows by exactly one crate.
+  PROTOCOL: no commit, no push — review before commit, every time.
+- Claims close at session end on: corpus v2 all green, ≥1 stranger
+  file completing read→JSON, battery green (workspace + no_std +
+  clippy -D warnings), the standalone build, the staged binary's
+  static verification, and the review package.
+
+## Close-out (M1 step 4 — the pure-Rust exporter, 2026-08-24)
+
+NO COMMIT this session — the working tree carries everything; review
+before commit per protocol. The step-5 burn ran throughout, untouched
+(off leg in compute phase at close; no HALT; legs unblocked).
+
+- **Spike verdict: hdf5-pure 0.39.0 GREEN on our whole corner** —
+  superblock v0 / v1 B-trees / deflate datasets / vlen strings / 2-D
+  f64 / i64 shapes, all read on every fixture + all 8 paper files +
+  the fallback emission. Deps as verified: byteorder + flate2
+  (miniz_oxide); features std+deflate only (checksum/ndarray/serde
+  opt-ins excluded).
+- **The tool**: crates/neuralos-nir2json — hdf5-pure read → snn's
+  NirBuilder (sole quantizer) → snn's nir_export (sole schema
+  writer); the tool itself writes only the sidecar stamp. CLI exit
+  0/1/2; pre-read filter census (none|deflate only, lzf/szip/etc
+  refused BY NAME); out-of-subset node kinds refused with node+kind;
+  f32 widened bit-exactly + sidecar-stamped (no durability illusion —
+  the single-writer ruling made the stamp a sidecar, not a JSON
+  field). Manifest: own version (no workspace inheritance), publish =
+  false, version+path dep with the registry-vs-path comment.
+- **Corpus v2: ALL GREEN (14 tool tests; workspace 330/0 · hdf5
+  129/0 · clippy -D warnings clean · no_std builds).** (a) f32 twins
+  — whole-document f32-precision-tolerance oracle vs the f64 origins
+  (rt cannot oracle f32 — code-pinned); (b) lzf refused by name
+  through the binary (exit 2); (c) 1024×1024 Linear converts in 3.9 s,
+  imports at scale; (d) the sealed nomination — see the finding.
+- **THE CORPUS-V2 FINDING (for the principal; bears on GUARD 3's
+  "stranger-usable"):** every third-party LIF emission in the sealed
+  paper corpus carries the SIMULATION-UNIT convention — r = 1.0 Ω
+  (two_lif, norse), 24.02 Ω (rockpool) — below the substrate's
+  biological floor (r ≥ 1 MΩ, quantize_lif). snnTorch itself CANNOT
+  emit biological r: its LIF is dimensionless (β/threshold, no R) →
+  its NIR exports hard-code r = 1.0. The wall is the CONVENTION
+  BOUNDARY, not any one emitter; Linear-only graphs (encoders/readout
+  heads) convert cleanly from any emitter. The tool refuses loudly
+  with node + param + convention named (README §Parameter
+  conventions documents it); silent r-rescaling was REJECTED (r·I
+  gain — silent corruption class). Full-path stranger = the
+  pre-authorized fallback (ladder rung ii): a Linear-only snnTorch
+  head through the CURRENT stranger stack (snntorch 1.0.0 · torch
+  2.13 cpu · nirtorch 2.6 · nir 1.0.8 — the pinned 2025 nir clone
+  cannot host snnTorch 1.0's export; version-skew demonstrated three
+  ways, also recorded). Our seeded values, THEIR pipeline — the
+  pre-authorized class, stated in PROVENANCE.md. Weights are REAL
+  float32 — the f32 path exercised by a genuine stranger emission.
+- **Stranger-usable artifact:** static musl binary staged at
+  crates/neuralos-nir2json/dist/ (gitignored; sha
+  2e922ab8507ad6a9f8ca5c28147bbc280b409d02419eda40db4e99c9bdb07987,
+  1,098,392 B, static-pie, no libc dep) — verified by EXECUTION:
+  converts the snnTorch emission (f32-widened stamped, sidecar
+  written, exit codes 0/1 proven). `cargo install --path --locked
+  --offline` verified; the true `--git` form activates post-push
+  (file:// pre-commit would build stale HEAD — recorded limitation).
+  Release upload = principal's action.
+- GUARD 1 held (append-only; regex re-verified). GUARD 2 untouched.
+  Zero touch on models/, burn/, frozen examples, paper/. Workspace
+  grew by exactly one crate.
+
+## Session rider (M1 step-4B — the sim-units bridge, 2026-08-24)
+
+Built immediately after the step-4 close-out, on the fact-checked
+amended brief (principal-ratified); same no-commit protocol — the
+working tree now carries A+B together for one review.
+
+- **The fact-check record (both directions):** the wall is DOUBLE —
+  r fires first in quantize_lif's order (nir.rs check sequence), the
+  dimensionless voltages refuse right behind it (rockpool v_th 0.1 as
+  V = 100 mV > +50; the membrane is [−100, +50] mV, NOT the ±140 an
+  earlier turn asserted — corrected). The B sketch's default-grid
+  assumption would have shipped a half-working flag: on the mV grid
+  the 0.1-threshold family dies at ThresholdZero (0.1 quantum rounds
+  to 0); centi gives 10. Hence the transform is THREE elements.
+- **`--sim-units` (tool-side only, spine untouched):** r × 1e9 Ω
+  (dimensionless → MΩ; exactness rests on the product-only coupling
+  r·I, lif_neuron.rs:268) · voltages read as mV (numerically ÷1000
+  into the V-unit API) · CENTI GRID FORCED. Opt-in, sidecar-stamped
+  ("sim_units":true + effective resolution) — an interpretive act is
+  never silent; nothing auto-rescales. Detection (flag off):
+  r < 1e6 Ω → ConvertError::SimUnits naming BOTH walls + the flag
+  (exit 2). The marginal [0.5,1) MΩ band (rounds to the floor
+  natively) is deliberately refused rather than guessed — commented
+  in code.
+- **Discrete pins (the amended acceptance) — all green:**
+  two_lif: lif1 tau 10 000 µs · r 1000 MΩ · leak 120 cV · th 100 cV ·
+  reset 0, and THE TONIC WITNESS leak_q > threshold_q (source quirk
+  carried faithfully, not fixed); lif2 th 2000 cV. rockpool (real
+  f32): tau 2500 · r 24 020 MΩ (24.019737 f32 ×1000) · th 10 cV —
+  the ThresholdZero-on-mV file, alive on centi. Binary: --sim-units
+  exit 0 + stamped sidecar; no-flag exit 2 with both walls + flag.
+- **A spine quirk recorded (not fixed — not this session's surface):**
+  NirLif.v_reset_defaulted does not survive the JSON round trip as an
+  in-memory field; the DURABLE pin is metadata.provenance
+  .v_reset_defaulted (asserted true on the two_lif artifact).
+- **Battery on A+B: tool 15/15 · workspace 331/0 · hdf5 129/0 ·
+  clippy -D warnings clean · no_std builds.** Static musl binary
+  REBUILT with B and re-verified by execution (transform + refusal
+  paths); restaged, new sha 887a70feb9ad37a075edf074bf8a749cab32f766
+  fcc25fc28e39d20f2dc5f010. Burn untouched throughout (off leg in
+  compute, no HALT).
+
+### Review record (step-4B, 2026-08-24 — principal's reviewer)
+
+APPROVED as built; two non-blocking findings, both recorded:
+
+- **B2-cosmetic (landed):** mixed-convention behavior is safe by
+  accident — detection fires on any population member < 1 MΩ, the
+  transform then applies to ALL r of that node, and a bio r would be
+  rescued loudly via the 65,535 MΩ ceiling (BadNumber, never silent).
+  README now states intent == behavior: the flag is all-or-nothing
+  per file; mixed-convention files refuse via the r ceiling.
+- **Alpha.6 candidate (flagged, not fixed):** NirLif.v_reset_defaulted
+  does not survive the JSON round trip as an in-memory field (the
+  durable pin is metadata.provenance.v_reset_defaulted). Exactly the
+  class the "a real bugfix warrants the next alpha" rule covers —
+  named here as the next spine session's candidate line item.

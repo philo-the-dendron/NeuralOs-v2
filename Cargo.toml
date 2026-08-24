@@ -6,7 +6,12 @@
 
 [workspace]
 resolver = "2"
-members = ["crates/neuralos-snn", "crates/neuralos-app", "crates/neuralos-rt"]
+members = [
+    "crates/neuralos-snn",
+    "crates/neuralos-app",
+    "crates/neuralos-rt",
+    "crates/neuralos-nir2json",
+]
 
 [workspace.package]
 version = "0.1.0-alpha.5"
