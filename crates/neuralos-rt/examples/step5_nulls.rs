@@ -9,8 +9,9 @@
 //! `evidence/step5-readout/null_seeds.txt` — NEVER minted at run time.
 //!
 //! Seed map (null_seeds.txt): 201–210 → r0 · 211–220 → r1 · 221–230 →
-//! r2 · 231–240 → ESCALATION ONLY (windows 3/4, MIXED-band trigger per
-//! PREREG §5) — refused here until those ON runs exist.
+//! r2 · 231–240 → r3 · 241–250 → r4 (the ESCALATION decades — windows
+//! 3/4, ruled 2026-08-26 after the n=3 MIXED verdict, before any
+//! escalation arm ran; seeds extended to 250 by the same ruling).
 //!
 //! The shuffle algorithm is `harness::dose_matched_null` — the
 //! session-I PRIMARY-family logic extracted verbatim (its exact-dose +
@@ -46,7 +47,11 @@ fn load_seeds() -> Vec<u64> {
                 .unwrap_or_else(|e| panic!("{SEEDS_FILE}: non-integer seed line {l:?}: {e}"))
         })
         .collect();
-    assert!(seeds.len() >= 30, "{SEEDS_FILE}: need ≥30 seeds (201–230 main), found {}", seeds.len());
+    assert!(
+        seeds.len() >= 50,
+        "{SEEDS_FILE}: need ≥50 seeds (201–250: main + escalation decades), found {}",
+        seeds.len()
+    );
     seeds
 }
 
@@ -67,7 +72,7 @@ fn main() {
                     replicate = Some(
                         argv.get(i + 1)
                             .and_then(|s| s.parse::<usize>().ok())
-                            .unwrap_or_else(|| panic!("--replicate expects 0|1|2")),
+                            .unwrap_or_else(|| panic!("--replicate expects 0|1|2|3|4")),
                     );
                     i += 2;
                 }
@@ -83,8 +88,11 @@ fn main() {
             }
         }
     }
-    let r = replicate.expect("--replicate <0|1|2> is required (PREREG §4)");
-    assert!((0..=2).contains(&r), "replicate r ∈ 0|1|2 (escalation windows 3/4 are a separate pre-authorized step)");
+    let r = replicate.expect("--replicate <0..=4> is required (PREREG §4 + escalation amendment)");
+    assert!(
+        (0..=4).contains(&r),
+        "replicate r ∈ 0..=4 (r3/r4 are the pre-authorized escalation windows, PREREG §5 ladder)"
+    );
     let on_path = on_path.unwrap_or_else(|| format!("models/Ternary-Bonsai-4B-Q2_0-invivo-r{r}.gguf"));
 
     // Seeds: the replicate's decade, from the file only. 201–210 → r0…
@@ -105,7 +113,7 @@ fn main() {
     println!("=== step-5 nulls: replicate r{r} — dose-matched shuffled-drift ×10 ===");
     println!("orig    : {orig_path}");
     println!("ON      : {on_path}");
-    println!("seeds   : {decade:?} (from {SEEDS_FILE}; 231–240 escalation-reserved)");
+    println!("seeds   : {decade:?} (from {SEEDS_FILE}; escalation decades 231–250 per the 2026-08-26 ruling)");
 
     let src = decode_slice(&orig_path, &p);
     let on = decode_slice(&on_path, &p);

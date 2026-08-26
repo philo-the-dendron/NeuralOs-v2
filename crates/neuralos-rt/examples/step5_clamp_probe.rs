@@ -40,7 +40,18 @@ use neuralos_rt::{f32_bits_to_milli, q2_0_row_to_milli, rms_norm_milli, GgufFile
 const DRIVEN_DIMS: usize = 409;
 const TARGET_RMS_UA: f64 = 450.0;
 const H2_STEPS: usize = 2000;
-const WINDOWS: [(usize, &str); 3] = [(0, "r0"), (1000, "r1"), (2000, "r2")];
+/// Replicate windows (PREREG §4 + the escalation amendment): r0–r2
+/// contiguous; r3/r4 WRAP the 4,411-token corpus (r3 = [3000,4411) +
+/// [0,589) · r4 = [4000,4411) + [0,1589) — exactly 2,000 steps each,
+/// dose-comparable). The wrap is materialized once below so every
+/// window slice is contiguous in the working buffer.
+const WINDOWS: [(usize, &str); 5] = [
+    (0, "r0"),
+    (1000, "r1"),
+    (2000, "r2"),
+    (3000, "r3 (wraps)"),
+    (4000, "r4 (wraps)"),
+];
 
 // Banked H2 pins (evidence/session-h2/run.log) — window r0 only.
 const H2_K: f64 = 10060.46;
@@ -101,12 +112,14 @@ fn main() {
     };
 
     // Decode + attn_norm every needed token once (windows overlap).
-    let max_off = WINDOWS.iter().map(|(o, _)| *o).max().unwrap();
-    let last = (max_off + H2_STEPS).min(ids.len());
-    let mut h_norm: Vec<Vec<i32>> = Vec::with_capacity(last);
+    // The WRAPPED windows (r3/r4) read tokens [0,1589) again — the
+    // corpus is fully covered by the union, so one pass over all
+    // 4,411 tokens serves every window; wrap slicing indexes modulo.
+    let n_tokens = ids.len();
+    let mut h_norm: Vec<Vec<i32>> = Vec::with_capacity(n_tokens);
     let mut row_milli = vec![0_i32; emb];
     let mut normed = vec![0_i32; emb];
-    for &t in &ids[..last] {
+    for &t in &ids[..n_tokens] {
         let r = t as usize;
         let row = &emb_data[r * row_bytes..][..row_bytes];
         q2_0_row_to_milli(row, &mut row_milli).expect("emb row decode");
@@ -115,13 +128,18 @@ fn main() {
     }
 
     for (off, name) in WINDOWS {
-        let win = &h_norm[off..off + H2_STEPS];
+        // wrap-aware contiguous view: the drive order is the window's
+        // own token order (tail of the corpus, then head) — exactly
+        // what a wrapped run consumes, step for step.
+        let win: Vec<&Vec<i32>> = (0..H2_STEPS)
+            .map(|i| &h_norm[(off + i) % n_tokens])
+            .collect();
         let total: u64 = (H2_STEPS * DRIVEN_DIMS) as u64;
 
         // k derivation — H2's frozen procedure (Rider A): RMS over driven
         // dims in NORM units, k = target / rms.
         let mut sum_sq = 0.0_f64;
-        for row in win {
+        for row in &win {
             for &v in &row[..DRIVEN_DIMS] {
                 sum_sq += (v as f64 / 1000.0).powi(2);
             }
@@ -137,7 +155,7 @@ fn main() {
         let mut hist = [0u64; 5];
         let mut clamped: u64 = 0;
         let mut corrected_clamped: u64 = 0;
-        for row in win {
+        for row in &win {
             for (d, &v) in row[..DRIVEN_DIMS].iter().enumerate() {
                 let raw = v as f64 * k;
                 let a = raw.abs();
@@ -164,7 +182,17 @@ fn main() {
         }
         abs_raw.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-        println!("\n=== window {name} (tokens [{}, {}) ===", off, off + H2_STEPS);
+        let end = off + H2_STEPS;
+        if end <= n_tokens {
+            println!("\n=== window {name} (tokens [{off}, {end})) ===");
+        } else {
+            let tail = n_tokens - off;
+            println!(
+                "\n=== window {name} (tokens [{off}, {n_tokens}) + [0, {}) — {tail}+{} = {H2_STEPS} steps) ===",
+                end % n_tokens,
+                end % n_tokens
+            );
+        }
         println!(
             "scaling : rms {rms_units:.4} → k = {k:.2} µA/unit (target {TARGET_RMS_UA} µA)"
         );
@@ -200,7 +228,7 @@ fn main() {
             {
                 // true RMS of the corrected pre-clamp drive:
                 let mut s = 0.0_f64;
-                for row in win {
+                for row in &win {
                     for &v in &row[..DRIVEN_DIMS] {
                         let r = v as f64 / 1000.0 * k;
                         s += r * r;

@@ -95,3 +95,17 @@ test-pinned): `…-invivo-r{r}.gguf` (ON) · `…-invivo-off-r0.gguf`
 families (`null-dose-*`, `null-flip-*`, `null-random-*`,
 `*-invivo.gguf`, `*-invivo-ck*`, `*-loop.gguf`, `*-control.gguf`,
 the base model) are refused loudly before any write.
+
+## Escalation pins (2026-08-26, pre-burn — amendment 3 provenance)
+
+`clamp_probe_escalation.log` (sha256
+01d9bc6147ff5bc766ebbfd3bc3ae78f3f7f3ee6e30318ee96f858b9ae831220)
+
+Rebuild: `cargo run -p neuralos-rt --release --example step5_clamp_probe
+> evidence/step5-readout/clamp_probe_escalation.log`
+
+Findings: wrapped-window k pins r3 9965.58 · r4 10054.74 (Rider A —
+each escalation run's own run.log remains the pin of record); r0's
+ALL-H2-pins pass through the modulo path (the wrap machinery's
+frozen-path no-op proof). r3/r4 clamp fractions + distributions
+recorded in the log (2.74%-class graded-drive context unchanged).

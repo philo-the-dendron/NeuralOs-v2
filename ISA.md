@@ -4759,3 +4759,29 @@ c54177d, CI #67 green, verified from the API):
   branch, merged on green — the protocol's first exercise is itself.
 
 GUARD 1 honored (this append; the ISC-78 regex target untouched).
+
+## Session open (step-5 escalation to n=5, 2026-08-26)
+
+Branch: work/escalation-n5 (merge-gated per c998de2). Trigger: the
+n=3 mechanical verdict (0/3 SEPARATED · 2 MIXED: r0 M2-only, r1
+M3-only, r2 NullConsistent) fired PREREG §5's pre-authorized ladder.
+
+- **Rulings (principal, before any escalation arm ran):** seeds
+  extended 241–250 (10-null families everywhere); threshold = the
+  ratified aggregator's literal `s >= 2` UNCHANGED (decided after the
+  n=3 verdict, before any escalation arm ran — not a post-hoc
+  selection). PREREG amendment entry carries both verbatim.
+- **Wrap disclosed at its strongest:** r4's [0,1589) overlaps r0's
+  [0,2000) by 79% (the heaviest pairing in the design — named as a
+  number, with the close-out caveat rule recorded).
+- **Probe pins banked pre-burn:** clamp_probe_escalation.log (sha
+  01d9bc61…): r3 k 9965.58 · r4 k 10054.74; r0's ALL-H2-pins pass
+  through the modulo path = the wrap machinery's frozen-path proof.
+- Builds: --window 3|4 wrap (contiguous materialization, honest
+  wrap-arithmetic drive headers) · OFF-refusal extended to r3/r4 ·
+  step5_nulls decades 231–250 · burn.sh legs rep3/rep4. Battery +
+  review precede the burn (~14–16 h: 2 × 6h47m empirical + nulls +
+  judges), which re-runs verdict on n=5.
+- GUARD 1: this append, regex re-verified. GUARD 2: untouched — the
+  n=3 evidence stands banked; escalation EXTENDS the set per its own
+  pre-authorized ladder, re-litigates nothing.

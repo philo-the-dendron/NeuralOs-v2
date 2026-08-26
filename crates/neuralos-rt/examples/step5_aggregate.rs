@@ -6,7 +6,7 @@
 //!   classify, quiet d7/loop silent, M3 reproduces the P3′ provenance
 //!   pins). Zero new judge runs; exits nonzero on any gate miss.
 //! - `<dir>`       : aggregate a burn-window evidence root. Expected
-//!   layout under `<dir>` (PREREG §8): `on-r{0,1,2}/`, `null-r{r}-s*`
+//!   layout under `<dir>` (PREREG §8): `on-r{0..4}/`, `null-r{r}-s*`
 //!   (the seeded shuffled-drift family), `domain/`, `free-ck*/` — each
 //!   judge-leg dir carrying `p{0..4}_run1.log` (+ `_run2.log` for
 //!   double-run arms, asserted byte-identical) and `p{0..4}_run1.err`
@@ -157,7 +157,12 @@ fn aggregate(root: &Path) {
     let base = base_dir(root);
 
     let mut verdict: Vec<Step5Band> = Vec::new();
-    for r in 0..3 {
+    // 0..5 post-escalation (2026-08-26 ruling): r3/r4 are first-class
+    // replicates. The n=3 verdict of 2026-08-26 06:11Z stands banked
+    // in the log's history; this loop reading 5 is what makes the
+    // re-verdict actually see the escalation arms (a hardcoded 0..3
+    // would have silently skipped them — caught at build review).
+    for r in 0..5 {
         let on_dir = root.join(format!("on-r{r}"));
         if !on_dir.exists() {
             println!("  on-r{r}: ABSENT (partial root)");
@@ -201,11 +206,12 @@ fn aggregate(root: &Path) {
         verdict.push(band);
     }
 
-    // The outcome line is only defined on a complete set (PREREG §1);
-    // the tool must not be quotable on incomplete data.
-    if verdict.len() < 3 {
+    // The outcome line is only defined on a complete set (PREREG §1,
+    // n=5 post-escalation ruling); the tool must not be quotable on
+    // incomplete data.
+    if verdict.len() < 5 {
         println!(
-            "\nverdict: PARTIAL ROOT ({}/3 replicates) — no outcome quoted on incomplete data",
+            "\nverdict: PARTIAL ROOT ({}/5 replicates) — no outcome quoted on incomplete data",
             verdict.len()
         );
         return;
