@@ -96,19 +96,10 @@ fn main() {
     let on_path = on_path.unwrap_or_else(|| format!("models/Ternary-Bonsai-4B-Q2_0-invivo-r{r}.gguf"));
 
     // Seeds: the replicate's decade, from the file only. 201–210 → r0…
+    // (the decade selection + full seed-map contract lives in
+    // harness::decade_for — test-pinned for all five replicates)
     let seeds = load_seeds();
-    let decade: Vec<u64> = seeds.iter().copied().skip(10 * r).take(10).collect();
-    let expected_lo = 201 + 10 * r as u64;
-    let expected_hi = 210 + 10 * r as u64;
-    assert!(
-        decade.iter().all(|&s| (expected_lo..=expected_hi).contains(&s)),
-        "seed map violation: r{r} must use {expected_lo}–{expected_hi}, got {decade:?}"
-    );
-    // Escalation seeds are present-but-reserved: refuse any use here.
-    if let Some(esc) = seeds.iter().find(|&&s| (231..=240).contains(&s)) {
-        // Present in file (pre-committed, correct); only REFUSED as output seeds:
-        assert!(!decade.contains(esc), "escalation seed {esc} must not enter a main family");
-    }
+    let decade = neuralos_rt::harness::decade_for(&seeds, r);
 
     println!("=== step-5 nulls: replicate r{r} — dose-matched shuffled-drift ×10 ===");
     println!("orig    : {orig_path}");
