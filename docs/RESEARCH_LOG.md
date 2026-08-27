@@ -924,3 +924,79 @@ quantizer half-step bound (`evidence/nir-hdf5-gate/`). Two engineering
 findings banked: raw census FFI must run under `hdf5::sync::sync`
 (parallel tests found the SIGSEGV), and the plugin-path `set_var` is
 OnceLock-gated.
+
+### Step 5 — the readout benchmark (2026-08-24/27, result: PRE-REGISTRATION-UNDEFINED)
+
+The plan's funded question: does plasticity-ON adaptation separate from
+BOTH controls — paired plasticity-OFF and dose-matched shuffled-drift
+null — on a readout the calibration proves can tell loud from quiet?
+Pre-registered and ratified 2026-08-23 before the first arm ran; the
+threshold (`s >= 2`) was fixed in the aggregator on 2026-08-24, two days
+before any data existed.
+
+The burn ran 2026-08-24T19:55Z → 2026-08-26T06:11Z (~34.3 h): OFF driven
+r0 (the end-to-end toggle proof — its export asserts byte-≡ base), two
+identity tripwires, ON r0–r2, 30 dose-matched nulls, the
+DOMAIN-CORRECTED covariate arm, and three FREE checkpoints. The n=3
+verdict came back 0/3 SEPARATED with 2 MIXED, which fired §5's
+pre-authorized escalation to n=5 (windows 3 and 4, seeds 231–250,
+threshold held unchanged and ruled BEFORE any escalation arm ran). The
+escalation added ~11 h and closed 2026-08-27T05:51Z.
+
+**Two halts interrupted it, both the same class: amendment residue.**
+rep3 died on a `231..=240 must not enter a main family` refusal that had
+survived the escalation edit and now contradicted the ruling that made
+231–240 r3's own decade; rep4 died on the banked-evidence guard's
+`*r4-*` glob, written for the R4 remediation family and colliding with
+the escalation's brand-new replicate-4. Both fired deterministically at
+cheap steps, downstream of training runs already banked and
+sha-recorded, so no arm was ever at risk. Both were fixed by killing the
+contradiction class rather than the instance — `harness::decade_for`
+test-pinned across all five replicates, and the guard's globs anchored
+at the `evidence/` root.
+
+**The result: 1/5 SEPARATED · 2 MIXED · 2 NULL-CONSISTENT.** Bands are
+M2∧M3 for SEPARATED, exactly one for MIXED. r0 fired M2 only, r1 M3
+only, r2/r3 neither, r4 both. The lone separation is thin: r4's M3
+clears its null family's maximum by 0.0033 (4.2242 vs 4.2209, 0.08%)
+against a max drawn from ten nulls, while r1's exceedance is 0.0219 —
+6.6× larger — and sits at MIXED because M2 never fired. r4 is also the
+most overlap-compromised arm in the design: its wrapped window overlaps
+r0's by 79%, disclosed at its strongest before the burn.
+
+**The adjudication found the pre-registration had no arm for its own
+result.** At `s=1, m=2` the ratified outcome match has no branch:
+`s>=2` fails, CLEAN NULL needs `(0,0)`, RESTS EVIDENCED requires
+`m == 0`, and the only remaining arm directs an escalation §5 authorises
+once and which was spent. Ruled PRE-REGISTRATION-UNDEFINED — recorded as
+a gap rather than papered over. Tier 3 is NOT demonstrated; "rests
+evidenced" was explicitly NOT claimed, because re-reading §1's prose to
+fit the data after seeing it is the thing pre-registration exists to
+prevent. PREREG.md stayed frozen; the missing band is a step-8 defect to
+fix before arms run, not a retroactive edit.
+
+**What external review changed.** The branch went out to non-builder
+reviewers before merge. One blocking finding landed: the ruling had
+asserted that the calibration gate discharged the paper's "uncalibrated
+instrument" limitation. It does not. The paper demands a lesion/graft positive
+control through the splice machinery; what ran prints "banked logs,
+mechanical parity" and re-reads already-known session-I and session-F
+artifacts — zero new judge runs. **That limitation remains open, and the
+positive control is now a step-8 prerequisite rather than a ticked box.**
+Review also caught the evidence family's own status markers still
+reading "adjudication is OPEN" after the ruling had landed on the same
+branch. Reviewers disagreed on one finding; it was settled at source on
+the commit timeline, not by vote. The withdrawal, the timeline check
+that settled the disagreement, and every accepted finding are recorded
+with their citations in ISA (commits b3046d4, c60b689) — the reasoning
+is verifiable from this repo; the review reports themselves are not
+artifacts of it.
+
+**The finding that matters for what comes next: the binding constraint
+is corpus length, not replicate count.** 4,411 tokens with windows
+overlapping 50% pairwise (79% for r4/r0) means the replicates share
+adaptation statistics — they are not five independent draws, and more
+arms on this corpus buy little. The instrument's mechanical parity is
+proven and the DOMAIN covariate arm ran; what is missing is a corpus
+long enough to make replicates independent, and the positive control
+that would say whether a negative here means anything at all.

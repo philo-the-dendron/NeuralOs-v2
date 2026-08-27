@@ -5035,3 +5035,133 @@ corrected) · 4 cosmetic (all fixed) · the rest record-only.** Every
 accepted finding was verified at source by the builder before action.
 
 GUARD 1 honored (append). GUARD 2 untouched.
+
+## Consolidation (step-8 prerequisites gathered — 2026-08-27)
+
+Consolidation session per the cadence rule (AGENTS.md § Session
+discipline). Scope: dedupe / delete / re-pin / docs truth. NOT a
+step-8 design — that is a new direction, and the spine-first budget
+forbids opening one while step 3's board sits unordered and the
+visualizer sits at zero.
+
+**THE NINE STEP-8 CONSTRAINTS, in one place.** They had accumulated
+across ~1,000 lines of this ledger, four of them added today. Scattered
+constraints are how a plan drifts; this is the canonical list, and any
+step-8 pre-registration must satisfy all nine before its first arm
+runs.
+
+1. **The lesion/graft positive control is a PREREQUISITE, not an
+   option.** Specified as step 5's FIRST arm ("if the graft lands
+   inside the null family, the readout is uninformative by
+   construction"); never run. Until it runs, no negative from this
+   readout licenses a conclusion — including the conclusion that
+   step 8 should not open.
+2. **Longer corpus.** 4,411 tokens with windows overlapping 50%
+   pairwise (79% r4/r0) makes replicates non-independent. More arms
+   on this corpus buy little; corpus length is the binding constraint.
+3. **Define an arm for `s>=1, m>0, escalation spent`.** The ratified
+   outcome match had no branch for its own result. This exact gap
+   produced the PRE-REGISTRATION-UNDEFINED ruling.
+4. **Outcome ARMS are part of the ratified operationalization, and
+   must be authored BEFORE ratification.** The step-5 literal was
+   written 2026-08-24, one day after the prose was ratified
+   (2026-08-23). Pre-data, so not post-hoc — but the prose and the
+   literal diverged, and only the literal was load-bearing.
+5. **The embeddings-only capture stays PARKED** (PREREG §2) — an
+   instrument change with different drive statistics; it cannot
+   reproduce H2 pins bit-exact. Entering it is a new instrument, not
+   a tweak.
+6. **The DOMAIN-CORRECTED arm seeds the design** — it ran report-only
+   in step 5 and recorded the clamp-starvation answer behaviourally.
+7. **The visualizer is the named instrument** (plan step 6):
+   spike-rate histograms, latency distributions, CSV export. It is at
+   zero. Step 8 cannot measure an adaptation trajectory without it.
+8. **Empirical gating decides whether the arc RUNS; the two-register
+   charter decides what may ever be ASSERTED.** Synthetic-to-natural
+   transfer is in-scope as paper-track record, out-of-scope as
+   roadmap/product claim.
+9. **Pre-registered arms + kill criteria + session cap before any
+   run** — the plan's own wording for step 8, non-negotiable.
+
+**Standing tension recorded, not resolved:** the plan's exit condition
+says a margin-kill means step 8 never opens. Step 5's margin did not
+survive — but constraint 1 says an uncalibrated readout licenses
+nothing, and "rests evidenced" was refused today, so the exit
+condition's own vocabulary does not match the outcome. **Step 8 is
+therefore neither opened nor closed here.** The positive control is
+what makes that question answerable; ruling it either way before then
+would be deciding on evidence this project's own doctrine says
+licenses nothing.
+
+**Consolidation measurements (the ratio the autopsy called the
+disease):** code-only since the plan opened 2026-08-22 is +2,860 /
+−103 = **27.8:1**, against the autopsy's diagnosed 26.6:1. Unimproved.
+Excluding `evidence/` (append-only by nature) the whole-repo figure is
++4,475 / −148 = 30.2:1. `cargo clippy --workspace --all-targets`:
+**0 warnings** — no dead-code debt.
+
+**Docs truth restored:** `docs/RESEARCH_LOG.md` had no record of the
+step-5 arc (stale since 2026-08-21, six days covering the burn, both
+halts, the adjudication and four reviews) — written. `docs/ROADMAP.md`
+"Practical next moves" predated the arc entirely — now names the
+benchmark's outcome, the outstanding positive control, and that the
+ESP32-C3 board is unordered.
+
+**Deletion considered and REFUSED: `PREREG-DRAFT.md` stays.** The
+doctrine permits deleting superseded files (git history is the
+archive), and it is superseded verbatim-plus-amendments. But it is the
+pre-ratification provenance of a pre-registration behind a deposited
+paper — the artifact that shows a reviewer what changed before
+ratification. 113 lines is not a ratio worth buying with that.
+Doctrine targets duplicated code and dead branches, not methodology
+provenance.
+
+GUARD 1 honored (append). GUARD 2 untouched.
+
+## Amendment (consolidation review — two findings accepted, 2026-08-27)
+
+Unscoped cross-family review of `main..9f06138` (NVIDIA-lineage
+reviewer; no claim-list given, deliberately). 0 blocking · 1 cosmetic ·
+8 record-only, of which two are accepted here.
+
+**1 — The additive ratio was correct and NOT reproducible. Method now
+stated.** The preceding consolidation entry asserts "code-only since
+the plan opened 2026-08-22 is +2,860 / −103 = 27.8:1" without the
+command. The reviewer, using a commit range over the whole repo, got
++23,587 / −137 — the same repo and period, ~8x apart. The exact
+command, for anyone re-deriving it:
+
+```
+git log --since=2026-08-22 --numstat --format='' -- crates \
+  | awk '{a+=$1;d+=$2} END {print "+"a" -"d}'
+```
+
+Scope: `crates/` only, date-bounded, whole-repo and `evidence/`
+excluded. The reviewer's concern that binary `.nir` fixtures inflate
+it does NOT apply — `numstat` prints `-` for binaries and awk coerces
+that to 0; 13 such rows contributed nothing. The number stands; only
+its derivation was missing. **A measurement in a permanent record that
+cannot be reproduced from what is written is an assertion, not a
+measurement.**
+
+**2 — An unverifiable claim removed from the research log.**
+`RESEARCH_LOG.md` said "four independent reviews across three model
+families". True, but unverifiable from this repo: no review artifacts
+exist in it. Softened to "external review", with a pointer to what IS
+checkable — the withdrawal, the timeline check that settled the
+reviewers' one disagreement, and every accepted finding, all cited in
+ISA (b3046d4, c60b689).
+
+**Banking the review reports was considered and REFUSED.** The
+distinction that decided it: the review was the TRIGGER for B1, not
+its EVIDENCE. B1's validity rests on `calibrate()`'s own banner,
+`paper/sections/limitations.tex`, and this ledger's ~4071 scoping —
+all in-repo and independently checkable, all cited in the correction
+append. Adding pasted chat reports to `evidence/` would buy
+attribution (who noticed) at the cost of weakening what `evidence/`
+means (sha-pinned machine output). The methodological observation —
+that cross-family review found what same-family review missed — is
+recorded in the principal's own knowledge base, not here, because this
+repo cannot verify it either.
+
+GUARD 1 honored (append). GUARD 2 untouched.

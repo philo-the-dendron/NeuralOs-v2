@@ -106,7 +106,20 @@ displace substrate + lab bench + gated research.
    (2026-08-22, alpha.5)**; the R18 deferral family remains (readout
    edges / direct drive / encoder-only)
 3. QEMU proof — **done 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`)
-4. Lock-free ports (A-extension targets only — re-scoped above) +
+4. Readout benchmark — **RAN 2026-08-24/27, adjudicated
+   PRE-REGISTRATION-UNDEFINED** (1/5 SEPARATED · 2 MIXED; Tier 3 not
+   demonstrated, "rests evidenced" not claimed — ISA ruling +
+   `evidence/step5-readout/`). Binding constraint is CORPUS LENGTH,
+   not replicate count. **Outstanding: the lesion/graft positive
+   control**, specified as this benchmark's first arm and never run —
+   until it does, a negative here licenses nothing (the council's own
+   claim), and the paper's "uncalibrated instrument" limitation stays
+   open.
+5. **ESP32-C3 bring-up — BOARD NOT ORDERED.** Decided 2026-08-22
+   ("purchase within 1–2 weeks"); no purchase recorded since. It gates
+   its own step and, via GUARD 3, gates outreach. Longest pole on the
+   board, and it is a purchase, not a session.
+6. Lock-free ports (A-extension targets only — re-scoped above) +
    SIMD hardening (the starved Phase-1 remainder)
-5. Visualizer Phase-2 — the lab bench catches up to the substrate the
-   bridge arc hardened
+7. Visualizer Phase-2 — the lab bench catches up to the substrate the
+   bridge arc hardened; also the named instrument for any step-8 arm
