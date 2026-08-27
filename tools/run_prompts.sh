@@ -33,8 +33,13 @@ fi
 # Banked-evidence guard (operator-error class): never write into an
 # existing adjudicated evidence dir — burn outputs live under
 # evidence/step5-readout/burn/ only.
+# NAMESPACE NOTE (fence-catch #3, 2026-08-26): "r4" below means the R4
+# REMEDIATION-LADDER family (evidence/r4-baselines, r4-closeout) — NOT
+# the escalation's replicate-4 (on-r4, null-r4-s24x). The globs are
+# anchored at the evidence/ root for exactly that reason: step5-readout/
+# sits between, so burn-root r4 dirs pass while banked R4 dirs refuse.
 case "$OUT" in
-  *session-*|*r4-*|*r4|evidence/qemu-riscv-gate|evidence/nir-hdf5-gate|evidence/nir-assembly-gate)
+  evidence/session-*|evidence/r4-*|evidence/qemu-riscv-gate|evidence/nir-hdf5-gate|evidence/nir-assembly-gate)
     echo "REFUSING: $OUT matches a banked evidence family — burn outputs live under evidence/step5-readout/burn/" >&2
     exit 2 ;;
 esac
