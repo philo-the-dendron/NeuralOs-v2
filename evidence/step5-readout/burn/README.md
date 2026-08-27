@@ -4,11 +4,16 @@ Authority: `../PREREG.md` (RATIFIED 2026-08-23) + its escalation
 amendment (ruled 2026-08-26, before any escalation arm ran).
 Orchestration: `../BURN.md`. Prep pins: `../PREP.md`.
 
-**STATUS: raw evidence, banked. The adjudication is OPEN.**
-This README records what RAN and what the mechanical aggregator
-PRINTED. It rules nothing. The verdict entry — the reading of the
-n=5 result against PREREG §1's bands — is a separate ISA decision
-and does not exist yet. Nothing below should be cited as a finding.
+**STATUS: raw evidence, banked. ADJUDICATED 2026-08-27 —
+PRE-REGISTRATION-UNDEFINED.** The ruling lives in `ISA.md`
+("Ruling — the n=5 adjudication", plus its B1 correction append);
+cite THAT, never this file, for any finding. This README records
+only what RAN and what the mechanical aggregator PRINTED — it rules
+nothing, and it is not the verdict.
+
+*(Was "adjudication is OPEN" until the ruling landed on this same
+branch. Kept current because a stale status marker is exactly the
+defect class that halted this burn twice.)*
 
 ## What ran
 

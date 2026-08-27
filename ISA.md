@@ -4967,3 +4967,71 @@ AGENTS.md claim is sound.
 
 GUARD 1 honored (append; ISC-78 regex target untouched). GUARD 2
 untouched.
+
+## Adjudication of conflicting review findings (four reviewers, 2026-08-27)
+
+Four independent non-builder reviews of this branch: one Claude-family,
+three non-Anthropic (Meta / Z.AI-GLM / NVIDIA lineages, via opencode).
+They CONFLICT on one finding. Settled here at source, not by vote —
+three reviewers agreeing is not a source either.
+
+**THE CONFLICT — is the "Rests evidenced" refusal a post-hoc
+narrowing? RULED: NO, not blocking.**
+
+Reviewer 3 filed it BLOCKING: ISA's refusal asserts the arm "requires
+`m == 0`", a condition "not in the PREREG text", and calls that a
+post-hoc narrowing of §1's own language. Reviewers 1 and 2 examined
+the same question and cleared it.
+
+Timeline, re-verified by the builder at source rather than taken from
+any reviewer:
+
+| event | when |
+|---|---|
+| PREREG ratified | 2026-08-23 |
+| `s <= 1 && m == 0` literal written (bd8abfd:202) | **2026-08-24 00:34** |
+| first data — n=3 verdict | 2026-08-26T06:11:37Z |
+| n=5 verdict | 2026-08-27T05:51:26Z |
+
+The literal predates the first data by **two days**. Post-hoc means
+chosen after seeing results; this was not. Reviewer 3's own finding #7
+records the same fact ("before n=3 verdict and before any escalation
+arm existed") — its #1 and #7 contradict each other, and #7 is the one
+that matches the repository.
+
+**But the substance under the wrong label is real, and is recorded:**
+the operationalization (2026-08-24) POSTDATES the ratified prose
+(2026-08-23) by one day. Pre-data — which is what protects against
+post-hoc contamination — but post-ratification, which is a genuine
+question about what was committed to. §1's prose standing alone does
+admit the "escalation failed to rescue" reading. The ruling does not
+foreclose that silently: it names the reading, concedes it fits the
+data, and refuses it. The refusal stands on the pre-data timing above.
+
+**Wording sharpened (the legitimate half of reviewer 3's finding):**
+where the ruling says "That arm requires `m == 0`", read: *the
+RATIFIED AGGREGATOR's arm* (`step5_aggregate.rs`), not PREREG §1's
+prose, which contains no such condition. The two have diverged; the
+divergence is already booked as a step-8 defect. Step-8's
+pre-registration must state, in the prose, that the outcome ARMS are
+part of the ratified operationalization and must be authored BEFORE
+ratification, not the day after.
+
+**ACCEPTED — reviewer 2's C1, which the other three missed: the
+whole-family status marker had gone stale.** `burn/README.md` still
+said "the adjudication is OPEN" and "does not exist yet", and
+`INDEX.md` said "adjudication OPEN, cite nothing as a finding" — while
+the ruling had landed on the SAME BRANCH. Both now point at the ISA
+ruling and name the outcome. This is the third stale-marker defect in
+this arc (the decade block, the evidence-guard glob, the aggregator's
+spent-escalation string); the pattern is documents describing a state
+the branch has already left.
+
+**Reviewer 3's finding #2 (calibration) duplicates B1**, already
+accepted and corrected in the preceding append. No further action.
+
+Findings across all four reviews, reconciled: **1 blocking (B1,
+corrected) · 4 cosmetic (all fixed) · the rest record-only.** Every
+accepted finding was verified at source by the builder before action.
+
+GUARD 1 honored (append). GUARD 2 untouched.
