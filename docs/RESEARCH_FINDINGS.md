@@ -246,7 +246,14 @@ Honest gap: BART would be technically best for summarization — port to candle 
 | Ternary | Standard TWN `{-1,0,+1}` + own format spec; track Prism ML Q1_0/Q2_0_g128 | direction validated |
 | Distro | Debian + live-build + packages.chroot | canonical, minimum effort |
 
-## 14-day RVO reality check (Aug 19, 2026)
+## 14-day RVO reality check (Aug 19, 2026) — HISTORICAL, event not attended
+
+> **Closed 2026-08-27.** The RVO Ottawa meetup (Aug 19) was not attended —
+> the principal was unavailable to travel. No technical blocker: the demo's
+> falsifier had already passed in QEMU (`evidence/qemu-riscv-gate/`, Leg A
+> 175/175, Leg B 195/195, 2026-08-21) and `alpha.5` shipped 2026-08-22. The
+> library track was unaffected. Kept below as the planning record of the
+> time; the EOY crates.io goal is unchanged and remains G0.
 
 Library is #1 priority. Realistic RVO demo options:
 
