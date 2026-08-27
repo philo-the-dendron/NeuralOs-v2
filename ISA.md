@@ -4785,3 +4785,96 @@ M3-only, r2 NullConsistent) fired PREREG §5's pre-authorized ladder.
 - GUARD 1: this append, regex re-verified. GUARD 2: untouched — the
   n=3 evidence stands banked; escalation EXTENDS the set per its own
   pre-authorized ladder, re-litigates nothing.
+
+## Ruling (step-5 readout benchmark — the n=5 adjudication, 2026-08-27)
+
+Principal-ruled after the mechanical verdict landed
+(`evidence/step5-readout/burn/logs/leg-verdict.log`, run
+2026-08-27T05:51:54Z). Option B of three put to the principal:
+record the result as PRE-REGISTRATION-UNDEFINED and rule the
+scientific content, rather than retrofit a band to fit the data.
+
+**The mechanical result, n=5:**
+
+| r | flips | M3 (ON) | null max | M3 fires | band | driven by |
+|---|---|---|---|---|---|---|
+| r0 | 2 | 4.1941 | 4.2565 | no | Mixed | M2 only |
+| r1 | 1 | 4.2509 | 4.2290 | yes | Mixed | M3 only |
+| r2 | 2 | 4.1974 | 4.2523 | no | NullConsistent | — |
+| r3 | 1 | 4.1372 | 4.2202 | no | NullConsistent | — |
+| r4 | 2 | 4.2242 | 4.2209 | yes | **Separated** | M2 ∧ M3 |
+
+`1/5 SEPARATED · 2 MIXED · 2 NULL-CONSISTENT`.
+
+**THE RULING — the pre-registration defines no outcome here, and
+that is recorded rather than papered over.** The ratified
+aggregator's arms are: `s>=2` → TIER 3; `(0,0)` → CLEAN NULL;
+`s<=1 && m==0` → RESTS EVIDENCED; `m>0` → escalate. At
+`s=1, m=2` the first three do not match, and the fourth directs an
+escalation that §5 authorises exactly once and which is SPENT.
+No band covers this result. The escalation clause printed on the
+verdict line is therefore a STALE DIRECTIVE, not a ruling, and is
+not to be quoted as one.
+
+**What is ruled, and what is not:**
+
+- **Tier 3 is NOT demonstrated.** The bar is the ratified literal
+  `s >= 2`, held unchanged by the 2026-08-26 amendment (fixed
+  after the n=3 verdict, before any escalation arm ran). `s = 1`.
+- **"Rests evidenced" is NOT claimed.** That arm requires `m == 0`;
+  two replicates are MIXED. Reading §1's "no MIXED-only escalation
+  rescue" as "the escalation failed to rescue" would fit the
+  data — and would be a post-hoc re-reading of a threshold after
+  seeing it. Refused on those grounds.
+- **"Clean null" is NOT claimed** (requires `s=0, m=0`).
+- **No effect claim, in either direction, is available from this
+  benchmark at this corpus length.**
+
+**Why the lone SEPARATED does not carry a Tier-3 reading (recorded
+as the reason, not as an excuse found afterwards):**
+
+- r4's M3 clears its null family's maximum by **0.0033**
+  (4.2242 vs 4.2209) — 0.08%, against a max drawn from 10 nulls,
+  a high-variance statistic at that n. For scale, r1's M3
+  exceedance is **0.0219, 6.6x larger**, and r1 is only MIXED
+  because M2 did not fire. The SEPARATED label is carried by M2,
+  with M3 scraping the line.
+- r4 is the most overlap-compromised arm in the design: its
+  `[0,1589)` wrap overlaps r0's `[0,2000)` by **79%**, disclosed
+  at its strongest in the 2026-08-26 amendment BEFORE the burn.
+  The {r0,r4} close-out caveat was written for exactly this shape.
+
+**What DOES stand, evidenced:**
+
+- **The instrument is validated.** Calibration gate PASS 8/8
+  (`evidence/step5-readout/calibrate.log`): loud probes classified
+  loud byte-exactly, quiet probes zero-flip. PREREG §1's
+  precondition — a readout the calibration proves can tell loud
+  from quiet — is met. This discharges the paper's named
+  "uncalibrated instrument" limitation, which scoped calibration
+  as the first arm of the follow-on readout benchmark.
+- **The DOMAIN-CORRECTED covariate arm ran** (`burn/domain/`), the
+  named report-only fix for the sign-dominant-drive limitation.
+- **The binding constraint is corpus length, not replicate count.**
+  4,411 tokens with windows overlapping 50% pairwise (79% for
+  r4/r0) means the replicates share adaptation statistics; the
+  design cannot resolve Tier 3 either way at this length. More
+  arms on this corpus buy little. Step 8 needs a LONGER CORPUS.
+- **Consistency with the published record.** The deposited paper's
+  adjudication is BRANCH B, unattributed perturbation — a negative.
+  This result is consistent with it at greater n. No Zenodo
+  correction is triggered (contrast Z4, where the drive-calibration
+  description forced a v2).
+
+**Carried forward, NOT applied retroactively:** PREREG.md stays
+FROZEN as the record of what was committed to. The missing band is
+a defect to fix in the step-8 pre-registration, which must define
+an arm for `s>=1, m>0, escalation spent` before any arm runs. The
+aggregator's stale escalation string is a separate correctness
+item — a tool that emits a directive the protocol forbids — and any
+fix must refuse to quote an outcome, never introduce a new
+threshold.
+
+GUARD 1 honored (this append; the ISC-78 regex target untouched).
+GUARD 2 untouched — session-I/H2 adjudications stay frozen; this
+benchmark was a NEW pre-registration and re-litigates nothing.
