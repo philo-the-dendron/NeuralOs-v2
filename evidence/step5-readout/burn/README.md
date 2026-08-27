@@ -21,7 +21,8 @@ and does not exist yet. Nothing below should be cited as a finding.
 | DOMAIN-CORRECTED (report-only covariate) | 1 | `domain` |
 | FREE (H2b dose-response, report-only) | 3 | `free-ck400`, `free-ck800`, `free-ck1200` |
 
-63 arm directories · 783 files · 4.8 MB. Judge protocol per PREREG §3:
+62 arm directories (the table above) plus `logs/` = 63 dirs · 785
+files · 4.8 MB. Judge protocol per PREREG §3:
 frozen five prompts (p0–p4, session-h2 pins); single-run per NULL,
 double-run (run1 == run2 byte-identical asserted) for every
 ON/OFF/DOMAIN file.

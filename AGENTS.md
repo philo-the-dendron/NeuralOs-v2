@@ -67,8 +67,10 @@ MSRV — don't bump without checking).
 
 ```bash
 # Quality gates. `.gitea/workflows/ci.yml` IS THE GATE (origin is Gitea);
-# `.github/workflows/ci.yml` mirrors it line-for-line as a second opinion.
-# The two files differ ONLY in the `uses:` form (Gitea needs full URLs).
+# `.github/workflows/ci.yml` mirrors it as a second opinion. The two files
+# differ in exactly two ways: the `uses:` form (Gitea needs full URLs), and
+# a 13-line explanatory header on the Gitea file. Nothing else — any third
+# difference is drift, and one of them has stopped being a mirror.
 cargo check  --workspace --all-targets
 cargo test   --workspace                          # offline; 307 executed green (3 app, 208 snn, 96 rt) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
