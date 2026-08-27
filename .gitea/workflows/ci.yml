@@ -1,0 +1,103 @@
+# Gitea Actions mirror of .github/workflows/ci.yml.
+#
+# WHY BOTH: origin is gitea (git@gitea.com:Caramoussin/NeuralOs-v2.git);
+# github is the mirror. The merge-gate protocol (ISA 2026-08-24) keys off
+# branch CI, so the authoritative gate belongs where origin lives — a
+# GitHub outage or an expired gh token must not be able to block a merge.
+# The GitHub workflow stays as a free second opinion.
+#
+# DIFFERENCES from the GitHub file, and only these:
+#   1. `uses:` takes full URLs — Gitea does not resolve the bare
+#      `actions/...` namespace (same form as .gitea/workflows in cipherpulse).
+#   2. Nothing else. Jobs, steps, triggers, and timeouts are identical, so
+#      the two files can be diffed line-for-line when either changes.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  check:
+    name: check + test + clippy + no_std
+    runs-on: ubuntu-latest
+    # Hard ceiling: the battery is ~15 min warm; 90 min absorbs a cold
+    # cache + Slint system-dep install without a hung job burning runners.
+    timeout-minutes: 90
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+
+      # rust-toolchain.toml pins 1.92.0 (slint MSRV); rustup honors it.
+      - uses: https://github.com/dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # Cargo.lock is committed (deterministic deps; hdf5-sys vendored-C
+      # pin) — the cache key is stable across runs.
+      - uses: https://github.com/Swatinem/rust-cache@v2
+
+      # Slint's femtovg/winit backends link against these on Linux.
+      - name: Slint Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfreetype6-dev libfontconfig1-dev libxcb1-dev libxkbcommon-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxcursor-dev
+
+      - name: cargo check --workspace
+        run: cargo check --workspace --all-targets
+
+      # Default features only — fully offline. The workspace test suite is the
+      # neuralos-snn property tests + the neuralos-app SimRunner tests; no network.
+      - name: cargo test --workspace
+        run: cargo test --workspace
+
+      - name: cargo clippy --workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # The SNN core stays no_std (the embedded/RISC-V posture).
+      - name: no_std gate (neuralos-snn)
+        run: cargo build --no-default-features -p neuralos-snn
+
+      # SIMD kernel equivalence vs scalar (AVX2, x86_64, behind `simd`).
+      - name: simd gate (neuralos-snn)
+        run: cargo test -p neuralos-snn --features simd
+
+  # The HDF5 feature leg (NIR slice 2): vendored HDF5 (needs cmake) +
+  # the reference-fixture tests + THE EVIDENCE GATE + feature clippy.
+  # The ~3 min vendored-C build lands in target/ and is cached by
+  # rust-cache, so it repeats only when Cargo.lock moves.
+  hdf5:
+    name: hdf5 gate (neuralos-rt)
+    runs-on: ubuntu-latest
+    # Vendored HDF5 cold build (~3 min) + full rt suite + the evidence
+    # gate + feature clippy; 120 min covers the no-rust-cache worst case.
+    timeout-minutes: 120
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+
+      - uses: https://github.com/dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: cmake (vendored HDF5 build)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake
+
+      - uses: https://github.com/Swatinem/rust-cache@v2
+
+      - name: cargo test -p neuralos-rt --features hdf5
+        run: cargo test -p neuralos-rt --features hdf5
+
+      - name: nir_hdf5_gate (the evidence gate)
+        run: cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate
+
+      - name: clippy with the feature
+        run: cargo clippy -p neuralos-rt --features hdf5 --all-targets -- -D warnings

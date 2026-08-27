@@ -182,3 +182,38 @@ verdicts. Prep-phase artifacts already banked: `clamp_probe.log`
   `step5_clamp_probe` before its distribution is believed.
 - Aggregator output asserted against this document's bands; any
   mismatch = instrument bug, runs void.
+
+---
+
+## Amendment (escalation to n=5 — ruled 2026-08-26, before any escalation arm ran)
+
+Trigger: the n=3 mechanical verdict returned 0/3 SEPARATED · 2 MIXED
+(r0 Mixed — M2 only; r1 Mixed — M3 only; r2 NullConsistent), firing
+the §5 escalation ladder (pre-authorized, one escalation).
+
+- **Threshold (the exact claim of record):** decided after the n=3
+  mechanical verdict, before any escalation arm ran; the threshold is
+  the ratified aggregator's existing literal rule
+  (step5_aggregate.rs:217, `s >= 2`), UNCHANGED — ≥2 SEPARATED among 5
+  = Tier 3 demonstrated. Not a post-hoc selection.
+- **Seeds extended:** null_seeds.txt grows 241–250 (r4's decade) —
+  committed before any escalation arm runs; 10-null families
+  everywhere (symmetric M3 null-max estimation).
+- **Wrap semantics:** r3 = tokens [3000,4411)+[0,589) · r4 =
+  [4000,4411)+[0,1589) — exactly 2,000 steps each (STEPS=2000,
+  hybrid_invivo.rs:305), dose-comparable with r0–r2. The wrap is
+  materialized contiguously before any consumer.
+- **Overlap disclosure (strongest case named):** r4's wrap segment
+  [0,1589) overlaps r0's window [0,2000) by 1,589/2,000 = **79%** —
+  heavier shared adaptation statistics than any §4 pairing (r-pairs
+  share 50%; r0⊥r2 share none). r3's head [0,589) overlaps r0 by 29%.
+  Escalation-majority verdicts resting solely on the {r0,r4} pair
+  carry this caveat visibly in the close-out.
+- **Probe provenance banked BEFORE the burn:** the wrapped-window k
+  values are NEW pins — derived and banked in
+  evidence/step5-readout/clamp_probe_escalation.log (sha256
+  01d9bc6147ff5bc766ebbfd3bc3ae78f3f7f3ee6e30318ee96f858b9ae831220;
+  r0's H2 pins reproduced through the modulo path first — the
+  frozen-path no-op proof). Runtime k-check fences read these values:
+  r3 9965.58 · r4 10054.74 (Rider A: the run.log remains the pin of
+  record).

@@ -1,0 +1,55 @@
+=== leg [off] start 2026-08-24T20:09:56Z ===
+    Finished `release` profile [optimized] target(s) in 0.54s
+     Running `target/release/examples/hybrid_invivo --off`
+=== Session H: the in-vivo gate — the model's own activations drive the substrate ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen · step-5 arm: OFF window r0
+
+decode  : 262144 trits (D-2 slice path)
+corpus  : evidence/corpus_readme_pinned.txt (12148 bytes)
+tokens  : 4411 (vocab 151669)
+drive   : window r0 — tokens [0, 2000) of 4411 (2000 steps; init-400 = the window's own first 400, PREREG §4)
+scaling : corpus RMS 0.0447 → k = 10060.46 μA/unit (target 450 μA)
+k-check : r0 k 10060.46 == probe expectation 10060.46 : PASS
+clamp   : 568321/818000 = 69.477% clamped at ±1000 μA  ⚠ ABOVE 10% — recorded caveat
+          hottest dim 199 railed 1786× (89% of its steps)
+hist    : |I| <100 249679 · 100–150 0 · 150–300 0 · 300–600 0 · >600/railed 568321 (per dim-step)
+
+--- TIER 1: substrate gates (fixed weights, STDP off, in-vivo drive, CENTI grid) ---
+  rates  E Hz (i/c/z): 18.11 / 18.08 / 18.07   I Hz: 125.01 / 125.16 / 125.00
+  totals (i/c/z): 40571 / 40570 / 40535
+  H(i,c)=41555  H(i,z)=30724  H(c,z)=29013   L1(i,c)=1309  L1(i,z)=950  L1(c,z)=819
+  G2′ wire-liveness tripwire : PASS (weights borne in trains)
+  G0  arrangement-vs-census : H(i,c) > H(i,z) → 41555 > 30724 : PASS — firing reads model arrangement
+
+--- in-vivo adaptation (STDP on, γ=125, counters per the registration) ---
+  learn firing : 39.75 Hz/neuron; quarters 41.20 39.11 38.93 39.77
+  events 0 · flips 0 · pairing same-step 0 · post-leads 0 · pre-leads 0
+  bucket-transition census:
+  −1→−1 ×       0  −1→ 0 ×       0  −1→+1 ×       0
+   0→−1 ×       0   0→ 0 ×       0   0→+1 ×       0
+  +1→−1 ×       0  +1→ 0 ×       0  +1→+1 ×       0
+  raw drift intra +0 · inter +0   absorbed intra +0 · inter +0   APPLIED intra +0 · inter +0
+  Hamming vs imported: 0/261632 = 0.0000
+  intra meanΔ +0.0000 (41412) · inter meanΔ +0.0000 (220220) — data-driven classes; |Δ| floor 0.05
+  mechanism label: [none — no differential movement]
+
+--- Verdict (per the frozen registration) ---
+  T1 G2′ tripwire   : PASS
+  T1 G0 arrangement : PASS
+  adaptation alive  : FAIL (frozen)
+  not collapsed     : PASS
+  selective (descriptive — drift-liveness, classes dissolved): no movement
+wall 25114.4s   peak RSS 6593 MB (budget 1536)
+
+--- TIER-2 export (the shared harness surgery unit; S2 re-read on EVERY file) ---
+  final: 0 cells · code 0 · scale 0 (must be 0) · S2 clean
+  OFF identity: sha == base (4e0bf8b737b04315…) : PASS (end-to-end toggle proof)
+  wrote models/Ternary-Bonsai-4B-Q2_0-invivo-off-r0.gguf — sha 4e0bf8b737b0431552f8c2c97695ab7c0cb214c94bcdeb4f5f267e67ddf28b8b — fork judge next
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-off-r0.gguf → evidence/step5-readout/burn/off-r0/p0
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-off-r0.gguf → evidence/step5-readout/burn/off-r0/p1
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-off-r0.gguf → evidence/step5-readout/burn/off-r0/p2
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-off-r0.gguf → evidence/step5-readout/burn/off-r0/p3
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-off-r0.gguf → evidence/step5-readout/burn/off-r0/p4
+judge chain done: evidence/step5-readout/burn/off-r0 (double-run)
+=== leg [off] done 2026-08-25T03:20:50Z ===

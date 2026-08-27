@@ -1,0 +1,20 @@
+=== leg [free] start 2026-08-26T06:03:10Z ===
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck400.gguf → evidence/step5-readout/burn/free-ck400/p0
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck400.gguf → evidence/step5-readout/burn/free-ck400/p1
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck400.gguf → evidence/step5-readout/burn/free-ck400/p2
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck400.gguf → evidence/step5-readout/burn/free-ck400/p3
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck400.gguf → evidence/step5-readout/burn/free-ck400/p4
+judge chain done: evidence/step5-readout/burn/free-ck400 (single-run)
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck800.gguf → evidence/step5-readout/burn/free-ck800/p0
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck800.gguf → evidence/step5-readout/burn/free-ck800/p1
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck800.gguf → evidence/step5-readout/burn/free-ck800/p2
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck800.gguf → evidence/step5-readout/burn/free-ck800/p3
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck800.gguf → evidence/step5-readout/burn/free-ck800/p4
+judge chain done: evidence/step5-readout/burn/free-ck800 (single-run)
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck1200.gguf → evidence/step5-readout/burn/free-ck1200/p0
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck1200.gguf → evidence/step5-readout/burn/free-ck1200/p1
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck1200.gguf → evidence/step5-readout/burn/free-ck1200/p2
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck1200.gguf → evidence/step5-readout/burn/free-ck1200/p3
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-ck1200.gguf → evidence/step5-readout/burn/free-ck1200/p4
+judge chain done: evidence/step5-readout/burn/free-ck1200 (single-run)
+=== leg [free] done 2026-08-26T06:11:37Z ===

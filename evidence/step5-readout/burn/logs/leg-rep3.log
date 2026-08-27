@@ -1,0 +1,87 @@
+=== leg [rep3] start 2026-08-26T11:24:16Z ===
+   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+    Finished `release` profile [optimized] target(s) in 10.10s
+     Running `target/release/examples/hybrid_invivo --window 3`
+=== Session H: the in-vivo gate — the model's own activations drive the substrate ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen · step-5 arm: ON window r3
+
+decode  : 262144 trits (D-2 slice path)
+corpus  : evidence/corpus_readme_pinned.txt (12148 bytes)
+tokens  : 4411 (vocab 151669)
+drive   : window r3 (wraps) — tokens [3000, 4411) + [0, 589) of 4411 (1411+589 = 2000 steps; init-400 = the window's own first 400, escalation amendment)
+scaling : corpus RMS 0.0452 → k = 9965.58 μA/unit (target 450 μA)
+k-check : r3 k 9965.58 == probe expectation 9965.58 : PASS
+clamp   : 572473/818000 = 69.984% clamped at ±1000 μA  ⚠ ABOVE 10% — recorded caveat
+          hottest dim 199 railed 1788× (89% of its steps)
+hist    : |I| <100 245527 · 100–150 0 · 150–300 0 · 300–600 0 · >600/railed 572473 (per dim-step)
+
+--- TIER 1: substrate gates (fixed weights, STDP off, in-vivo drive, CENTI grid) ---
+  rates  E Hz (i/c/z): 20.87 / 20.90 / 20.80   I Hz: 124.98 / 125.24 / 125.00
+  totals (i/c/z): 42819 / 42899 / 42767
+  H(i,c)=45482  H(i,z)=33080  H(c,z)=31894   L1(i,c)=1384  L1(i,z)=966  L1(c,z)=844
+  G2′ wire-liveness tripwire : PASS (weights borne in trains)
+  G0  arrangement-vs-census : H(i,c) > H(i,z) → 45482 > 33080 : PASS — firing reads model arrangement
+
+--- in-vivo adaptation (STDP on, γ=125, counters per the registration) ---
+  learn firing : 45.70 Hz/neuron; quarters 45.62 47.37 44.59 45.22
+  events 26706598 · flips 1227662 · pairing same-step 943822 · post-leads 7575269 · pre-leads 7575269
+  bucket-transition census:
+  −1→−1 ×       0  −1→ 0 ×  211337  −1→+1 ×       0
+   0→−1 ×  186422   0→ 0 ×       0   0→+1 ×  414480
+  +1→−1 ×       0  +1→ 0 ×  415423  +1→+1 ×       0
+  raw drift intra -229645 · inter -5395625   absorbed intra -365138 · inter -7245974   APPLIED intra +135493 · inter +1850349
+  Hamming vs imported: 82990/261632 = 0.3172
+  intra meanΔ +0.0763 (41412) · inter meanΔ +0.0945 (220220) — data-driven classes; |Δ| floor 0.05
+  mechanism label: [PAIRING-SELECTIVE, CLAMP-RECTIFIED — net-negative raw drift, 0-floor absorbs, applied residue potentiates]
+
+--- Verdict (per the frozen registration) ---
+  T1 G2′ tripwire   : PASS
+  T1 G0 arrangement : PASS
+  adaptation alive  : PASS (flips > 0)
+  not collapsed     : PASS
+  selective (descriptive — drift-liveness, classes dissolved): movement present
+wall 22954.7s   peak RSS 6595 MB (budget 1536)
+
+--- TIER-2 export (the shared harness surgery unit; S2 re-read on EVERY file) ---
+  final: 82990 cells · code 47194 · scale 0 (must be 0) · S2 clean
+  wrote models/Ternary-Bonsai-4B-Q2_0-invivo-r3.gguf — sha ce42f09d46e499e2ac5b2e0710072c9c85b6a7198b85318d5a753be40f03f9f2 — fork judge next
+   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+    Finished `release` profile [optimized] target(s) in 21.81s
+     Running `target/release/examples/step5_nulls --replicate 3`
+
+thread 'main' (1356103) panicked at crates/neuralos-rt/examples/step5_nulls.rs:110:9:
+escalation seed 231 must not enter a main family
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+=== LEG [rep3] FAILED — HALT written, chain stopped ===
+   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+    Finished `release` profile [optimized] target(s) in 18.52s
+     Running `target/release/examples/step5_nulls --replicate 3`
+=== step-5 nulls: replicate r3 — dose-matched shuffled-drift ×10 ===
+orig    : models/Ternary-Bonsai-4B-Q2_0.gguf
+ON      : models/Ternary-Bonsai-4B-Q2_0-invivo-r3.gguf
+seeds   : [231, 232, 233, 234, 235, 236, 237, 238, 239, 240] (from evidence/step5-readout/null_seeds.txt; escalation decades 231–250 per the 2026-08-26 ruling)
+ON diff : 82990 cells; composition {(0, 1): 24915, (1, 2): 28566, (2, 1): 29509}
+null-r3-s231: 82990 cells (exact dose) · S2 clean → models/null-r3-s231.gguf
+null-r3-s232: 82990 cells (exact dose) · S2 clean → models/null-r3-s232.gguf
+null-r3-s233: 82990 cells (exact dose) · S2 clean → models/null-r3-s233.gguf
+null-r3-s234: 82990 cells (exact dose) · S2 clean → models/null-r3-s234.gguf
+null-r3-s235: 82990 cells (exact dose) · S2 clean → models/null-r3-s235.gguf
+null-r3-s236: 82990 cells (exact dose) · S2 clean → models/null-r3-s236.gguf
+null-r3-s237: 82990 cells (exact dose) · S2 clean → models/null-r3-s237.gguf
+null-r3-s238: 82990 cells (exact dose) · S2 clean → models/null-r3-s238.gguf
+null-r3-s239: 82990 cells (exact dose) · S2 clean → models/null-r3-s239.gguf
+null-r3-s240: 82990 cells (exact dose) · S2 clean → models/null-r3-s240.gguf
+done — judge chains next (tools/run_prompts.sh, single-run per null).
+judge models/null-r3-s231.gguf → evidence/step5-readout/burn/null-r3-s231/p0
+judge models/null-r3-s231.gguf → evidence/step5-readout/burn/null-r3-s231/p1
+judge models/null-r3-s231.gguf → evidence/step5-readout/burn/null-r3-s231/p2
+judge models/null-r3-s231.gguf → evidence/step5-readout/burn/null-r3-s231/p3
+judge models/null-r3-s231.gguf → evidence/step5-readout/burn/null-r3-s231/p4
+judge chain done: evidence/step5-readout/burn/null-r3-s231 (single-run)
+judge models/null-r3-s232.gguf → evidence/step5-readout/burn/null-r3-s232/p0
+judge models/null-r3-s232.gguf → evidence/step5-readout/burn/null-r3-s232/p1
+judge models/null-r3-s232.gguf → evidence/step5-readout/burn/null-r3-s232/p2
+judge models/null-r3-s232.gguf → evidence/step5-readout/burn/null-r3-s232/p3
+judge models/null-r3-s232.gguf → evidence/step5-readout/burn/null-r3-s232/p4
+=== leg [rep3] done (tail via recovery §3: nulls+judges) 2026-08-26T18:49:13Z ===

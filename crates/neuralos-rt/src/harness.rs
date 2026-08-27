@@ -516,6 +516,39 @@ pub fn trit_val(t: Trit) -> f64 {
     }
 }
 
+/// The replicate's null-seed decade from the pre-committed seed list
+/// (PREREG §4 + the 2026-08-26 escalation ruling): r0 → 201–210 …
+/// r3 → 231–240, r4 → 241–250. Selection is BY POSITION (skip 10·r,
+/// take 10) AND the full seed-map contract is asserted: every selected
+/// seed must lie in the replicate's exact expected range. The original
+/// step5_nulls carried this logic inline with a stale
+/// escalation-refusal block that contradicted the ruling (231–240 ARE
+/// r3's decade) — extracted here, test-pinned for all five replicates,
+/// so the contradiction class dies permanently (the rep3 halt,
+/// 2026-08-26 17:47Z — the arc's second fence-catch).
+///
+/// # Panics
+///
+/// Loudly, when the seed list is too short or any selected seed falls
+/// outside the replicate's decade.
+#[must_use]
+pub fn decade_for(seeds: &[u64], r: usize) -> Vec<u64> {
+    assert!((0..=4).contains(&r), "replicate r ∈ 0..=4");
+    assert!(
+        seeds.len() >= 10 * (r + 1),
+        "seed list carries only {} entries — replicate r{r} needs {}",
+        seeds.len(),
+        10 * (r + 1)
+    );
+    let decade: Vec<u64> = seeds.iter().copied().skip(10 * r).take(10).collect();
+    let (lo, hi) = (201 + 10 * r as u64, 210 + 10 * r as u64);
+    assert!(
+        decade.iter().all(|&s| (lo..=hi).contains(&s)),
+        "seed map violation: r{r} must use {lo}–{hi}, got {decade:?}"
+    );
+    decade
+}
+
 /// Is this output path a BANKED (sha-pinned, of-record) model artifact?
 /// The burn must never write one — the r4-closeout lesson: this exact
 /// family once required plain-mode runs purely to protect adjudicated
@@ -1581,6 +1614,33 @@ mod tests {
         let src = vec![Trit::One, Trit::Zero, Trit::MinusOne];
         let null = dose_matched_null(&src, &src, 205);
         assert_eq!(null, src, "zero-cell diff → zero-cell null");
+    }
+
+    #[test]
+    fn decade_for_pins_all_five_decades() {
+        // The pre-committed map (null_seeds.txt): 201–250 by decade.
+        let seeds: Vec<u64> = (201..=250).collect();
+        assert_eq!(decade_for(&seeds, 0), (201..=210).collect::<Vec<_>>());
+        assert_eq!(decade_for(&seeds, 1), (211..=220).collect::<Vec<_>>());
+        assert_eq!(decade_for(&seeds, 2), (221..=230).collect::<Vec<_>>());
+        // The ruling's core: 231–240 ARE r3's decade (the stale refusal
+        // that halted rep3 denied exactly this).
+        assert_eq!(decade_for(&seeds, 3), (231..=240).collect::<Vec<_>>());
+        assert_eq!(decade_for(&seeds, 4), (241..=250).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn decade_for_refuses_map_violations() {
+        let seeds: Vec<u64> = (201..=250).collect();
+        // A 231-series seed displaced into r0's decade = violation.
+        let mut bad = seeds.clone();
+        bad[0] = 231;
+        assert!(std::panic::catch_unwind(|| decade_for(&bad, 0)).is_err());
+        // Too short a list = loud refusal, never a silent partial family.
+        let short: Vec<u64> = (201..=235).collect();
+        assert!(std::panic::catch_unwind(|| decade_for(&short, 3)).is_err());
+        // Out-of-range replicate = refused.
+        assert!(std::panic::catch_unwind(|| decade_for(&seeds, 5)).is_err());
     }
 
     #[test]

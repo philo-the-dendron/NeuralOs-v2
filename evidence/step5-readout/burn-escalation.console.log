@@ -1,0 +1,80 @@
+judge models/null-r4-s241.gguf → evidence/step5-readout/burn/null-r4-s241/p0
+judge models/null-r4-s241.gguf → evidence/step5-readout/burn/null-r4-s241/p1
+judge models/null-r4-s241.gguf → evidence/step5-readout/burn/null-r4-s241/p2
+judge models/null-r4-s241.gguf → evidence/step5-readout/burn/null-r4-s241/p3
+judge models/null-r4-s241.gguf → evidence/step5-readout/burn/null-r4-s241/p4
+judge chain done: evidence/step5-readout/burn/null-r4-s241 (single-run)
+judge models/null-r4-s242.gguf → evidence/step5-readout/burn/null-r4-s242/p0
+judge models/null-r4-s242.gguf → evidence/step5-readout/burn/null-r4-s242/p1
+judge models/null-r4-s242.gguf → evidence/step5-readout/burn/null-r4-s242/p2
+judge models/null-r4-s242.gguf → evidence/step5-readout/burn/null-r4-s242/p3
+judge models/null-r4-s242.gguf → evidence/step5-readout/burn/null-r4-s242/p4
+judge chain done: evidence/step5-readout/burn/null-r4-s242 (single-run)
+judge models/null-r4-s243.gguf → evidence/step5-readout/burn/null-r4-s243/p0
+judge models/null-r4-s243.gguf → evidence/step5-readout/burn/null-r4-s243/p1
+judge models/null-r4-s243.gguf → evidence/step5-readout/burn/null-r4-s243/p2
+judge models/null-r4-s243.gguf → evidence/step5-readout/burn/null-r4-s243/p3
+judge models/null-r4-s243.gguf → evidence/step5-readout/burn/null-r4-s243/p4
+judge chain done: evidence/step5-readout/burn/null-r4-s243 (single-run)
+judge models/null-r4-s244.gguf → evidence/step5-readout/burn/null-r4-s244/p0
+judge models/null-r4-s244.gguf → evidence/step5-readout/burn/null-r4-s244/p1
+judge models/null-r4-s244.gguf → evidence/step5-readout/burn/null-r4-s244/p2
+judge models/null-r4-s244.gguf → evidence/step5-readout/burn/null-r4-s244/p3
+judge models/null-r4-s244.gguf → evidence/step5-readout/burn/null-r4-s244/p4
+judge chain done: evidence/step5-readout/burn/null-r4-s244 (single-run)
+judge models/null-r4-s245.gguf → evidence/step5-readout/burn/null-r4-s245/p0
+judge models/null-r4-s245.gguf → evidence/step5-readout/burn/null-r4-s245/p1
+judge models/null-r4-s245.gguf → evidence/step5-readout/burn/null-r4-s245/p2
+judge models/null-r4-s245.gguf → evidence/step5-readout/burn/null-r4-s245/p3
+judge models/null-r4-s245.gguf → evidence/step5-readout/burn/null-r4-s245/p4
+judge chain done: evidence/step5-readout/burn/null-r4-s245 (single-run)
+judge models/null-r4-s246.gguf → evidence/step5-readout/burn/null-r4-s246/p0
+judge models/null-r4-s246.gguf → evidence/step5-readout/burn/null-r4-s246/p1
+judge models/null-r4-s246.gguf → evidence/step5-readout/burn/null-r4-s246/p2
+judge models/null-r4-s246.gguf → evidence/step5-readout/burn/null-r4-s246/p3
+judge models/null-r4-s246.gguf → evidence/step5-readout/burn/null-r4-s246/p4
+judge chain done: evidence/step5-readout/burn/null-r4-s246 (single-run)
+judge models/null-r4-s247.gguf → evidence/step5-readout/burn/null-r4-s247/p0
+judge models/null-r4-s247.gguf → evidence/step5-readout/burn/null-r4-s247/p1
+judge models/null-r4-s247.gguf → evidence/step5-readout/burn/null-r4-s247/p2
+judge models/null-r4-s247.gguf → evidence/step5-readout/burn/null-r4-s247/p3
+judge models/null-r4-s247.gguf → evidence/step5-readout/burn/null-r4-s247/p4
+judge chain done: evidence/step5-readout/burn/null-r4-s247 (single-run)
+judge models/null-r4-s248.gguf → evidence/step5-readout/burn/null-r4-s248/p0
+judge models/null-r4-s248.gguf → evidence/step5-readout/burn/null-r4-s248/p1
+judge models/null-r4-s248.gguf → evidence/step5-readout/burn/null-r4-s248/p2
+judge models/null-r4-s248.gguf → evidence/step5-readout/burn/null-r4-s248/p3
+judge models/null-r4-s248.gguf → evidence/step5-readout/burn/null-r4-s248/p4
+judge chain done: evidence/step5-readout/burn/null-r4-s248 (single-run)
+judge models/null-r4-s249.gguf → evidence/step5-readout/burn/null-r4-s249/p0
+judge models/null-r4-s249.gguf → evidence/step5-readout/burn/null-r4-s249/p1
+judge models/null-r4-s249.gguf → evidence/step5-readout/burn/null-r4-s249/p2
+judge models/null-r4-s249.gguf → evidence/step5-readout/burn/null-r4-s249/p3
+judge models/null-r4-s249.gguf → evidence/step5-readout/burn/null-r4-s249/p4
+judge chain done: evidence/step5-readout/burn/null-r4-s249 (single-run)
+judge models/null-r4-s250.gguf → evidence/step5-readout/burn/null-r4-s250/p0
+judge models/null-r4-s250.gguf → evidence/step5-readout/burn/null-r4-s250/p1
+judge models/null-r4-s250.gguf → evidence/step5-readout/burn/null-r4-s250/p2
+judge models/null-r4-s250.gguf → evidence/step5-readout/burn/null-r4-s250/p3
+judge models/null-r4-s250.gguf → evidence/step5-readout/burn/null-r4-s250/p4
+judge chain done: evidence/step5-readout/burn/null-r4-s250 (single-run)
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-r4.gguf → evidence/step5-readout/burn/on-r4/p0
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-r4.gguf → evidence/step5-readout/burn/on-r4/p1
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-r4.gguf → evidence/step5-readout/burn/on-r4/p2
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-r4.gguf → evidence/step5-readout/burn/on-r4/p3
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-r4.gguf → evidence/step5-readout/burn/on-r4/p4
+judge chain done: evidence/step5-readout/burn/on-r4 (double-run)
+=== leg [rep4] done (tail via recovery §3: nulls+judges) 2026-08-27T05:51:26Z ===
+=== leg [verdict] start 2026-08-27T05:51:26Z ===
+   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+    Finished `release` profile [optimized] target(s) in 26.61s
+     Running `target/release/examples/step5_aggregate evidence/step5-readout/burn`
+== step-5 aggregation over evidence/step5-readout/burn ==
+  on-r0: 2 flips · M3 Some(4.194099999999999) · nulls 10 · M3max 4.2565 → Mixed
+  on-r1: 1 flips · M3 Some(4.2509) · nulls 10 · M3max 4.2290 → Mixed
+  on-r2: 2 flips · M3 Some(4.197399999999998) · nulls 10 · M3max 4.2523 → NullConsistent
+  on-r3: 1 flips · M3 Some(4.1372) · nulls 10 · M3max 4.2202 → NullConsistent
+  on-r4: 2 flips · M3 Some(4.224199999999998) · nulls 10 · M3max 4.2209 → Separated
+
+verdict: 1/5 SEPARATED · 2 MIXED → MIXED present — escalation ladder §5 (one, pre-authorized)
+=== leg [verdict] done 2026-08-27T05:51:54Z ===

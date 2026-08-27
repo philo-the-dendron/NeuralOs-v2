@@ -11,11 +11,12 @@
 # Usage (from anywhere; the script cd's to the repo root):
 #   tools/burn.sh pre      # verify-free + identity tripwires + their judges (minutes)
 #   tools/burn.sh off      # driven OFF-r0 (~6-8 h) + judge --double
-#   tools/burn.sh rep0|rep1|rep2   # ON-r → nulls-r → judge nulls → judge ON (--double)
+#   tools/burn.sh rep0|rep1|rep2|rep3|rep4  # ON-r → nulls-r → judge nulls → judge ON (--double)
+#                                          (r3/r4 = the escalation windows, wrapped)
 #   tools/burn.sh domain   # DOMAIN arm + judge --double
 #   tools/burn.sh free     # judge the banked ck files (single-run)
 #   tools/burn.sh verdict  # step5_aggregate over the burn root
-#   tools/burn.sh all      # pre off rep0 rep1 rep2 domain free verdict, in order
+#   tools/burn.sh all      # pre off rep0..rep4 domain free verdict, in order
 #
 # Clearing a halt: inspect the log, fix, then
 #   rm evidence/step5-readout/burn/HALT
@@ -40,7 +41,7 @@ LOGS="$BURN/logs"
 HALT="$BURN/HALT"
 mkdir -p "$LOGS"
 
-LEG=${1:?usage: tools/burn.sh <pre|off|rep0|rep1|rep2|domain|free|verdict|all>}
+LEG=${1:?usage: tools/burn.sh <pre|off|rep0..rep4|domain|free|verdict|all>}
 
 if [ -f "$HALT" ]; then
   echo "HALT sentinel present (from a previous leg):" >&2
@@ -117,11 +118,13 @@ case "$LEG" in
   rep0)    leg_rep 0 ;;
   rep1)    leg_rep 1 ;;
   rep2)    leg_rep 2 ;;
+  rep3)    leg_rep 3 ;;
+  rep4)    leg_rep 4 ;;
   domain)  leg_domain ;;
   free)    leg_free ;;
   verdict) leg_verdict ;;
   all)
-    for l in pre off rep0 rep1 rep2 domain free verdict; do
+    for l in pre off rep0 rep1 rep2 rep3 rep4 domain free verdict; do
       echo "--- chain: dispatching leg [$l] ---"
       # A child leg's failure writes its own SPECIFIC halt sentinel
       # (the || arm runs outside the ERR trap, so this parent never

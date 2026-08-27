@@ -66,7 +66,11 @@ research runtime). `rust-toolchain.toml` pins **1.92.0** (slint 1.17
 MSRV — don't bump without checking).
 
 ```bash
-# Quality gates (what CI runs, .github/workflows/ci.yml):
+# Quality gates. `.gitea/workflows/ci.yml` IS THE GATE (origin is Gitea);
+# `.github/workflows/ci.yml` mirrors it as a second opinion. The two files
+# differ in exactly two ways: the `uses:` form (Gitea needs full URLs), and
+# a 13-line explanatory header on the Gitea file. Nothing else — any third
+# difference is drift, and one of them has stopped being a mirror.
 cargo check  --workspace --all-targets
 cargo test   --workspace                          # offline; 307 executed green (3 app, 208 snn, 96 rt) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
@@ -231,7 +235,12 @@ claims, reopening frozen records.
   moment they're spotted; style notes wait for review.
 - **Git discipline — main is merge-gated.** Work lands on
   `work/<name>` / `fix/<name>` branches; CI runs on the branch
-  (trigger widened to `**`); merge to main requires branch-CI green +
+  (trigger widened to `**`). **The Gitea run is the gate** —
+  `.gitea/workflows/ci.yml` on org runner `cp-desktop` (Caramoussin
+  org scope, self-hosted, docker, capped `--cpus=3 --memory=8g`).
+  The GitHub mirror's run is a second opinion and never blocks a
+  merge; do not wait on it, and do not treat its red as a gate.
+  Merge to main requires branch-CI green +
   review passed — mechanical conditions, no discretion, the builder
   may merge on them. Local green is one machine's opinion; CI on the
   pushed ref is the gate. Never force-push Gitea. Branches are

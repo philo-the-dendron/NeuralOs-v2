@@ -323,9 +323,12 @@ fn main() {
                     window = Some(
                         argv.get(i + 1)
                             .and_then(|s| s.parse::<usize>().ok())
-                            .unwrap_or_else(|| panic!("--window expects 0|1|2")),
+                            .unwrap_or_else(|| panic!("--window expects 0|1|2|3|4")),
                     );
-                    assert!(matches!(window, Some(0..=2)), "window r ∈ 0|1|2 (PREREG §4)");
+                    assert!(
+                        matches!(window, Some(0..=4)),
+                        "window r ∈ 0..=4 (PREREG §4 + the escalation amendment: r3/r4 wrap)"
+                    );
                     i += 2;
                 }
                 "--off" => {
@@ -354,11 +357,12 @@ fn main() {
     // PREREG §3 shape enforcement: OFF is ONE driven run (r0) + identity
     // surgeries for r1/r2 — a driven OFF on r1/r2 is the voided-arm
     // deviation the relay caught; refuse it loudly.
-    if off && matches!(window, Some(1..=2)) {
+    if off && matches!(window, Some(1..=4)) {
         panic!(
-            "PREREG §3: OFF = 1 driven run (r0) + identity surgeries (r1/r2). \
-             Use `--off` alone for the driven r0 toggle proof; use \
-             `--identity {w}` for the r1/r2 contamination tripwires.",
+            "PREREG §3: OFF = 1 driven run (r0) + identity surgeries (r1/r2) — the \
+             escalation adds ON windows only, never OFF (got --window {w}). Use \
+             `--off` alone for the driven r0 toggle proof; `--identity <r>` for \
+             the r1/r2 tripwires.",
             w = window.unwrap()
         );
     }
@@ -475,16 +479,37 @@ fn main() {
     };
     // H2: single truncated pass — the first min(STEPS, tokens) of the
     // stream, in order; never reaches the corpus end, so no wrap exists.
-    // Step-5 windows (PREREG §4): replicate r drives on tokens
-    // [1000·r, 1000·r+2000) — r0 ≡ the H2 window, byte-identical slice.
+    // Step-5 windows (PREREG §4 + the escalation amendment): r0–r2
+    // contiguous [1000·r, 1000·r+2000); r3/r4 WRAP the 4,411-token
+    // corpus (r3 = [3000,4411)+[0,589) · r4 = [4000,4411)+[0,1589) —
+    // exactly STEPS each, dose-comparable; the wrap is materialized
+    // into a contiguous buffer so every downstream consumer is
+    // wrap-agnostic). r0 ≡ the H2 window, byte-identical slice.
     let win_start = 1000 * arm_r;
-    let win_end = (win_start + STEPS).min(h_norm.len());
-    let n_steps = win_end - win_start;
-    let h_norm = &h_norm[win_start..win_end];
+    let n_tokens = h_norm.len();
+    let h_norm_owned: Vec<Vec<i32>>;
+    let h_norm: &[Vec<i32>] = if win_start + STEPS <= n_tokens {
+        &h_norm[win_start..win_start + STEPS]
+    } else {
+        h_norm_owned = (0..STEPS)
+            .map(|i| h_norm[(win_start + i) % n_tokens].clone())
+            .collect();
+        &h_norm_owned
+    };
+    let n_steps = h_norm.len();
     if step5_mode {
-        println!(
-            "drive   : window r{arm_r} — tokens [{win_start}, {win_end}) of {token_count} ({n_steps} steps; init-400 = the window's own first 400, PREREG §4)"
-        );
+        let end = win_start + STEPS;
+        if end <= n_tokens {
+            println!(
+                "drive   : window r{arm_r} — tokens [{win_start}, {end}) of {token_count} ({n_steps} steps; init-400 = the window's own first 400, PREREG §4)"
+            );
+        } else {
+            let tail = n_tokens - win_start;
+            let head = end - n_tokens;
+            println!(
+                "drive   : window r{arm_r} (wraps) — tokens [{win_start}, {n_tokens}) + [0, {head}) of {token_count} ({tail}+{head} = {n_steps} steps; init-400 = the window's own first 400, escalation amendment)"
+            );
+        }
     } else {
         println!(
             "drive   : single truncated pass — first {n_steps} of {token_count} tokens (no epochs, no wrap by construction)"
@@ -518,7 +543,12 @@ fn main() {
     // run.log's own derived k remains the pin of record (PREREG §4,
     // Rider A — these constants are the fence, not the pin).
     if step5_mode {
-        const K_EXPECTED: [f64; 3] = [10_060.46, 10_101.90, 10_007.65];
+        // r3/r4 pins from the BANKED escalation probe run
+        // (evidence/step5-readout/clamp_probe_escalation.log, sha
+        // 01d9bc61… — amendment 3: the wrapped-window k values are new
+        // pins, provenance banked before the burn).
+        const K_EXPECTED: [f64; 5] =
+            [10_060.46, 10_101.90, 10_007.65, 9_965.58, 10_054.74];
         let exp = K_EXPECTED[arm_r];
         assert!(
             (k - exp).abs() < 0.005,

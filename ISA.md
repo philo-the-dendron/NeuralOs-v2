@@ -4759,3 +4759,279 @@ c54177d, CI #67 green, verified from the API):
   branch, merged on green — the protocol's first exercise is itself.
 
 GUARD 1 honored (this append; the ISC-78 regex target untouched).
+
+## Session open (step-5 escalation to n=5, 2026-08-26)
+
+Branch: work/escalation-n5 (merge-gated per c998de2). Trigger: the
+n=3 mechanical verdict (0/3 SEPARATED · 2 MIXED: r0 M2-only, r1
+M3-only, r2 NullConsistent) fired PREREG §5's pre-authorized ladder.
+
+- **Rulings (principal, before any escalation arm ran):** seeds
+  extended 241–250 (10-null families everywhere); threshold = the
+  ratified aggregator's literal `s >= 2` UNCHANGED (decided after the
+  n=3 verdict, before any escalation arm ran — not a post-hoc
+  selection). PREREG amendment entry carries both verbatim.
+- **Wrap disclosed at its strongest:** r4's [0,1589) overlaps r0's
+  [0,2000) by 79% (the heaviest pairing in the design — named as a
+  number, with the close-out caveat rule recorded).
+- **Probe pins banked pre-burn:** clamp_probe_escalation.log (sha
+  01d9bc61…): r3 k 9965.58 · r4 k 10054.74; r0's ALL-H2-pins pass
+  through the modulo path = the wrap machinery's frozen-path proof.
+- Builds: --window 3|4 wrap (contiguous materialization, honest
+  wrap-arithmetic drive headers) · OFF-refusal extended to r3/r4 ·
+  step5_nulls decades 231–250 · burn.sh legs rep3/rep4. Battery +
+  review precede the burn (~14–16 h: 2 × 6h47m empirical + nulls +
+  judges), which re-runs verdict on n=5.
+- GUARD 1: this append, regex re-verified. GUARD 2: untouched — the
+  n=3 evidence stands banked; escalation EXTENDS the set per its own
+  pre-authorized ladder, re-litigates nothing.
+
+## Ruling (step-5 readout benchmark — the n=5 adjudication, 2026-08-27)
+
+Principal-ruled after the mechanical verdict landed
+(`evidence/step5-readout/burn/logs/leg-verdict.log`, run
+2026-08-27T05:51:54Z). Option B of three put to the principal:
+record the result as PRE-REGISTRATION-UNDEFINED and rule the
+scientific content, rather than retrofit a band to fit the data.
+
+**The mechanical result, n=5:**
+
+| r | flips | M3 (ON) | null max | M3 fires | band | driven by |
+|---|---|---|---|---|---|---|
+| r0 | 2 | 4.1941 | 4.2565 | no | Mixed | M2 only |
+| r1 | 1 | 4.2509 | 4.2290 | yes | Mixed | M3 only |
+| r2 | 2 | 4.1974 | 4.2523 | no | NullConsistent | — |
+| r3 | 1 | 4.1372 | 4.2202 | no | NullConsistent | — |
+| r4 | 2 | 4.2242 | 4.2209 | yes | **Separated** | M2 ∧ M3 |
+
+`1/5 SEPARATED · 2 MIXED · 2 NULL-CONSISTENT`.
+
+**THE RULING — the pre-registration defines no outcome here, and
+that is recorded rather than papered over.** The ratified
+aggregator's arms are: `s>=2` → TIER 3; `(0,0)` → CLEAN NULL;
+`s<=1 && m==0` → RESTS EVIDENCED; `m>0` → escalate. At
+`s=1, m=2` the first three do not match, and the fourth directs an
+escalation that §5 authorises exactly once and which is SPENT.
+No band covers this result. The escalation clause printed on the
+verdict line is therefore a STALE DIRECTIVE, not a ruling, and is
+not to be quoted as one.
+
+**What is ruled, and what is not:**
+
+- **Tier 3 is NOT demonstrated.** The bar is the ratified literal
+  `s >= 2`, held unchanged by the 2026-08-26 amendment (fixed
+  after the n=3 verdict, before any escalation arm ran). `s = 1`.
+- **"Rests evidenced" is NOT claimed.** That arm requires `m == 0`;
+  two replicates are MIXED. Reading §1's "no MIXED-only escalation
+  rescue" as "the escalation failed to rescue" would fit the
+  data — and would be a post-hoc re-reading of a threshold after
+  seeing it. Refused on those grounds.
+- **"Clean null" is NOT claimed** (requires `s=0, m=0`).
+- **No effect claim, in either direction, is available from this
+  benchmark at this corpus length.**
+
+**Why the lone SEPARATED does not carry a Tier-3 reading (recorded
+as the reason, not as an excuse found afterwards):**
+
+- r4's M3 clears its null family's maximum by **0.0033**
+  (4.2242 vs 4.2209) — 0.08%, against a max drawn from 10 nulls,
+  a high-variance statistic at that n. For scale, r1's M3
+  exceedance is **0.0219, 6.6x larger**, and r1 is only MIXED
+  because M2 did not fire. The SEPARATED label is carried by M2,
+  with M3 scraping the line.
+- r4 is the most overlap-compromised arm in the design: its
+  `[0,1589)` wrap overlaps r0's `[0,2000)` by **79%**, disclosed
+  at its strongest in the 2026-08-26 amendment BEFORE the burn.
+  The {r0,r4} close-out caveat was written for exactly this shape.
+
+**What DOES stand, evidenced:**
+
+- **The instrument is validated.** Calibration gate PASS 8/8
+  (`evidence/step5-readout/calibrate.log`): loud probes classified
+  loud byte-exactly, quiet probes zero-flip. PREREG §1's
+  precondition — a readout the calibration proves can tell loud
+  from quiet — is met. This discharges the paper's named
+  "uncalibrated instrument" limitation, which scoped calibration
+  as the first arm of the follow-on readout benchmark.
+- **The DOMAIN-CORRECTED covariate arm ran** (`burn/domain/`), the
+  named report-only fix for the sign-dominant-drive limitation.
+- **The binding constraint is corpus length, not replicate count.**
+  4,411 tokens with windows overlapping 50% pairwise (79% for
+  r4/r0) means the replicates share adaptation statistics; the
+  design cannot resolve Tier 3 either way at this length. More
+  arms on this corpus buy little. Step 8 needs a LONGER CORPUS.
+- **Consistency with the published record.** The deposited paper's
+  adjudication is BRANCH B, unattributed perturbation — a negative.
+  This result is consistent with it at greater n. No Zenodo
+  correction is triggered (contrast Z4, where the drive-calibration
+  description forced a v2).
+
+**Carried forward, NOT applied retroactively:** PREREG.md stays
+FROZEN as the record of what was committed to. The missing band is
+a defect to fix in the step-8 pre-registration, which must define
+an arm for `s>=1, m>0, escalation spent` before any arm runs. The
+aggregator's stale escalation string is a separate correctness
+item — a tool that emits a directive the protocol forbids — and any
+fix must refuse to quote an outcome, never introduce a new
+threshold.
+
+GUARD 1 honored (this append; the ISC-78 regex target untouched).
+GUARD 2 untouched — session-I/H2 adjudications stay frozen; this
+benchmark was a NEW pre-registration and re-litigates nothing.
+
+## Correction (cross-family review of bb2e0e5..6b8c2d0 — B1 accepted, 2026-08-27)
+
+Independent review by a non-Anthropic model (the builder was Claude;
+different training family chosen deliberately). One BLOCKING finding,
+verified at source by the builder before acceptance, and ACCEPTED.
+
+**B1 — WITHDRAWN: the calibration gate does NOT discharge the paper's
+"uncalibrated instrument" limitation.** The 2026-08-27 ruling entry
+above says it does. That sentence is wrong and is withdrawn here.
+
+- **What the paper demands** (`paper/sections/limitations.tex`): "no
+  positive control establishes that this judge could detect adaptation
+  *content* if it were present, and no scale ties |Δmargin| to a
+  behavioral magnitude. Calibration — a lesion/graft positive control
+  driven through the same splice machinery — precedes any future
+  interpretation."
+- **What actually ran**: `step5_aggregate.rs::calibrate()`, whose own
+  banner reads `"== step-5 calibration gate (banked logs, mechanical
+  parity) =="`. It re-reads BANKED artifacts —
+  `session-i-primary/null-d1`, `null-d3`, `null-d7`, and the
+  session-f loop legs — and asserts the readout classifier reproduces
+  their already-known flip destinations. **Zero new judge runs. No
+  lesion. No graft. No splice machinery. No magnitude scale.**
+- **The design that would have matched** is this ISA's own step-5
+  scoping (~line 4071): "positive control via the existing harness.rs
+  splice machinery (lesion/graft known-functional; if the graft lands
+  inside the null family, the readout is uninformative by
+  construction)". PREREG.md amended that away on 2026-08-23 to the
+  mechanical-parity design. That amendment is LEGITIMATE and pre-data
+  — it says plainly the gate "validates the INSTRUMENT, not the
+  experiment's outcome". But it replaced the very control the paper
+  promised, which is exactly WHY the paper's limitation is not
+  discharged by it.
+
+**What stands unchanged from the ruling:** "PREREG §1's precondition —
+a readout the calibration proves can tell loud from quiet — is met"
+is accurate (PREREG §1; `calibrate.log` 8/8). Only the discharge
+sentence over-claimed. The distinction is the whole point: mechanical
+parity proves the classifier reproduces known classifications; it
+cannot establish that the judge would detect adaptation content that
+was actually present.
+
+**Consequences, stated so no close-out misreads them:**
+
+- The paper's **"uncalibrated instrument" limitation REMAINS OPEN**
+  and stands as written in the deposit. The lesion/graft positive
+  control is still owed, and is a step-8 PREREQUISITE, not an option.
+- The ruling's "no Zenodo correction is triggered" stays correct, but
+  for the narrower reason stated there — the n=5 result is consistent
+  with the deposited BRANCH B negative. **It is NOT because any
+  limitation closed.** These two sentences must never be read together
+  as "limitation discharged, paper stands as written".
+
+**Also recorded from the same review (record-only):**
+
+- **The M2/M3 attribution is ENTAILED, not inferred.** `step5_band`
+  (`crates/neuralos-rt/src/judge.rs:445`) is a total function of
+  exactly (m2, m3): (T,T)→Separated, (T,F)|(F,T)→Mixed,
+  (F,F)→NullConsistent. The aggregator prints band AND the M3
+  comparands, so band + M3 pins M2 uniquely. The builder's method was
+  weak (inference from one output line); the conclusion is sound
+  because the band function is two-valued and total. Cited here so it
+  is checkable without re-deriving.
+- **"6.6x" is a point estimate.** Null maxima are printed at 4 dp
+  (`{null_m3_max:.4}`), so the true r1/r4 exceedance ratio is pinned
+  only to ~6.5–6.8. The argument survives either bound; the entry
+  states the precision tighter than the printed data supports.
+- **PREREG §1's prose and the aggregator's literal have diverged**;
+  the refusal rests on the literal, which `git blame` puts at bd8abfd
+  (2026-08-24 00:34) — BEFORE the n=3 verdict and before any
+  escalation arm existed. The refusal therefore rests on a threshold
+  predating all data. Step-8's pre-registration must state that the
+  outcome ARMS, not only §5's bands, are the ratified
+  operationalization — nothing currently gates that §1↔code gap.
+- **`paper/figs/mechanism.pdf` is tracked and regenerates
+  non-deterministically.** GUARD 1 invites running `mechanism.py` to
+  confirm the parse, which dirties the tree every time. Both the
+  builder and the reviewer hit this and restored it by hand. Candidate
+  for gitignore or a deterministic build flag.
+
+**Verified during this correction (closing the reviewer's one
+unverified item):** `ubuntu-latest` DOES resolve to `cp-desktop`.
+Gitea jobs API for run 840197 reports `runner: cp-desktop` on both
+legs; org runner 4429 advertises the `ubuntu-latest` label. The
+AGENTS.md claim is sound.
+
+GUARD 1 honored (append; ISC-78 regex target untouched). GUARD 2
+untouched.
+
+## Adjudication of conflicting review findings (four reviewers, 2026-08-27)
+
+Four independent non-builder reviews of this branch: one Claude-family,
+three non-Anthropic (Meta / Z.AI-GLM / NVIDIA lineages, via opencode).
+They CONFLICT on one finding. Settled here at source, not by vote —
+three reviewers agreeing is not a source either.
+
+**THE CONFLICT — is the "Rests evidenced" refusal a post-hoc
+narrowing? RULED: NO, not blocking.**
+
+Reviewer 3 filed it BLOCKING: ISA's refusal asserts the arm "requires
+`m == 0`", a condition "not in the PREREG text", and calls that a
+post-hoc narrowing of §1's own language. Reviewers 1 and 2 examined
+the same question and cleared it.
+
+Timeline, re-verified by the builder at source rather than taken from
+any reviewer:
+
+| event | when |
+|---|---|
+| PREREG ratified | 2026-08-23 |
+| `s <= 1 && m == 0` literal written (bd8abfd:202) | **2026-08-24 00:34** |
+| first data — n=3 verdict | 2026-08-26T06:11:37Z |
+| n=5 verdict | 2026-08-27T05:51:26Z |
+
+The literal predates the first data by **two days**. Post-hoc means
+chosen after seeing results; this was not. Reviewer 3's own finding #7
+records the same fact ("before n=3 verdict and before any escalation
+arm existed") — its #1 and #7 contradict each other, and #7 is the one
+that matches the repository.
+
+**But the substance under the wrong label is real, and is recorded:**
+the operationalization (2026-08-24) POSTDATES the ratified prose
+(2026-08-23) by one day. Pre-data — which is what protects against
+post-hoc contamination — but post-ratification, which is a genuine
+question about what was committed to. §1's prose standing alone does
+admit the "escalation failed to rescue" reading. The ruling does not
+foreclose that silently: it names the reading, concedes it fits the
+data, and refuses it. The refusal stands on the pre-data timing above.
+
+**Wording sharpened (the legitimate half of reviewer 3's finding):**
+where the ruling says "That arm requires `m == 0`", read: *the
+RATIFIED AGGREGATOR's arm* (`step5_aggregate.rs`), not PREREG §1's
+prose, which contains no such condition. The two have diverged; the
+divergence is already booked as a step-8 defect. Step-8's
+pre-registration must state, in the prose, that the outcome ARMS are
+part of the ratified operationalization and must be authored BEFORE
+ratification, not the day after.
+
+**ACCEPTED — reviewer 2's C1, which the other three missed: the
+whole-family status marker had gone stale.** `burn/README.md` still
+said "the adjudication is OPEN" and "does not exist yet", and
+`INDEX.md` said "adjudication OPEN, cite nothing as a finding" — while
+the ruling had landed on the SAME BRANCH. Both now point at the ISA
+ruling and name the outcome. This is the third stale-marker defect in
+this arc (the decade block, the evidence-guard glob, the aggregator's
+spent-escalation string); the pattern is documents describing a state
+the branch has already left.
+
+**Reviewer 3's finding #2 (calibration) duplicates B1**, already
+accepted and corrected in the preceding append. No further action.
+
+Findings across all four reviews, reconciled: **1 blocking (B1,
+corrected) · 4 cosmetic (all fixed) · the rest record-only.** Every
+accepted finding was verified at source by the builder before action.
+
+GUARD 1 honored (append). GUARD 2 untouched.
