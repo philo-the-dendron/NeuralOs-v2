@@ -1,0 +1,42 @@
+=== leg [pre] start 2026-08-24T19:55:43Z ===
+   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+    Finished `release` profile [optimized] target(s) in 18.46s
+     Running `target/release/examples/step5_aggregate --verify-free`
+  ck400: 61210 cells == banked 61210 : PASS
+  ck800: 71381 cells == banked 71381 : PASS
+  ck1200: 80391 cells == banked 80391 : PASS
+verify-free: ALL ck cell counts re-verified — FREE arm may be judged
+   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+    Finished `release` profile [optimized] target(s) in 11.62s
+     Running `target/release/examples/hybrid_invivo --identity 1`
+=== Session H: the in-vivo gate — the model's own activations drive the substrate ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen · step-5 arm: ON window r0
+
+decode  : 262144 trits (D-2 slice path)
+identity-r1: code 0 (must be 0) · scale 0 · S2 clean
+identity-r1: sha == base (4e0bf8b737b04315…) : PASS — judge double-run next
+wall 19.8s
+    Finished `release` profile [optimized] target(s) in 0.26s
+     Running `target/release/examples/hybrid_invivo --identity 2`
+=== Session H: the in-vivo gate — the model's own activations drive the substrate ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen · step-5 arm: ON window r0
+
+decode  : 262144 trits (D-2 slice path)
+identity-r2: code 0 (must be 0) · scale 0 · S2 clean
+identity-r2: sha == base (4e0bf8b737b04315…) : PASS — judge double-run next
+wall 15.6s
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r1.gguf → evidence/step5-readout/burn/identity-r1/p0
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r1.gguf → evidence/step5-readout/burn/identity-r1/p1
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r1.gguf → evidence/step5-readout/burn/identity-r1/p2
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r1.gguf → evidence/step5-readout/burn/identity-r1/p3
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r1.gguf → evidence/step5-readout/burn/identity-r1/p4
+judge chain done: evidence/step5-readout/burn/identity-r1 (double-run)
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r2.gguf → evidence/step5-readout/burn/identity-r2/p0
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r2.gguf → evidence/step5-readout/burn/identity-r2/p1
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r2.gguf → evidence/step5-readout/burn/identity-r2/p2
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r2.gguf → evidence/step5-readout/burn/identity-r2/p3
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-identity-r2.gguf → evidence/step5-readout/burn/identity-r2/p4
+judge chain done: evidence/step5-readout/burn/identity-r2 (double-run)
+=== leg [pre] done 2026-08-24T20:09:56Z ===

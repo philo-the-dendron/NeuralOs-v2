@@ -1,0 +1,23 @@
+=== leg [verdict] start 2026-08-26T06:11:37Z ===
+    Finished `release` profile [optimized] target(s) in 10.69s
+     Running `target/release/examples/step5_aggregate evidence/step5-readout/burn`
+== step-5 aggregation over evidence/step5-readout/burn ==
+  on-r0: 2 flips · M3 Some(4.194099999999999) · nulls 10 · M3max 4.2565 → Mixed
+  on-r1: 1 flips · M3 Some(4.2509) · nulls 10 · M3max 4.2290 → Mixed
+  on-r2: 2 flips · M3 Some(4.197399999999998) · nulls 10 · M3max 4.2523 → NullConsistent
+
+verdict: 0/3 SEPARATED · 2 MIXED → MIXED present — escalation ladder §5 (one, pre-authorized)
+=== leg [verdict] done 2026-08-26T06:11:48Z ===
+=== leg [verdict] start 2026-08-27T05:51:26Z ===
+   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+    Finished `release` profile [optimized] target(s) in 26.61s
+     Running `target/release/examples/step5_aggregate evidence/step5-readout/burn`
+== step-5 aggregation over evidence/step5-readout/burn ==
+  on-r0: 2 flips · M3 Some(4.194099999999999) · nulls 10 · M3max 4.2565 → Mixed
+  on-r1: 1 flips · M3 Some(4.2509) · nulls 10 · M3max 4.2290 → Mixed
+  on-r2: 2 flips · M3 Some(4.197399999999998) · nulls 10 · M3max 4.2523 → NullConsistent
+  on-r3: 1 flips · M3 Some(4.1372) · nulls 10 · M3max 4.2202 → NullConsistent
+  on-r4: 2 flips · M3 Some(4.224199999999998) · nulls 10 · M3max 4.2209 → Separated
+
+verdict: 1/5 SEPARATED · 2 MIXED → MIXED present — escalation ladder §5 (one, pre-authorized)
+=== leg [verdict] done 2026-08-27T05:51:54Z ===

@@ -1,0 +1,134 @@
+=== leg [rep0] start 2026-08-25T03:20:50Z ===
+    Finished `release` profile [optimized] target(s) in 9.66s
+     Running `target/release/examples/hybrid_invivo --window 0`
+=== Session H: the in-vivo gate — the model's own activations drive the substrate ===
+file    : models/Ternary-Bonsai-4B-Q2_0.gguf
+reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen · step-5 arm: ON window r0
+
+decode  : 262144 trits (D-2 slice path)
+corpus  : evidence/corpus_readme_pinned.txt (12148 bytes)
+tokens  : 4411 (vocab 151669)
+drive   : window r0 — tokens [0, 2000) of 4411 (2000 steps; init-400 = the window's own first 400, PREREG §4)
+scaling : corpus RMS 0.0447 → k = 10060.46 μA/unit (target 450 μA)
+k-check : r0 k 10060.46 == probe expectation 10060.46 : PASS
+clamp   : 568321/818000 = 69.477% clamped at ±1000 μA  ⚠ ABOVE 10% — recorded caveat
+          hottest dim 199 railed 1786× (89% of its steps)
+hist    : |I| <100 249679 · 100–150 0 · 150–300 0 · 300–600 0 · >600/railed 568321 (per dim-step)
+
+--- TIER 1: substrate gates (fixed weights, STDP off, in-vivo drive, CENTI grid) ---
+  rates  E Hz (i/c/z): 18.11 / 18.08 / 18.07   I Hz: 125.01 / 125.16 / 125.00
+  totals (i/c/z): 40571 / 40570 / 40535
+  H(i,c)=41555  H(i,z)=30724  H(c,z)=29013   L1(i,c)=1309  L1(i,z)=950  L1(c,z)=819
+  G2′ wire-liveness tripwire : PASS (weights borne in trains)
+  G0  arrangement-vs-census : H(i,c) > H(i,z) → 41555 > 30724 : PASS — firing reads model arrangement
+
+--- in-vivo adaptation (STDP on, γ=125, counters per the registration) ---
+  learn firing : 43.65 Hz/neuron; quarters 44.88 42.93 42.89 43.90
+  events 25302899 · flips 1112771 · pairing same-step 813962 · post-leads 7030561 · pre-leads 7030561
+  bucket-transition census:
+  −1→−1 ×       0  −1→ 0 ×  193198  −1→+1 ×       0
+   0→−1 ×  167171   0→ 0 ×       0   0→+1 ×  375604
+  +1→−1 ×       0  +1→ 0 ×  376798  +1→+1 ×       0
+  raw drift intra -161833 · inter -4715638   absorbed intra -286155 · inter -6576170   APPLIED intra +124322 · inter +1860532
+  Hamming vs imported: 87119/261632 = 0.3330
+  intra meanΔ +0.0805 (41412) · inter meanΔ +0.0976 (220220) — data-driven classes; |Δ| floor 0.05
+  mechanism label: [PAIRING-SELECTIVE, CLAMP-RECTIFIED — net-negative raw drift, 0-floor absorbs, applied residue potentiates]
+
+--- Verdict (per the frozen registration) ---
+  T1 G2′ tripwire   : PASS
+  T1 G0 arrangement : PASS
+  adaptation alive  : PASS (flips > 0)
+  not collapsed     : PASS
+  selective (descriptive — drift-liveness, classes dissolved): movement present
+wall 22244.9s   peak RSS 6595 MB (budget 1536)
+
+--- TIER-2 export (the shared harness surgery unit; S2 re-read on EVERY file) ---
+  final: 87119 cells · code 48878 · scale 0 (must be 0) · S2 clean
+  ON r0 re-pin: sha == banked 71f2518a… : PASS (H2 reproduced through the new path)
+  wrote models/Ternary-Bonsai-4B-Q2_0-invivo-r0.gguf — sha 71f2518a2d783cb409a3c06907a20bed1f1b5688378fc7ea7e8a0f6e16d9749b — fork judge next
+   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+    Finished `release` profile [optimized] target(s) in 22.69s
+     Running `target/release/examples/step5_nulls --replicate 0`
+=== step-5 nulls: replicate r0 — dose-matched shuffled-drift ×10 ===
+orig    : models/Ternary-Bonsai-4B-Q2_0.gguf
+ON      : models/Ternary-Bonsai-4B-Q2_0-invivo-r0.gguf
+seeds   : [201, 202, 203, 204, 205, 206, 207, 208, 209, 210] (from evidence/step5-readout/null_seeds.txt; 231–240 escalation-reserved)
+ON diff : 87119 cells; composition {(0, 1): 26027, (1, 2): 29949, (2, 1): 31143}
+null-r0-s201: 87119 cells (exact dose) · S2 clean → models/null-r0-s201.gguf
+null-r0-s202: 87119 cells (exact dose) · S2 clean → models/null-r0-s202.gguf
+null-r0-s203: 87119 cells (exact dose) · S2 clean → models/null-r0-s203.gguf
+null-r0-s204: 87119 cells (exact dose) · S2 clean → models/null-r0-s204.gguf
+null-r0-s205: 87119 cells (exact dose) · S2 clean → models/null-r0-s205.gguf
+null-r0-s206: 87119 cells (exact dose) · S2 clean → models/null-r0-s206.gguf
+null-r0-s207: 87119 cells (exact dose) · S2 clean → models/null-r0-s207.gguf
+null-r0-s208: 87119 cells (exact dose) · S2 clean → models/null-r0-s208.gguf
+null-r0-s209: 87119 cells (exact dose) · S2 clean → models/null-r0-s209.gguf
+null-r0-s210: 87119 cells (exact dose) · S2 clean → models/null-r0-s210.gguf
+done — judge chains next (tools/run_prompts.sh, single-run per null).
+judge models/null-r0-s201.gguf → evidence/step5-readout/burn/null-r0-s201/p0
+judge models/null-r0-s201.gguf → evidence/step5-readout/burn/null-r0-s201/p1
+judge models/null-r0-s201.gguf → evidence/step5-readout/burn/null-r0-s201/p2
+judge models/null-r0-s201.gguf → evidence/step5-readout/burn/null-r0-s201/p3
+judge models/null-r0-s201.gguf → evidence/step5-readout/burn/null-r0-s201/p4
+judge chain done: evidence/step5-readout/burn/null-r0-s201 (single-run)
+judge models/null-r0-s202.gguf → evidence/step5-readout/burn/null-r0-s202/p0
+judge models/null-r0-s202.gguf → evidence/step5-readout/burn/null-r0-s202/p1
+judge models/null-r0-s202.gguf → evidence/step5-readout/burn/null-r0-s202/p2
+judge models/null-r0-s202.gguf → evidence/step5-readout/burn/null-r0-s202/p3
+judge models/null-r0-s202.gguf → evidence/step5-readout/burn/null-r0-s202/p4
+judge chain done: evidence/step5-readout/burn/null-r0-s202 (single-run)
+judge models/null-r0-s203.gguf → evidence/step5-readout/burn/null-r0-s203/p0
+judge models/null-r0-s203.gguf → evidence/step5-readout/burn/null-r0-s203/p1
+judge models/null-r0-s203.gguf → evidence/step5-readout/burn/null-r0-s203/p2
+judge models/null-r0-s203.gguf → evidence/step5-readout/burn/null-r0-s203/p3
+judge models/null-r0-s203.gguf → evidence/step5-readout/burn/null-r0-s203/p4
+judge chain done: evidence/step5-readout/burn/null-r0-s203 (single-run)
+judge models/null-r0-s204.gguf → evidence/step5-readout/burn/null-r0-s204/p0
+judge models/null-r0-s204.gguf → evidence/step5-readout/burn/null-r0-s204/p1
+judge models/null-r0-s204.gguf → evidence/step5-readout/burn/null-r0-s204/p2
+judge models/null-r0-s204.gguf → evidence/step5-readout/burn/null-r0-s204/p3
+judge models/null-r0-s204.gguf → evidence/step5-readout/burn/null-r0-s204/p4
+judge chain done: evidence/step5-readout/burn/null-r0-s204 (single-run)
+judge models/null-r0-s205.gguf → evidence/step5-readout/burn/null-r0-s205/p0
+judge models/null-r0-s205.gguf → evidence/step5-readout/burn/null-r0-s205/p1
+judge models/null-r0-s205.gguf → evidence/step5-readout/burn/null-r0-s205/p2
+judge models/null-r0-s205.gguf → evidence/step5-readout/burn/null-r0-s205/p3
+judge models/null-r0-s205.gguf → evidence/step5-readout/burn/null-r0-s205/p4
+judge chain done: evidence/step5-readout/burn/null-r0-s205 (single-run)
+judge models/null-r0-s206.gguf → evidence/step5-readout/burn/null-r0-s206/p0
+judge models/null-r0-s206.gguf → evidence/step5-readout/burn/null-r0-s206/p1
+judge models/null-r0-s206.gguf → evidence/step5-readout/burn/null-r0-s206/p2
+judge models/null-r0-s206.gguf → evidence/step5-readout/burn/null-r0-s206/p3
+judge models/null-r0-s206.gguf → evidence/step5-readout/burn/null-r0-s206/p4
+judge chain done: evidence/step5-readout/burn/null-r0-s206 (single-run)
+judge models/null-r0-s207.gguf → evidence/step5-readout/burn/null-r0-s207/p0
+judge models/null-r0-s207.gguf → evidence/step5-readout/burn/null-r0-s207/p1
+judge models/null-r0-s207.gguf → evidence/step5-readout/burn/null-r0-s207/p2
+judge models/null-r0-s207.gguf → evidence/step5-readout/burn/null-r0-s207/p3
+judge models/null-r0-s207.gguf → evidence/step5-readout/burn/null-r0-s207/p4
+judge chain done: evidence/step5-readout/burn/null-r0-s207 (single-run)
+judge models/null-r0-s208.gguf → evidence/step5-readout/burn/null-r0-s208/p0
+judge models/null-r0-s208.gguf → evidence/step5-readout/burn/null-r0-s208/p1
+judge models/null-r0-s208.gguf → evidence/step5-readout/burn/null-r0-s208/p2
+judge models/null-r0-s208.gguf → evidence/step5-readout/burn/null-r0-s208/p3
+judge models/null-r0-s208.gguf → evidence/step5-readout/burn/null-r0-s208/p4
+judge chain done: evidence/step5-readout/burn/null-r0-s208 (single-run)
+judge models/null-r0-s209.gguf → evidence/step5-readout/burn/null-r0-s209/p0
+judge models/null-r0-s209.gguf → evidence/step5-readout/burn/null-r0-s209/p1
+judge models/null-r0-s209.gguf → evidence/step5-readout/burn/null-r0-s209/p2
+judge models/null-r0-s209.gguf → evidence/step5-readout/burn/null-r0-s209/p3
+judge models/null-r0-s209.gguf → evidence/step5-readout/burn/null-r0-s209/p4
+judge chain done: evidence/step5-readout/burn/null-r0-s209 (single-run)
+judge models/null-r0-s210.gguf → evidence/step5-readout/burn/null-r0-s210/p0
+judge models/null-r0-s210.gguf → evidence/step5-readout/burn/null-r0-s210/p1
+judge models/null-r0-s210.gguf → evidence/step5-readout/burn/null-r0-s210/p2
+judge models/null-r0-s210.gguf → evidence/step5-readout/burn/null-r0-s210/p3
+judge models/null-r0-s210.gguf → evidence/step5-readout/burn/null-r0-s210/p4
+judge chain done: evidence/step5-readout/burn/null-r0-s210 (single-run)
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-r0.gguf → evidence/step5-readout/burn/on-r0/p0
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-r0.gguf → evidence/step5-readout/burn/on-r0/p1
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-r0.gguf → evidence/step5-readout/burn/on-r0/p2
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-r0.gguf → evidence/step5-readout/burn/on-r0/p3
+judge models/Ternary-Bonsai-4B-Q2_0-invivo-r0.gguf → evidence/step5-readout/burn/on-r0/p4
+judge chain done: evidence/step5-readout/burn/on-r0 (double-run)
+=== leg [rep0] done 2026-08-25T10:06:26Z ===
