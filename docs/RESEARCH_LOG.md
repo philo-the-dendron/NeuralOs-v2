@@ -975,20 +975,22 @@ fit the data after seeing it is the thing pre-registration exists to
 prevent. PREREG.md stayed frozen; the missing band is a step-8 defect to
 fix before arms run, not a retroactive edit.
 
-**What four independent reviews changed.** The branch went out to four
-non-builder reviewers across three model families (Claude, Meta, Z.AI,
-NVIDIA). One blocking finding landed, and it came from the reviewer that
-went OUTSIDE the brief's named claims: the ruling had asserted that the
-calibration gate discharged the paper's "uncalibrated instrument"
-limitation. It does not. The paper demands a lesion/graft positive
+**What external review changed.** The branch went out to non-builder
+reviewers before merge. One blocking finding landed: the ruling had
+asserted that the calibration gate discharged the paper's "uncalibrated
+instrument" limitation. It does not. The paper demands a lesion/graft positive
 control through the splice machinery; what ran prints "banked logs,
 mechanical parity" and re-reads already-known session-I and session-F
 artifacts — zero new judge runs. **That limitation remains open, and the
 positive control is now a step-8 prerequisite rather than a ticked box.**
-A second reviewer caught what the other three missed: the evidence
-family's own status markers still read "adjudication is OPEN" after the
-ruling had landed on the same branch. Reviewers disagreed on one
-finding; it was settled at source on the commit timeline, not by vote.
+Review also caught the evidence family's own status markers still
+reading "adjudication is OPEN" after the ruling had landed on the same
+branch. Reviewers disagreed on one finding; it was settled at source on
+the commit timeline, not by vote. The withdrawal, the timeline check
+that settled the disagreement, and every accepted finding are recorded
+with their citations in ISA (commits b3046d4, c60b689) — the reasoning
+is verifiable from this repo; the review reports themselves are not
+artifacts of it.
 
 **The finding that matters for what comes next: the binding constraint
 is corpus length, not replicate count.** 4,411 tokens with windows

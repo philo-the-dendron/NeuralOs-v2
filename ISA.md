@@ -5117,3 +5117,51 @@ Doctrine targets duplicated code and dead branches, not methodology
 provenance.
 
 GUARD 1 honored (append). GUARD 2 untouched.
+
+## Amendment (consolidation review — two findings accepted, 2026-08-27)
+
+Unscoped cross-family review of `main..9f06138` (NVIDIA-lineage
+reviewer; no claim-list given, deliberately). 0 blocking · 1 cosmetic ·
+8 record-only, of which two are accepted here.
+
+**1 — The additive ratio was correct and NOT reproducible. Method now
+stated.** The preceding consolidation entry asserts "code-only since
+the plan opened 2026-08-22 is +2,860 / −103 = 27.8:1" without the
+command. The reviewer, using a commit range over the whole repo, got
++23,587 / −137 — the same repo and period, ~8x apart. The exact
+command, for anyone re-deriving it:
+
+```
+git log --since=2026-08-22 --numstat --format='' -- crates \
+  | awk '{a+=$1;d+=$2} END {print "+"a" -"d}'
+```
+
+Scope: `crates/` only, date-bounded, whole-repo and `evidence/`
+excluded. The reviewer's concern that binary `.nir` fixtures inflate
+it does NOT apply — `numstat` prints `-` for binaries and awk coerces
+that to 0; 13 such rows contributed nothing. The number stands; only
+its derivation was missing. **A measurement in a permanent record that
+cannot be reproduced from what is written is an assertion, not a
+measurement.**
+
+**2 — An unverifiable claim removed from the research log.**
+`RESEARCH_LOG.md` said "four independent reviews across three model
+families". True, but unverifiable from this repo: no review artifacts
+exist in it. Softened to "external review", with a pointer to what IS
+checkable — the withdrawal, the timeline check that settled the
+reviewers' one disagreement, and every accepted finding, all cited in
+ISA (b3046d4, c60b689).
+
+**Banking the review reports was considered and REFUSED.** The
+distinction that decided it: the review was the TRIGGER for B1, not
+its EVIDENCE. B1's validity rests on `calibrate()`'s own banner,
+`paper/sections/limitations.tex`, and this ledger's ~4071 scoping —
+all in-repo and independently checkable, all cited in the correction
+append. Adding pasted chat reports to `evidence/` would buy
+attribution (who noticed) at the cost of weakening what `evidence/`
+means (sha-pinned machine output). The methodological observation —
+that cross-family review found what same-family review missed — is
+recorded in the principal's own knowledge base, not here, because this
+repo cannot verify it either.
+
+GUARD 1 honored (append). GUARD 2 untouched.
