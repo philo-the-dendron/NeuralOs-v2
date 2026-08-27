@@ -5223,3 +5223,50 @@ under a flattened drive still says nothing about the ON arms. Both
 gate step 8; neither substitutes for the other.
 
 GUARD 1 honored (append). GUARD 2 untouched.
+
+## Correction (constraint 10's line citation was stale, 2026-08-27)
+
+Surfaced by the reviewer's own verification, though it did not flag it:
+the review located the unit bug at `hybrid_invivo.rs:531/538/573/575`
+and verified each line's content. Constraint 10 cites it as
+"`hybrid_invivo.rs:343` vs `:325`". Both cannot be current. Checked:
+
+- **Today**, `:325` is `.and_then(|s| s.parse::<usize>().ok())` and
+  `:343` is `identity = Some(` — CLI argument parsing, unrelated to
+  scaling. **The citation in constraint 10 is STALE.**
+- **At `bfa0f98`**, where the 2026-08-23 drive-domain finding was
+  recorded, `:325` WAS `sum += (v as f64 / 1000.0).powi(2)` (the
+  norm-unit RMS) and `:343` WAS `let raw = (row[d] as f64) * k` (the
+  bug). The historical entry (~4453) was CORRECT WHEN WRITTEN and
+  stands as record.
+
+The burn-builds commits added `--off`, `--identity` and
+`--domain-corrected` and grew the file ~190 lines, shifting both.
+
+**Current locations, verified line-by-line this session:**
+
+| line | content | role |
+|---|---|---|
+| 531 | `sum += (v as f64 / 1000.0).powi(2);` | RMS computed on NORM units |
+| 538 | `let k = TARGET_RMS_UA / rms_norm_units;` | k is μA per NORM unit |
+| 575 | `(row[d] as f64) * k` | **THE BUG** — k applied to MILLI values |
+| 573 | `(row[d] as f64 / 1000.0) * k` | domain-corrected — k on norm units |
+
+**How this happened, because the class matters more than the
+instance.** The citation was lifted from a historical ISA entry into a
+FORWARD-LOOKING constraint without re-verification. Correct as record,
+wrong as instruction. This is the fourth instance today of the same
+shape — code encoding a world that has moved (the decade block, the
+evidence-guard glob, the "adjudication OPEN" markers, now this) — and
+the first one the builder caused while writing a constraint designed
+to stop a different repeat.
+
+**Standing rule for the step-8 pre-registration and any forward-looking
+document: cite by SYMBOL, not by line number.** Line numbers rot on
+every insertion above them; `hybrid_invivo.rs`'s scaling application
+and its RMS derivation are stable names, their line numbers are not. A
+historical entry may keep its line numbers — it is a record of a
+moment. A constraint may not.
+
+GUARD 1 honored (append; the historical entry untouched, per
+append-only — it is correct as written). GUARD 2 untouched.
