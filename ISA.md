@@ -5165,3 +5165,61 @@ recorded in the principal's own knowledge base, not here, because this
 repo cannot verify it either.
 
 GUARD 1 honored (append). GUARD 2 untouched.
+
+## Amendment (step-8 constraints — the tenth, the drive, 2026-08-27)
+
+The consolidated list of nine (same session, above) is one short, and
+the missing one is the most consequential: **nothing in it requires
+step 8 to fix the drive.** Constraint 6 records that the
+DOMAIN-CORRECTED arm ran report-only and "seeds the design" — a
+description of what happened, not a requirement on what comes next.
+Added now rather than next session, because the nine became scattered
+in the first place by each feeling obvious when noticed.
+
+**10. THE DRIVE MUST BE CORRECTED, AND ITS DISTRIBUTION MEASURED AND
+REPORTED, BEFORE ANY STEP-8 ARM RUNS.**
+
+Step 5 asked STDP to learn timing structure from a signal that carried
+almost none. The clamp probe measured window r0 exactly (self-verified
+— it reproduces every banked H2 pin, k 10060.46, 4411 tokens;
+`evidence/step5-readout/clamp_probe.log` sha 61e04bbb…):
+
+- clamp fraction **568,321 / 818,000 = 69.477% railed**
+- histogram **[249679, 0, 0, 0, 568321]** — the three middle buckets
+  are EMPTY. Not merely sign-dominant: the drive carried essentially
+  no magnitude information at all, only sign.
+- pre-clamp p50 **311,874 μA** against the registration's **450 μA**
+  target — ~1000× — p90 523,144 · p99 1,881,305 · max 4,839,080.
+
+Cause is a unit bug, not a design choice: milli-domain values
+multiplied by a `k` derived from norm-unit RMS
+(`hybrid_invivo.rs:343` vs `:325`).
+
+**Why this is a prerequisite and not a nice-to-have.** A null measured
+on a flattened drive cannot distinguish "the substrate does not adapt"
+from "the substrate was given nothing to adapt to". Step 5's ON arms
+ran the H2-comparable drive BY RULING (PREREG §2 — comparability with
+the adjudicated record was that benchmark's point), which was correct
+for step 5 and is wrong for step 8: step 8's question is about
+adaptation itself, not comparability with a prior run.
+
+Required of any step-8 pre-registration:
+
+- the corrected drive is the ON arms' drive, not a report-only
+  covariate;
+- the pre-clamp distribution is measured and reported for every
+  window before its arm runs — the empty-middle histogram is the
+  falsifier's shape, and a drive that reproduces it voids the arm;
+- **per-dimension standardization** is named in
+  `paper/sections/limitations.tex` as the deeper fix beyond domain
+  correction. It is an OPTION to rule on at design time, not a
+  silent default — it is a further instrument change.
+
+**Interaction with constraint 1 (the positive control), stated so the
+order is not lost:** these compose and must not be conflated. The
+positive control asks *can this readout detect content when present*;
+the drive asks *was there anything to detect*. A graft that separates
+under a flattened drive still says nothing about the ON arms. Both
+gate step 8; neither substitutes for the other.
+
+GUARD 1 honored (append). GUARD 2 untouched.
