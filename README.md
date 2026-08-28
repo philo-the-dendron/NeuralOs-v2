@@ -50,7 +50,7 @@ NeuralOs-v2/
 
 | Component | State |
 |---|---|
-| `neuralos-snn` | Active and validated. `cargo test -p neuralos-snn`, `cargo check --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass. Published on crates.io at `0.1.0-alpha.4` (2026-08-22; NIR structured entry + HDF5 evidence gate); the tree carries the alpha.5 changes — NIR general graph assembly (`build_network`, any reference-emitted four-kind graph fires; `nir_assembly_gate` 6/6). |
+| `neuralos-snn` | Active and validated. `cargo test -p neuralos-snn`, `cargo check --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass. Published on crates.io at `0.1.0-alpha.5` (2026-08-22; tree == published crate — NIR general graph assembly: `build_network`, any reference-emitted four-kind graph fires; `nir_assembly_gate` 6/6; registry-checked). |
 | `neuralos-app` | Active Slint visualizer wired directly to `neuralos-snn`. |
 | `neuralos-rt` | Research runtime that proved the ternary bridge. `publish = false`; kept as the executable record behind `paper/`. |
 | Ternary bridge | **Closed chapter** — gates adjudicated, record in `docs/RESEARCH_LOG.md`, article in `paper/`. Reopening is a recorded fork, not default work. |
