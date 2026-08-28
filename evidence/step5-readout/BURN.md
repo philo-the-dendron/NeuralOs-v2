@@ -69,14 +69,18 @@ cargo run -p neuralos-rt --release --example step5_aggregate -- "$B"
   (step 4) and R18 (4b) slot into the burn window — different stack,
   zero shared surface; they never touch models/, the judge, or the
   evidence dirs above.
-- Seeds live ONLY in `null_seeds.txt` (201–230 main by decade;
-  231–240 escalation-reserved — the generator refuses them).
+- Seeds live ONLY in `null_seeds.txt` (201–250 by decade per ON
+  window: r0–r2 201–230, r3 231–240, r4 241–250 — the escalation
+  extension committed before any escalation arm ran).
 
 ## Expected totals
 
-5 driven-class runs (ON ×3, OFF-r0, DOMAIN) ≈ 29–41 h · 30 nulls +
-15 judged files × 2–4 min judge · aggregator renders the verdict table
+7 driven-class runs (ON ×5, OFF-r0, DOMAIN) · 50 nulls +
+judged files × 2–4 min judge · aggregator renders the verdict table
 mechanically (no hand-counted verdicts).
+
+> Amended post-escalation (n=3 → n=5); pre-escalation expectations:
+> PREREG.md §4 / §5 escalation ladder + the ISA amendment (2026-08-26).
 
 ## Power-loss / reboot recovery
 

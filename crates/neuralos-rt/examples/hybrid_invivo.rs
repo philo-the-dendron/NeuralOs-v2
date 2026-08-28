@@ -119,8 +119,9 @@
 //!   plasticity NEVER re-enabled after the init cycle. STDP deltas
 //!   stay 0 ⇒ ternary residuals stay 0 ⇒ weights constant ⇒ export
 //!   asserts byte-≡ base (sha) — the end-to-end toggle proof (the
-//!   session-F lesson). `--off --window 1|2` is REFUSED — the r1/r2
-//!   OFF legs are identity surgeries, not driven runs.
+//!   session-F lesson). `--off --window 1..=4` is REFUSED (the assert
+//!   covers every non-r0 window post-escalation) — the r1/r2 OFF
+//!   legs are identity surgeries, not driven runs.
 //! - `--identity <r>` — OFF r1/r2: control-mode identity surgery of
 //!   the ISC-68 class (unadapted source trits through the full
 //!   surgery pipeline; no capture, no drive, minutes) writing

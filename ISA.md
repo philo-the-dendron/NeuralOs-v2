@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..84 sH+H2+sI, 85 R4 — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 37..42 s4-s4, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..84 sH+H2+sI, 85 R4, 86..88 R8 — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -5403,3 +5403,70 @@ re-litigated. GUARD 1 honored (append).
 Gates: check / clippy `-D warnings` / test (333 passed, 0 failed) /
 `no_std` — green. GUARD 1 honored (appends; frontmatter is the live
 state block, not ledger history). GUARD 2 untouched.
+
+## Session open (adjudicated findings — B1/B2/C1/C2/E1, 2026-08-28)
+
+Executing the two-reviewer adjudication (Ling + Muse Spark, adjudicated
+record in session scratchpad; merge of 60bacda already landed
+mechanically per protocol). Claims:
+
+- **G1 (B1)** — `step5_aggregate.rs` docstring states the ratified n=5
+  outcome rule, not the retired n=3 one. Probe: read-back against
+  PREREG §5 bands + the refusal arm.
+- **G2 (B2)** — `hybrid_invivo.rs` OFF doc names the full refused range
+  (`--off --window 1..4`), matching the assert. Probe: doc vs `:390`.
+- **G3 (C1)** — the Claims summary line enumerates all 88 closed ISCs:
+  adds `37..42 s4-s4` and `86..88 R8` (verified: ISC-37 block at :635
+  under Stage-4 s4 per the inner summary :634; ISC-86..88 under the R8
+  alpha.3 audit at :3084). Live-state line, GUARD-1-permitted (same
+  class as frontmatter).
+- **G4 (E1)** — BURN.md's stale figures overwritten per the ruling:
+  what ran (7 driven, 50 nulls, seeds 201–250 with r3 231–240 /
+  r4 241–250 per PREREG's own extension), one pointer line citing
+  PREREG by SECTION, never line number. Probe: read-back + grep for
+  no remaining "30 nulls"/"refuses them".
+- **G5 (C2)** — `app-repro.tex` names alpha.5; lands only through
+  `make gate` (the paper's language gate), no deposit touched. Probe:
+  gate exit 0.
+
+Anti-claims: D1/D2 untouched (frozen appends stay; the :410 assert is
+correct); no AGENTS.md doctrine lands this branch — F1/F2 are drafts
+for ratification; no Zenodo action of any kind. GUARD 1 honored
+(appends + live-state lines only). GUARD 2 untouched.
+
+## Close-out (adjudicated findings — B1/B2/C1/C2/E1, 2026-08-28)
+
+- **G1 CLOSED.** Aggregator docstring states the n=5 rule including the
+  no-outcome refusal band; matches PREREG §5 + the shipped match arms.
+- **G2 CLOSED.** OFF doc reads `--off --window 1..4`, matching the
+  `Some(1..=4)` assert.
+- **G3 CLOSED.** Claims summary line now enumerates 88/88: `37..42
+  s4-s4` and `86..88 R8` inserted; consistent with the inner Stage-4
+  summary (:634) and the R8 audit block.
+- **G4 CLOSED.** BURN.md: seeds 201–250 by decade (r3 231–240, r4
+  241–250), 7 driven / 50 nulls, pointer line citing PREREG §4/§5 by
+  section. Stale-strings sweep clean ("30 nulls"/"refuses them"/
+  "1|2 is REFUSED"/"≥2/3"/alpha.2 → zero hits across the four files).
+- **G5 CLOSED.** app-repro.tex names alpha.5; `make gate`: "language
+  gate: clean". No deposit touched.
+
+Gates green (check / clippy `-D warnings` / 333 tests / `no_std`);
+`paper/figs/mechanism.py` exits 0 through `.figvenv` (the ISC-78 parse
+target intact — a bare `python3` run fails only on missing matplotlib,
+which is the documented venv split, not a regression). D1/D2 untouched;
+F1/F2 drafted for ratification outside the tree. GUARD 1 honored.
+GUARD 2 untouched.
+
+## Amendment (round-2 review — registry truth + three corrections, 2026-08-28)
+
+Registry re-checked upstream (`cargo search`): alpha.5 IS published —
+C2 as landed was correct, and the stale records were elsewhere.
+Executed: README:53's alpha.4 publish claim corrected to alpha.5
+(registry-checked); the OFF doc's `1..4` notation fixed to `1..=4`
+(exclusive-range Rust syntax contradicted the `Some(1..=4)` assert);
+`mechanism.pdf` reverted to its pre-129a046 blob — it was regenerated
+by the figvenv parse check and rode along unnamed (the class F2 exists
+to catch). ISA:4029 left untouched per the D1 rule: true when written.
+**F1 + F2 ratified and landed in AGENTS.md** (f049bb9) as their own
+doctrine commit, F2 carrying the alpha.5 three-doc drift as its case
+in point. GUARD 1 honored (append). GUARD 2 untouched.

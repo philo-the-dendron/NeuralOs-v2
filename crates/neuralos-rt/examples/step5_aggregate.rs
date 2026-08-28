@@ -15,8 +15,11 @@
 //!
 //! The verdict is COMPUTED from the PREREG §5 bands (library
 //! `step5_band`); no hand-counted verdicts anywhere. Tier-3 outcome
-//! rule: ≥2/3 SEPARATED = demonstrated; ≤1/3 = rests evidenced;
-//! 0/3 null-consistent = clean null. Delta-zero publishable.
+//! rule (n=5, post-escalation): s ≥ 2/5 SEPARATED = demonstrated;
+//! s ≤ 1 with 0 MIXED = rests evidenced; 0/5 with 0 MIXED = clean
+//! null, delta-zero publishable; s ≤ 1 with MIXED present = NO
+//! OUTCOME QUOTABLE — the one pre-authorized escalation is spent
+//! (PRE-REGISTRATION-UNDEFINED; ISA ruling 2026-08-27).
 //!
 //! Usage:
 //!   cargo run -p neuralos-rt --release --example step5_aggregate -- --calibrate
