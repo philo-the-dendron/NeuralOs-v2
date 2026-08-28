@@ -48,13 +48,7 @@ NeuralOs-v2/
 
 ## Current status
 
-| Component | State |
-|---|---|
-| `neuralos-snn` | Active and validated. `cargo test -p neuralos-snn`, `cargo check --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass. Published on crates.io at `0.1.0-alpha.5` (2026-08-22; tree == published crate — NIR general graph assembly: `build_network`, any reference-emitted four-kind graph fires; `nir_assembly_gate` 6/6; registry-checked). |
-| `neuralos-app` | Active Slint visualizer wired directly to `neuralos-snn`. |
-| `neuralos-rt` | Research runtime that proved the ternary bridge. `publish = false`; kept as the executable record behind `paper/`. |
-| Ternary bridge | **Closed chapter** — gates adjudicated, record in `docs/RESEARCH_LOG.md`, article in `paper/`. Reopening is a recorded fork, not default work. |
-| Distro / crypto / bare-metal deployment | Important longer-term directions, but not the current center of gravity of this workspace slice. |
+`neuralos-snn` `0.1.0-alpha.5` on crates.io · record DOIs: paper [10.5281/zenodo.22064018](https://doi.org/10.5281/zenodo.22064018), source archive [10.5281/zenodo.22064020](https://doi.org/10.5281/zenodo.22064020). Open work lives in `docs/ROADMAP.md` § Practical next moves — this README is not a state source.
 
 ## Design principles
 

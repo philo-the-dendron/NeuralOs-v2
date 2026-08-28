@@ -4,6 +4,7 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
+head: "main@9f4ce74 · last:adjudicated-findings-2026-08-28 · open:ESP32-C3 board order, lesion/graft positive control · guards:1,2,3"
 started: 2026-08-15T12:55:00Z
 updated: 2026-08-28T00:00:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
@@ -5470,3 +5471,27 @@ to catch). ISA:4029 left untouched per the D1 rule: true when written.
 **F1 + F2 ratified and landed in AGENTS.md** (f049bb9) as their own
 doctrine commit, F2 carrying the alpha.5 three-doc drift as its case
 in point. GUARD 1 honored (append). GUARD 2 untouched.
+
+## Session open + close-out (the orientation doc — one commit, 2026-08-28)
+
+Principal-ratified landing brief relayed by the d2 session (cold-start
+measurement: ~11 tool calls to orient, zero doctrine loaded — AGENTS.md
+is not auto-read by a plain `claude`). Three changes, one commit:
+
+- **H1** — repo-root `CLAUDE.md` created, brief text verbatim, all
+  three swap-ins confirmed present (`head:` as read-order item 1; the
+  README-demotion clause in item 2; charter-trap closes on "read
+  `head:`"). Pointer-only by design: it restates nothing.
+- **H2** — frontmatter gains the `head:` line (live state, the ratified
+  frontmatter exception to GUARD 1), written at close-out from now on.
+- **H3** — README status table demoted to one external-facing line
+  (alpha.5 + both DOIs + a pointer); `docs/ROADMAP.md` § Practical next
+  moves is now the sole present-tense claimant on open work.
+
+Probes: `mechanism.py` exit 0 through `.figvenv` after the frontmatter
+edit (ISC-78 parse intact; the regenerated pdf discarded, not staged —
+the F2 ride-along class); swap-ins grep-confirmed; no other file
+touched. Anti-claims held: no ISA history edits, no AGENTS.md change,
+no VISION/ROADMAP rewrite. The baseline re-measurement belongs to the
+principal's fresh session, not this one. GUARD 1 honored (append +
+live-state lines). GUARD 2 untouched.
