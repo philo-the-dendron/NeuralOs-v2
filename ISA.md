@@ -5403,3 +5403,33 @@ re-litigated. GUARD 1 honored (append).
 Gates: check / clippy `-D warnings` / test (333 passed, 0 failed) /
 `no_std` — green. GUARD 1 honored (appends; frontmatter is the live
 state block, not ledger history). GUARD 2 untouched.
+
+## Session open (adjudicated findings — B1/B2/C1/C2/E1, 2026-08-28)
+
+Executing the two-reviewer adjudication (Ling + Muse Spark, adjudicated
+record in session scratchpad; merge of 60bacda already landed
+mechanically per protocol). Claims:
+
+- **G1 (B1)** — `step5_aggregate.rs` docstring states the ratified n=5
+  outcome rule, not the retired n=3 one. Probe: read-back against
+  PREREG §5 bands + the refusal arm.
+- **G2 (B2)** — `hybrid_invivo.rs` OFF doc names the full refused range
+  (`--off --window 1..4`), matching the assert. Probe: doc vs `:390`.
+- **G3 (C1)** — the Claims summary line enumerates all 88 closed ISCs:
+  adds `37..42 s4-s4` and `86..88 R8` (verified: ISC-37 block at :635
+  under Stage-4 s4 per the inner summary :634; ISC-86..88 under the R8
+  alpha.3 audit at :3084). Live-state line, GUARD-1-permitted (same
+  class as frontmatter).
+- **G4 (E1)** — BURN.md's stale figures overwritten per the ruling:
+  what ran (7 driven, 50 nulls, seeds 201–250 with r3 231–240 /
+  r4 241–250 per PREREG's own extension), one pointer line citing
+  PREREG by SECTION, never line number. Probe: read-back + grep for
+  no remaining "30 nulls"/"refuses them".
+- **G5 (C2)** — `app-repro.tex` names alpha.5; lands only through
+  `make gate` (the paper's language gate), no deposit touched. Probe:
+  gate exit 0.
+
+Anti-claims: D1/D2 untouched (frozen appends stay; the :410 assert is
+correct); no AGENTS.md doctrine lands this branch — F1/F2 are drafts
+for ratification; no Zenodo action of any kind. GUARD 1 honored
+(appends + live-state lines only). GUARD 2 untouched.
