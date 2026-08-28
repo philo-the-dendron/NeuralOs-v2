@@ -181,9 +181,10 @@ exist because careful per-session process still produced drift.
   paper, README) and fixes or tombstones each hit in the same
   session; forward-looking citations name symbols or sections, never
   line numbers. Case in point: the alpha.5 publish moved the world
-  and three in-tree records didn't follow (README, app-repro.tex, a
-  runbook), each caught by a later reviewer instead of the amendment
-  itself. (Ratified 2026-08-28.)
+  and three in-tree records didn't follow — README and app-repro.tex,
+  both fixed, and an ISA append, tombstoned as true-when-written —
+  each caught by a later reviewer instead of by the amendment itself.
+  (Ratified 2026-08-28.)
 
 ## Conventions that matter
 
