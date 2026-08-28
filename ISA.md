@@ -2,10 +2,10 @@
 task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
-phase: climbing
-progress: 85/85
+phase: complete
+progress: 88/88
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-23T00:00:00Z
+updated: 2026-08-28T00:00:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -5358,3 +5358,48 @@ restart (02:01), the relaunch ran detached with its own watchdog —
 delegate liveness held by construction, not by session.
 
 GUARD 1 honored (append). GUARD 2 untouched.
+
+## Session open (three ruling follow-ups, 2026-08-28)
+
+Principal-ratified ("go take the first three"). Three small truth
+fixes, each with its probe:
+
+- **F1 — the aggregator refuses to quote the spent escalation.** The
+  `m > 0` outcome arm in `step5_aggregate.rs` still prints
+  "escalation ladder §5 (one, pre-authorized)" — a directive the n=5
+  ruling declared SPENT and unquotable. Fix per the ruling's own
+  words: refuse to quote an outcome on `s<=1, m>0`, introduce no new
+  threshold. Probe: run the aggregator arm-match on the recorded
+  verdict shape (s=1, m=2) and read the refusal line.
+- **F2 — ISA frontmatter tells the truth.** `progress: 85/85` → the
+  real closed-claim count; `updated:` → today; `phase:` → complete
+  (no arm in flight; the step-5 arc is adjudicated). Probe: read-back.
+- **F3 — `--window` doc matches the code.** The header still says
+  r ∈ 0|1|2; the code accepts 0..=4 since the escalation amendment
+  (r3/r4 wrap). The stale-citation correction named this exact class:
+  correct as record, wrong as instruction. Probe: grep header vs the
+  assert.
+
+Anti-claims: no threshold, band, or outcome vocabulary added to the
+aggregator (refusal only); GUARD 2 untouched — no adjudication
+re-litigated. GUARD 1 honored (append).
+
+## Close-out (three ruling follow-ups, 2026-08-28)
+
+- **F1 CLOSED (live).** `step5_aggregate` run read-only against the
+  banked burn (`evidence/step5-readout/burn`): per-replicate bands
+  reproduce the ruling table, and the outcome line now reads
+  "1/5 SEPARATED · 2 MIXED → NO OUTCOME QUOTABLE — … escalation SPENT
+  (PRE-REGISTRATION-UNDEFINED; ISA ruling 2026-08-27)". No threshold
+  added; the refusal cites the ruling and points the gap at step-8
+  constraint 3.
+- **F2 CLOSED (read-back).** Frontmatter: `phase: complete`,
+  `progress: 88/88` (grep count of `[x]` = 88, `[ ]` = 0),
+  `updated: 2026-08-28`.
+- **F3 CLOSED (read-back).** Header now says r ∈ 0..=4 with the wrap
+  note, matching the assert at the parse site; the r3/r4 k pins
+  (9965.58 / 10054.74) added beside r0–r2.
+
+Gates: check / clippy `-D warnings` / test (333 passed, 0 failed) /
+`no_std` — green. GUARD 1 honored (appends; frontmatter is the live
+state block, not ledger history). GUARD 2 untouched.

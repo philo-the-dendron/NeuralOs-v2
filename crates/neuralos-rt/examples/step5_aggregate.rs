@@ -224,7 +224,17 @@ fn aggregate(root: &Path) {
         (_, s, _) if s >= 2 => "TIER 3 DEMONSTRATED".to_string(),
         (_, 0, 0) => "CLEAN NULL — delta-zero publishable".to_string(),
         (_, s, m) if s <= 1 && m == 0 => "RESTS EVIDENCED".to_string(),
-        (_, _, m) if m > 0 => "MIXED present — escalation ladder §5 (one, pre-authorized)".to_string(),
+        // The one pre-authorized escalation (§5) is SPENT — the n=5
+        // ruling (ISA 2026-08-27) declared the old directive here a
+        // stale string not to be quoted. On s<=1 with MIXED present the
+        // ratified arms define no outcome: refuse to quote one, add no
+        // threshold. The gap itself is a defect the step-8
+        // pre-registration must close (its constraint 3).
+        (_, _, m) if m > 0 => {
+            "NO OUTCOME QUOTABLE — s<=1 with MIXED present and the one pre-authorized \
+             escalation SPENT (PRE-REGISTRATION-UNDEFINED; ISA ruling 2026-08-27)"
+                .to_string()
+        }
         _ => "see PREREG §1 bands".to_string(),
     };
     println!("\nverdict: {sep}/{} SEPARATED · {mixed} MIXED → {outcome}", verdict.len());

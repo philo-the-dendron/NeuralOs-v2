@@ -106,11 +106,14 @@
 //! under `--h2-compat` is BYTE-UNTOUCHED — window-0 ON must re-pin the
 //! banked H2 export. New modes NEVER write the banked artifact names:
 //!
-//! - `--window <r>` (r ∈ 0|1|2) — replicate corpus window, tokens
-//!   [1000·r, 1000·r+2000) (PREREG §4; r0 ≡ H2's window). k is
+//! - `--window <r>` (r ∈ 0..=4; the 2026-08-26 escalation amendment
+//!   added r3/r4, which WRAP the 4,411-token corpus) — replicate
+//!   corpus window, tokens [1000·r, 1000·r+2000) (PREREG §4;
+//!   r0 ≡ H2's window). k is
 //!   re-derived from the window's own tokens (Rider A:
 //!   procedure-pinned; probe expectations r0 10060.46 · r1 10101.90 ·
-//!   r2 10007.65 — the run.log is the pin of record).
+//!   r2 10007.65 · r3 9965.58 · r4 10054.74 (r3/r4 from the banked
+//!   escalation probe) — the run.log is the pin of record).
 //! - `--off` — the OFF arm, driven r0 ONLY (PREREG §3): the full
 //!   driven pipeline (capture + drive + steps + export) with
 //!   plasticity NEVER re-enabled after the init cycle. STDP deltas
