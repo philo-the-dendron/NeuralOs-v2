@@ -2,10 +2,10 @@
 task: "NeuralOS v2 — substrate, lab bench, gated ternary bridge"
 slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
-phase: climbing
-progress: 85/85
+phase: complete
+progress: 88/88
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-23T00:00:00Z
+updated: 2026-08-28T00:00:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -5383,3 +5383,23 @@ fixes, each with its probe:
 Anti-claims: no threshold, band, or outcome vocabulary added to the
 aggregator (refusal only); GUARD 2 untouched — no adjudication
 re-litigated. GUARD 1 honored (append).
+
+## Close-out (three ruling follow-ups, 2026-08-28)
+
+- **F1 CLOSED (live).** `step5_aggregate` run read-only against the
+  banked burn (`evidence/step5-readout/burn`): per-replicate bands
+  reproduce the ruling table, and the outcome line now reads
+  "1/5 SEPARATED · 2 MIXED → NO OUTCOME QUOTABLE — … escalation SPENT
+  (PRE-REGISTRATION-UNDEFINED; ISA ruling 2026-08-27)". No threshold
+  added; the refusal cites the ruling and points the gap at step-8
+  constraint 3.
+- **F2 CLOSED (read-back).** Frontmatter: `phase: complete`,
+  `progress: 88/88` (grep count of `[x]` = 88, `[ ]` = 0),
+  `updated: 2026-08-28`.
+- **F3 CLOSED (read-back).** Header now says r ∈ 0..=4 with the wrap
+  note, matching the assert at the parse site; the r3/r4 k pins
+  (9965.58 / 10054.74) added beside r0–r2.
+
+Gates: check / clippy `-D warnings` / test (333 passed, 0 failed) /
+`no_std` — green. GUARD 1 honored (appends; frontmatter is the live
+state block, not ledger history). GUARD 2 untouched.
