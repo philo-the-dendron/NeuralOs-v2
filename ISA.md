@@ -5456,3 +5456,17 @@ target intact — a bare `python3` run fails only on missing matplotlib,
 which is the documented venv split, not a regression). D1/D2 untouched;
 F1/F2 drafted for ratification outside the tree. GUARD 1 honored.
 GUARD 2 untouched.
+
+## Amendment (round-2 review — registry truth + three corrections, 2026-08-28)
+
+Registry re-checked upstream (`cargo search`): alpha.5 IS published —
+C2 as landed was correct, and the stale records were elsewhere.
+Executed: README:53's alpha.4 publish claim corrected to alpha.5
+(registry-checked); the OFF doc's `1..4` notation fixed to `1..=4`
+(exclusive-range Rust syntax contradicted the `Some(1..=4)` assert);
+`mechanism.pdf` reverted to its pre-129a046 blob — it was regenerated
+by the figvenv parse check and rode along unnamed (the class F2 exists
+to catch). ISA:4029 left untouched per the D1 rule: true when written.
+**F1 + F2 ratified and landed in AGENTS.md** (f049bb9) as their own
+doctrine commit, F2 carrying the alpha.5 three-doc drift as its case
+in point. GUARD 1 honored (append). GUARD 2 untouched.
