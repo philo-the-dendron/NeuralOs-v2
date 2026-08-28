@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@9f4ce74 · last:adjudicated-findings-2026-08-28 · open:ESP32-C3 board order, lesion/graft positive control · guards:1,2,3"
+head: "main@ff5527e · last:adjudicated-findings-2026-08-28 · open:ESP32-C3 board order, lesion/graft positive control · guards:1,2,3"
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-28T00:00:00Z
+updated: 2026-08-28T23:46:15Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -5495,3 +5495,39 @@ touched. Anti-claims held: no ISA history edits, no AGENTS.md change,
 no VISION/ROADMAP rewrite. The baseline re-measurement belongs to the
 principal's fresh session, not this one. GUARD 1 honored (append +
 live-state lines). GUARD 2 untouched.
+
+## Amendment (builder leg — orientation follow-ups B1-B4, C1 recorded, 2026-08-28)
+
+Executing sections B and C of the adjudicated round (adjudication
+relayed by the d2 session; every finding re-verified at source in this
+session before editing). Branch `fix/orientation-followups`, one
+commit, docs only. Sections D and E untouched by scope: D1 stays as-is
+(rejected), E1/E2 await the principal's ruling.
+
+- **B1+B1b** — CLAUDE.md GUARD 3 now carries the widened ratified text
+  (stranger-usable AND binaries on the release) and names the
+  artifacts — the `.nir` exporter, the ESP32-C3 board landing, gating
+  outreach — instead of "plan step" numbers, which resolved against
+  ROADMAP § Practical next moves numbering (4 = readout benchmark,
+  5 = board), not the ISA 8-step arc.
+- **B2** — the `evidence/` species guard regains its survive-a-deposit
+  clause (a Zenodo tarball carries no `.git`; point at frozen files,
+  never copy into living ones).
+- **B3** — frontmatter `head:` bumped 9f4ce74 → ff5527e and `updated:`
+  set to a real timestamp (live-state lines, the ratified GUARD 1
+  exception). **Lesson recorded: a merge commit does not update
+  `head:` — the bump is manual live-state work outside GUARD 1, done
+  at close-out or it ships stale.**
+- **B4** — read-order item 1 now carries the charter-trap warning
+  inline (`phase: complete` / `progress:` describe a closed task, not
+  the repo), so the antidote arrives with the first read, not as the
+  file's last section.
+- **C1 — OPEN, record only, NOT banked.** The 11→4 orientation-calls /
+  six-rules-named after-measurement is asserted with no sha-pinned
+  file in `evidence/` and no `evidence/INDEX.md` entry. By this repo's
+  own standard it is an evidence-free claim until the transcript is
+  banked or the number stops being cited as measured. The principal's
+  call; the adjudicator recommends banking.
+
+GUARD 1 honored (append + live-state lines only). GUARD 2 untouched.
+No AGENTS.md, ROADMAP, VISION, README, or evidence/ changes.

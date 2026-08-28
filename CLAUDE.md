@@ -12,7 +12,9 @@ fourth record that drifts, and drift is this project's failure mode.
 ## Read in this order before acting
 
 1. `ISA.md` frontmatter `head:` line: branch, last session, open items,
-   active guards. One read, current state.
+   active guards. One read, current state — and only that line: the
+   `phase: complete` / `progress:` fields two lines above it describe a
+   closed task, not the repo (§ Trap below).
 2. `docs/ROADMAP.md` § Priority order and § Practical next moves: the
    present-tense claimant on open work. README carries one
    external-facing status line and is not a state source.
@@ -37,8 +39,9 @@ fourth record that drifts, and drift is this project's failure mode.
 - **GUARD 2:** touching a frozen example's recorded verdict, or
   re-litigating Branch B, IS reopening the closed bridge chapter. Stop.
   Only the principal opens it.
-- **GUARD 3:** no outreach before both the `.nir` exporter (plan step 4)
-  and the ESP32-C3 board landing (plan step 3) exist.
+- **GUARD 3:** no outreach before the `.nir` exporter exists AND is
+  stranger-usable (binaries on the release); the exporter and the
+  ESP32-C3 board landing together gate outreach.
 - **Never force-push Gitea.** `origin` has two push URLs, so one
   `git push origin main` hits Gitea (canonical) and the GitHub mirror
   together. If Gitea is ahead, rebase. The mirror is the only
@@ -47,6 +50,9 @@ fourth record that drifts, and drift is this project's failure mode.
   immutable and never edited. Frozen-by-marker human docs (PREREG.md)
   are immutable because the marker says so. Living orchestration docs
   (BURN.md, PREP.md) are kept true, with git as their changelog.
+  Anything that must survive a deposit (a Zenodo tarball carries no
+  `.git`) is pointed at the frozen files, never copied into the
+  living ones.
 - **Every amendment ends with a grep sweep.** Move a figure (n, seeds,
   arms, windows, a published version) and you sweep the whole tree for
   every record of it in the same session. Forward citations name
