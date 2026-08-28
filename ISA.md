@@ -5358,3 +5358,28 @@ restart (02:01), the relaunch ran detached with its own watchdog —
 delegate liveness held by construction, not by session.
 
 GUARD 1 honored (append). GUARD 2 untouched.
+
+## Session open (three ruling follow-ups, 2026-08-28)
+
+Principal-ratified ("go take the first three"). Three small truth
+fixes, each with its probe:
+
+- **F1 — the aggregator refuses to quote the spent escalation.** The
+  `m > 0` outcome arm in `step5_aggregate.rs` still prints
+  "escalation ladder §5 (one, pre-authorized)" — a directive the n=5
+  ruling declared SPENT and unquotable. Fix per the ruling's own
+  words: refuse to quote an outcome on `s<=1, m>0`, introduce no new
+  threshold. Probe: run the aggregator arm-match on the recorded
+  verdict shape (s=1, m=2) and read the refusal line.
+- **F2 — ISA frontmatter tells the truth.** `progress: 85/85` → the
+  real closed-claim count; `updated:` → today; `phase:` → complete
+  (no arm in flight; the step-5 arc is adjudicated). Probe: read-back.
+- **F3 — `--window` doc matches the code.** The header still says
+  r ∈ 0|1|2; the code accepts 0..=4 since the escalation amendment
+  (r3/r4 wrap). The stale-citation correction named this exact class:
+  correct as record, wrong as instruction. Probe: grep header vs the
+  assert.
+
+Anti-claims: no threshold, band, or outcome vocabulary added to the
+aggregator (refusal only); GUARD 2 untouched — no adjudication
+re-litigated. GUARD 1 honored (append).
