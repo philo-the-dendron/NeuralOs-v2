@@ -5165,3 +5165,196 @@ recorded in the principal's own knowledge base, not here, because this
 repo cannot verify it either.
 
 GUARD 1 honored (append). GUARD 2 untouched.
+
+## Amendment (step-8 constraints — the tenth, the drive, 2026-08-27)
+
+The consolidated list of nine (same session, above) is one short, and
+the missing one is the most consequential: **nothing in it requires
+step 8 to fix the drive.** Constraint 6 records that the
+DOMAIN-CORRECTED arm ran report-only and "seeds the design" — a
+description of what happened, not a requirement on what comes next.
+Added now rather than next session, because the nine became scattered
+in the first place by each feeling obvious when noticed.
+
+**10. THE DRIVE MUST BE CORRECTED, AND ITS DISTRIBUTION MEASURED AND
+REPORTED, BEFORE ANY STEP-8 ARM RUNS.**
+
+Step 5 asked STDP to learn timing structure from a signal that carried
+almost none. The clamp probe measured window r0 exactly (self-verified
+— it reproduces every banked H2 pin, k 10060.46, 4411 tokens;
+`evidence/step5-readout/clamp_probe.log` sha 61e04bbb…):
+
+- clamp fraction **568,321 / 818,000 = 69.477% railed**
+- histogram **[249679, 0, 0, 0, 568321]** — the three middle buckets
+  are EMPTY. Not merely sign-dominant: the drive carried essentially
+  no magnitude information at all, only sign.
+- pre-clamp p50 **311,874 μA** against the registration's **450 μA**
+  target — ~1000× — p90 523,144 · p99 1,881,305 · max 4,839,080.
+
+Cause is a unit bug, not a design choice: milli-domain values
+multiplied by a `k` derived from norm-unit RMS
+(`hybrid_invivo.rs:343` vs `:325`).
+
+**Why this is a prerequisite and not a nice-to-have.** A null measured
+on a flattened drive cannot distinguish "the substrate does not adapt"
+from "the substrate was given nothing to adapt to". Step 5's ON arms
+ran the H2-comparable drive BY RULING (PREREG §2 — comparability with
+the adjudicated record was that benchmark's point), which was correct
+for step 5 and is wrong for step 8: step 8's question is about
+adaptation itself, not comparability with a prior run.
+
+Required of any step-8 pre-registration:
+
+- the corrected drive is the ON arms' drive, not a report-only
+  covariate;
+- the pre-clamp distribution is measured and reported for every
+  window before its arm runs — the empty-middle histogram is the
+  falsifier's shape, and a drive that reproduces it voids the arm;
+- **per-dimension standardization** is named in
+  `paper/sections/limitations.tex` as the deeper fix beyond domain
+  correction. It is an OPTION to rule on at design time, not a
+  silent default — it is a further instrument change.
+
+**Interaction with constraint 1 (the positive control), stated so the
+order is not lost:** these compose and must not be conflated. The
+positive control asks *can this readout detect content when present*;
+the drive asks *was there anything to detect*. A graft that separates
+under a flattened drive still says nothing about the ON arms. Both
+gate step 8; neither substitutes for the other.
+
+GUARD 1 honored (append). GUARD 2 untouched.
+
+## Correction (constraint 10's line citation was stale, 2026-08-27)
+
+Surfaced by the reviewer's own verification, though it did not flag it:
+the review located the unit bug at `hybrid_invivo.rs:531/538/573/575`
+and verified each line's content. Constraint 10 cites it as
+"`hybrid_invivo.rs:343` vs `:325`". Both cannot be current. Checked:
+
+- **Today**, `:325` is `.and_then(|s| s.parse::<usize>().ok())` and
+  `:343` is `identity = Some(` — CLI argument parsing, unrelated to
+  scaling. **The citation in constraint 10 is STALE.**
+- **At `bfa0f98`**, where the 2026-08-23 drive-domain finding was
+  recorded, `:325` WAS `sum += (v as f64 / 1000.0).powi(2)` (the
+  norm-unit RMS) and `:343` WAS `let raw = (row[d] as f64) * k` (the
+  bug). The historical entry (~4453) was CORRECT WHEN WRITTEN and
+  stands as record.
+
+The burn-builds commits added `--off`, `--identity` and
+`--domain-corrected` and grew the file ~190 lines, shifting both.
+
+**Current locations, verified line-by-line this session:**
+
+| line | content | role |
+|---|---|---|
+| 531 | `sum += (v as f64 / 1000.0).powi(2);` | RMS computed on NORM units |
+| 538 | `let k = TARGET_RMS_UA / rms_norm_units;` | k is μA per NORM unit |
+| 575 | `(row[d] as f64) * k` | **THE BUG** — k applied to MILLI values |
+| 573 | `(row[d] as f64 / 1000.0) * k` | domain-corrected — k on norm units |
+
+**How this happened, because the class matters more than the
+instance.** The citation was lifted from a historical ISA entry into a
+FORWARD-LOOKING constraint without re-verification. Correct as record,
+wrong as instruction. This is the fourth instance today of the same
+shape — code encoding a world that has moved (the decade block, the
+evidence-guard glob, the "adjudication OPEN" markers, now this) — and
+the first one the builder caused while writing a constraint designed
+to stop a different repeat.
+
+**Standing rule for the step-8 pre-registration and any forward-looking
+document: cite by SYMBOL, not by line number.** Line numbers rot on
+every insertion above them; `hybrid_invivo.rs`'s scaling application
+and its RMS derivation are stable names, their line numbers are not. A
+historical entry may keep its line numbers — it is a record of a
+moment. A constraint may not.
+
+GUARD 1 honored (append; the historical entry untouched, per
+append-only — it is correct as written). GUARD 2 untouched.
+
+## Session open (constraint 10 implemented — the drive default flips, 2026-08-28)
+
+Principal-ratified scope ("ok fix that", after the branch audit showed
+`fix/step8-drive-constraint` documents the constraint but changes no
+code): make the corrected drive the DEFAULT in `hybrid_invivo.rs`,
+preserve the legacy milli-domain path behind an explicit `--h2-compat`
+flag, and give the empty-middle histogram its teeth as a live falsifier
+guard. Claims, each with its probe:
+
+- **C1 — corrected default.** A flagless invocation applies k in NORM
+  units (`raw = v_milli/1000 × k`). Probe: code path + a live run's
+  drive-domain banner and clamp fraction (~2.7% expected vs 69.5%).
+- **C2 — `--h2-compat` is byte-verbatim legacy.** The milli expression
+  survives unchanged behind the flag; `--h2-compat --window 0` passes
+  the banked k-check pin 10060.46 through the new parsing. Probe: the
+  k-check line from a live run, killed before the burn.
+- **C3 — H2-comparable arms refuse to run without `--h2-compat`.**
+  `--window`, `--off`, and the legacy positional `export` pipeline
+  panic loudly, naming constraint 10, BEFORE the model loads. Probe:
+  run each refusal.
+- **C4 — `--h2-compat --domain-corrected` is refused** as a
+  contradiction (both name a drive domain). Probe: run it.
+- **C5 — the pre-clamp distribution is measured and reported** (p50 /
+  p90 / p99 / max + the 5-bucket histogram) for every driven arm,
+  before the substrate runs. Probe: live output.
+- **C6 — the falsifier has teeth.** A non-compat drive reproducing the
+  empty-middle shape (middle buckets 0, rail hits > 0) VOIDS the arm by
+  panic; under `--h2-compat` the same shape prints a recorded caveat
+  (comparability arm by ruling). Probe: code inspect + the caveat line
+  in the C2 run.
+- **C7 — banked artifacts untouched.** No `models/*-invivo*.gguf`
+  written or modified this session; PREREG.md and `evidence/` untouched.
+  Probe: `git status` + models/ mtimes.
+- **C8 — the four CI gates green** on the branch.
+
+Anti-claims: no silent drive change to any banked arm (refusal, never
+reinterpretation); no new example file (the no-clone rule); no PREREG
+edit. GUARD 1 honored (append). GUARD 2 untouched.
+
+## Close-out (constraint 10 implemented — the drive default flips, 2026-08-28)
+
+Code: one file, `crates/neuralos-rt/examples/hybrid_invivo.rs`
+(+110/−9). The corrected drive is the default; `--h2-compat` carries
+the milli-domain legacy byte-verbatim; the empty-middle falsifier is
+live code. Claim disposition:
+
+- **C1 CLOSED (code + banked equivalence).** The default expression is
+  the `--domain-corrected` path verbatim (`raw = v_milli/1000 × k`),
+  measured in step 5 at 2.72% clamped / RMS 450.0 µA
+  (clamp_probe.log). A second multi-hour capture to re-print that
+  number was declined as spend; the live bare run is available on ask.
+- **C2 CLOSED (live).** `--h2-compat --window 0`: k-check r0
+  10060.46 == probe expectation : PASS — the legacy path is
+  byte-verbatim through the new parsing/gating.
+- **C3 CLOSED (live).** `--window 0`, `--off`, and legacy `export`
+  each refuse without `--h2-compat`, naming constraint 10, before the
+  model loads (panics at the three gate sites).
+- **C4 CLOSED (live).** `--h2-compat --domain-corrected` refused as a
+  drive-domain contradiction.
+- **C5 CLOSED (live).** Pre-clamp report printed before Tier 1:
+  p50 311874.2 · p90 523143.7 · p99 1881305.4 · max 4839079.7 μA —
+  matching constraint 10's recorded figures (311,874 / 523,144 /
+  1,881,305 / 4,839,080) to rounding, and the histogram
+  [249679, 0, 0, 0, 568321] exactly. The instrument now measures what
+  the constraint demands, on every driven arm.
+- **C6 CLOSED (live caveat branch + code void branch).** Under
+  `--h2-compat` the falsifier shape printed the recorded caveat and
+  the run proceeded into Tier 1 (G2′ PASS, G0 PASS re-observed live);
+  the VOID branch is the same 6-line predicate with `norm_drive` true
+  — closed on inspection, its live trigger requires a broken corrected
+  drive by construction.
+- **C7 CLOSED.** Zero `models/*.gguf` modified this session (find
+  -newermt today = 0); the probe was watchdog-killed in the adaptation
+  phase, before any export path. PREREG.md and `evidence/` untouched.
+- **C8 CLOSED.** cargo check / test (333 passed, 0 failed) / clippy
+  `-D warnings` / `no_std` build — all green post-edit.
+
+Probe log: session scratchpad `h2compat-r0.log`, sha256 ab2fc1d7… —
+NOT banked into `evidence/` (verification-of-refactor, not a new
+result; the freeze doctrine's re-run-and-match proof). Second look:
+none elected — single-file instrument change, no auth/publish surface,
+every claim closed on direct probes; recorded per claim-11 visibility.
+Incident note: the first probe attempt died with a frozen box + session
+restart (02:01), the relaunch ran detached with its own watchdog —
+delegate liveness held by construction, not by session.
+
+GUARD 1 honored (append). GUARD 2 untouched.
