@@ -5270,3 +5270,42 @@ moment. A constraint may not.
 
 GUARD 1 honored (append; the historical entry untouched, per
 append-only — it is correct as written). GUARD 2 untouched.
+
+## Session open (constraint 10 implemented — the drive default flips, 2026-08-28)
+
+Principal-ratified scope ("ok fix that", after the branch audit showed
+`fix/step8-drive-constraint` documents the constraint but changes no
+code): make the corrected drive the DEFAULT in `hybrid_invivo.rs`,
+preserve the legacy milli-domain path behind an explicit `--h2-compat`
+flag, and give the empty-middle histogram its teeth as a live falsifier
+guard. Claims, each with its probe:
+
+- **C1 — corrected default.** A flagless invocation applies k in NORM
+  units (`raw = v_milli/1000 × k`). Probe: code path + a live run's
+  drive-domain banner and clamp fraction (~2.7% expected vs 69.5%).
+- **C2 — `--h2-compat` is byte-verbatim legacy.** The milli expression
+  survives unchanged behind the flag; `--h2-compat --window 0` passes
+  the banked k-check pin 10060.46 through the new parsing. Probe: the
+  k-check line from a live run, killed before the burn.
+- **C3 — H2-comparable arms refuse to run without `--h2-compat`.**
+  `--window`, `--off`, and the legacy positional `export` pipeline
+  panic loudly, naming constraint 10, BEFORE the model loads. Probe:
+  run each refusal.
+- **C4 — `--h2-compat --domain-corrected` is refused** as a
+  contradiction (both name a drive domain). Probe: run it.
+- **C5 — the pre-clamp distribution is measured and reported** (p50 /
+  p90 / p99 / max + the 5-bucket histogram) for every driven arm,
+  before the substrate runs. Probe: live output.
+- **C6 — the falsifier has teeth.** A non-compat drive reproducing the
+  empty-middle shape (middle buckets 0, rail hits > 0) VOIDS the arm by
+  panic; under `--h2-compat` the same shape prints a recorded caveat
+  (comparability arm by ruling). Probe: code inspect + the caveat line
+  in the C2 run.
+- **C7 — banked artifacts untouched.** No `models/*-invivo*.gguf`
+  written or modified this session; PREREG.md and `evidence/` untouched.
+  Probe: `git status` + models/ mtimes.
+- **C8 — the four CI gates green** on the branch.
+
+Anti-claims: no silent drive change to any banked arm (refusal, never
+reinterpretation); no new example file (the no-clone rule); no PREREG
+edit. GUARD 1 honored (append). GUARD 2 untouched.
