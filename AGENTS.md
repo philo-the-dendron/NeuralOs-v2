@@ -167,6 +167,23 @@ exist because careful per-session process still produced drift.
   audit). Until R4 (harness
   extraction) lands, a new experiment extends the pending-extraction
   list — it does not copy `hybrid_gate.rs` again.
+- **`evidence/` holds three species — treat each by its contract.**
+  sha-pinned machine outputs are immutable and never edited;
+  frozen-by-marker human docs (PREREG.md) are immutable because the
+  marker says so; living orchestration docs (BURN.md, PREP.md) are
+  kept true — git is their changelog, and anything that must survive
+  a deposit (a Zenodo tarball carries no `.git`) is pointed at the
+  frozen files, never copied into the living ones. (Ratified
+  2026-08-28, from the BURN.md staleness ruling.)
+- **Every amendment ends with a grep sweep.** An amendment that moves
+  the world — n, seeds, arms, windows, a published version — sweeps
+  the tree for every figure it changed (docs, docstrings, runbooks,
+  paper, README) and fixes or tombstones each hit in the same
+  session; forward-looking citations name symbols or sections, never
+  line numbers. Case in point: the alpha.5 publish moved the world
+  and three in-tree records didn't follow (README, app-repro.tex, a
+  runbook), each caught by a later reviewer instead of the amendment
+  itself. (Ratified 2026-08-28.)
 
 ## Conventions that matter
 
