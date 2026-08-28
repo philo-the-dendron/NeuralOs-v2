@@ -84,11 +84,27 @@
 //! adjudication artifacts — the R4 re-pin ran plain mode for exactly
 //! this reason).
 //!
+//! # Drive domain (step-8 constraint 10, 2026-08-28)
+//!
+//! The DEFAULT drive is NORM-UNIT (`raw = v_milli/1000 × k`) — the sH
+//! registration's stated intent. The historical milli-domain
+//! application (`raw = v_milli × k`; measured 69.477% railed, the
+//! empty-middle histogram — the step-5 clamp probe's unit-bug finding)
+//! is preserved byte-verbatim behind `--h2-compat`, and every
+//! H2-comparable invocation now REQUIRES that flag out loud:
+//! `--window`, `--off`, and the legacy positional `export` pipeline
+//! refuse to run without it, because their pins and banked artifacts
+//! were burned under that drive by ruling (PREREG §2). The pre-clamp
+//! distribution is measured and reported for every driven arm before
+//! the substrate runs; a non-compat drive that reproduces the
+//! empty-middle falsifier shape VOIDS the arm — loud abort, never a
+//! silent burn (ISA: the tenth step-8 constraint, 2026-08-27).
+//!
 //! # Step-5 arm modes (PREREG evidence/step5-readout/PREREG.md, 2026-08-23)
 //!
 //! Named flags select the burn-window arms; positional legacy behavior
-//! (no flags) is BYTE-UNTOUCHED — window-0 ON must re-pin the banked H2
-//! export. New modes NEVER write the banked artifact names:
+//! under `--h2-compat` is BYTE-UNTOUCHED — window-0 ON must re-pin the
+//! banked H2 export. New modes NEVER write the banked artifact names:
 //!
 //! - `--window <r>` (r ∈ 0|1|2) — replicate corpus window, tokens
 //!   [1000·r, 1000·r+2000) (PREREG §4; r0 ≡ H2's window). k is
@@ -111,7 +127,12 @@
 //! - `--domain-corrected` — the DOMAIN arm: k applied in NORM units
 //!   (`raw = v_milli/1000 × k`), the sH registration's stated intent
 //!   (measured 2.74% clamped / RMS 450.0 µA; report-only, PREREG §7).
-//!   Window 0, no checkpoints.
+//!   Window 0, no checkpoints. Since constraint 10 this is the same
+//!   drive as the default; the flag is kept for the ratified
+//!   invocation and its arm-named export.
+//! - `--h2-compat` — the milli-domain legacy drive (`raw = v_milli ×
+//!   k`), byte-verbatim. Required by `--window`/`--off`/legacy
+//!   `export`; contradicts `--domain-corrected`.
 //!
 //! Arm exports (final-only, NO checkpoints — the FREE arm judges the
 //! banked ck files): `…-invivo-r{r}.gguf` (ON) · `…-invivo-off-r0.gguf`
@@ -307,12 +328,14 @@ fn main() {
     let (TARGET_RMS_UA, CLAMP_UA, CLAMP_WARN_FRAC) = (p.target_rms_ua, p.clamp_ua, p.clamp_warn_frac);
     let DRIVEN_DIMS = exc_count(&p);
     // ----- argv: legacy positionals (model, export-flag, corpus) plus
-    // step-5 named flags. A flagless invocation is BYTE-UNTOUCHED
-    // legacy behavior (the r0 re-pin contract). -----
+    // step-5 named flags. A flagless invocation is a corrected-drive
+    // REPORT run (constraint 10); `--h2-compat` restores the
+    // BYTE-UNTOUCHED legacy behavior (the r0 re-pin contract). -----
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut window: Option<usize> = None;
     let mut off = false;
     let mut domain = false;
+    let mut h2_compat = false;
     let mut identity: Option<usize> = None;
     let mut positional: Vec<&str> = Vec::new();
     {
@@ -337,6 +360,10 @@ fn main() {
                 }
                 "--domain-corrected" => {
                     domain = true;
+                    i += 1;
+                }
+                "--h2-compat" => {
+                    h2_compat = true;
                     i += 1;
                 }
                 "--identity" => {
@@ -388,6 +415,34 @@ fn main() {
         .unwrap_or("models/Ternary-Bonsai-4B-Q2_0.gguf")
         .to_string();
     let legacy_export = positional.get(1).copied() == Some("export");
+    // ----- Drive-domain gating (step-8 constraint 10, ISA 2026-08-27).
+    // The corrected drive is the default; every H2-comparable arm was
+    // burned and pinned under the milli-domain drive BY RULING, so it
+    // must say so out loud. One flag reproduces any banked command
+    // byte-for-byte: add `--h2-compat`. These refusals fire BEFORE the
+    // model loads — a wrong arm costs seconds, never a burn. -----
+    if h2_compat && domain {
+        panic!(
+            "--h2-compat (milli-domain legacy) and --domain-corrected (norm-unit, \
+             now the default) both name a drive domain — drop one."
+        );
+    }
+    if !h2_compat && (window.is_some() || off) {
+        panic!(
+            "constraint 10: --window/--off are H2-comparable step-5 arms — their pins \
+             and banked artifacts were burned under the milli-domain drive. Re-runs \
+             must add --h2-compat; the corrected default never impersonates them."
+        );
+    }
+    if !h2_compat && legacy_export {
+        panic!(
+            "constraint 10: the legacy `export` pipeline writes the banked artifact \
+             names and must stay byte-comparable to them — add --h2-compat. A \
+             corrected-drive export waits for the step-8 pre-registration's own \
+             arm names."
+        );
+    }
+    let norm_drive = !h2_compat;
     let arm_r = window.unwrap_or(0);
     println!("=== Session H: the in-vivo gate — the model's own activations drive the substrate ===");
     println!("file    : {path}");
@@ -557,23 +612,46 @@ fn main() {
         println!("k-check : r{arm_r} k {k:.2} == probe expectation {exp:.2} : PASS");
     }
 
-    // Build the step drives; clamp audit. The DOMAIN arm applies k in
+    // Build the step drives; clamp audit. The default applies k in
     // NORM units (`v_milli/1000 × k`) — the sH registration's stated
     // intent (PREREG §3/§7; measured 2.74% clamped / RMS 450.0 µA).
-    // All other arms keep the milli-domain application byte-verbatim
-    // (H2-comparability is the benchmark's point).
+    // `--h2-compat` keeps the milli-domain application byte-verbatim
+    // (H2-comparability was step 5's point, BY RULING — and is the
+    // only thing that path is for since constraint 10).
+    println!(
+        "domain  : {} drive",
+        if norm_drive { "NORM-UNIT (corrected, constraint 10)" } else { "MILLI (H2-compat legacy)" }
+    );
     let mut inputs: Vec<Vec<i16>> = Vec::with_capacity(n_steps);
     let mut clamped: u64 = 0;
     let mut rail_dim = vec![0u64; DRIVEN_DIMS];
     let mut hist = [0u64; 5]; // <100, 100-150, 150-300, 300-600, railed
+    // Constraint 10: the pre-clamp distribution is measured for every
+    // arm — |raw| before the rails, same buckets — and reported before
+    // the substrate runs.
+    let mut pre_abs: Vec<f64> = Vec::with_capacity(n_steps * DRIVEN_DIMS);
+    let mut pre_hist = [0u64; 5];
     for row in h_norm {
         let mut inp = vec![I_INH; N];
         for d in 0..DRIVEN_DIMS {
-            let raw = if domain {
+            let raw = if norm_drive {
                 (row[d] as f64 / 1000.0) * k
             } else {
                 (row[d] as f64) * k
             };
+            let pa = raw.abs();
+            pre_abs.push(pa);
+            if pa < 100.0 {
+                pre_hist[0] += 1;
+            } else if pa < 150.0 {
+                pre_hist[1] += 1;
+            } else if pa < 300.0 {
+                pre_hist[2] += 1;
+            } else if pa <= 600.0 {
+                pre_hist[3] += 1;
+            } else {
+                pre_hist[4] += 1;
+            }
             let c = raw.clamp(-(CLAMP_UA as f64), CLAMP_UA as f64);
             if c.abs() >= CLAMP_UA as f64 {
                 clamped += 1;
@@ -610,6 +688,29 @@ fn main() {
         "hist    : |I| <100 {} · 100–150 {} · 150–300 {} · 300–600 {} · >600/railed {} (per dim-step)",
         hist[0], hist[1], hist[2], hist[3], hist[4]
     );
+    // Constraint 10's report + falsifier, BEFORE the substrate runs.
+    pre_abs.sort_unstable_by(|a, b| a.partial_cmp(b).expect("no NaN in drives"));
+    let pct = |q: f64| pre_abs[((pre_abs.len() - 1) as f64 * q) as usize];
+    println!(
+        "preclamp: p50 {:.1} · p90 {:.1} · p99 {:.1} · max {:.1} μA (target {TARGET_RMS_UA}) — hist <100 {} · 100–150 {} · 150–300 {} · 300–600 {} · >600 {}",
+        pct(0.50), pct(0.90), pct(0.99), pre_abs[pre_abs.len() - 1],
+        pre_hist[0], pre_hist[1], pre_hist[2], pre_hist[3], pre_hist[4]
+    );
+    let empty_middle = pre_hist[1] == 0 && pre_hist[2] == 0 && pre_hist[3] == 0 && clamped > 0;
+    if empty_middle {
+        if norm_drive {
+            panic!(
+                "ARM VOIDED (constraint 10): the drive reproduces the empty-middle \
+                 falsifier shape — middle buckets 0, {clamped} rail hits. A null \
+                 measured on this drive cannot distinguish 'does not adapt' from \
+                 'given nothing to adapt to'. Fix the drive before any arm runs."
+            );
+        }
+        println!(
+            "preclamp: ⚠ empty-middle falsifier shape — expected for the H2-compat \
+             legacy drive; recorded caveat, comparability use only (constraint 10)"
+        );
+    }
     println!();
 
     // ----- Tier 1: G2′ tripwire + G0 (fixed-weight, full battery) -----

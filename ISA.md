@@ -5309,3 +5309,52 @@ guard. Claims, each with its probe:
 Anti-claims: no silent drive change to any banked arm (refusal, never
 reinterpretation); no new example file (the no-clone rule); no PREREG
 edit. GUARD 1 honored (append). GUARD 2 untouched.
+
+## Close-out (constraint 10 implemented — the drive default flips, 2026-08-28)
+
+Code: one file, `crates/neuralos-rt/examples/hybrid_invivo.rs`
+(+110/−9). The corrected drive is the default; `--h2-compat` carries
+the milli-domain legacy byte-verbatim; the empty-middle falsifier is
+live code. Claim disposition:
+
+- **C1 CLOSED (code + banked equivalence).** The default expression is
+  the `--domain-corrected` path verbatim (`raw = v_milli/1000 × k`),
+  measured in step 5 at 2.72% clamped / RMS 450.0 µA
+  (clamp_probe.log). A second multi-hour capture to re-print that
+  number was declined as spend; the live bare run is available on ask.
+- **C2 CLOSED (live).** `--h2-compat --window 0`: k-check r0
+  10060.46 == probe expectation : PASS — the legacy path is
+  byte-verbatim through the new parsing/gating.
+- **C3 CLOSED (live).** `--window 0`, `--off`, and legacy `export`
+  each refuse without `--h2-compat`, naming constraint 10, before the
+  model loads (panics at the three gate sites).
+- **C4 CLOSED (live).** `--h2-compat --domain-corrected` refused as a
+  drive-domain contradiction.
+- **C5 CLOSED (live).** Pre-clamp report printed before Tier 1:
+  p50 311874.2 · p90 523143.7 · p99 1881305.4 · max 4839079.7 μA —
+  matching constraint 10's recorded figures (311,874 / 523,144 /
+  1,881,305 / 4,839,080) to rounding, and the histogram
+  [249679, 0, 0, 0, 568321] exactly. The instrument now measures what
+  the constraint demands, on every driven arm.
+- **C6 CLOSED (live caveat branch + code void branch).** Under
+  `--h2-compat` the falsifier shape printed the recorded caveat and
+  the run proceeded into Tier 1 (G2′ PASS, G0 PASS re-observed live);
+  the VOID branch is the same 6-line predicate with `norm_drive` true
+  — closed on inspection, its live trigger requires a broken corrected
+  drive by construction.
+- **C7 CLOSED.** Zero `models/*.gguf` modified this session (find
+  -newermt today = 0); the probe was watchdog-killed in the adaptation
+  phase, before any export path. PREREG.md and `evidence/` untouched.
+- **C8 CLOSED.** cargo check / test (333 passed, 0 failed) / clippy
+  `-D warnings` / `no_std` build — all green post-edit.
+
+Probe log: session scratchpad `h2compat-r0.log`, sha256 ab2fc1d7… —
+NOT banked into `evidence/` (verification-of-refactor, not a new
+result; the freeze doctrine's re-run-and-match proof). Second look:
+none elected — single-file instrument change, no auth/publish surface,
+every claim closed on direct probes; recorded per claim-11 visibility.
+Incident note: the first probe attempt died with a frozen box + session
+restart (02:01), the relaunch ran detached with its own watchdog —
+delegate liveness held by construction, not by session.
+
+GUARD 1 honored (append). GUARD 2 untouched.
