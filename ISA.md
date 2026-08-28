@@ -84,7 +84,7 @@ bit-exactly and byte-level test vectors pinned to the reference sources.
 
 ## Claims
 
-(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..84 sH+H2+sI, 85 R4 — see Verification.)
+(Closed: ISC-1..10 s2, 11..17 s3, 18..23 s4-s1, 24..29 s4-s2, 30..36 s4-s3, 37..42 s4-s4, 43 C-pre, 44..50 C-core, 51..56 s4-4B, 57..62 s4-D, 63..64 s4-D2, 65..67 sE, 68..70 sE-0, 71 sE-1, 72 sE-1c, 73..76 sF, 77 sF-c, 78..80 sG, 81..84 sH+H2+sI, 85 R4, 86..88 R8 — see Verification.)
 
 - [x] ISC-57 (s4-D) · **The Stage-2 q2_0 pin was wrong; re-pinned from
   source + file before any compute was built on it.** The first probe
@@ -5433,3 +5433,26 @@ Anti-claims: D1/D2 untouched (frozen appends stay; the :410 assert is
 correct); no AGENTS.md doctrine lands this branch — F1/F2 are drafts
 for ratification; no Zenodo action of any kind. GUARD 1 honored
 (appends + live-state lines only). GUARD 2 untouched.
+
+## Close-out (adjudicated findings — B1/B2/C1/C2/E1, 2026-08-28)
+
+- **G1 CLOSED.** Aggregator docstring states the n=5 rule including the
+  no-outcome refusal band; matches PREREG §5 + the shipped match arms.
+- **G2 CLOSED.** OFF doc reads `--off --window 1..4`, matching the
+  `Some(1..=4)` assert.
+- **G3 CLOSED.** Claims summary line now enumerates 88/88: `37..42
+  s4-s4` and `86..88 R8` inserted; consistent with the inner Stage-4
+  summary (:634) and the R8 audit block.
+- **G4 CLOSED.** BURN.md: seeds 201–250 by decade (r3 231–240, r4
+  241–250), 7 driven / 50 nulls, pointer line citing PREREG §4/§5 by
+  section. Stale-strings sweep clean ("30 nulls"/"refuses them"/
+  "1|2 is REFUSED"/"≥2/3"/alpha.2 → zero hits across the four files).
+- **G5 CLOSED.** app-repro.tex names alpha.5; `make gate`: "language
+  gate: clean". No deposit touched.
+
+Gates green (check / clippy `-D warnings` / 333 tests / `no_std`);
+`paper/figs/mechanism.py` exits 0 through `.figvenv` (the ISC-78 parse
+target intact — a bare `python3` run fails only on missing matplotlib,
+which is the documented venv split, not a regression). D1/D2 untouched;
+F1/F2 drafted for ratification outside the tree. GUARD 1 honored.
+GUARD 2 untouched.
