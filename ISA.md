@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@ff5527e · wrote-from:fix/orientation-followups UNMERGED (CI+review) · open(session): merge (principal's call, builder executes); C1 bank (principal) · next-work: ROADMAP § Practical next moves · guards:1,2,3"
+head: "main@ff5527e · wrote-from:fix/orientation-followups UNMERGED (CI+review) · open(session): merge (principal's call, builder executes); C1 bank (principal) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-29T00:49:03Z
+updated: 2026-08-29T01:11:54Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -5597,3 +5597,38 @@ cold start remains the honest cost.
 GUARD 1 honored (this append corrects; the prior entry is tombstoned
 true-when-written, not edited). GUARD 2 untouched. Frontmatter
 live-state edit only; no other files.
+
+## Amendment (independent review round — R1-R6, 2026-08-29)
+
+Six findings from the independent (non-chain) review of 3d70b1a, all
+accepted, one fix commit. Blocking pair: R1 — CLAUDE.md read-order
+item 1 described the pre-partition head: ("branch, last session, open
+items, active guards"); rewritten to the fields the line actually
+carries (main@<sha>, wrote-from:, open(session):, next-work:). R2 —
+the GUARD 3 citation called a deliberate paraphrase "the widened
+verbatim"; in a repo whose freeze doctrine turns on
+verbatim-vs-paraphrase that label is a trap; now reads "the widened
+rule, artifact-named per B1b." Record-only, all landed: R4 — the
+positional "two lines above" deictic replaced by naming the fields
+(same staleness class as line numbers). R5 — item 4's temporal loop
+("before acting on item 2", unreachable before item 2) re-encoded as
+"after reading the list, before executing ROADMAP work"; intent
+unchanged.
+
+- **R3 tombstone:** the H1 close-out's claim "Pointer-only by design:
+  it restates nothing" was true when written and is FALSE since E1:
+  CLAUDE.md deliberately restates the unrecoverable-rule class in
+  § Do not violate, with per-guard source citations. Superseded by
+  the E1 ruling recorded above; the H1 entry stands as
+  true-when-written.
+- **R6 — partition rule amended, not silently narrowed:** guards are
+  arc-wide, neither project-scoped work nor session-scoped state, so
+  `guards:` sat outside both buckets and made head: a third claimant
+  on guard activation, to be swept on every guard change. Ruling:
+  `guards:` removed from head:; guard activation's live claimants are
+  CLAUDE.md § Do not violate and the ISA decisions that ratified
+  each guard.
+
+GUARD 1 honored (append + tombstone + live-state line only). GUARD 2
+untouched. C1 remains OPEN and unbanked; no evidence/ writes; no
+AGENTS.md, ROADMAP, VISION, or README changes.
