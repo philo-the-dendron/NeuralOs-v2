@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@9f4ce74 · last:adjudicated-findings-2026-08-28 · open:ESP32-C3 board order, lesion/graft positive control · guards:1,2,3"
+head: "main@ff5527e · wrote-from:fix/orientation-followups UNMERGED (CI+review) · open(session): merge (principal's call, builder executes); C1 bank (principal) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-28T00:00:00Z
+updated: 2026-08-29T01:11:54Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -5495,3 +5495,140 @@ touched. Anti-claims held: no ISA history edits, no AGENTS.md change,
 no VISION/ROADMAP rewrite. The baseline re-measurement belongs to the
 principal's fresh session, not this one. GUARD 1 honored (append +
 live-state lines). GUARD 2 untouched.
+
+## Amendment (builder leg — orientation follow-ups B1-B4, C1 recorded, 2026-08-28)
+
+Executing sections B and C of the adjudicated round (adjudication
+relayed by the d2 session; every finding re-verified at source in this
+session before editing). Branch `fix/orientation-followups`, one
+commit, docs only. Sections D and E untouched by scope: D1 stays as-is
+(rejected), E1/E2 await the principal's ruling.
+
+- **B1+B1b** — CLAUDE.md GUARD 3 now carries the widened ratified text
+  (stranger-usable AND binaries on the release) and names the
+  artifacts — the `.nir` exporter, the ESP32-C3 board landing, gating
+  outreach — instead of "plan step" numbers, which resolved against
+  ROADMAP § Practical next moves numbering (4 = readout benchmark,
+  5 = board), not the ISA 8-step arc.
+- **B2** — the `evidence/` species guard regains its survive-a-deposit
+  clause (a Zenodo tarball carries no `.git`; point at frozen files,
+  never copy into living ones).
+- **B3** — frontmatter `head:` bumped 9f4ce74 → ff5527e and `updated:`
+  set to a real timestamp (live-state lines, the ratified GUARD 1
+  exception). **Lesson recorded: a merge commit does not update
+  `head:` — the bump is manual live-state work outside GUARD 1, done
+  at close-out or it ships stale.**
+- **B4** — read-order item 1 now carries the charter-trap warning
+  inline (`phase: complete` / `progress:` describe a closed task, not
+  the repo), so the antidote arrives with the first read, not as the
+  file's last section.
+- **C1 — OPEN, record only, NOT banked.** The 11→4 orientation-calls /
+  six-rules-named after-measurement is asserted with no sha-pinned
+  file in `evidence/` and no `evidence/INDEX.md` entry. By this repo's
+  own standard it is an evidence-free claim until the transcript is
+  banked or the number stops being cited as measured. The principal's
+  call; the adjudicator recommends banking.
+
+GUARD 1 honored (append + live-state lines only). GUARD 2 untouched.
+No AGENTS.md, ROADMAP, VISION, README, or evidence/ changes.
+
+## Amendment (E1/E2 ratified + head: partition grammar, cold-start verified, 2026-08-28)
+
+The principal ruled E1 and E2 and ratified the head: partition grammar;
+all three ride `fix/orientation-followups` with B1-B4 so one merge
+closes the arc. A cold-start test against the dirty tree PASSED before
+this entered history.
+
+- **E1** — guards stay inline in CLAUDE.md § Do not violate: violating
+  them is unrecoverable and a pointer is too slow. The opener now says
+  the file restates exactly that class deliberately, and every
+  restated guard cites its source by section (never line numbers), so
+  the amendment grep sweep catches the copies.
+- **E2** — read-order item 4 gains the legality clause: if a session
+  will change anything, legality (AGENTS.md § Session discipline) is
+  decided before acting on ROADMAP's list; a reporting-only turn may
+  take the list as written. The builder caught that a verbatim
+  replacement would have dropped the Discipline/Protocol descriptors;
+  the drop was NOT ratified and the ruling merged both.
+- **head: partition rule (sole live claimant).** Project-scoped work
+  belongs to ROADMAP § Practical next moves; head: carries only the
+  `next-work:` pointer, never copies of those items (the old line
+  duplicated ROADMAP items 4/5 — a second present-tense claimant).
+  Session/adjudication-scoped state (unmerged branch, pending bank,
+  pending ruling) has no other live claimant; head: owns it and
+  completeness there is mandatory: the close-out that creates the
+  item writes the line.
+- **Deletion rule:** the `wrote-from:` clause and its matching
+  `open(session)` merge entry die in the same live-state edit that
+  records the merge.
+- **Known limit (recorded so nobody "fixes" it with a field that
+  would lie):** a head: line cannot attest its own committedness — it
+  lives in the working tree, so one `git status` per cold start
+  remains necessary and is the honest cost of the format. The test
+  itself hit the recursion: the reworked head: line was part of the
+  uncommitted diff it described.
+- **Division of labour, as the design's own statement of scope:**
+  head: is the index, the ISA tail is the record, git is the working
+  tree.
+- **Cold-start verdict (tester, verbatim):** "wrote-from … UNMERGED
+  (CI+review) answered 'where was this written, is it landed, what
+  gates landing' in one read, and open(session) assigned every open
+  item to a role." The E2 legality clause and the partition both
+  fired unprompted in the same run.
+
+GUARD 1 honored (append + live-state lines only). GUARD 2 untouched.
+No AGENTS.md, ROADMAP, VISION, README, or evidence/ changes; C1
+remains OPEN and unbanked.
+
+## Amendment (head: names refs, never its own sha — 2026-08-29)
+
+Principal-ratified correction to the partition grammar, found in
+review of 3d141d2: `wrote-from:` carried `@5e66e6e` while the tip was
+3d141d2 — a sha authored before the commit that carries it exists is
+stale at write time and guaranteed stale forever. The prior
+known-limit note stands as true-when-written but incomplete: the
+limit (head: cannot attest its own committedness) has a CONSEQUENCE —
+**head: names refs, never shas of the commit it rides in.**
+`wrote-from:` is now the bare branch ref, which is stable and carries
+the whole meaning; `main@<sha>` stays, because that sha is a fact
+about a commit that already exists. One `git status` / `git log` per
+cold start remains the honest cost.
+
+GUARD 1 honored (this append corrects; the prior entry is tombstoned
+true-when-written, not edited). GUARD 2 untouched. Frontmatter
+live-state edit only; no other files.
+
+## Amendment (independent review round — R1-R6, 2026-08-29)
+
+Six findings from the independent (non-chain) review of 3d70b1a, all
+accepted, one fix commit. Blocking pair: R1 — CLAUDE.md read-order
+item 1 described the pre-partition head: ("branch, last session, open
+items, active guards"); rewritten to the fields the line actually
+carries (main@<sha>, wrote-from:, open(session):, next-work:). R2 —
+the GUARD 3 citation called a deliberate paraphrase "the widened
+verbatim"; in a repo whose freeze doctrine turns on
+verbatim-vs-paraphrase that label is a trap; now reads "the widened
+rule, artifact-named per B1b." Record-only, all landed: R4 — the
+positional "two lines above" deictic replaced by naming the fields
+(same staleness class as line numbers). R5 — item 4's temporal loop
+("before acting on item 2", unreachable before item 2) re-encoded as
+"after reading the list, before executing ROADMAP work"; intent
+unchanged.
+
+- **R3 tombstone:** the H1 close-out's claim "Pointer-only by design:
+  it restates nothing" was true when written and is FALSE since E1:
+  CLAUDE.md deliberately restates the unrecoverable-rule class in
+  § Do not violate, with per-guard source citations. Superseded by
+  the E1 ruling recorded above; the H1 entry stands as
+  true-when-written.
+- **R6 — partition rule amended, not silently narrowed:** guards are
+  arc-wide, neither project-scoped work nor session-scoped state, so
+  `guards:` sat outside both buckets and made head: a third claimant
+  on guard activation, to be swept on every guard change. Ruling:
+  `guards:` removed from head:; guard activation's live claimants are
+  CLAUDE.md § Do not violate and the ISA decisions that ratified
+  each guard.
+
+GUARD 1 honored (append + tombstone + live-state line only). GUARD 2
+untouched. C1 remains OPEN and unbanked; no evidence/ writes; no
+AGENTS.md, ROADMAP, VISION, or README changes.
