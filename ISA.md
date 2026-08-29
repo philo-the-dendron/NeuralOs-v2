@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@ff5527e · wrote-from:fix/orientation-followups@5e66e6e UNMERGED (CI+review) · open(session): merge (principal's call, builder executes); C1 bank (principal) · next-work: ROADMAP § Practical next moves · guards:1,2,3"
+head: "main@ff5527e · wrote-from:fix/orientation-followups UNMERGED (CI+review) · open(session): merge (principal's call, builder executes); C1 bank (principal) · next-work: ROADMAP § Practical next moves · guards:1,2,3"
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-29T00:32:24Z
+updated: 2026-08-29T00:49:03Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -5579,3 +5579,21 @@ this entered history.
 GUARD 1 honored (append + live-state lines only). GUARD 2 untouched.
 No AGENTS.md, ROADMAP, VISION, README, or evidence/ changes; C1
 remains OPEN and unbanked.
+
+## Amendment (head: names refs, never its own sha — 2026-08-29)
+
+Principal-ratified correction to the partition grammar, found in
+review of 3d141d2: `wrote-from:` carried `@5e66e6e` while the tip was
+3d141d2 — a sha authored before the commit that carries it exists is
+stale at write time and guaranteed stale forever. The prior
+known-limit note stands as true-when-written but incomplete: the
+limit (head: cannot attest its own committedness) has a CONSEQUENCE —
+**head: names refs, never shas of the commit it rides in.**
+`wrote-from:` is now the bare branch ref, which is stable and carries
+the whole meaning; `main@<sha>` stays, because that sha is a fact
+about a commit that already exists. One `git status` / `git log` per
+cold start remains the honest cost.
+
+GUARD 1 honored (this append corrects; the prior entry is tombstoned
+true-when-written, not edited). GUARD 2 untouched. Frontmatter
+live-state edit only; no other files.
