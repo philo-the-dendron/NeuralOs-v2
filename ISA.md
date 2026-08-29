@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@ff5527e · last:adjudicated-findings-2026-08-28 · open:ESP32-C3 board order, lesion/graft positive control · guards:1,2,3"
+head: "main@ff5527e · wrote-from:fix/orientation-followups@5e66e6e UNMERGED (CI+review) · open(session): merge (principal's call, builder executes); C1 bank (principal) · next-work: ROADMAP § Practical next moves · guards:1,2,3"
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-28T23:46:15Z
+updated: 2026-08-29T00:32:24Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -5531,3 +5531,51 @@ commit, docs only. Sections D and E untouched by scope: D1 stays as-is
 
 GUARD 1 honored (append + live-state lines only). GUARD 2 untouched.
 No AGENTS.md, ROADMAP, VISION, README, or evidence/ changes.
+
+## Amendment (E1/E2 ratified + head: partition grammar, cold-start verified, 2026-08-28)
+
+The principal ruled E1 and E2 and ratified the head: partition grammar;
+all three ride `fix/orientation-followups` with B1-B4 so one merge
+closes the arc. A cold-start test against the dirty tree PASSED before
+this entered history.
+
+- **E1** — guards stay inline in CLAUDE.md § Do not violate: violating
+  them is unrecoverable and a pointer is too slow. The opener now says
+  the file restates exactly that class deliberately, and every
+  restated guard cites its source by section (never line numbers), so
+  the amendment grep sweep catches the copies.
+- **E2** — read-order item 4 gains the legality clause: if a session
+  will change anything, legality (AGENTS.md § Session discipline) is
+  decided before acting on ROADMAP's list; a reporting-only turn may
+  take the list as written. The builder caught that a verbatim
+  replacement would have dropped the Discipline/Protocol descriptors;
+  the drop was NOT ratified and the ruling merged both.
+- **head: partition rule (sole live claimant).** Project-scoped work
+  belongs to ROADMAP § Practical next moves; head: carries only the
+  `next-work:` pointer, never copies of those items (the old line
+  duplicated ROADMAP items 4/5 — a second present-tense claimant).
+  Session/adjudication-scoped state (unmerged branch, pending bank,
+  pending ruling) has no other live claimant; head: owns it and
+  completeness there is mandatory: the close-out that creates the
+  item writes the line.
+- **Deletion rule:** the `wrote-from:` clause and its matching
+  `open(session)` merge entry die in the same live-state edit that
+  records the merge.
+- **Known limit (recorded so nobody "fixes" it with a field that
+  would lie):** a head: line cannot attest its own committedness — it
+  lives in the working tree, so one `git status` per cold start
+  remains necessary and is the honest cost of the format. The test
+  itself hit the recursion: the reworked head: line was part of the
+  uncommitted diff it described.
+- **Division of labour, as the design's own statement of scope:**
+  head: is the index, the ISA tail is the record, git is the working
+  tree.
+- **Cold-start verdict (tester, verbatim):** "wrote-from … UNMERGED
+  (CI+review) answered 'where was this written, is it landed, what
+  gates landing' in one read, and open(session) assigned every open
+  item to a role." The E2 legality clause and the partition both
+  fired unprompted in the same run.
+
+GUARD 1 honored (append + live-state lines only). GUARD 2 untouched.
+No AGENTS.md, ROADMAP, VISION, README, or evidence/ changes; C1
+remains OPEN and unbanked.
