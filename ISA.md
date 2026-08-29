@@ -5632,3 +5632,22 @@ unchanged.
 GUARD 1 honored (append + tombstone + live-state line only). GUARD 2
 untouched. C1 remains OPEN and unbanked; no evidence/ writes; no
 AGENTS.md, ROADMAP, VISION, or README changes.
+
+## Amendment (C1 banked — the cold-start measurement enters evidence/, 2026-08-29)
+
+Principal ruled: bank it. `evidence/cold-start-orientation/` now
+carries the before/after measurement (11→4 tool calls, 3→0 blind
+ledger seeks, 0→6 rules named unprompted; root cause: AGENTS.md is
+not auto-loaded, only a repo-root CLAUDE.md reaches a fresh session)
+plus the after-run verdict verbatim, sha-pinned via SHA256SUMS and
+indexed in `evidence/INDEX.md`. Species decision, recorded honestly:
+the raw session transcripts are session-local to the operator's
+private infrastructure and are deliberately NOT committed to a repo
+with public remotes, so the bank is a FROZEN-BY-MARKER HUMAN RECORD
+(species 2), not a machine log (species 1). The 11→4 number may from
+now on be cited as a banked measurement with that standing. C1 is
+CLOSED; the `open(session)` entry dies in the live-state edit that
+records this branch's merge.
+
+GUARD 1 honored (append). GUARD 2 untouched. Scope: evidence/ +
+INDEX.md + this append only.
