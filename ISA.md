@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@a1e7e19 · open(session): C1 bank (principal) · next-work: ROADMAP § Practical next moves"
+head: "main@2c2711a · open(session): none · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-29T01:26:00Z
+updated: 2026-08-29T02:01:49Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
