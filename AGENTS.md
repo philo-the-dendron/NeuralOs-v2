@@ -261,7 +261,16 @@ claims, reopening frozen records.
   Merge to main requires branch-CI green +
   review passed — mechanical conditions, no discretion, the builder
   may merge on them. Local green is one machine's opinion; CI on the
-  pushed ref is the gate. Never force-push Gitea. Branches are
+  pushed ref is the gate. **Every commit on the branch is green on its
+  own, not only the tip** (ratified 2026-08-30): this history is
+  bisected and its commits are cited by DOI, so a red intermediate
+  commit is a defect even when the tip passes. CI only ever runs the
+  pushed tip, so the merger proves it before merging —
+  `git rebase -x '<the § Commands gate set>' main` in a scratch
+  worktree (or a loop over `git rev-list main..HEAD`), result pasted
+  in the review. A red commit is reworked in place (`--fixup` +
+  `--autosquash`), never patched by a later commit that leaves the red
+  one in history. Never force-push Gitea. Branches are
   deleted after merge (git history is the archive).
 - **Findings taxonomy.** Blocking (fix before merge) · cosmetic-list
   (rides a later commit) · record-only (ISA entry, no code). Every
