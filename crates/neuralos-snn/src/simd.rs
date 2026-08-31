@@ -1,8 +1,15 @@
 //! SIMD-accelerated batch LIF integration (AVX2, `x86_64`).
 //!
 //! Ported from v0.1 `libneuralos_before_bridge_removal/src/core/simd_vectorization.rs`,
-//! with two correctness bugs fixed (see `BUG_FIXES` below). This module is gated
-//! behind the `simd` feature (implies `std`) and `cfg(target_arch = "x86_64")`.
+//! with two correctness bugs fixed (see `BUG_FIXES` below).
+//!
+//! The MODULE is gated on the `simd` feature only (`simd = ["std"]` in
+//! `Cargo.toml`, `#[cfg(feature = "simd")] pub mod simd;` in `lib.rs`) — not on
+//! the architecture. `cfg(target_arch = "x86_64")` gates the intrinsics import,
+//! `integrate_batch_avx2` and `lif_lane` inside it, so on any other target the
+//! module still compiles and `integrate_lif_batch` runs the scalar reference.
+//! Checked, not assumed: `cargo check -p neuralos-snn --features simd --target
+//! riscv64gc-unknown-linux-musl` is green.
 //!
 //! # What it does
 //!
@@ -27,8 +34,13 @@
 //! # Approximation vs scalar
 //!
 //! The AVX2 kernel replaces `/1000` with `>>10` (÷1024) — the standard
-//! fixed-point fast-division approximation, ~2.4% error, biologically
-//! irrelevant (well under [`crate::LIFNeuron`] default noise of 5 μA). The
+//! fixed-point fast-division approximation, ~2.4% error (`1024/1000`). What
+//! makes that biologically irrelevant is the grid, not the noise floor: on the
+//! default mV grid a steady current below ~200 μA at rest moves the membrane by
+//! exactly zero forever ([`crate::lif_neuron`] § the dead zone), so a ≤2 mV
+//! approximation sits inside the grid's own blindness. The older phrasing here
+//! compared a millivolt error against the ±5 μA default noise amplitude, which
+//! are different units and not comparable. The
 //! scalar reference here uses exact `/1000`. The correctness test asserts the
 //! two agree within ±2 mV per neuron, not bit-exact.
 //!
@@ -127,15 +139,25 @@
 //! grid only**: the reference clamps to `−100..50` and ignores
 //! [`crate::VoltageResolution`] scale (`integrate_batch_scalar`, below). A
 //! centi-mV consumer would get silently wrong membranes. Until the kernel
-//! takes a scale parameter, do not route `CentiMillivolt` state through it
-//! (no in-tree consumer does — verified 2026-08-20 audit).
+//! takes a scale parameter, do not route `CentiMillivolt` state through it (no
+//! in-tree consumer does — 2026-08-20 audit, re-verified 2026-08-30: the only
+//! callers of `integrate_lif_batch` / `integrate_batch_scalar` anywhere in the
+//! workspace are `examples/bench_simd.rs` and this module's own tests, and none
+//! constructs a `CentiMillivolt` neuron).
 //!
 //! # `BUG_FIXES` vs v0.1
 //!
 //! - **Widen-both-halves.** v0.1's `integrate_neurons_avx2` (`simd_vectorization.rs:237-240`)
 //!   called `_mm256_cvtepi16_epi32(_mm256_castsi256_si128(mp))`, which widens
-//!   only the LOW 8 of each 16-element load. The high 8 were never computed;
-//!   stale memory was stored back. Fixed: widen both halves via
+//!   only the LOW 8 of each 16-element load, so the high 8 neurons of every
+//!   chunk were never computed. What got stored in their place was a
+//!   deterministic DUPLICATE of the low 8, not stale memory: the pack step is
+//!   `_mm256_packs_epi32(clamped_mp, clamped_mp)` (`simd_vectorization.rs:263-267`),
+//!   which packs the same eight `i32` lanes twice, and all 16 `i16` lanes are
+//!   then stored. (This bullet said "stale memory was stored back" until
+//!   2026-08-30; that was wrong about the mechanism, and wrong in the direction
+//!   that makes the bug sound less reproducible than it is. Corrected against
+//!   the archive, not recalled.) Fixed: widen both halves via
 //!   `_mm256_extracti128_si256(_, 1)`, process both, repack.
 //! - **Spike semantics + mask.** v0.1 used `_mm256_cmpgt_epi16` (strict `>`)
 //!   and indexed byte-bits (`1 << j`) as if they were i16 lanes (two bytes per
