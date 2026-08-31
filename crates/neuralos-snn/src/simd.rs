@@ -19,14 +19,44 @@
 //! `&mut [LIFNeuron]` → SoA slices, runs the batch, scatters back, is a
 //! follow-up concern (measured separately from the kernel speedup).
 //!
+//! One type seam that adapter will have to close: `resistance` is `u16`
+//! (`resistance_mohm`) on [`crate::LIFNeuron`] and `i16` here, so the batch
+//! accepts negative resistances no neuron can hold, and rejects the top half of
+//! the neuron's range. Only `0..=i16::MAX` is representable in both.
+//!
 //! # Approximation vs scalar
 //!
 //! The AVX2 kernel replaces `/1000` with `>>10` (÷1024) — the standard
 //! fixed-point fast-division approximation, ~2.4% error, biologically
 //! irrelevant (well under [`crate::LIFNeuron`] default noise of 5 μA). The
-//! scalar reference here uses exact `/1000` (matching
-//! [`crate::LIFNeuron::integrate_and_fire`]). The correctness test asserts the
+//! scalar reference here uses exact `/1000`. The correctness test asserts the
 //! two agree within ±2 mV per neuron, not bit-exact.
+//!
+//! # What "matching `integrate_and_fire`" means
+//!
+//! [`integrate_batch_scalar`] is bit-equal to
+//! [`crate::LIFNeuron::integrate_and_fire`] on the mV grid — same
+//! `dt_over_tau`, same `leak + (I·R)/1000`, same `/1000`, same
+//! `saturating_add` and same clamp — and produces the same spike bit. Pinned by
+//! `prop_scalar_batch_is_bit_equal_to_integrate_and_fire`, which checks it for
+//! any `i16` input with `dt_us ≤ tau_membrane_us`. Verified against
+//! `lif_neuron.rs`, not inherited from the port.
+//!
+//! Four differences are NOT arithmetic, and a caller carries each one itself:
+//!
+//! - **Current accumulation.** `integrate_and_fire` adds synaptic current and
+//!   LFSR noise and subtracts the adaptation current. The batch takes the total
+//!   already summed.
+//! - **The post-spike reset.** `integrate_and_fire` overwrites the membrane with
+//!   `reset_potential` when it fires. The batch's membrane is the pre-reset
+//!   value, and it writes no history and starts no refractory period.
+//! - **The refractory period.** `integrate_and_fire` skips integration entirely
+//!   while `refractory_time_us > 0`. The batch has no such state.
+//! - **The leak subtraction width.** `integrate_and_fire` computes
+//!   `resting_potential − membrane_potential` in `i16` and then widens; the
+//!   batch widens both to `i32` first. On the mV grid the difference is
+//!   unreachable, but off-grid `i16` values that overflow the subtraction would
+//!   panic in one and not the other.
 //!
 //! # Overflow domain (the `dt_over_tau` bound)
 //!
@@ -261,7 +291,10 @@ pub fn integrate_lif_batch(
 ///
 /// `dt_over_tau` is saturated to [`DT_OVER_TAU_MAX`] on entry, so no `i32`
 /// intermediate here can overflow for any `i16` input (module doc § Overflow
-/// domain).
+/// domain). Inside that bound the membrane arithmetic is bit-equal to
+/// [`crate::LIFNeuron::integrate_and_fire`] on the mV grid — pinned by
+/// `prop_scalar_batch_is_bit_equal_to_integrate_and_fire`, with the four
+/// non-arithmetic differences listed in the module doc.
 pub fn integrate_batch_scalar(
     membrane: &mut [i16],
     resting: &[i16],
@@ -389,6 +422,7 @@ mod tests {
     #![allow(clippy::shadow_unrelated)]
     #![allow(clippy::cast_precision_loss)] // test counters are tiny; usize→f64 is lossless in practice
     use super::*;
+    use crate::lif_neuron::{LIFNeuron, VoltageResolution};
     use proptest::prelude::*;
 
     /// Equivalence-domain bound on `|input_current × resistance|` (module doc
@@ -729,10 +763,168 @@ mod tests {
         assert_eq!(sa, sb);
     }
 
+    /// The bit-equality below, swept DETERMINISTICALLY over the regime where the
+    /// result lands strictly inside the `[-100, 50]` clamp.
+    ///
+    /// The clamp is what makes a random-i16 sweep blind: saturate both sides and
+    /// any arithmetic error is hidden behind the same bound. A property test can
+    /// therefore pass on one seed and fail on another, which is not a pin. This
+    /// test takes no draws, so every constant in `integrate_batch_scalar` is
+    /// observable on every run — `/1000 -> /1024` turns it red.
+    #[test]
+    fn scalar_batch_matches_integrate_and_fire_in_the_unclamped_regime() {
+        let mut compared = 0usize;
+        let mut unclamped = 0usize;
+        for &mp in &[-90i16, -70, -55, 0, 40] {
+            for &rp in &[-100i16, -70, 0, 50] {
+                for &resistance in &[1i16, 10, 100, 500, 1000] {
+                    for input in (-1500i16..=1500).step_by(37) {
+                        for &(dt_us, tau_us) in &[(1000u32, 20_000u32), (500, 20_000), (100, 10_000)]
+                        {
+                            let mut n = LIFNeuron::new(0);
+                            n.voltage_resolution = VoltageResolution::Millivolt;
+                            n.membrane_potential = mp;
+                            n.resting_potential = rp;
+                            n.threshold = i16::MAX; // unreachable: raw membrane, no reset
+                            n.tau_membrane_us = tau_us;
+                            n.resistance_mohm = resistance as u16;
+                            n.noise_amplitude_ua = 0;
+                            n.synaptic_current_ua = 0;
+                            n.adaptation_current_ua = 0;
+                            n.refractory_time_us = 0;
+                            let fired = n.integrate_and_fire(input, dt_us, 0);
+                            assert!(!fired, "i16::MAX threshold must be unreachable");
+
+                            let dtot = dt_over_tau(dt_us, tau_us);
+                            let mut membrane = vec![mp];
+                            let mut spikes = vec![false];
+                            integrate_batch_scalar(
+                                &mut membrane,
+                                &[rp],
+                                &[input],
+                                &[resistance],
+                                &[i16::MAX],
+                                dtot,
+                                &mut spikes,
+                            );
+                            assert_eq!(
+                                membrane[0], n.membrane_potential,
+                                "mp={mp} rp={rp} input={input} resistance={resistance} \
+                                 dt_us={dt_us} tau_us={tau_us} dt_over_tau={dtot}"
+                            );
+                            assert_eq!(spikes[0], fired, "spike bit differs at an unreachable threshold");
+                            compared += 1;
+                            if membrane[0] != -100 && membrane[0] != 50 {
+                                unclamped += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // The point of the sweep is the unclamped rows. If the grid ever drifts
+        // into all-saturating territory it stops testing the arithmetic, and this
+        // test would go quietly useless the way the property test nearly did.
+        assert!(compared >= 5000, "sweep shrank to {compared} rows");
+        assert!(
+            unclamped * 4 >= compared,
+            "only {unclamped}/{compared} rows landed inside the clamp — the sweep has gone blind"
+        );
+    }
+
     // ----- Property tests -----
 
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(512))]
+
+        /// The batch scalar reference IS `LIFNeuron::integrate_and_fire` on the mV
+        /// grid — bit-equal membranes, identical spike bit — for any `i16` input
+        /// with `dt_us <= tau_membrane_us`.
+        ///
+        /// The module doc has claimed this since the port ("exact /1000, matching
+        /// integrate_and_fire") with nothing pinning it. Two neurons are stepped
+        /// from the same state: one with an unreachable threshold, whose membrane
+        /// is therefore the raw integrated value the batch computes, and one with
+        /// the real threshold, whose return value is the spike bit. The four
+        /// differences that are NOT arithmetic are neutralised in the fixture and
+        /// named in the module doc: noise, synaptic current, adaptation current,
+        /// and the post-spike reset.
+        #[test]
+        fn prop_scalar_batch_is_bit_equal_to_integrate_and_fire(
+            mp in -100i16..=50,
+            rp in -100i16..=50,
+            th in -100i16..=50,
+            // Two regimes. The wide arm saturates the clamp on almost every draw,
+            // which makes it blind on its own: `/1000 -> /1024` in
+            // integrate_batch_scalar survived it, because both sides then pin to
+            // the same clamp bound. The small-signal arm keeps the result inside
+            // the clamp, where the arithmetic is observable. The deterministic
+            // sweep below is what actually holds the pin; this arm only widens
+            // the search.
+            // resistance_mohm is u16 on the neuron and i16 in the SoA batch; only
+            // the non-negative overlap is representable in both.
+            (input, resistance) in prop_oneof![
+                (any::<i16>(), 0i16..=i16::MAX),
+                (-2000i16..=2000, 0i16..=1000),
+            ],
+            tau_us in 1u32..=1_000_000,
+            dt_ratio in 0u32..=1000,
+        ) {
+            let dt_us = u32::try_from(u64::from(tau_us) * u64::from(dt_ratio) / 1000)
+                .expect("dt_us <= tau_us <= u32::MAX");
+
+            let fixture = |threshold: i16| {
+                let mut n = LIFNeuron::new(0);
+                n.voltage_resolution = VoltageResolution::Millivolt;
+                n.membrane_potential = mp;
+                n.resting_potential = rp;
+                n.threshold = threshold;
+                n.tau_membrane_us = tau_us;
+                n.resistance_mohm = resistance as u16;
+                // The four non-arithmetic differences, neutralised.
+                n.noise_amplitude_ua = 0;
+                n.synaptic_current_ua = 0;
+                n.adaptation_current_ua = 0;
+                n.refractory_time_us = 0;
+                n
+            };
+
+            // The shared scaling factor, computed both ways.
+            let dtot = dt_over_tau(dt_us, tau_us);
+            let inline = ((dt_us as i32) * 1000) / tau_us as i32;
+            prop_assert_eq!(
+                dtot, inline,
+                "dt_over_tau({}, {}) disagrees with the inline formula in integrate_and_fire",
+                dt_us, tau_us
+            );
+
+            // Unreachable threshold: no spike, so the membrane is the raw value.
+            let mut quiet = fixture(i16::MAX);
+            let fired_quiet = quiet.integrate_and_fire(input, dt_us, 0);
+            prop_assert!(!fired_quiet, "i16::MAX threshold must be unreachable");
+
+            // Real threshold: the return value is the spike bit.
+            let mut live = fixture(th);
+            let fired = live.integrate_and_fire(input, dt_us, 0);
+
+            let mut membrane = vec![mp];
+            let mut spikes = vec![false];
+            integrate_batch_scalar(
+                &mut membrane, &[rp], &[input], &[resistance], &[th], dtot, &mut spikes,
+            );
+
+            prop_assert_eq!(
+                membrane[0], quiet.membrane_potential,
+                "membrane differs: batch {} vs integrate_and_fire {} \
+                 (mp={} rp={} input={} resistance={} dt_over_tau={})",
+                membrane[0], quiet.membrane_potential, mp, rp, input, resistance, dtot
+            );
+            prop_assert_eq!(
+                spikes[0], fired,
+                "spike bit differs at threshold {} with membrane {}",
+                th, quiet.membrane_potential
+            );
+        }
 
         /// AVX2 ≡ scalar over the documented equivalence domain: membranes agree
         /// within ±2 mV, and the two disagree on a spike ONLY where the scalar
