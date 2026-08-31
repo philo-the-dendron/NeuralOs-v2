@@ -33,16 +33,93 @@
 //!
 //! # Approximation vs scalar
 //!
-//! The AVX2 kernel replaces `/1000` with `>>10` (÷1024) — the standard
-//! fixed-point fast-division approximation, ~2.4% error (`1024/1000`). What
-//! makes that biologically irrelevant is the grid, not the noise floor: on the
-//! default mV grid a steady current below ~200 μA at rest moves the membrane by
-//! exactly zero forever ([`crate::lif_neuron`] § the dead zone), so a ≤2 mV
+//! The AVX2 kernel replaces `/1000` with `÷1024` — the standard fixed-point
+//! fast-division approximation, ~2.4% error (`1024/1000`). What makes that
+//! biologically irrelevant is the grid, not the noise floor: on the default mV
+//! grid a steady current below ~200 μA at rest moves the membrane by exactly
+//! zero forever ([`crate::lif_neuron`] § the dead zone), so a ≤2 mV
 //! approximation sits inside the grid's own blindness. The older phrasing here
 //! compared a millivolt error against the ±5 μA default noise amplitude, which
-//! are different units and not comparable. The
-//! scalar reference here uses exact `/1000`. The correctness test asserts the
-//! two agree within ±2 mV per neuron, not bit-exact.
+//! are different units and not comparable. The scalar reference here uses exact
+//! `/1000`. The correctness test asserts the two agree within ±2 mV per neuron,
+//! not bit-exact.
+//!
+//! ## Corrected 2026-08-30: the two divisions must round the same way
+//!
+//! Both `÷1024` sites used to be a bare `_mm256_srai_epi32(_, 10)`, which
+//! rounds toward −∞, while the scalar `/` rounds toward zero. Every negative
+//! quotient therefore came out one unit more negative than the reference. In a
+//! single step that hides inside the ±2 mV tolerance, so every test in this
+//! module passed. Across a stepped simulation it does not: the two halves drift
+//! apart until each is caught by the dead zone, and then they PARK IN DIFFERENT
+//! PLACES. Measured before the fix, N = 16, `resting = −70`, `resistance = 100`,
+//! `dt_over_tau = 50`, threshold unreachable, 10_000 steps: at 0 μA drive the
+//! halves agreed, at +200 μA they were 1 mV apart, and at −200 μA the scalar
+//! parked at −71 mV against the AVX2 half at −90 mV. A 19 mV gap, wider than
+//! the 15 mV between rest and threshold — enough to decide whether a neuron
+//! ever fires.
+//!
+//! Fixed by [`div1024_toward_zero`], which biases negatives before the shift so
+//! both sites truncate toward zero like the scalar. The scale stays ÷1024; only
+//! the rounding direction changed.
+//!
+//! What that does NOT buy is agreement at the fixed point, and the reason is
+//! the scale, not the rounding. The scalar parks where
+//! `|dt·(leak + P/1000)| < 1000` and the vector where
+//! `|dt·(leak + P/1024)| < 1024` — two different dead-zone intervals, offset by
+//! `|P/1000 − P/1024|`, which is ~2.4% of the current term and reaches 3 at the
+//! edge of the equivalence domain. Worked example, 1000 μA into 100 MΩ: the
+//! scalar's current term is 100 against the vector's 97, so the scalar parks
+//! anywhere in `mp ∈ (10, 50)` and lands on 11, the vector in `(6.5, 47.5)` and
+//! lands on 7. After the fix the worst gap is **8 mV**, both at the fixed point
+//! and at any step along the way, and it does not grow with step count —
+//! identical at 1_000 steps and at 1_000_000. Pinned by
+//! `avx2_and_scalar_trajectories_stay_bounded`.
+//!
+//! Those two maxima are equal, and that is not a coincidence to gloss over: the
+//! worst cases are arms where the vector half never moves at all, so its
+//! largest deviation is its final one. Witness, `resting = 37`,
+//! `input × resistance = 100_000`, `dt_over_tau = 5`, from −70 mV: the scalar's
+//! `current_term` is 100 and it climbs to −62, while the vector's is 97 and
+//! `5 × (134 + 70) = 1020 < 1024` truncates to zero every step, so it sits at
+//! −70 forever. 8 mV apart on step one and on step 20_000. The extremal case
+//! found by the sweep is the same shape: `resting = 50`, `current_term` 87
+//! against 84, `dt_over_tau = 5`.
+//!
+//! Established by exhaustive sweep, not sampling: `resting` over the whole mV
+//! grid × all 395 distinct `(current_term_scalar, current_term_avx2)` classes
+//! for `|input × resistance| ≤ 100_000` × `dt_over_tau` in `0..=200`, each run
+//! to its fixed point from −70 mV.
+//!
+//! (This section said 4 mV and 5 mV until 2026-08-31. Those were the maxima
+//! over the nine arms the test happened to carry, not over the domain, and the
+//! 4-versus-5 split was an artifact of that arm set. The arms that reach 8 are
+//! now in the test.)
+//!
+//! **Two different bounds, do not conflate them.** The ±2 mV in
+//! § Equivalence domain is a SINGLE step from the SAME membrane. The 4 and 5
+//! above are trajectory differences between two states that have already
+//! diverged. The single-step contract is unchanged by this fix.
+//!
+//! ### Recorded fork: truncate only the delta shift
+//!
+//! Not taken. Half the added instructions: leave `current_term` on the plain
+//! floor shift and truncate only the delta. Measured by the reviewer on the real
+//! kernel — B1 is fixed identically (named arms `[0, 1, 1]`), the equivalence
+//! maximum is unchanged at 2, and the corner triple comes out `[2, 270, 18]`
+//! against the committed `[4, 180, 0]`. **Trigger for revisiting: if the ~15%
+//! vector-path cost ever matters to a consumer, this recovers about half of it,
+//! at the price of 18 corner spike disagreements where the committed choice has
+//! none.** The committed `(truncate, truncate)` stands because zero spike
+//! disagreement at the corners is worth more here than the instructions.
+//!
+//! ### Recorded fork: exact ÷1000 in the vector half
+//!
+//! Not taken. `_mm256_mullo_epi32` by a reciprocal plus a shift would make the
+//! two halves bit-equal and remove the parking offset entirely, at the cost of
+//! two extra multiplies per lane per step. **Trigger for revisiting: when a
+//! consumer needs bit-equal batch and scalar results across targets.** Until
+//! then the ÷1024 scale stays and the offset is documented rather than removed.
 //!
 //! # What "matching `integrate_and_fire`" means
 //!
@@ -83,8 +160,10 @@
 //! - `leak = resting − membrane`, widened to `i32`: `|leak| ≤ 65_535`.
 //! - `input × resistance`: `|P| ≤ 32_768 × 32_768 = 1_073_741_824`, always inside
 //!   `i32`. This product is safe unconditionally.
-//! - `current_term`: `|P| / 1000 ≤ 1_073_741` (scalar), `|P| >> 10 ≤ 1_048_576`
-//!   (AVX2). The scalar is the larger, so it binds.
+//! - `current_term`: `|P| / 1000 ≤ 1_073_741` (scalar), `|P| ÷ 1024 ≤ 1_048_576`
+//!   (AVX2). The scalar is the larger, so it binds. The toward-zero bias in
+//!   [`div1024_toward_zero`] only ever moves a negative value closer to zero, so
+//!   it cannot widen any of these magnitudes and the bound is unaffected.
 //! - `sum = leak + current_term`: `|sum| ≤ 65_535 + 1_073_741 = 1_139_276`.
 //! - `sum × dt_over_tau` must fit `i32`: `|dt_over_tau| ≤ i32::MAX / 1_139_276 = 1884`.
 //!
@@ -102,9 +181,14 @@
 //! Inside the bound nothing overflows, but the two halves are *not* bit-equal at
 //! the extremes — that is what the equivalence domain below is for. Measured
 //! over all 3125 combinations of `{i16::MIN, -1, 0, 1, i16::MAX}` at
-//! `dt_over_tau = DT_OVER_TAU_MAX`: both halves stay on the mV grid, 375 of 3125
-//! membranes differ, the largest difference is 3 mV, and 44 spike bits differ.
-//! Pinned by `overflow_corners_at_max_dt_over_tau`.
+//! `dt_over_tau = DT_OVER_TAU_MAX`: both halves stay on the mV grid, 180 of 3125
+//! membranes differ, the largest difference is 4 mV, and no spike bit differs.
+//! Pinned by `overflow_corners_at_max_dt_over_tau`. (Was 375 / 3 mV / 44 spike
+//! bits before the rounding fix in § Approximation. Matching the scalar's
+//! rounding more than halves how often the corners disagree and removes spike
+//! disagreement entirely, while adding 1 mV to the single worst case — the
+//! corners sit far outside the equivalence domain, so no bound is claimed here,
+//! only the exact measurement.)
 //!
 //! # Equivalence domain (where ±2 mV holds)
 //!
@@ -120,7 +204,11 @@
 //! threshold. The bound is exhaustive, not sampled: over that domain the
 //! difference depends only on `(membrane, resting, current_term_scalar,
 //! current_term_avx2)`, and enumerating every reachable combination gives a
-//! maximum of exactly 2. The first `dt_over_tau` that reaches 3 at the same
+//! maximum of exactly 2. Re-enumerated after the rounding fix in
+//! § Approximation, not carried over: the maximum over the domain is still
+//! exactly 2 and the edge is still the same value, but the interior improved —
+//! at the default `dt_over_tau = 50` the worst case fell from 2 to 1, and at
+//! `dt_over_tau = 1` it is now 0. The first `dt_over_tau` that reaches 3 at the same
 //! current bound is **228** (`membrane = −100`, `resting = 50`, scalar
 //! `current_term = 100` against the AVX2 `97`, giving −43 against −46); every
 //! value through 227 still gives 2. The stated bound of 200 is therefore
@@ -377,7 +465,7 @@ unsafe fn integrate_batch_avx2(
         let res_lo = _mm256_cvtepi16_epi32(_mm256_castsi256_si128(res));
         let res_hi = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(res, 1));
 
-        // LIF math on each half. ÷1000 approximated as >>10 (÷1024).
+        // LIF math on each half. ÷1000 approximated as ÷1024, rounded toward zero.
         let new_lo = lif_lane(mp_lo, rp_lo, ic_lo, res_lo, dt_v);
         let new_hi = lif_lane(mp_hi, rp_hi, ic_hi, res_hi, dt_v);
 
@@ -414,6 +502,26 @@ unsafe fn integrate_batch_avx2(
     );
 }
 
+/// `x / 1024` rounded TOWARD ZERO, per `i32` lane.
+///
+/// `_mm256_srai_epi32(x, 10)` rounds toward −∞; Rust's `/` rounds toward zero.
+/// A bare shift therefore makes every negative quotient one unit more negative
+/// than the scalar reference, and in a stepped simulation that error does not
+/// cancel — it is a constant downward drift, so the two halves settle at
+/// different fixed points (module doc § Approximation vs scalar).
+///
+/// For `x < 0` the sign broadcast `x >> 31` is all-ones, so `& 1023` adds 1023
+/// before the shift and floor becomes truncation. For `x >= 0` it adds nothing.
+/// The bias only ever moves a negative value toward zero, so it cannot overflow
+/// `i32` anywhere inside the domain in § Overflow domain.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+#[inline]
+unsafe fn div1024_toward_zero(x: __m256i) -> __m256i {
+    let bias = _mm256_and_si256(_mm256_srai_epi32(x, 31), _mm256_set1_epi32(1023));
+    _mm256_srai_epi32(_mm256_add_epi32(x, bias), 10)
+}
+
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
@@ -426,13 +534,13 @@ unsafe fn lif_lane(
 ) -> __m256i {
     // leak = rp − mp
     let leak = _mm256_sub_epi32(rp, mp);
-    // current_term = (ic * res) >> 10   [÷1024 ≈ ÷1000]
+    // current_term = (ic * res) / 1024, rounded toward zero  [÷1024 ≈ ÷1000]
     let current_scaled = _mm256_mullo_epi32(ic, res);
-    let current_term = _mm256_srai_epi32(current_scaled, 10);
-    // delta = ((leak + current) * dt_over_tau) >> 10
+    let current_term = div1024_toward_zero(current_scaled);
+    // delta = ((leak + current) * dt_over_tau) / 1024, rounded toward zero
     let sum = _mm256_add_epi32(leak, current_term);
     let delta = _mm256_mullo_epi32(sum, dt_over_tau);
-    let delta_scaled = _mm256_srai_epi32(delta, 10);
+    let delta_scaled = div1024_toward_zero(delta);
     // new_mp = mp + delta
     let new_mp = _mm256_add_epi32(mp, delta_scaled);
     // clamp to [-100, 50] (matches MEMBRANE_MV_MIN/MAX).
@@ -666,8 +774,8 @@ mod tests {
         let spike_diffs = sp_s.iter().zip(&sp_v).filter(|(a, b)| a != b).count();
         assert_eq!(
             (max_diff, membrane_diffs, spike_diffs),
-            (3, 375, 44),
-            "corner divergence moved; the module doc records 3 mV / 375 / 44 at dt_over_tau = {DT_OVER_TAU_MAX}"
+            (4, 180, 0),
+            "corner divergence moved; the module doc records 4 mV / 180 / 0 at dt_over_tau = {DT_OVER_TAU_MAX}"
         );
     }
 
@@ -863,12 +971,20 @@ mod tests {
     /// visible rather than accidentally correct: `tail = chunks * WIDTH + 1`
     /// leaves index 0 untouched at n = 1 and panics on the slice for n >= 16.
     ///
-    /// The two halves are deliberately NOT compared to each other here — with
-    /// `leak = -70` and `dt_over_tau = 50` the vector lanes give
-    /// `-3500 >> 10 = -4` and the scalar tail gives `-3500 / 1000 = -3`, one of
-    /// the ±2 mV differences the equivalence domain allows. That split is the
-    /// point: it marks exactly where the chunk loop stops and the tail starts,
-    /// so the boundary itself is what gets asserted.
+    /// The two halves are deliberately NOT compared to each other here. The
+    /// inputs are chosen so they still disagree by 1 mV after the rounding fix,
+    /// because that disagreement is the marker: `leak = 70` with 500 μA into
+    /// 100 MΩ gives the scalar `current_term = 50`, `delta = +6`, `-64`, and
+    /// the vector `current_term = 48` (50_000 ÷ 1024), `delta = +5`, `-65`. The
+    /// gap is the ÷1024 scale, which the rounding fix does not close and is not
+    /// meant to. That split marks exactly where the chunk loop stops and the
+    /// scalar tail starts, so the boundary itself is what gets asserted.
+    ///
+    /// The previous marker (`leak = -70`, giving `-4` against `-3`) stopped
+    /// working when the shift began truncating toward zero: both halves then
+    /// gave `-3` and the boundary became invisible. A test that silently stops
+    /// discriminating is the failure mode this module keeps hitting, so the
+    /// marker is asserted as an exact vector, not as a tolerance.
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn avx2_tail_writes_every_remainder_element() {
@@ -878,10 +994,10 @@ mod tests {
             return;
         }
         for n in [0usize, 1, 15, 16, 17, 31, 32, 33, 47, 48, 257] {
-            let membrane = vec![0i16; n];
-            let resting = vec![-70i16; n];
-            let current = vec![0i16; n];
-            let resistance = vec![0i16; n];
+            let membrane = vec![-70i16; n];
+            let resting = vec![0i16; n];
+            let current = vec![500i16; n];
+            let resistance = vec![100i16; n];
             let threshold = vec![-100i16; n]; // every correct element spikes
 
             let mut mp_v = membrane.clone();
@@ -895,7 +1011,7 @@ mod tests {
 
             let vector_lanes = (n / 16) * 16;
             let expected: Vec<i16> = (0..n)
-                .map(|i| if i < vector_lanes { -4 } else { -3 })
+                .map(|i| if i < vector_lanes { -65 } else { -64 })
                 .collect();
             assert_eq!(
                 mp_v, expected,
@@ -907,10 +1023,115 @@ mod tests {
                 "n={n}: a spike bit was never written — got {sp_v:?}"
             );
             if n > 0 {
-                assert_ne!(mp_v[n - 1], 0, "n={n}: the LAST element was not written");
+                assert_ne!(mp_v[n - 1], -70, "n={n}: the LAST element was not written");
                 assert!(sp_v[n - 1], "n={n}: the LAST spike bit was not written");
             }
         }
+    }
+
+    /// The two halves settle in the same place across a long run, and the gap
+    /// between them does not grow with step count.
+    ///
+    /// This is the multi-step claim the single-step ±2 mV bound does not make.
+    /// Before `div1024_toward_zero`, the vector half rounded every negative
+    /// delta one unit further from zero than the scalar, which is invisible in
+    /// one step and decisive over many: at −200 μA drive the scalar parked at
+    /// −71 mV and the AVX2 half at −90 mV, a 19 mV gap against the 15 mV that
+    /// separates rest from threshold.
+    ///
+    /// What remains after the fix is the ÷1024 scale, which shifts each half's
+    /// dead-zone interval and so its parking spot. That residual is bounded, not
+    /// accumulating: every arm below gives the same difference at 1_000 steps as
+    /// at 20_000, and the three named arms were separately checked out to
+    /// 1_000_000. The maxima are pinned exactly rather than as inequalities, so
+    /// any change to the kernel's arithmetic moves them.
+    ///
+    /// The arm set is not a sample. The last two arms are the domain-wide worst
+    /// cases found by exhaustively sweeping `resting` × every distinct
+    /// `(current_term_scalar, current_term_avx2)` class × `dt_over_tau`, so the
+    /// pinned `(8, 8)` is the true maximum over the equivalence domain and not
+    /// merely the maximum over whichever arms someone thought to write down.
+    /// It was `(4, 5)` before those two arms existed, which is exactly that
+    /// failure — the arm set was the measurement, and it was not the domain.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn avx2_and_scalar_trajectories_stay_bounded() {
+        // (resting, drive, resistance, dt_over_tau), all inside the equivalence
+        // domain. The first three are the reviewer's named arms; the last two are
+        // the worst fixed-point and worst trajectory cases found by sweeping it.
+        const ARMS: [(i16, i16, i16, i32); 11] = [
+            (-70, 0, 100, 50),
+            (-70, 200, 100, 50),
+            (-70, -200, 100, 50),
+            (-70, 1000, 100, 50),
+            (-70, -1000, 100, 50),
+            (-70, 500, 100, 50),
+            (-70, -500, 100, 50),
+            (0, -10000, 10, 50),
+            (50, 7500, 10, 200),
+            // The two domain-wide worst cases, both 8 mV. The vector half never
+            // moves in either: its delta truncates to zero every step while the
+            // scalar climbs away from the start. Named in the module doc.
+            (37, 1000, 100, 5),   // the reviewer's witness
+            (50, 870, 100, 5),    // the extremal case found by the exhaustive sweep
+        ];
+        const N: usize = 16;
+
+        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+            eprintln!("(AVX2 not available — skipping trajectory test)");
+            return;
+        }
+
+        // Returns (difference at the end, worst difference at any step).
+        let run = |resting: i16, drive: i16, resistance: i16, dtot: i32, steps: usize| {
+            let rp = vec![resting; N];
+            let ic = vec![drive; N];
+            let res = vec![resistance; N];
+            let th = vec![i16::MAX; N]; // unreachable: no spike, no reset
+            let mut mp_s = vec![-70i16; N];
+            let mut mp_v = vec![-70i16; N];
+            let mut sp_s = vec![false; N];
+            let mut sp_v = vec![false; N];
+            let mut worst_step = 0i32;
+            for _ in 0..steps {
+                integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, dtot, &mut sp_s);
+                integrate_lif_batch(&mut mp_v, &rp, &ic, &res, &th, dtot, &mut sp_v);
+                let d = (i32::from(mp_s[0]) - i32::from(mp_v[0])).abs();
+                if d > worst_step {
+                    worst_step = d;
+                }
+            }
+            ((i32::from(mp_s[0]) - i32::from(mp_v[0])).abs(), worst_step)
+        };
+
+        let mut worst_end = 0i32;
+        let mut worst_traj = 0i32;
+        for &(resting, drive, resistance, dtot) in &ARMS {
+            let (short_end, short_worst) = run(resting, drive, resistance, dtot, 1_000);
+            let (long_end, long_worst) = run(resting, drive, resistance, dtot, 20_000);
+            assert_eq!(
+                (short_end, short_worst),
+                (long_end, long_worst),
+                "arm rp={resting} drive={drive} res={resistance} dt_over_tau={dtot}: the gap \
+                 grew between 1_000 and 20_000 steps, so it is accumulating, not parking"
+            );
+            worst_end = worst_end.max(long_end);
+            worst_traj = worst_traj.max(long_worst);
+        }
+
+        // The reviewer's three named arms, exactly.
+        let named: Vec<i32> = [0i16, 200, -200]
+            .iter()
+            .map(|&drive| run(-70, drive, 100, 50, 10_000).0)
+            .collect();
+        assert_eq!(named, vec![0, 1, 1], "the named arms moved (they were 0, 1, 19 before the fix)");
+
+        assert_eq!(
+            (worst_end, worst_traj),
+            (8, 8),
+            "trajectory bounds moved; the module doc records 8 mV domain-wide, at \
+             the fixed point and at any step, established by exhaustive sweep"
+        );
     }
 
     // ----- Property tests -----
