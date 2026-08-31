@@ -401,7 +401,20 @@ pub fn integrate_lif_batch(
 ///
 /// `dt_over_tau` is saturated to [`DT_OVER_TAU_MAX`] on entry, so no `i32`
 /// intermediate here can overflow for any `i16` input (module doc § Overflow
-/// domain). Inside that bound the membrane arithmetic is bit-equal to
+/// domain).
+///
+/// # Panics
+///
+/// Panics if the six slices are not all the same length, on the same terms as
+/// [`integrate_lif_batch`] and for the same reason stated there. Nothing here is
+/// memory-unsafe — the indexing is bounds-checked — but without the assert a
+/// short slice panics part-way through the loop with an index message, after
+/// some of the caller's `membrane` and `spikes_out` have already been written.
+/// A reference implementation that fails differently from the function it is the
+/// reference for is worth less than the five comparisons cost, so both public
+/// entry points now reject the same inputs the same way.
+///
+/// Inside that bound the membrane arithmetic is bit-equal to
 /// [`crate::LIFNeuron::integrate_and_fire`] on the mV grid — pinned by
 /// `prop_scalar_batch_is_bit_equal_to_integrate_and_fire`, with the four
 /// non-arithmetic differences listed in the module doc.
@@ -414,8 +427,15 @@ pub fn integrate_batch_scalar(
     dt_over_tau: i32,
     spikes_out: &mut [bool],
 ) {
+    let n = membrane.len();
+    assert_eq!(resting.len(), n, "resting.len() != membrane.len()");
+    assert_eq!(input_currents.len(), n, "input_currents.len() != membrane.len()");
+    assert_eq!(resistance.len(), n, "resistance.len() != membrane.len()");
+    assert_eq!(threshold.len(), n, "threshold.len() != membrane.len()");
+    assert_eq!(spikes_out.len(), n, "spikes_out.len() != membrane.len()");
+
     let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX);
-    for i in 0..membrane.len() {
+    for i in 0..n {
         let mp = i32::from(membrane[i]);
         let leak = i32::from(resting[i]) - mp;
         let current_term = (i32::from(input_currents[i]) * i32::from(resistance[i])) / 1000;
@@ -817,11 +837,22 @@ mod tests {
 
         // resting = 0 against membrane = -70 gives leak = 70 and delta = +3, so
         // any element the kernel actually processes moves off SENTINEL.
-        let run = |lens: [usize; 5]| -> (bool, Vec<i16>) {
+        // Both public entry points carry the same contract, so both are checked.
+        // `integrate_lif_batch` takes the AVX2 path on this box, so it never
+        // exercises `integrate_batch_scalar`'s own asserts except through the
+        // equal-length tail call.
+        let run = |scalar_entry: bool, lens: [usize; 5]| -> (bool, Vec<i16>, Vec<bool>) {
             let mut membrane = vec![SENTINEL; N];
-            let mut spikes = vec![false; lens[4]];
+            // `true` is the sentinel: threshold is -55 and the membrane can only
+            // reach -67 here, so any real write sets the bit to false.
+            let mut spikes = vec![true; lens[4]];
             let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                integrate_lif_batch(
+                let entry = if scalar_entry {
+                    integrate_batch_scalar
+                } else {
+                    integrate_lif_batch
+                };
+                entry(
                     &mut membrane,
                     &vec![0i16; lens[0]],
                     &vec![0i16; lens[1]],
@@ -832,7 +863,7 @@ mod tests {
                 );
             }))
             .is_err();
-            (panicked, membrane)
+            (panicked, membrane, spikes)
         };
 
         let previous = std::panic::take_hook();
@@ -840,30 +871,38 @@ mod tests {
         let mut failures: Vec<String> = Vec::new();
 
         for (i, name) in NAMES.iter().enumerate() {
-            let mut lens = [N; 5];
-            lens[i] = SHORT;
-            let (panicked, membrane) = run(lens);
-            if !panicked {
-                failures.push(format!("short `{name}`: no panic"));
+            for (entry_name, scalar_entry) in
+                [("integrate_lif_batch", false), ("integrate_batch_scalar", true)]
+            {
+            for (label, len) in [("short", SHORT), ("long", N * 2)] {
+                let mut lens = [N; 5];
+                lens[i] = len;
+                let (panicked, membrane, spikes) = run(scalar_entry, lens);
+                let name = &format!("{name} via {entry_name}");
+                if !panicked {
+                    let why = if label == "short" {
+                        "no panic"
+                    } else {
+                        "no panic — a prefix was integrated silently"
+                    };
+                    failures.push(format!("{label} `{name}`: {why}"));
+                }
+                // BOTH caller buffers. The AVX2 chunk loop writes
+                // spikes_out[off + j] in the same iteration that stores the
+                // membrane, so checking only one would let half a partial write
+                // through a test whose name promises the caller was untouched.
+                if let Some(pos) = membrane.iter().position(|&v| v != SENTINEL) {
+                    failures.push(format!(
+                        "{label} `{name}`: membrane[{pos}] = {} was written before the panic",
+                        membrane[pos]
+                    ));
+                }
+                if let Some(pos) = spikes.iter().position(|&b| !b) {
+                    failures.push(format!(
+                        "{label} `{name}`: spikes_out[{pos}] was written before the panic"
+                    ));
+                }
             }
-            if let Some(pos) = membrane.iter().position(|&v| v != SENTINEL) {
-                failures.push(format!(
-                    "short `{name}`: membrane[{pos}] = {} was written before the panic",
-                    membrane[pos]
-                ));
-            }
-
-            let mut lens = [N; 5];
-            lens[i] = N * 2;
-            let (panicked, membrane) = run(lens);
-            if !panicked {
-                failures.push(format!("long `{name}`: no panic — a prefix was integrated silently"));
-            }
-            if let Some(pos) = membrane.iter().position(|&v| v != SENTINEL) {
-                failures.push(format!(
-                    "long `{name}`: membrane[{pos}] = {} was written before the panic",
-                    membrane[pos]
-                ));
             }
         }
         std::panic::set_hook(previous);
