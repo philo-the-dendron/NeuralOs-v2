@@ -129,14 +129,25 @@ pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i32 {
 ///
 /// Updates `membrane` in place and writes the spike mask to `spikes_out`.
 /// Picks AVX2 at runtime when available, else the scalar reference. All slices
-/// must be equal length (debug-asserted).
+/// must be equal length (asserted, in every profile).
 ///
 /// `input_currents` is the *total* effective current per neuron (external +
 /// synaptic + noise − adaptation); the batch computes only the membrane
 /// update, not current accumulation — that's the caller's job.
 ///
 /// # Panics
-/// Debug builds assert all slices are equal length.
+///
+/// Panics if the six slices are not all the same length — in **every** profile,
+/// not just debug. The AVX2 kernel indexes all of them by the same chunk
+/// offsets, so an unequal length is an out-of-bounds read from a safe function
+/// in a published crate; enforcing the contract here is the only way the
+/// `SAFETY` comment below can name an invariant that actually holds.
+///
+/// Asserting rather than clamping `n` to the shortest slice is deliberate. The
+/// documented contract has always been "all slices equal length"; clamping
+/// would silently redefine it, integrate a prefix, and hide the caller's bug in
+/// a numerical kernel where a short slice is never intentional. Five length
+/// comparisons per call cost nothing against N-element work.
 pub fn integrate_lif_batch(
     membrane: &mut [i16],
     resting: &[i16],
@@ -147,15 +158,16 @@ pub fn integrate_lif_batch(
     spikes_out: &mut [bool],
 ) {
     let n = membrane.len();
-    debug_assert_eq!(resting.len(), n);
-    debug_assert_eq!(input_currents.len(), n);
-    debug_assert_eq!(resistance.len(), n);
-    debug_assert_eq!(threshold.len(), n);
-    debug_assert_eq!(spikes_out.len(), n);
+    assert_eq!(resting.len(), n, "resting.len() != membrane.len()");
+    assert_eq!(input_currents.len(), n, "input_currents.len() != membrane.len()");
+    assert_eq!(resistance.len(), n, "resistance.len() != membrane.len()");
+    assert_eq!(threshold.len(), n, "threshold.len() != membrane.len()");
+    assert_eq!(spikes_out.len(), n, "spikes_out.len() != membrane.len()");
 
     #[cfg(target_arch = "x86_64")]
     if matches!(detect_simd_support(), SimdSupport::Avx2) {
-        // SAFETY: slices are valid, equal-length (debug-asserted), and the AVX2
+        // SAFETY: slices are valid and equal-length — asserted above in every
+        // profile, not merely debug-asserted — and the AVX2
         // kernel processes 16-element aligned chunks plus a scalar tail, so no
         // out-of-bounds access occurs. `membrane` is &mut and uniquely borrowed
         // here; the kernel writes within bounds.
@@ -359,6 +371,100 @@ mod tests {
         // Sanity: most spikes agree (>90%). Edge-flips only near threshold.
         let disagree_ratio = disagree as f64 / n as f64;
         assert!(disagree_ratio < 0.10, "{disagree}/{n} spike disagreements (>10%)");
+    }
+
+    /// The slice-length contract is enforced BEFORE the caller's buffer is
+    /// touched, in every profile.
+    ///
+    /// It used to be five `debug_assert_eq!`s, so release builds enforced
+    /// nothing. The AVX2 chunk loop indexes all six slices by the same offsets,
+    /// so a short slice was read past its end and the derived values were
+    /// written into the caller's `membrane` before the tail slicing panicked.
+    /// Reproduced on this branch before the fix: `--release`, membrane 32,
+    /// resting 17 — `membrane[17..]` came back holding values no in-bounds
+    /// input could produce, then `range start index 32 out of range for slice
+    /// of length 17`. An out-of-bounds read reachable from safe code in a
+    /// published crate.
+    ///
+    /// Asserting only "it panics" is not enough, and a first draft of this test
+    /// made exactly that mistake: with `debug_assert_eq!` restored it still
+    /// passed in release, because the out-of-bounds run panics anyway when it
+    /// reaches the tail slicing. So this checks the two things that actually
+    /// separate an enforced contract from an accidental bounds-check crash:
+    ///
+    /// - a slice SHORTER than `membrane` must panic with `membrane` still
+    ///   untouched — no partial write from out-of-bounds reads;
+    /// - a slice LONGER than `membrane` must panic at all. Nothing is out of
+    ///   bounds there, so the unenforced version integrated a prefix and
+    ///   returned normally.
+    ///
+    /// `catch_unwind` rather than `#[should_panic]` so one test covers all five
+    /// slices in both directions, identically under `cargo test` and
+    /// `cargo test --release`.
+    #[test]
+    fn unequal_slice_lengths_panic_before_touching_the_caller() {
+        const N: usize = 32;
+        const SHORT: usize = 17; // not a multiple of the 16-lane width
+        const SENTINEL: i16 = -70;
+        const NAMES: [&str; 5] =
+            ["resting", "input_currents", "resistance", "threshold", "spikes_out"];
+
+        // resting = 0 against membrane = -70 gives leak = 70 and delta = +3, so
+        // any element the kernel actually processes moves off SENTINEL.
+        let run = |lens: [usize; 5]| -> (bool, Vec<i16>) {
+            let mut membrane = vec![SENTINEL; N];
+            let mut spikes = vec![false; lens[4]];
+            let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                integrate_lif_batch(
+                    &mut membrane,
+                    &vec![0i16; lens[0]],
+                    &vec![0i16; lens[1]],
+                    &vec![100i16; lens[2]],
+                    &vec![-55i16; lens[3]],
+                    50,
+                    &mut spikes,
+                );
+            }))
+            .is_err();
+            (panicked, membrane)
+        };
+
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let mut failures: Vec<String> = Vec::new();
+
+        for (i, name) in NAMES.iter().enumerate() {
+            let mut lens = [N; 5];
+            lens[i] = SHORT;
+            let (panicked, membrane) = run(lens);
+            if !panicked {
+                failures.push(format!("short `{name}`: no panic"));
+            }
+            if let Some(pos) = membrane.iter().position(|&v| v != SENTINEL) {
+                failures.push(format!(
+                    "short `{name}`: membrane[{pos}] = {} was written before the panic",
+                    membrane[pos]
+                ));
+            }
+
+            let mut lens = [N; 5];
+            lens[i] = N * 2;
+            let (panicked, membrane) = run(lens);
+            if !panicked {
+                failures.push(format!("long `{name}`: no panic — a prefix was integrated silently"));
+            }
+            if let Some(pos) = membrane.iter().position(|&v| v != SENTINEL) {
+                failures.push(format!(
+                    "long `{name}`: membrane[{pos}] = {} was written before the panic",
+                    membrane[pos]
+                ));
+            }
+        }
+        std::panic::set_hook(previous);
+
+        assert!(failures.is_empty(), "length contract unenforced:
+  {}", failures.join("
+  "));
     }
 
     /// The batch with `SimdSupport::None`-forcing path must still match scalar
