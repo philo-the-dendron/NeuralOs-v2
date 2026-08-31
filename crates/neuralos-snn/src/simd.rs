@@ -790,7 +790,17 @@ mod tests {
                 }
             }
         }
-        assert_eq!(mp.len(), 5usize.pow(5), "3125 = chunks plus a tail");
+        assert_eq!(mp.len(), 5usize.pow(5), "5^5 corner combinations");
+        // 3125 = 195 * 16 + 5. Without padding the last five combinations
+        // (membrane = resting = current = resistance = i16::MAX, every
+        // threshold) run in the AVX2 scalar tail and are compared against
+        // integrate_batch_scalar's own output — a guaranteed zero feeding a
+        // triple this test pins as an exact measurement. See LANES.
+        for v in [&mut mp, &mut rp, &mut ic, &mut res, &mut th] {
+            pad_to_lanes(v);
+        }
+        let n = mp.len();
+        assert!(n.is_multiple_of(LANES), "fixture must be all vector lanes");
 
         // Scalar first: in a debug build an overflowing `*` panics here.
         let mut mp_s = mp.clone();
@@ -1612,6 +1622,16 @@ mod tests {
         ///
         /// Lengths run 0..=257 so the empty batch, sub-width batches, exact
         /// 16-lane chunks and every tail remainder all shrink.
+        ///
+        /// Weakened, not wrong, and worth knowing: in a draw whose length is not
+        /// a multiple of [`LANES`], the final `len % 16` neurons run through
+        /// `integrate_batch_avx2`'s scalar tail and are therefore compared
+        /// against the very function that computed them. Those lanes pass
+        /// vacuously. The discrimination comes from the vector lanes, which is
+        /// not an assumption — mutants A1 and A2 (either divide-by-1024 site
+        /// perturbed), B (the high-half widen dropped) and D (the tail boundary
+        /// moved) all turn this test red. The fixture is deliberately NOT padded
+        /// here, because covering ragged lengths is the point of the range.
         #[test]
         #[cfg(target_arch = "x86_64")]
         fn prop_avx2_matches_scalar_in_the_equivalence_domain(
