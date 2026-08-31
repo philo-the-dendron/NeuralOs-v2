@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@152435e · open(session): SIMD hardening build (builder) · doctrine ISA append (adjudicator) · next-work: ROADMAP § Practical next moves"
+head: "main@b9aeab0 · open(session): SIMD hardening build (builder) · doctrine ISA append (adjudicator) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-31T01:38:34Z
+updated: 2026-08-31T04:48:35Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
