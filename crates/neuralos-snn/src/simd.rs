@@ -389,6 +389,42 @@ mod tests {
     #![allow(clippy::shadow_unrelated)]
     #![allow(clippy::cast_precision_loss)] // test counters are tiny; usize→f64 is lossless in practice
     use super::*;
+    use proptest::prelude::*;
+
+    /// Equivalence-domain bound on `|input_current × resistance|` (module doc
+    /// § Equivalence domain). Deliberately not public: it constrains what a
+    /// caller may pass, and the module doc states it in prose.
+    const EQUIV_CURRENT_PRODUCT_MAX: i32 = 100_000;
+    /// Equivalence-domain bound on `dt_over_tau` (module doc § Equivalence domain).
+    const EQUIV_DT_OVER_TAU_MAX: i32 = 200;
+    /// The agreement the equivalence domain buys, in mV.
+    const EQUIV_TOLERANCE_MV: i32 = 2;
+
+    /// The five SoA slices a batch needs, owned. Named because the tuple trips
+    /// `clippy::type_complexity` under `--features simd`, which no workspace gate
+    /// lints (the workspace build does not enable `simd`).
+    type SoaBatch = (Vec<i16>, Vec<i16>, Vec<i16>, Vec<i16>, Vec<i16>);
+
+    /// Build an SoA batch inside the equivalence domain from raw proptest draws:
+    /// `resistance` is free across `i16`, and `input_current` is squeezed so the
+    /// product respects `EQUIV_CURRENT_PRODUCT_MAX`.
+    fn soa_in_domain(raw: &[(i16, i16, i16, i16, i16)]) -> SoaBatch {
+        let mut membrane = Vec::with_capacity(raw.len());
+        let mut resting = Vec::with_capacity(raw.len());
+        let mut current = Vec::with_capacity(raw.len());
+        let mut resistance = Vec::with_capacity(raw.len());
+        let mut threshold = Vec::with_capacity(raw.len());
+        for &(mp, rp, ic_raw, res, th) in raw {
+            let lim = EQUIV_CURRENT_PRODUCT_MAX / i32::from(res).abs().max(1);
+            let lim = lim.min(i32::from(i16::MAX)) as i16;
+            membrane.push(mp);
+            resting.push(rp);
+            current.push(ic_raw.clamp(-lim, lim));
+            resistance.push(res);
+            threshold.push(th);
+        }
+        (membrane, resting, current, resistance, threshold)
+    }
 
     /// AVX2 kernel output stays within the biological bounds, like the scalar.
     #[test]
@@ -691,5 +727,67 @@ mod tests {
         integrate_batch_scalar(&mut b, &rp, &ic, &res, &th, dtot, &mut sb);
         assert_eq!(a, b);
         assert_eq!(sa, sb);
+    }
+
+    // ----- Property tests -----
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(512))]
+
+        /// AVX2 ≡ scalar over the documented equivalence domain: membranes agree
+        /// within ±2 mV, and the two disagree on a spike ONLY where the scalar
+        /// membrane sits inside that same 2 mV band around the neuron's threshold.
+        ///
+        /// Lengths run 0..=257 so the empty batch, sub-width batches, exact
+        /// 16-lane chunks and every tail remainder all shrink.
+        #[test]
+        #[cfg(target_arch = "x86_64")]
+        fn prop_avx2_matches_scalar_in_the_equivalence_domain(
+            raw in prop::collection::vec(
+                (-100i16..=50, -100i16..=50, any::<i16>(), any::<i16>(), -100i16..=50),
+                0..=257,
+            ),
+            dtot in 0i32..=EQUIV_DT_OVER_TAU_MAX,
+        ) {
+            if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+                return Ok(());
+            }
+            let (membrane, resting, current, resistance, threshold) = soa_in_domain(&raw);
+            let n = membrane.len();
+
+            let mut mp_s = membrane.clone();
+            let mut sp_s = vec![false; n];
+            integrate_batch_scalar(
+                &mut mp_s, &resting, &current, &resistance, &threshold, dtot, &mut sp_s,
+            );
+
+            let mut mp_v = membrane.clone();
+            let mut sp_v = vec![false; n];
+            // SAFETY: equal-length slices, AVX2 verified available above.
+            unsafe {
+                integrate_batch_avx2(
+                    &mut mp_v, &resting, &current, &resistance, &threshold, dtot, &mut sp_v,
+                );
+            }
+
+            for i in 0..n {
+                let diff = (i32::from(mp_s[i]) - i32::from(mp_v[i])).abs();
+                prop_assert!(
+                    diff <= EQUIV_TOLERANCE_MV,
+                    "neuron {i}: scalar {} vs avx2 {} differ by {diff} mV (> {EQUIV_TOLERANCE_MV}); \
+                     mp={} rp={} ic={} res={} dt_over_tau={dtot}",
+                    mp_s[i], mp_v[i], membrane[i], resting[i], current[i], resistance[i],
+                );
+                if sp_s[i] != sp_v[i] {
+                    let margin = (i32::from(mp_s[i]) - i32::from(threshold[i])).abs();
+                    prop_assert!(
+                        margin <= EQUIV_TOLERANCE_MV,
+                        "neuron {i}: spike disagreement {} vs {} with the scalar membrane {} \
+                         a full {margin} mV from threshold {} — outside the edge band",
+                        sp_s[i], sp_v[i], mp_s[i], threshold[i],
+                    );
+                }
+            }
+        }
     }
 }
