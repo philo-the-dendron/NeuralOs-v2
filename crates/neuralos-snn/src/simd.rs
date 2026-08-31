@@ -832,6 +832,65 @@ mod tests {
         );
     }
 
+    /// The AVX2 scalar remainder covers EVERY element past the last full 16-lane
+    /// chunk, including the last one. Lengths 1, 15, 16, 17, 31 and 33 cover
+    /// sub-width, exact-chunk and both sides of a chunk boundary.
+    ///
+    /// Inputs are chosen so the correct answer differs from the input membrane at
+    /// every index and every spike bit flips to `true`, so a skipped element is
+    /// visible rather than accidentally correct: `tail = chunks * WIDTH + 1`
+    /// leaves index 0 untouched at n = 1 and panics on the slice for n >= 16.
+    ///
+    /// The two halves are deliberately NOT compared to each other here — with
+    /// `leak = -70` and `dt_over_tau = 50` the vector lanes give
+    /// `-3500 >> 10 = -4` and the scalar tail gives `-3500 / 1000 = -3`, one of
+    /// the ±2 mV differences the equivalence domain allows. That split is the
+    /// point: it marks exactly where the chunk loop stops and the tail starts,
+    /// so the boundary itself is what gets asserted.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn avx2_tail_writes_every_remainder_element() {
+        const DTOT: i32 = 50; // 1 ms / 20 ms
+        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+            eprintln!("(AVX2 not available — skipping tail test)");
+            return;
+        }
+        for n in [0usize, 1, 15, 16, 17, 31, 32, 33, 47, 48, 257] {
+            let membrane = vec![0i16; n];
+            let resting = vec![-70i16; n];
+            let current = vec![0i16; n];
+            let resistance = vec![0i16; n];
+            let threshold = vec![-100i16; n]; // every correct element spikes
+
+            let mut mp_v = membrane.clone();
+            let mut sp_v = vec![false; n];
+            // SAFETY: equal-length slices, AVX2 verified available above.
+            unsafe {
+                integrate_batch_avx2(
+                    &mut mp_v, &resting, &current, &resistance, &threshold, DTOT, &mut sp_v,
+                );
+            }
+
+            let vector_lanes = (n / 16) * 16;
+            let expected: Vec<i16> = (0..n)
+                .map(|i| if i < vector_lanes { -4 } else { -3 })
+                .collect();
+            assert_eq!(
+                mp_v, expected,
+                "n={n}: {vector_lanes} vector lanes then a {} element tail",
+                n - vector_lanes
+            );
+            assert!(
+                sp_v.iter().all(|&b| b),
+                "n={n}: a spike bit was never written — got {sp_v:?}"
+            );
+            if n > 0 {
+                assert_ne!(mp_v[n - 1], 0, "n={n}: the LAST element was not written");
+                assert!(sp_v[n - 1], "n={n}: the LAST spike bit was not written");
+            }
+        }
+    }
+
     // ----- Property tests -----
 
     proptest! {
