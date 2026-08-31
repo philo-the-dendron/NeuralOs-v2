@@ -76,6 +76,8 @@ cargo test   --workspace                          # offline; 307 executed green 
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
+cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings  # simd lint gate: workspace clippy never compiles the feature-gated module (2026-08-30)
+cargo test -p neuralos-snn --release --features simd   # simd release gate: the slice-length contract is assert_eq!, its regression test only fails in release (2026-08-30)
 PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # the hdf5 gate (vendored HDF5; cmake from .nirenv; 116 green)
 PATH="$PWD/.nirenv/bin:$PATH" cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate  # THE NIR HDF5 EVIDENCE GATE (5/5)
 
