@@ -89,7 +89,12 @@
 //! Established by exhaustive sweep, not sampling: `resting` over the whole mV
 //! grid × all 395 distinct `(current_term_scalar, current_term_avx2)` classes
 //! for `|input × resistance| ≤ 100_000` × `dt_over_tau` in `0..=200`, each run
-//! to its fixed point from −70 mV.
+//! to its fixed point from −70 mV. That sweep is in the tree, not in a
+//! notebook: `sweep_reproduces_the_documented_trajectory_maxima` re-derives
+//! every number in this paragraph from the real kernel, and also checks that
+//! the arm set the fast test carries actually reaches the domain maximum. It is
+//! `#[ignore]`d because it takes minutes; its own doc comment carries the
+//! command.
 //!
 //! (This section said 4 mV and 5 mV until 2026-08-31. Those were the maxima
 //! over the nine arms the test happened to carry, not over the domain, and the
@@ -213,7 +218,14 @@
 //! `current_term = 100` against the AVX2 `97`, giving −43 against −46); every
 //! value through 227 still gives 2. The stated bound of 200 is therefore
 //! conservative by 27, which is deliberate — it is a round number well inside
-//! the edge rather than sitting on it. (An earlier draft of this section said
+//! the edge rather than sitting on it.
+//!
+//! Every number in this section is re-derived from the real kernel by
+//! `sweep_reproduces_the_documented_equivalence_domain` — the maximum, the
+//! interior values, the edge and its witness. It is `#[ignore]`d for runtime;
+//! its own doc comment carries the command. Before that test existed these
+//! numbers came from a scalar model of the kernel run outside the repository,
+//! which is a weaker thing than it sounded like. (An earlier draft of this section said
 //! the first failure was at 256, which was read off a coarse power-of-two
 //! sample and never the true edge.)
 //!
@@ -583,6 +595,27 @@ mod tests {
     const EQUIV_DT_OVER_TAU_MAX: i32 = 200;
     /// The agreement the equivalence domain buys, in mV.
     const EQUIV_TOLERANCE_MV: i32 = 2;
+
+    // (resting, drive, resistance, dt_over_tau), all inside the equivalence
+    // domain. The first three are the reviewer's named arms; the last two are
+    // the worst fixed-point and worst trajectory cases found by sweeping it.
+    const ARMS: [(i16, i16, i16, i32); 11] = [
+        (-70, 0, 100, 50),
+        (-70, 200, 100, 50),
+        (-70, -200, 100, 50),
+        (-70, 1000, 100, 50),
+        (-70, -1000, 100, 50),
+        (-70, 500, 100, 50),
+        (-70, -500, 100, 50),
+        (0, -10000, 10, 50),
+        (50, 7500, 10, 200),
+        // The two domain-wide worst cases, both 8 mV. The vector half never
+        // moves in either: its delta truncates to zero every step while the
+        // scalar climbs away from the start. Named in the module doc.
+        (37, 1000, 100, 5),   // the reviewer's witness
+        (50, 870, 100, 5),    // the extremal case found by the exhaustive sweep
+    ];
+
 
     /// The five SoA slices a batch needs, owned. Named because the tuple trips
     /// `clippy::type_complexity` under `--features simd`, which no workspace gate
@@ -1095,25 +1128,6 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn avx2_and_scalar_trajectories_stay_bounded() {
-        // (resting, drive, resistance, dt_over_tau), all inside the equivalence
-        // domain. The first three are the reviewer's named arms; the last two are
-        // the worst fixed-point and worst trajectory cases found by sweeping it.
-        const ARMS: [(i16, i16, i16, i32); 11] = [
-            (-70, 0, 100, 50),
-            (-70, 200, 100, 50),
-            (-70, -200, 100, 50),
-            (-70, 1000, 100, 50),
-            (-70, -1000, 100, 50),
-            (-70, 500, 100, 50),
-            (-70, -500, 100, 50),
-            (0, -10000, 10, 50),
-            (50, 7500, 10, 200),
-            // The two domain-wide worst cases, both 8 mV. The vector half never
-            // moves in either: its delta truncates to zero every step while the
-            // scalar climbs away from the start. Named in the module doc.
-            (37, 1000, 100, 5),   // the reviewer's witness
-            (50, 870, 100, 5),    // the extremal case found by the exhaustive sweep
-        ];
         const N: usize = 16;
 
         if !matches!(detect_simd_support(), SimdSupport::Avx2) {
@@ -1170,6 +1184,331 @@ mod tests {
             (8, 8),
             "trajectory bounds moved; the module doc records 8 mV domain-wide, at \
              the fixed point and at any step, established by exhaustive sweep"
+        );
+    }
+
+    // ----- Exhaustive sweeps (ignored by default) -----
+
+    /// The AVX2 chunk width. Any sweep fixture whose length is not a multiple of
+    /// this feeds its final `len % LANES` lanes to `integrate_batch_avx2`'s
+    /// SCALAR TAIL, where they are compared against `integrate_batch_scalar` —
+    /// that is, against themselves. Those grid points are then covered on paper
+    /// and untested in fact.
+    ///
+    /// It is not hypothetical. The first version of the trajectory sweep used
+    /// `n = 151`, which is `9 × 16 + 7`, so resting 44..=50 never reached the
+    /// vector kernel. At the extremal arm the doc names (`P = 87_000`,
+    /// `dt_over_tau = 5`) resting 50 reported a gap of 0 there and reports 8 in a
+    /// full chunk; the domain maximum survived only because resting 43 happened
+    /// to land on lane 143. Every fixture below is padded to a multiple of LANES.
+    const LANES: usize = 16;
+
+    /// Repeat the last element until the length is a multiple of [`LANES`], so
+    /// every real grid point is inside a vector chunk. Padding duplicates an
+    /// existing grid point, so it cannot introduce a value the grid did not have.
+    fn pad_to_lanes<T: Copy>(v: &mut Vec<T>) {
+        let last = *v.last().expect("fixture must be non-empty");
+        while !v.len().is_multiple_of(LANES) {
+            v.push(last);
+        }
+    }
+
+    /// One `(input_current, resistance)` per distinct
+    /// `(current_term_scalar, current_term_avx2)` class with `|P| ≤ 100_000`.
+    ///
+    /// The kernel takes currents and resistances, not current terms, so each
+    /// class needs a representative `P = input × resistance` that is actually
+    /// factorable into two `i16`. `|P| > i16::MAX` needs a divisor; a class whose
+    /// every member is unfactorable is dropped, and the sweeps assert how many
+    /// classes survived so that silent coverage loss cannot pass.
+    fn current_term_class_representatives() -> Vec<(i16, i16)> {
+        fn factor_i16(p: i32) -> Option<(i16, i16)> {
+            if p.abs() <= i32::from(i16::MAX) {
+                return Some((p as i16, 1));
+            }
+            (2..=64i32).find_map(|d| {
+                (p % d == 0 && (p / d).abs() <= i32::from(i16::MAX))
+                    .then(|| ((p / d) as i16, d as i16))
+            })
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        let mut out = Vec::new();
+        for p in -EQUIV_CURRENT_PRODUCT_MAX..=EQUIV_CURRENT_PRODUCT_MAX {
+            let class = (p / 1000, p / 1024);
+            if !seen.insert(class) {
+                continue;
+            }
+            if let Some(pair) = factor_i16(p) {
+                out.push(pair);
+            } else {
+                seen.remove(&class); // let a later member of the class represent it
+            }
+        }
+        out
+    }
+
+    /// Run one AVX2 batch and one scalar batch over the same inputs, returning
+    /// the largest membrane difference. Threshold is unreachable, so spikes never
+    /// fire and never reset anything.
+    #[cfg(target_arch = "x86_64")]
+    fn max_membrane_gap(
+        start: &[i16],
+        resting: &[i16],
+        current: &[i16],
+        resistance: &[i16],
+        threshold: &[i16],
+        dtot: i32,
+        scratch: &mut (Vec<i16>, Vec<i16>, Vec<bool>, Vec<bool>),
+    ) -> i32 {
+        let (mp_s, mp_v, sp_s, sp_v) = scratch;
+        mp_s.copy_from_slice(start);
+        mp_v.copy_from_slice(start);
+        integrate_batch_scalar(mp_s, resting, current, resistance, threshold, dtot, sp_s);
+        // SAFETY: equal-length slices; the caller checked AVX2 is available.
+        unsafe {
+            integrate_batch_avx2(mp_v, resting, current, resistance, threshold, dtot, sp_v);
+        }
+        mp_s.iter()
+            .zip(mp_v.iter())
+            .map(|(a, b)| (i32::from(*a) - i32::from(*b)).abs())
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// EXHAUSTIVE. Re-derives every number in the module doc's § Equivalence
+    /// domain from the real kernel, so the section is reproducible from the tree
+    /// rather than from someone's scratch directory.
+    ///
+    /// ```text
+    /// cargo test -p neuralos-snn --features simd -- --ignored
+    /// ```
+    ///
+    /// Membrane and resting over the whole mV grid × every distinct current-term
+    /// class × `dt_over_tau` past the documented bound, against
+    /// `integrate_batch_avx2` and `integrate_batch_scalar` themselves — not a
+    /// scalar model of them, which is what the numbers rested on before.
+    ///
+    /// "The whole grid" is load-bearing and was not true in the first draft: the
+    /// fixture is padded to a multiple of [`LANES`] so no grid point lands in the
+    /// AVX2 scalar tail, where it would be compared against itself. See [`LANES`]
+    /// for the measurement that made this rule.
+    #[test]
+    #[ignore = "exhaustive sweep, minutes not milliseconds"]
+    #[cfg(target_arch = "x86_64")]
+    fn sweep_reproduces_the_documented_equivalence_domain() {
+        const DT_SCAN: i32 = 260; // past the documented edge, to find it rather than assume it
+        const W: usize = 16; // a full chunk: anything shorter is all scalar tail
+
+        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+            eprintln!("(AVX2 not available — skipping the equivalence sweep)");
+            return;
+        }
+        let reps = current_term_class_representatives();
+        assert_eq!(
+            reps.len(),
+            395,
+            "current-term class coverage changed; the doc says 395 classes"
+        );
+
+        let mut start: Vec<i16> = Vec::new();
+        let mut resting: Vec<i16> = Vec::new();
+        for m in -100..=50i16 {
+            for r in -100..=50i16 {
+                start.push(m);
+                resting.push(r);
+            }
+        }
+        // 151 x 151 = 22_801, which is 1 (mod 16): without this the final grid
+        // point (membrane 50, resting 50) would be compared against itself.
+        pad_to_lanes(&mut start);
+        pad_to_lanes(&mut resting);
+        let n = start.len();
+        assert!(n.is_multiple_of(LANES), "fixture must be all vector lanes");
+        let threshold = vec![i16::MAX; n];
+        let mut scratch = (vec![0i16; n], vec![0i16; n], vec![false; n], vec![false; n]);
+
+        let mut max_by_dt = vec![0i32; (DT_SCAN + 1) as usize];
+        for &(ic0, res0) in &reps {
+            let current = vec![ic0; n];
+            let resistance = vec![res0; n];
+            for dt in 0..=DT_SCAN {
+                let g = max_membrane_gap(
+                    &start, &resting, &current, &resistance, &threshold, dt, &mut scratch,
+                );
+                let slot = &mut max_by_dt[dt as usize];
+                if g > *slot {
+                    *slot = g;
+                }
+            }
+        }
+
+        let in_domain = max_by_dt[..=(EQUIV_DT_OVER_TAU_MAX as usize)]
+            .iter()
+            .copied()
+            .max()
+            .expect("non-empty");
+        assert_eq!(
+            in_domain, EQUIV_TOLERANCE_MV,
+            "the equivalence domain's maximum is not the documented {EQUIV_TOLERANCE_MV} mV"
+        );
+        assert_eq!(max_by_dt[1], 0, "doc says dt_over_tau = 1 gives 0");
+        assert_eq!(max_by_dt[50], 1, "doc says dt_over_tau = 50 gives 1");
+        assert_eq!(max_by_dt[200], 2, "doc says the bound is tight at dt_over_tau = 200");
+
+        let first_three = max_by_dt
+            .iter()
+            .position(|&g| g >= 3)
+            .expect("the scan must reach 3 before dt_over_tau = 260");
+        assert_eq!(first_three, 228, "the doc names 228 as the first dt_over_tau reaching 3");
+
+        // The witness the doc names. It must be a FULL 16-lane chunk: a shorter
+        // batch has zero chunks and runs entirely through the scalar tail, so it
+        // would compare the scalar against itself and report 0. (First draft of
+        // this assert did exactly that.)
+        let mut wide = (vec![0i16; W], vec![0i16; W], vec![false; W], vec![false; W]);
+        let gap = max_membrane_gap(
+            &[-100; W], &[50; W], &[1000; W], &[100; W], &[i16::MAX; W], 228, &mut wide,
+        );
+        assert_eq!(gap, 3, "the named witness (membrane -100, resting 50, P = 100_000) must give 3");
+    }
+
+    /// The largest `(fixed-point, trajectory)` gaps the [`ARMS`] set reaches, run
+    /// on the real kernel in full 16-lane batches. Compared against the sweep's
+    /// domain-wide maxima so the fast test cannot end up pinning its own arm set.
+    #[cfg(target_arch = "x86_64")]
+    fn arms_worst_gaps() -> (i32, i32) {
+        ARMS.iter()
+            .map(|&(rp, drive, res, dt)| {
+                let rp_v = vec![rp; LANES];
+                let ic_v = vec![drive; LANES];
+                let res_v = vec![res; LANES];
+                let th_v = vec![i16::MAX; LANES];
+                let mut a = vec![-70i16; LANES];
+                let mut b = vec![-70i16; LANES];
+                let (mut sa, mut sb) = (vec![false; LANES], vec![false; LANES]);
+                let mut traj = 0i32;
+                for _ in 0..20_000 {
+                    integrate_batch_scalar(&mut a, &rp_v, &ic_v, &res_v, &th_v, dt, &mut sa);
+                    integrate_lif_batch(&mut b, &rp_v, &ic_v, &res_v, &th_v, dt, &mut sb);
+                    let d = (i32::from(a[0]) - i32::from(b[0])).abs();
+                    if d > traj {
+                        traj = d;
+                    }
+                }
+                ((i32::from(a[0]) - i32::from(b[0])).abs(), traj)
+            })
+            .fold((0i32, 0i32), |acc, x| (acc.0.max(x.0), acc.1.max(x.1)))
+    }
+
+    /// EXHAUSTIVE. Re-derives the `(8, 8)` domain-wide trajectory maxima in
+    /// § Approximation from the real kernel, and confirms that the arm set the
+    /// fast test carries reaches those same maxima — both of them.
+    ///
+    /// The resting grid is padded to a multiple of [`LANES`]. Without that, the
+    /// last seven resting values ran in the AVX2 scalar tail and the sweep could
+    /// not see the very arm the doc calls its extremal case. See [`LANES`].
+    ///
+    /// ```text
+    /// cargo test -p neuralos-snn --features simd -- --ignored
+    /// ```
+    #[test]
+    #[ignore = "exhaustive sweep, minutes not milliseconds"]
+    #[cfg(target_arch = "x86_64")]
+    fn sweep_reproduces_the_documented_trajectory_maxima() {
+        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+            eprintln!("(AVX2 not available — skipping the trajectory sweep)");
+            return;
+        }
+        let reps = current_term_class_representatives();
+        assert_eq!(reps.len(), 395, "current-term class coverage changed");
+
+        // One lane per resting potential; the whole grid advances together.
+        // 151 is 9 x 16 + 7, so without padding resting 44..=50 would run in the
+        // scalar tail and be compared against themselves — see LANES.
+        let mut resting: Vec<i16> = (-100..=50i16).collect();
+        pad_to_lanes(&mut resting);
+        let n = resting.len();
+        assert!(n.is_multiple_of(LANES), "fixture must be all vector lanes");
+        let threshold = vec![i16::MAX; n];
+        let (mut mp_s, mut mp_v) = (vec![0i16; n], vec![0i16; n]);
+        let (mut sp_s, mut sp_v) = (vec![false; n], vec![false; n]);
+
+        let mut worst_end = 0i32;
+        let mut worst_traj = 0i32;
+        let mut extremal = (0i16, 0i16, 0i16, 0i32); // resting, ic, res, dt
+
+        for &(ic0, res0) in &reps {
+            let current = vec![ic0; n];
+            let resistance = vec![res0; n];
+            for dt in 0..=EQUIV_DT_OVER_TAU_MAX {
+                mp_s.fill(-70);
+                mp_v.fill(-70);
+                let mut local_traj = vec![0i32; n];
+                let mut settled = 0;
+                let mut prev_s = vec![0i16; n];
+                let mut prev_v = vec![0i16; n];
+                for _ in 0..400 {
+                    prev_s.copy_from_slice(&mp_s);
+                    prev_v.copy_from_slice(&mp_v);
+                    integrate_batch_scalar(
+                        &mut mp_s, &resting, &current, &resistance, &threshold, dt, &mut sp_s,
+                    );
+                    // SAFETY: equal-length slices, AVX2 checked above.
+                    unsafe {
+                        integrate_batch_avx2(
+                            &mut mp_v, &resting, &current, &resistance, &threshold, dt, &mut sp_v,
+                        );
+                    }
+                    for i in 0..n {
+                        let d = (i32::from(mp_s[i]) - i32::from(mp_v[i])).abs();
+                        if d > local_traj[i] {
+                            local_traj[i] = d;
+                        }
+                    }
+                    if prev_s == mp_s && prev_v == mp_v {
+                        settled += 1;
+                        if settled == 2 {
+                            break;
+                        }
+                    } else {
+                        settled = 0;
+                    }
+                }
+                for i in 0..n {
+                    let end = (i32::from(mp_s[i]) - i32::from(mp_v[i])).abs();
+                    if end > worst_end {
+                        worst_end = end;
+                        extremal = (resting[i], ic0, res0, dt);
+                    }
+                    if local_traj[i] > worst_traj {
+                        worst_traj = local_traj[i];
+                    }
+                }
+            }
+        }
+
+        assert_eq!(
+            (worst_end, worst_traj),
+            (8, 8),
+            "the doc records 8 mV domain-wide, at the fixed point and at any step"
+        );
+        // The maximum is reached by MANY arms, not one — 8 mV is what every arm
+        // where the vector half never moves converges to — so asserting that the
+        // sweep's first extremal is in ARMS would just pin an iteration order.
+        // What matters is that ARMS reaches the domain maximum, which is exactly
+        // the claim `avx2_and_scalar_trajectories_stay_bounded` makes.
+        // BOTH pinned numbers, not just the end gap. They were 4 and 5 one commit
+        // ago, so a guard that covers only one leaves the other free to drift.
+        let (arms_end, arms_traj) = arms_worst_gaps();
+        assert_eq!(
+            (arms_end, arms_traj),
+            (worst_end, worst_traj),
+            "ARMS tops out at ({arms_end}, {arms_traj}) while the domain reaches \
+             ({worst_end}, {worst_traj}), so the fast test is pinning its own arm set rather \
+             than the domain (the sweep's own extremal was resting {}, P = {}, dt_over_tau {})",
+            extremal.0,
+            i32::from(extremal.1) * i32::from(extremal.2),
+            extremal.3
         );
     }
 
