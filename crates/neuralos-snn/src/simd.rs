@@ -28,6 +28,69 @@
 //! [`crate::LIFNeuron::integrate_and_fire`]). The correctness test asserts the
 //! two agree within ±2 mV per neuron, not bit-exact.
 //!
+//! # Overflow domain (the `dt_over_tau` bound)
+//!
+//! Every intermediate in `lif_lane` and [`integrate_batch_scalar`] is `i32`, and
+//! the two halves disagree on what overflow means: `_mm256_mullo_epi32` wraps
+//! silently, while the scalar `*` panics in debug and wraps in release. So the
+//! kernel does not permit overflow at all — it saturates `dt_over_tau` into the
+//! range where no intermediate can overflow, for **any** `i16` input.
+//!
+//! Derivation, worst case over the full `i16` domain:
+//!
+//! - `leak = resting − membrane`, widened to `i32`: `|leak| ≤ 65_535`.
+//! - `input × resistance`: `|P| ≤ 32_768 × 32_768 = 1_073_741_824`, always inside
+//!   `i32`. This product is safe unconditionally.
+//! - `current_term`: `|P| / 1000 ≤ 1_073_741` (scalar), `|P| >> 10 ≤ 1_048_576`
+//!   (AVX2). The scalar is the larger, so it binds.
+//! - `sum = leak + current_term`: `|sum| ≤ 65_535 + 1_073_741 = 1_139_276`.
+//! - `sum × dt_over_tau` must fit `i32`: `|dt_over_tau| ≤ i32::MAX / 1_139_276 = 1884`.
+//!
+//! Hence [`DT_OVER_TAU_MAX`] `= 1884`. Both public entry points saturate to
+//! `−DT_OVER_TAU_MAX..=DT_OVER_TAU_MAX`, and [`dt_over_tau`] never returns
+//! anything outside it.
+//!
+//! **Saturate, not reject.** Rejection needs an error channel, and neither
+//! [`integrate_lif_batch`] nor [`integrate_batch_scalar`] has one — adding
+//! `Result` would change a hot-path signature for a condition no physical `dt/τ`
+//! reaches (the standard 1 ms / 20 ms step gives `dt_over_tau = 50`). A silent
+//! wrap in one half and a debug panic in the other is the worse outcome, so the
+//! bound is enforced rather than reported.
+//!
+//! Inside the bound nothing overflows, but the two halves are *not* bit-equal at
+//! the extremes — that is what the equivalence domain below is for. Measured
+//! over all 3125 combinations of `{i16::MIN, -1, 0, 1, i16::MAX}` at
+//! `dt_over_tau = DT_OVER_TAU_MAX`: both halves stay on the mV grid, 375 of 3125
+//! membranes differ, the largest difference is 3 mV, and 44 spike bits differ.
+//! Pinned by `overflow_corners_at_max_dt_over_tau`.
+//!
+//! # Equivalence domain (where ±2 mV holds)
+//!
+//! The ±2 mV agreement below is a claim about a **narrower** domain than the
+//! overflow bound, and the two must not be confused:
+//!
+//! - `membrane`, `resting` on the mV grid, `−100..=50`;
+//! - `|input_current × resistance| ≤ 100_000`;
+//! - `0 ≤ dt_over_tau ≤ 200`.
+//!
+//! Inside it, `|membrane_avx2 − membrane_scalar| ≤ 2` and the two disagree on a
+//! spike only where the scalar membrane sits within 2 mV of that neuron's
+//! threshold. The bound is exhaustive, not sampled: over that domain the
+//! difference depends only on `(membrane, resting, current_term_scalar,
+//! current_term_avx2)`, and enumerating every reachable combination gives a
+//! maximum of exactly 2. The first `dt_over_tau` that reaches 3 at the same
+//! current bound is **228** (`membrane = −100`, `resting = 50`, scalar
+//! `current_term = 100` against the AVX2 `97`, giving −43 against −46); every
+//! value through 227 still gives 2. The stated bound of 200 is therefore
+//! conservative by 27, which is deliberate — it is a round number well inside
+//! the edge rather than sitting on it. (An earlier draft of this section said
+//! the first failure was at 256, which was read off a coarse power-of-two
+//! sample and never the true edge.)
+//!
+//! At the default 1 ms / 20 ms step (`dt_over_tau = 50`) and the default
+//! `resistance = 100` MΩ, the current bound admits `|input| ≤ 1000` μA, two
+//! orders of magnitude above the ±5 μA default noise.
+//!
 //! # Grid limitation — mV only
 //!
 //! The batch kernel (and its scalar reference) operate on the **default mV
@@ -113,16 +176,29 @@ pub fn detect_simd_support() -> SimdSupport {
     }
 }
 
+/// Largest `|dt_over_tau|` for which no `i32` intermediate in the kernel can
+/// overflow, for any `i16` input. See the module doc § Overflow domain for the
+/// derivation; `i32::MAX / 1_139_276 = 1884`.
+pub const DT_OVER_TAU_MAX: i32 = 1884;
+
 /// Precompute the `dt/τ` scaling factor (passed into [`integrate_lif_batch`]).
 ///
-/// Matches [`crate::LIFNeuron::integrate_and_fire`]: `dt_over_tau = (dt_us * 1000) / tau_us`.
-/// Hoisted out so a batch sharing one `dt` and `tau` computes it once.
+/// Matches [`crate::LIFNeuron::integrate_and_fire`]: `dt_over_tau = (dt_us * 1000) / tau_us`,
+/// then saturated to [`DT_OVER_TAU_MAX`]. Hoisted out so a batch sharing one `dt`
+/// and `tau` computes it once.
+///
+/// The product and the division are computed in `u64`. The previous `as i32`
+/// casts wrapped for `dt_us > i32::MAX` and for `tau_membrane_us > i32::MAX` —
+/// `dt_over_tau(2_147_484, u32::MAX)` returned `-2_147_483_647`, a value that
+/// overflows every downstream multiply. Both inputs are `u32`, so `u64` covers
+/// the whole domain exactly and the result is always non-negative.
 #[must_use]
 pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i32 {
     if tau_membrane_us == 0 {
         return 0; // Guard; the network rejects tau == 0 at construction.
     }
-    ((dt_us as i32).saturating_mul(1000)) / tau_membrane_us as i32
+    let raw = (u64::from(dt_us) * 1000) / u64::from(tau_membrane_us);
+    i32::try_from(raw).unwrap_or(i32::MAX).min(DT_OVER_TAU_MAX)
 }
 
 /// Integrate one LIF step across a batch of N neurons (SoA slices).
@@ -164,6 +240,10 @@ pub fn integrate_lif_batch(
     assert_eq!(threshold.len(), n, "threshold.len() != membrane.len()");
     assert_eq!(spikes_out.len(), n, "spikes_out.len() != membrane.len()");
 
+    // Saturate into the no-overflow domain (module doc § Overflow domain). Both
+    // halves must see the same value, or AVX2 wraps where the scalar panics.
+    let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX);
+
     #[cfg(target_arch = "x86_64")]
     if matches!(detect_simd_support(), SimdSupport::Avx2) {
         // SAFETY: slices are valid and equal-length — asserted above in every
@@ -178,6 +258,10 @@ pub fn integrate_lif_batch(
 }
 
 /// Scalar reference — exact v2 LIF math (÷1000). Also the remainder tail.
+///
+/// `dt_over_tau` is saturated to [`DT_OVER_TAU_MAX`] on entry, so no `i32`
+/// intermediate here can overflow for any `i16` input (module doc § Overflow
+/// domain).
 pub fn integrate_batch_scalar(
     membrane: &mut [i16],
     resting: &[i16],
@@ -187,6 +271,7 @@ pub fn integrate_batch_scalar(
     dt_over_tau: i32,
     spikes_out: &mut [bool],
 ) {
+    let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX);
     for i in 0..membrane.len() {
         let mp = i32::from(membrane[i]);
         let leak = i32::from(resting[i]) - mp;
@@ -210,6 +295,8 @@ unsafe fn integrate_batch_avx2(
     spikes_out: &mut [bool],
 ) {
     const WIDTH: usize = 16; // AVX2: 256-bit / 16-bit = 16 lanes.
+    // Same saturation as the scalar entry — `_mm256_mullo_epi32` wraps silently.
+    let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX);
     let n = membrane.len();
     let chunks = n / WIDTH;
 
@@ -371,6 +458,125 @@ mod tests {
         // Sanity: most spikes agree (>90%). Edge-flips only near threshold.
         let disagree_ratio = disagree as f64 / n as f64;
         assert!(disagree_ratio < 0.10, "{disagree}/{n} spike disagreements (>10%)");
+    }
+
+    // ----- Overflow domain (module doc § Overflow domain) -----
+
+    /// `DT_OVER_TAU_MAX` is exactly the bound the module doc derives — the test
+    /// encodes the same arithmetic, so widening the doc without widening the
+    /// code (or the reverse) turns this red.
+    #[test]
+    fn dt_over_tau_max_is_the_documented_bound() {
+        // |leak| ≤ 65_535 and |P|/1000 ≤ 1_073_741  ⇒  |sum| ≤ 1_139_276.
+        let max_leak = i64::from(i16::MAX) - i64::from(i16::MIN);
+        let max_product = i64::from(i16::MIN) * i64::from(i16::MIN);
+        let max_current_term = max_product / 1000;
+        let max_sum = max_leak + max_current_term;
+        assert_eq!(max_leak, 65_535);
+        assert_eq!(max_product, 1_073_741_824);
+        assert_eq!(max_sum, 1_139_276);
+
+        let bound = i64::from(DT_OVER_TAU_MAX);
+        assert!(
+            bound * max_sum <= i64::from(i32::MAX),
+            "DT_OVER_TAU_MAX is too large: {DT_OVER_TAU_MAX} * {max_sum} overflows i32"
+        );
+        let next = DT_OVER_TAU_MAX + 1;
+        assert!(
+            (bound + 1) * max_sum > i64::from(i32::MAX),
+            "DT_OVER_TAU_MAX is not tight: {next} would also fit"
+        );
+    }
+
+    /// `dt_over_tau` never returns a value outside the safe domain, and the
+    /// `as i32` casts it used to do are gone.
+    #[test]
+    fn dt_over_tau_is_non_negative_and_saturated_over_the_whole_u32_domain() {
+        // The historical regression: `dt_us as i32` and `tau as i32` both wrapped.
+        // `(2_147_484 * 1000).saturating_mul` hit i32::MAX, `u32::MAX as i32` was
+        // -1, and the quotient came out -2_147_483_647.
+        assert_eq!(dt_over_tau(2_147_484, u32::MAX), 0);
+
+        for &dt in &[0u32, 1, 1000, 10_000, i32::MAX as u32, 2_147_484, u32::MAX] {
+            for &tau in &[1u32, 20_000, i32::MAX as u32, 2_147_483_648, u32::MAX] {
+                let v = dt_over_tau(dt, tau);
+                assert!(
+                    (0..=DT_OVER_TAU_MAX).contains(&v),
+                    "dt_over_tau({dt}, {tau}) = {v} is outside 0..={DT_OVER_TAU_MAX}"
+                );
+            }
+        }
+        assert_eq!(dt_over_tau(0, 20_000), 0, "tau == 0 guard unchanged");
+        assert_eq!(dt_over_tau(1000, 0), 0, "tau == 0 guard unchanged");
+        assert_eq!(dt_over_tau(1000, 20_000), 50, "the physical default is untouched");
+    }
+
+    /// Every `i16` corner, at the largest legal `dt_over_tau`, in both halves:
+    /// no `i32` intermediate overflows (debug builds panic on overflow, which is
+    /// the falsifier) and both halves stay on the mV grid. They do NOT agree
+    /// here — the corners are far outside the equivalence domain — so the
+    /// divergence is pinned exactly instead.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn overflow_corners_at_max_dt_over_tau() {
+        const CORNERS: [i16; 5] = [i16::MIN, -1, 0, 1, i16::MAX];
+        let (mut mp, mut rp, mut ic, mut res, mut th) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for &a in &CORNERS {
+            for &b in &CORNERS {
+                for &c in &CORNERS {
+                    for &d in &CORNERS {
+                        for &e in &CORNERS {
+                            mp.push(a);
+                            rp.push(b);
+                            ic.push(c);
+                            res.push(d);
+                            th.push(e);
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(mp.len(), 5usize.pow(5), "3125 = chunks plus a tail");
+
+        // Scalar first: in a debug build an overflowing `*` panics here.
+        let mut mp_s = mp.clone();
+        let mut sp_s = vec![false; mp.len()];
+        integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, DT_OVER_TAU_MAX, &mut sp_s);
+        for &v in &mp_s {
+            assert!((-100..=50).contains(&v), "scalar left the mV grid: {v}");
+        }
+
+        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+            eprintln!("(AVX2 not available — corner agreement not checked)");
+            return;
+        }
+        let mut mp_v = mp.clone();
+        let mut sp_v = vec![false; mp.len()];
+        // SAFETY: equal-length slices, AVX2 verified available above.
+        unsafe {
+            integrate_batch_avx2(&mut mp_v, &rp, &ic, &res, &th, DT_OVER_TAU_MAX, &mut sp_v);
+        }
+        for &v in &mp_v {
+            assert!((-100..=50).contains(&v), "AVX2 left the mV grid: {v}");
+        }
+
+        // The corners are far OUTSIDE the equivalence domain, so the halves are
+        // not expected to agree here — only to stay finite and on the grid. The
+        // divergence is pinned exactly, so any arithmetic change moves it.
+        let max_diff = mp_s
+            .iter()
+            .zip(&mp_v)
+            .map(|(a, b)| (i32::from(*a) - i32::from(*b)).abs())
+            .max()
+            .expect("non-empty batch");
+        let membrane_diffs = mp_s.iter().zip(&mp_v).filter(|(a, b)| a != b).count();
+        let spike_diffs = sp_s.iter().zip(&sp_v).filter(|(a, b)| a != b).count();
+        assert_eq!(
+            (max_diff, membrane_diffs, spike_diffs),
+            (3, 375, 44),
+            "corner divergence moved; the module doc records 3 mV / 375 / 44 at dt_over_tau = {DT_OVER_TAU_MAX}"
+        );
     }
 
     /// The slice-length contract is enforced BEFORE the caller's buffer is
