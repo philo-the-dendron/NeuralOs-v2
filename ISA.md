@@ -5651,3 +5651,226 @@ records this branch's merge.
 
 GUARD 1 honored (append). GUARD 2 untouched. Scope: evidence/ +
 INDEX.md + this append only.
+
+## Close-out (SIMD hardening — Phase-1, the starved remainder, 2026-08-30/31)
+
+Session shape: adjudicator (this record's author), one builder session,
+one independent reviewer session briefed with the claims and the diff
+only, roles per AGENTS.md § Session protocol. Principal ruled every
+fork named below. Branch `work/simd-hardening`, base `main@f82fc1e`,
+one file (`crates/neuralos-snn/src/simd.rs`), TEN commits, each green
+on its own under the full § Commands gate set (seven commands; the
+merger's proof ran in a single-worktree loop with `touch`-forced
+rebuilds and a per-commit `-- --list` test count as the stale-binary
+discriminator: 4, 7, 8, 10, 11, 11, 12, 12, 12+2 ignored, 12+2 ignored):
+
+- `2fe64fd` fix: slice-length contract enforced in release
+- `5eb32bc` fix: `dt_over_tau` saturated into the no-overflow domain
+- `d239e92` test: proptest AVX2 vs scalar over the equivalence domain
+- `b175575` test: batch scalar pinned to `LIFNeuron::integrate_and_fire`
+- `175c296` test: AVX2 chunk/tail boundary pinned
+- `31aadf1` docs: header audit, three false claims corrected, one stale date
+- `e52623e` fix: both AVX2 divisions round toward zero, like the scalar
+- `4eb2719` test: the length contract covers both buffers and both entry points
+- `cfe38f9` test: the two exhaustive sweeps reproducible from the tree (`#[ignore]`)
+- `8a63d58` test: every vector-claiming fixture is all vector lanes
+
+### What was wrong (found, reproduced by the adjudicator, fixed)
+
+- **Out-of-bounds reads from a safe `pub fn` on the published crate**
+  (pre-existing; found by the reviewer). `integrate_lif_batch` only `debug_assert`ed slice
+  lengths; in release the AVX2 loads ran past a short slice. Reproduced:
+  membrane 32 / resting 17 → `membrane[16..20] = [50, -67, -67, -67]`
+  written from memory outside the caller's slice before the tail
+  slicing panicked. Fix: `assert_eq!` on all five lengths in both entry
+  points, tested in both profiles, both directions, with the panic
+  required BEFORE any write to either buffer.
+- **The AVX2 half parked 19 mV away from the scalar under inhibitory
+  drive** (pre-existing). `_mm256_srai_epi32` floors, Rust `/`
+  truncates toward zero, so every negative delta rounded one unit too
+  negative. Not runaway drift: it drifted until it parked and stayed
+  (19 at 100 steps and at 1,000,000). Rest-to-threshold is 15 mV.
+  Found by the reviewer, outside every claim in the brief. Principal
+  chose option (a): bias negatives by 1023 before both shifts
+  (`div1024_toward_zero`); the ÷1024 scale stays. Result: named arms
+  (0, 1, 19) → (0, 1, 1); domain-wide fixed-point and per-step
+  trajectory maxima are **8 and 8** (witness `resting=37`,
+  `|I×R|=100_000`, `dt_over_tau=5`: the scalar climbs to −62, the
+  vector never leaves −70), equal because the worst arms are ones where
+  the vector half never moves. The doc said 4 and 5 until 2026-08-31;
+  those were the maxima of a nine-arm set measuring itself (mutant F).
+- **i32 overflow was possible and the two halves disagreed on what
+  overflow meant** (wrap vs debug panic). `DT_OVER_TAU_MAX = 1884`
+  derived (`i32::MAX / 1_139_276`) and re-derived by a test tight both
+  ways; both entry points saturate; `dt_over_tau` computes in `u64`
+  (the old `as i32` casts returned −2_147_483_647 for `tau = u32::MAX`).
+- **Two clippy errors that no gate could see** and **a regression test
+  no gate could fire** (both found by the reviewer; the builder found the
+  clippy hole in the same hour): the workspace clippy step never compiles the
+  feature-gated module, and no gate ran tests in release. Fixed in the
+  code, and the gates fixed as doctrine (`b9aeab0`).
+- **Header claims false against the code** (three by the builder's own
+  audit, the fourth by the reviewer): the module was not
+  `target_arch`-gated as claimed (verified by a green riscv64gc check
+  with the feature on); the "2.4% ≪ 5 µA noise" sentence compared mV
+  to µA; the v0.1 "stale memory" story was a deterministic duplicate
+  of the low 8 lanes (`simd_vectorization.rs:263-267`), the reviewer's; the equivalence
+  edge was "256" read off a power-of-two sample (true edge 228, the
+  200 bound conservative by 27). Each corrected in place with the old
+  phrasing named.
+
+### Claims closed (each on its falsifier, run by the builder and re-run
+### by the adjudicator or reviewer)
+
+ISC-1 AVX2 ≡ scalar (property test, ±2 mV single step, spike
+disagreement only within 2 mV of threshold; mutants `>>9` both sites,
+dropped high-half widen). ISC-2 batch scalar bit-equal to
+`integrate_and_fire` on the mV grid, pinned by a deterministic sweep
+that asserts ≥25% of its rows land inside the clamp (a wide-arm proptest
+had gone blind against the clamp and let `/1000 → /1024` survive).
+ISC-3 overflow domain vs equivalence domain stated separately; corner
+divergence pinned exactly (was (3, 375, 44), now (4, 180, 0)). ISC-4
+tail: lengths 0..257 incl. every remainder, last element and spike bit
+asserted. ISC-5 header true against the code. ISC-6 all gates green
+per commit. ISC-7 multi-step: no growth between 1,000 and 20,000 steps
+(asserted as equality), named arms exactly (0, 1, 1), maxima exactly
+(8, 8). ISC-8 every rounding-dependent pin re-measured. ISC-9 § Approximation
+carries the defect, the bound, and the forks. ISC-10 cost measured.
+ISC-11 mutant table at the tip: A1, A2, B, C1, C2, D, E (release only),
+F, all red. The exhaustive sweeps behind ±2/228 and (8, 8) are
+`#[ignore]` tests: `cargo test -p neuralos-snn --features simd -- --ignored`
+(wall time on the dev box: equivalence 433 s, trajectory 91 s, debug, AVX2 present; a nightly habit, not a per-commit one).
+
+### Cost, measured twice with a scalar control, both on a loaded box
+
+Vector path slower after the rounding fix at N=1024: reviewer +15.3%
+(1.71× → 1.47×); adjudicator, alternated binaries, +12.5% mean and
++15.1% min-to-min (1.79× → 1.60×), after slower in all six pairs —
+`evidence/simd-hardening/bench_alternated.log`. Paid deliberately for
+zero corner spike disagreement and a bounded parking gap. A quiet-box
+number is still owed.
+
+### Forks recorded (not implemented; each with its trigger, in the module doc)
+
+- **(b) exact ÷1000 in the vector** (multiply-high, bit-equal to the
+  scalar, more instructions): trigger, as the module doc states it —
+  when a consumer needs bit-equal batch and scalar results across
+  targets. The concrete case on the roadmap: the SoA adapter routing
+  the network's step through the batch on x86 while RISC-V runs the
+  scalar, with hardware-independent spike trains required.
+- **(c) truncate only the delta shift** (half the added instructions,
+  B1 fixed identically, ±2 and (8, 8) unchanged, corner triple
+  (2, 270, 18) instead of (4, 180, 0)): trigger — the ~15% ever matters
+  to a consumer. Measured on the real kernel by the reviewer (mutant G)
+  after first being reported from a model; the doc's provenance claim
+  was made true by measurement, not weakened.
+
+### Public-API notes for the next `neuralos-snn` release (minor, not breaking)
+
+`DT_OVER_TAU_MAX` is a new `pub const` (additive). Three existing public
+functions change observable behaviour on the same signatures:
+`dt_over_tau` saturates at 1884 instead of returning the raw quotient;
+`integrate_lif_batch` and `integrate_batch_scalar` panic on unequal
+slice lengths in every profile where they previously read out of bounds
+or integrated a prefix. Principal's parked decisions: keep the const
+public or make it private; the `u16`/`i16` resistance seam
+(`resistance_mohm` on the neuron, `i16` in the batch — only
+`0..=i16::MAX` representable in both), recorded in § The SoA seam,
+unfixed because it is a signature change; the rustfmt status quo
+(simd.rs 62 lines off at the base, 375 at the tip; 8 of 11 files in the
+crate off at main; no fmt gate anywhere).
+
+### Doctrine that landed during this session (both merged to main before this branch)
+
+- `152435e` **every commit on a work branch is green on its own**,
+  proven by the merger with `git rebase -x` or an equivalent loop
+  before merging; red commits reworked in place (AGENTS.md § Session
+  protocol, CLAUDE.md § Merging).
+- `b9aeab0` **simd lint gate** and **simd release gate** join
+  § Commands and both CI files.
+
+### Gotchas, all observed this session, recorded so they are recognisable
+
+- Two worktrees sharing one `CARGO_TARGET_DIR` can execute a stale test
+  binary: the run prints a green list that includes a test the
+  checked-out commit does not contain. Discriminator: `cargo test ...
+  -- --list` at that commit; cheapest prevention: `touch` the source
+  before each command, or one target dir per worktree.
+- An apply-measure-revert loop whose revert is `git checkout -- <file>`
+  deletes uncommitted work in that file, and a `--amend` over an
+  unchanged file rewrites only the message: a commit then describes
+  content that never existed (caught by blob sha, `0ba3c15` ≡ `8afc2c8`).
+- `open(p, "w").write(f(open(p).read()))` truncates before `f` runs.
+- Instrument errors caught before they reached the record: a rustfmt
+  drift count of zero (ANSI colour codes in the diff beat the regex);
+  a `= 256` grep that matched `let n = 256;` in a fixture; a mutant
+  measured against the wrong commit because a background loop was
+  checking out commits in the reviewer's own worktree; `rustfmt --check`
+  on stdin exiting 0 whatever the input (file-based counts: 62 at the
+  base, 375 at the tip); the brief's own
+  "agreement at the i16 corners", "accumulates", "≤ 1 mV at
+  equilibrium" and "free", each corrected by measurement.
+- A 1-element batch has no 16-lane chunk and runs entirely through the
+  scalar tail: a "witness" built that way compares the scalar with
+  itself and reports 0 (caught when the sweep test failed). Same shape
+  as the tail marker that stopped discriminating without going red.
+- "The sweep's extremal arm is in ARMS" pins iteration order when the
+  maximum is reached by many arms (every arm where the vector half
+  never moves reaches 8); the claim that survives is "ARMS reaches the
+  domain maximum".
+- THREE instances of one shape on this branch (the 1-element witness →
+  the 151-point sweep grid → the 3125-row corner fixture, 195×16 + 5,
+  whose comment advertised the tail as a feature), plus a cousin: the
+  tail marker that stopped discriminating when the rounding changed and
+  kept passing. What stops a fourth is not the three fixes but the named
+  `LANES` constant carrying the measurement and a length assert on every
+  fixture that claims vector coverage; two of the three were found by
+  someone other than the fixture's author (the reviewer; the corner
+  fixture by the reviewer and the builder independently): a batch shorter than, or not a multiple of,
+  the AVX2 chunk width silently runs through the scalar tail, so "I
+  tested the vector kernel" is false while every assert passes. Now a
+  named `LANES` constant with the measurement on it.
+- The same shape at grid scale: a 151-point grid is 9×16 + 7, so its
+  last seven lanes run through the scalar tail and compare the scalar
+  with itself; the sweep could not see its own named extremal arm
+  (resting 50) and its maximum survived only because resting 43 sat on
+  the last vector lane. Rule: every batch a coverage test builds is a
+  multiple of 16 long. Found by the reviewer, fixed in the sweep commit.
+- A substitution without `/g` mutated the fast test instead of the
+  `#[ignore]` sweep, so a falsifier "ran" against code `--ignored` never
+  executes; caught because a pass was impossible. Fifth instrument
+  instance this session.
+- The four mutants named in the property test's doc (A1, A2, B, D)
+  prove the vector lanes carry its discrimination for changes to the
+  SCALE or ROUNDING of either divide; a ±1 offset in `current_term` is
+  invisible to it by design, because ±2 is the published contract
+  (reviewer, 8a63d58). "Fully pinned" is not what those four say.
+- The fixture inventory in 8a63d58's message lists batches; the two
+  `dt_over_tau` tests build none and so have no row, and the corner row
+  describes the pre-fix state (n is 3136 after the commit).
+- `cargo bench --no-run` proves nothing for an `[[example]]`; the gate
+  is `cargo build --example bench_simd --features simd`.
+
+### Open, named
+
+No execution on a non-AVX2 x86_64 or on any non-x86_64 target (riscv64gc
+compiles with the feature on; nothing ran). Every AVX2 test still
+`return`s silently when AVX2 is absent, so a runner without it is green
+with no signal (C5). No sha-pinned benchmark evidence under
+`evidence/` for the module's speedup (R4). `proptest-regressions/simd.txt`
+policy undecided (bridge/network/synapse files are tracked; simd's is
+not, and none has been banked). `detect_simd_support` is per-call.
+
+Sweep cadence (proposal for the principal, not doctrine until ruled):
+nothing gates the `#[ignore]` sweeps, so a future edit that breaks one
+is invisible until a human runs it. Either a nightly leg or a rule that
+they run whenever § Equivalence domain or § Approximation is touched.
+
+Consolidation cadence: this is the FIRST additive code session since
+the 2026-08-27 consolidation review (the sessions between were docs and
+evidence); count 1 of 3.
+
+GUARD 1 honored (append; live-state edit rides the post-merge bump).
+GUARD 2 untouched. GUARD 3 untouched. ROADMAP: Phase-1 SIMD row and
+§ Practical next moves item 6 flipped in the same commit; lock-free
+remains the Phase-1 remainder.
