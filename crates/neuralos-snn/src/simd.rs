@@ -328,29 +328,46 @@ pub fn detect_simd_support() -> SimdSupport {
     }
 }
 
-/// Largest `|dt_over_tau|` for which no `i32` intermediate in the kernel can
+/// Largest `|dt_over_tau|` for which no `i32` intermediate in THIS KERNEL can
 /// overflow, for any `i16` input. See the module doc § Overflow domain for the
 /// derivation; `i32::MAX / 1_139_276 = 1884`.
+///
+/// **This is the batch kernel's limit, not a property of `dt/τ` and not a
+/// property of the model.** `LIFNeuron::integrate_and_fire` computes the same
+/// equation in `i64` and is exact over the whole input domain; it does not
+/// apply this bound and must not. The neuron is the reference semantic, this
+/// kernel is the documented approximation, and above `dt/τ = 1.884` they
+/// differ by exactly this clamp — named and pinned by
+/// `the_neuron_is_exact_where_the_batch_clamps`.
+///
+/// (The bound was briefly applied to `LIFNeuron` as well, on the reasoning that
+/// one saturation was safer than two. It was not: it silently changed correct
+/// results in a legal domain — `dt = 40_000 µs` into `τ = 20_000 µs` is a
+/// ratio of 2, overflows nothing, and moved a −70 mV rest step from −40 to
+/// −44 — and the bound is not even conservative for the neuron's wider `u16`
+/// resistance and centi-mV scale, where the safe `i32` limit is nearer 9.
+/// Returned to the batch 2026-09-01 by the principal's ruling.)
 pub const DT_OVER_TAU_MAX: i32 = 1884;
 
-/// Precompute the `dt/τ` scaling factor (passed into [`integrate_lif_batch`]).
+/// [`crate::lif_neuron::dt_over_tau`] with this kernel's bound applied.
 ///
-/// Matches [`crate::LIFNeuron::integrate_and_fire`]: `dt_over_tau = (dt_us * 1000) / tau_us`,
-/// then saturated to [`DT_OVER_TAU_MAX`]. Hoisted out so a batch sharing one `dt`
-/// and `tau` computes it once.
+/// The formula has exactly one definition, in `lif_neuron`, where the exact
+/// LIF arithmetic lives; this wrapper adds the clamp the `i32` kernel needs.
+/// Callers of [`integrate_lif_batch`] want this one — feeding it a raw `dt/τ`
+/// and letting the entry point clamp gives the same answer, since both entry
+/// points clamp defensively anyway.
 ///
-/// The product and the division are computed in `u64`. The previous `as i32`
-/// casts wrapped for `dt_us > i32::MAX` and for `tau_membrane_us > i32::MAX` —
-/// `dt_over_tau(2_147_484, u32::MAX)` returned `-2_147_483_647`, a value that
-/// overflows every downstream multiply. Both inputs are `u32`, so `u64` covers
-/// the whole domain exactly and the result is always non-negative.
+/// # Examples
+/// ```
+/// # use neuralos_snn::simd::{dt_over_tau, DT_OVER_TAU_MAX};
+/// assert_eq!(dt_over_tau(1_000, 20_000), 50);              // the physical default
+/// assert_eq!(dt_over_tau(40_000, 20_000), DT_OVER_TAU_MAX); // exact 2000, clamped
+/// assert_eq!(dt_over_tau(u32::MAX, 1), DT_OVER_TAU_MAX);
+/// ```
 #[must_use]
 pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i32 {
-    if tau_membrane_us == 0 {
-        return 0; // Guard; the network rejects tau == 0 at construction.
-    }
-    let raw = (u64::from(dt_us) * 1000) / u64::from(tau_membrane_us);
-    i32::try_from(raw).unwrap_or(i32::MAX).min(DT_OVER_TAU_MAX)
+    let exact = crate::lif_neuron::dt_over_tau(dt_us, tau_membrane_us);
+    i32::try_from(exact).unwrap_or(i32::MAX).min(DT_OVER_TAU_MAX)
 }
 
 /// Integrate one LIF step across a batch of N neurons (SoA slices).
