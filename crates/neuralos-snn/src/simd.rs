@@ -102,7 +102,7 @@
 //! now in the test.)
 //!
 //! **Two different bounds, do not conflate them.** The ±2 mV in
-//! § Equivalence domain is a SINGLE step from the SAME membrane. The 4 and 5
+//! § Equivalence domain is a SINGLE step from the SAME membrane. The 8 and 8
 //! above are trajectory differences between two states that have already
 //! diverged. The single-step contract is unchanged by this fix.
 //!
@@ -112,7 +112,7 @@
 //! floor shift and truncate only the delta. Measured by the reviewer on the real
 //! kernel — B1 is fixed identically (named arms `[0, 1, 1]`), the equivalence
 //! maximum is unchanged at 2, and the corner triple comes out `[2, 270, 18]`
-//! against the committed `[4, 180, 0]`. **Trigger for revisiting: if the ~15%
+//! against the committed `[4, 180, 0]`. **Trigger for revisiting: if the ~12%
 //! vector-path cost ever matters to a consumer, this recovers about half of it,
 //! at the price of 18 corner spike disagreements where the committed choice has
 //! none.** The committed `(truncate, truncate)` stands because zero spike
@@ -182,8 +182,11 @@
 //! Derivation, worst case over the full `i16` domain:
 //!
 //! - `leak = resting − membrane`, widened to `i32`: `|leak| ≤ 65_535`.
-//! - `input × resistance`: `|P| ≤ 32_768 × 32_768 = 1_073_741_824`, always inside
-//!   `i32`. This product is safe unconditionally.
+//! - `input × resistance`: `|P| ≤ |i16::MIN|² = 32_768² = 1_073_741_824`, always
+//!   inside `i32`. This product is safe unconditionally. The bound is reached
+//!   only at `i16::MIN × i16::MIN` — no `i16` holds `32_768` itself, so the
+//!   prose says `|i16::MIN|`, which is what
+//!   `dt_over_tau_max_is_the_documented_bound` computes.
 //! - `current_term`: `|P| / 1000 ≤ 1_073_741` (scalar), `|P| ÷ 1024 ≤ 1_048_576`
 //!   (AVX2). The scalar is the larger, so it binds. The toward-zero bias in
 //!   [`div1024_toward_zero`] only ever moves a negative value closer to zero, so
