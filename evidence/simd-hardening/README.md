@@ -1,8 +1,9 @@
 # SIMD hardening — benchmark evidence (2026-08-31)
 
 Backs the ISA close-out claim that the rounding fix (`div1024_toward_zero`,
-commit `e52623e` on `work/simd-hardening`) costs the vector path roughly
-12 % at N=1024 and leaves the scalar path unchanged.
+commit `e52623e` on `work/simd-hardening`) costs the vector path **+11.7 %**
+at N=1024 — the scalar-controlled figure, identical in both runs — and leaves
+the scalar path unchanged.
 
 **Species:** sha-pinned machine output. `bench_alternated.log` is immutable;
 this README is the rebuild recipe, and `SHA256SUMS` re-pins it on every
