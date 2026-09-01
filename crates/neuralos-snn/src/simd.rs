@@ -226,10 +226,12 @@
 //! leak so the result stays off the clamp (blind fraction 33 %). Here the
 //! halves differ by up to **8 mV at `+1884`** (2331 membranes, 65 spike bits)
 //! and up to **15 mV at `−1884`** (2261 membranes, 92 spike bits). A single
-//! named row carries the spike case:
+//! row on the same grid carries the spike case, standing on its own rather
+//! than drawn from that fixture:
 //! `a_spike_bit_diverges_on_the_mv_grid_at_max_dt_over_tau` — membrane and
-//! resting −100, `input × resistance = 24_680`, threshold −55; the scalar lands
-//! on −55 and fires, AVX2 lands on −56 and does not.
+//! resting −100, `input = 247` into `resistance = 100`, threshold −55; the
+//! scalar lands on −55 and fires, AVX2 lands on −56 and does not. Every value
+//! in it is one a real `LIFNeuron` can hold.
 //!
 //! (The corner triple was 375 / 3 mV / 44 spike bits before the rounding fix in
 //! § Approximation. Both fixtures sit far outside the equivalence domain, so no
@@ -863,7 +865,14 @@ mod tests {
         let both_saturating = mp_s
             .iter()
             .zip(&mp_v)
-            .filter(|(a, b)| matches!(**a, -100 | 50) && matches!(**b, -100 | 50))
+            // Blind means the clamp erased the arithmetic and BOTH halves came
+            // out the same. Opposite bounds (-100 against 50) are the loudest
+            // disagreement the grid can express, not a blind row; counting them
+            // as blind would let a fixture inflate its own blindness and hide a
+            // divergence it did see. No current fixture has such a row — every
+            // count below is identical under either rule — and the metric is
+            // still stated the strict way, because the looser one was wrong.
+            .filter(|(a, b)| a == b && matches!(**a, -100 | 50))
             .count();
         Some((max_diff, membrane_diffs, spike_diffs, both_saturating))
     }
@@ -1020,14 +1029,25 @@ mod tests {
     /// `DT_OVER_TAU_MAX`" — and it does.
     ///
     /// The scalar reaches threshold exactly and fires; the AVX2 half lands one
-    /// millivolt short and does not. `input × resistance = 24_680`, so
+    /// millivolt short and does not. `input × resistance = 24_700`, so
     /// `current_term` is 24 in both halves and the split is entirely in the
     /// delta shift: `1884 × 24 = 45_216`, which is 45 over 1000 and 44 over
     /// 1024.
+    ///
+    /// This row is on the same mV grid as the divergence fixture but is NOT one
+    /// of its rows — that fixture fixes `resistance = 100` and derives `input`
+    /// from each row's leak, and no offset in it lands on 247. It is a witness
+    /// standing on its own, which is why it is named and asserted here rather
+    /// than counted there.
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn a_spike_bit_diverges_on_the_mv_grid_at_max_dt_over_tau() {
-        let (mp, rp, ic, res, th) = (-100i16, -100i16, -2468i16, -10i16, -55i16);
+        // Every value here is one a real `LIFNeuron` can hold: `resistance_mohm`
+        // is `u16`, so the resistance must be non-negative. This row used
+        // `input = -2468, resistance = -10` until 2026-09-01 — same product,
+        // same arithmetic, but a state no neuron can reach, which made the
+        // witness unreachable from the scalar side it is a witness about.
+        let (mp, rp, ic, res, th) = (-100i16, -100i16, 247i16, 100i16, -55i16);
         let mut mp_s = vec![mp; LANES];
         let mut sp_s = vec![false; LANES];
         integrate_batch_scalar(
