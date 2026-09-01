@@ -111,7 +111,20 @@ pub const MEMBRANE_MV_MAX: i16 = 50;
 #[must_use]
 pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i64 {
     if tau_membrane_us == 0 {
-        return 0; // Guard; the network rejects tau == 0 at construction.
+        // Division-by-zero guard, and nothing more. This comment claimed "the
+        // network rejects tau == 0 at construction" until 2026-09-01; no such
+        // rejection exists anywhere in the crate. `tau_membrane_us` is a `pub`
+        // field on `LIFNeuron`, and `SpikingNeuralNetwork::new` validates only
+        // `neuron_count` and `time_step_us`. So a zero time constant is
+        // reachable, and it lands here rather than on a panic.
+        //
+        // Returning 0 means "this step does not move the membrane", which is
+        // the safe reading: a zero time constant is not physical, and refusing
+        // to move is better than dividing by zero or inventing an infinity.
+        // Construction-time validation is deliberately deferred to the
+        // resistance-seam change (PR #1 scope note), which is where the
+        // signature moves anyway.
+        return 0;
     }
     let raw = (u64::from(dt_us) * 1000) / u64::from(tau_membrane_us);
     // u32::MAX * 1000 < i64::MAX, so this is lossless for every input.
