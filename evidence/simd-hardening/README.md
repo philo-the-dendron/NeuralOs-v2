@@ -10,17 +10,34 @@ this README is the rebuild recipe, and `SHA256SUMS` re-pins it on every
 correction (git is its changelog).
 
 **Rebuild.** Two binaries, alternated so the machine's load drifts equally
-over both:
+over both. Each commit is exported to its own directory with its own
+`target/`, in-repo and gitignored:
 
 ```bash
-git checkout f82fc1e   # main before the branch
-cargo build --release --example bench_simd --features simd -p neuralos-snn
-cp target/release/examples/bench_simd /tmp/bench_before
-git checkout cfe38f9   # see "The after-binary's commit" below
-cargo build --release --example bench_simd --features simd -p neuralos-snn
-cp target/release/examples/bench_simd /tmp/bench_after
-for r in 1 2 3; do /tmp/bench_before; /tmp/bench_after; done
+# From the repo root. bench-rebuild/ is gitignored; /tmp is not a build
+# location (AGENTS.md § Session discipline).
+mkdir -p bench-rebuild
+for rev in f82fc1e cfe38f9; do   # before = main pre-branch; after = see below
+  rm -rf "bench-rebuild/$rev" && mkdir -p "bench-rebuild/$rev"
+  git archive "$rev" | tar -x -C "bench-rebuild/$rev"
+  ( cd "bench-rebuild/$rev" \
+    && CARGO_TARGET_DIR="$PWD/target" \
+       cargo build --release --example bench_simd --features simd -p neuralos-snn )
+done
+for r in 1 2 3; do
+  bench-rebuild/f82fc1e/target/release/examples/bench_simd
+  bench-rebuild/cfe38f9/target/release/examples/bench_simd
+done
 ```
+
+The earlier version of this recipe ran `git checkout` twice in the LIVE
+working tree and let both builds share one `target/`. Two problems, and the
+second is the dangerous one: it destroys whatever the tree was holding, and
+Cargo keys artifacts by package name and version, so two checkouts of the
+same crate silently overwrite each other's artifacts — a measurement can
+then run a binary built from the other commit's source. `git archive` into
+per-revision directories with per-revision `CARGO_TARGET_DIR` removes both.
+It costs two cold builds; that is the correct price.
 
 **The after-binary's commit.** The log's header cites
 `work/simd-hardening@1c5615a`, and that citation is dangling: `1c5615a` is

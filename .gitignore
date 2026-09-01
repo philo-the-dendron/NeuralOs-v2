@@ -31,6 +31,9 @@ models/
 # Foreign fork built by tools/build_fork.sh — never committed
 fork-build/
 
+# Benchmark rebuild scratch (evidence/simd-hardening/README.md) — never committed
+bench-rebuild/
+
 # Paper figure venv (repo-local alternative to system python)
 .figvenv/
 
