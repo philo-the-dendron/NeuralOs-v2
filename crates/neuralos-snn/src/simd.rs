@@ -131,12 +131,31 @@
 //! [`integrate_batch_scalar`] is bit-equal to
 //! [`crate::LIFNeuron::integrate_and_fire`] on the mV grid — same
 //! `dt_over_tau`, same `leak + (I·R)/1000`, same `/1000`, same
-//! `saturating_add` and same clamp — and produces the same spike bit. Pinned by
-//! `prop_scalar_batch_is_bit_equal_to_integrate_and_fire`, which checks it for
-//! any `i16` input with `dt_us ≤ tau_membrane_us`. Verified against
-//! `lif_neuron.rs`, not inherited from the port.
+//! `saturating_add` and same clamp — and produces the same spike bit, **for
+//! `dt/τ` up to [`DT_OVER_TAU_MAX`] / 1000 = 1.884**. Pinned by
+//! `prop_scalar_batch_is_bit_equal_to_integrate_and_fire`, which draws `dt/τ`
+//! out to 10 so it straddles that edge and asserts both sides of it. Verified
+//! against `lif_neuron.rs`, not inherited from the port.
 //!
-//! Four differences are NOT arithmetic, and a caller carries each one itself:
+//! **Above 1.884 the two differ, and the neuron is the one that is right.**
+//! `LIFNeuron::integrate_and_fire` computes in `i64` and is exact over the
+//! whole input domain; this kernel's intermediates are `i32` and cannot hold a
+//! `dt_over_tau` past 1884, so it clamps. The difference is exactly that clamp
+//! and nothing else, which is itself asserted —
+//! `the_batch_diverges_from_the_neuron_by_exactly_its_own_clamp` checks the
+//! batch against the neuron run AT the clamped factor, so a second defect
+//! cannot hide inside the known one. Witness: `dt = 40_000 µs`, `τ = 20_000 µs`
+//! (ratio 2, nothing overflows, every value physical), membrane −100 mV,
+//! resting −70 mV, no current — the neuron scales by 2000 and lands on −40 mV,
+//! this kernel clamps to 1884 and lands on −44 mV.
+//!
+//! (Until 2026-09-01 the bound was applied to the neuron too, so the two agreed
+//! everywhere by making the neuron wrong. The principal's ruling returned the
+//! bound to this kernel: the neuron is the reference semantic, the batch is the
+//! documented approximation.)
+//!
+//! Three differences are NOT arithmetic, and a caller carries each one
+//! itself; a fourth is arithmetic and is the clamp above:
 //!
 //! - **Current accumulation.** `integrate_and_fire` adds synaptic current and
 //!   LFSR noise and subtracts the adaptation current. The batch takes the total
@@ -146,11 +165,12 @@
 //!   value, and it writes no history and starts no refractory period.
 //! - **The refractory period.** `integrate_and_fire` skips integration entirely
 //!   while `refractory_time_us > 0`. The batch has no such state.
-//! - **The leak subtraction width.** `integrate_and_fire` computes
-//!   `resting_potential − membrane_potential` in `i16` and then widens; the
-//!   batch widens both to `i32` first. On the mV grid the difference is
-//!   unreachable, but off-grid `i16` values that overflow the subtraction would
-//!   panic in one and not the other.
+//! - **The arithmetic width.** `integrate_and_fire` works in `i64` throughout
+//!   and is exact for every input; this kernel works in `i32` and takes the
+//!   `dt_over_tau` clamp above. (A fourth difference used to live here: the
+//!   neuron subtracted `resting − membrane` in `i16` before widening, so
+//!   off-grid values that overflow the subtraction panicked in one half and not
+//!   the other. Both sides are widened first now, and that difference is gone.)
 //!
 //! # Overflow domain (the `dt_over_tau` bound)
 //!
@@ -1539,6 +1559,109 @@ mod tests {
         );
     }
 
+    /// Above `dt/τ = 1.884` the batch and the neuron differ, by exactly this
+    /// kernel's clamp and by nothing else. Named so the divergence is a
+    /// documented contract rather than a surprise.
+    ///
+    /// The first row is the one that decided the design. `dt = 40_000 µs` into
+    /// `τ = 20_000 µs` is a ratio of 2: nothing overflows, every value is
+    /// physical, and 2000 is the correct discretisation. The neuron takes it
+    /// and lands on −40 mV; this kernel cannot hold 2000 in its `i32`
+    /// intermediates, clamps to 1884, and lands on −44 mV. The neuron is
+    /// right. The batch is the approximation, and it says so.
+    #[test]
+    fn the_batch_diverges_from_the_neuron_by_exactly_its_own_clamp() {
+        // (dt_us, tau_us, membrane, resting, input, resistance)
+        //
+        // Every row keeps BOTH halves strictly inside the -100..50 grid. Two
+        // rows here used to land both halves on a voltage bound
+        // (`1000/500/-70/-70/-200` and `20_000/1000/-100/50/1000`), where the
+        // clamp erases the arithmetic and agreement is free — so they showed
+        // nothing the label promised. That is the same blindness the sibling
+        // branch's corner fixture was rebuilt for, reappearing in a fixture
+        // written by the same hand a day later.
+        //
+        // Note what the deep-ratio row costs: at dt/tau = 20 a row can only
+        // stay off the voltage bounds when the current term nearly cancels the
+        // leak, so it is built that way (leak 0, current_term 1) rather than
+        // driven hard.
+        const CASES: [(u32, u32, i16, i16, i16, i16); 5] = [
+            (40_000, 20_000, -100, -70, 0, 100),  // the ruling's witness: -40 vs -44
+            (1000, 500, -70, -70, 200, 100),      // dt/tau = 2 with current
+            (1000, 400, -70, -70, -100, 100),     // and downward: -95 vs -88
+            (20_000, 1000, -70, -70, 10, 100),    // dt/tau = 20, deep past the clamp
+            (1000, 531, -70, -70, 200, 100),      // dt/tau = 1.883, just UNDER: equal
+        ];
+
+        for (dt_us, tau_us, mp, rp, input, resistance) in CASES {
+            let exact = crate::lif_neuron::dt_over_tau(dt_us, tau_us);
+            let clamped = dt_over_tau(dt_us, tau_us);
+
+            let neuron = |tau: u32, dt: u32| {
+                let mut n = LIFNeuron::new(0);
+                n.voltage_resolution = VoltageResolution::Millivolt;
+                n.membrane_potential = mp;
+                n.resting_potential = rp;
+                n.threshold = i16::MAX; // unreachable: read the raw membrane
+                n.tau_membrane_us = tau;
+                n.resistance_mohm = resistance as u16;
+                n.noise_amplitude_ua = 0;
+                n.synaptic_current_ua = 0;
+                n.adaptation_current_ua = 0;
+                n.refractory_time_us = 0;
+                let _ = n.integrate_and_fire(input, dt, 0);
+                n.membrane_potential
+            };
+
+            let mut membrane = vec![mp];
+            let mut spikes = vec![false];
+            integrate_batch_scalar(
+                &mut membrane, &[rp], &[input], &[resistance], &[i16::MAX], clamped, &mut spikes,
+            );
+
+            // The batch equals the neuron run at the CLAMPED factor: 1_884_000 µs
+            // into 1_000_000 µs is exactly DT_OVER_TAU_MAX.
+            let at_clamped = neuron(1_000_000, 1_884_000);
+            let expected = if exact <= i64::from(DT_OVER_TAU_MAX) {
+                neuron(tau_us, dt_us)
+            } else {
+                at_clamped
+            };
+            assert_eq!(
+                membrane[0], expected,
+                "dt={dt_us} tau={tau_us}: batch {} vs expected {expected} \
+                 (exact dt_over_tau {exact}, clamped {clamped})",
+                membrane[0],
+            );
+
+            if exact <= i64::from(DT_OVER_TAU_MAX) {
+                assert_eq!(
+                    membrane[0], neuron(tau_us, dt_us),
+                    "inside the clamp the two must be bit-equal"
+                );
+            }
+        }
+
+        // The witness, spelled out.
+        let mut n = LIFNeuron::new(0);
+        n.voltage_resolution = VoltageResolution::Millivolt;
+        n.membrane_potential = -100;
+        n.resting_potential = -70;
+        n.threshold = i16::MAX;
+        n.tau_membrane_us = 20_000;
+        n.noise_amplitude_ua = 0;
+        let _ = n.integrate_and_fire(0, 40_000, 0);
+        assert_eq!(n.membrane_potential, -40, "neuron: 2000 * 30 / 1000 = +60");
+
+        let mut membrane = vec![-100i16];
+        let mut spikes = vec![false];
+        integrate_batch_scalar(
+            &mut membrane, &[-70], &[0], &[100], &[i16::MAX],
+            dt_over_tau(40_000, 20_000), &mut spikes,
+        );
+        assert_eq!(membrane[0], -44, "batch: 1884 * 30 / 1000 = +56");
+    }
+
     // ----- Property tests -----
 
     proptest! {
@@ -1575,10 +1698,19 @@ mod tests {
                 (-2000i16..=2000, 0i16..=1000),
             ],
             tau_us in 1u32..=1_000_000,
-            dt_ratio in 0u32..=1000,
+            // dt/tau, in thousandths. This ran 0..=1000 — dt_us <= tau_us —
+            // until 2026-09-01, and that ceiling was exactly where the domain
+            // stopped being able to see the bug this test exists to catch: the
+            // inline copy `integrate_and_fire` carried never saturated, and no
+            // draw below a ratio of 1884 reaches the clamp, so the copy and the
+            // helper agreed everywhere the test looked. Now the domain runs to
+            // `dt/tau = 10` and STRADDLES the edge, which is the point: below
+            // it the two halves are bit-equal, above it they diverge by exactly
+            // the batch's clamp, and both are asserted.
+            dt_ratio in 0u32..=10_000,
         ) {
             let dt_us = u32::try_from(u64::from(tau_us) * u64::from(dt_ratio) / 1000)
-                .expect("dt_us <= tau_us <= u32::MAX");
+                .expect("tau_us <= 1e6 and dt_ratio <= 1e4, so dt_us <= 1e7");
 
             let fixture = |threshold: i16| {
                 let mut n = LIFNeuron::new(0);
@@ -1596,14 +1728,19 @@ mod tests {
                 n
             };
 
-            // The shared scaling factor, computed both ways.
+            // One formula, two consumers. The neuron takes it exact; the batch
+            // takes it clamped, because its i32 intermediates cannot hold more.
+            let exact = crate::lif_neuron::dt_over_tau(dt_us, tau_us);
             let dtot = dt_over_tau(dt_us, tau_us);
-            let inline = ((dt_us as i32) * 1000) / tau_us as i32;
             prop_assert_eq!(
-                dtot, inline,
-                "dt_over_tau({}, {}) disagrees with the inline formula in integrate_and_fire",
-                dt_us, tau_us
+                i64::from(dtot), exact.min(i64::from(DT_OVER_TAU_MAX)),
+                "simd::dt_over_tau is not lif_neuron::dt_over_tau plus this kernel's clamp"
             );
+            // Bit-equality is claimed ONLY where the clamp does not engage.
+            // Above it the neuron is exact and the batch is the approximation,
+            // which is a documented divergence, not a defect — see
+            // `the_batch_diverges_from_the_neuron_by_exactly_its_own_clamp`.
+            let inside_the_clamp = exact <= i64::from(DT_OVER_TAU_MAX);
 
             // Unreachable threshold: no spike, so the membrane is the raw value.
             let mut quiet = fixture(i16::MAX);
@@ -1620,17 +1757,57 @@ mod tests {
                 &mut membrane, &[rp], &[input], &[resistance], &[th], dtot, &mut spikes,
             );
 
-            prop_assert_eq!(
-                membrane[0], quiet.membrane_potential,
-                "membrane differs: batch {} vs integrate_and_fire {} \
-                 (mp={} rp={} input={} resistance={} dt_over_tau={})",
-                membrane[0], quiet.membrane_potential, mp, rp, input, resistance, dtot
-            );
-            prop_assert_eq!(
-                spikes[0], fired,
-                "spike bit differs at threshold {} with membrane {}",
-                th, quiet.membrane_potential
-            );
+            if inside_the_clamp {
+                prop_assert_eq!(
+                    membrane[0], quiet.membrane_potential,
+                    "membrane differs: batch {} vs integrate_and_fire {} \
+                     (mp={} rp={} input={} resistance={} dt_over_tau={})",
+                    membrane[0], quiet.membrane_potential, mp, rp, input, resistance, dtot
+                );
+                prop_assert_eq!(
+                    spikes[0], fired,
+                    "spike bit differs at threshold {} with membrane {}",
+                    th, quiet.membrane_potential
+                );
+            } else {
+                // Outside it, the batch must still equal what the CLAMPED
+                // scaling factor gives — the divergence is the clamp and
+                // nothing else, so a second defect cannot hide behind it.
+                //
+                // This arm is MOSTLY BLIND and says so rather than pretending
+                // otherwise: above the clamp the delta is usually large enough
+                // to drive the membrane onto a voltage bound, and a row on a
+                // bound satisfies the assertion for free. Measured over 200_000
+                // samples of this arm's draw distribution: 95.9% blind. (An
+                // independent reviewer measured ~92% modelling the same
+                // distribution differently — `any::<i16>()` is edge-biased, not
+                // uniform, which is the likely gap. Both readings say the same
+                // thing, and neither is quoted here as exact.)
+                // Constraining the draws off the
+                // bounds would narrow the search instead, so the discrimination
+                // is carried where it can be exact — the five fixed rows in
+                // `the_batch_diverges_from_the_neuron_by_exactly_its_own_clamp`,
+                // every one of which keeps both halves strictly inside the
+                // grid. This arm widens the search; it does not hold the pin.
+                let mut clamped = LIFNeuron::new(0);
+                clamped.voltage_resolution = VoltageResolution::Millivolt;
+                clamped.membrane_potential = mp;
+                clamped.resting_potential = rp;
+                clamped.threshold = i16::MAX;
+                clamped.resistance_mohm = resistance as u16;
+                clamped.noise_amplitude_ua = 0;
+                clamped.synaptic_current_ua = 0;
+                clamped.adaptation_current_ua = 0;
+                clamped.refractory_time_us = 0;
+                // tau chosen so the exact factor IS the clamp bound.
+                clamped.tau_membrane_us = 1_000_000;
+                let _ = clamped.integrate_and_fire(input, 1_884_000, 0);
+                prop_assert_eq!(
+                    membrane[0], clamped.membrane_potential,
+                    "above the clamp the batch must equal the neuron run at \
+                     dt_over_tau = DT_OVER_TAU_MAX, not something else"
+                );
+            }
         }
 
         /// AVX2 ≡ scalar over the documented equivalence domain: membranes agree
