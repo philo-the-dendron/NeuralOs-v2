@@ -10,7 +10,7 @@
 
 | # | Component | Status |
 |---|---|---|
-| **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again** — NIR DONE through general assembly (slices 1+2 + `build_network`, 2026-08-22 @ alpha.5), QEMU proof landed 2026-08-21; lock-free (re-scoped, below) + SIMD hardening remain. |
+| **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again** — NIR DONE through general assembly (slices 1+2 + `build_network`, 2026-08-22 @ alpha.5), QEMU proof landed 2026-08-21; lock-free (re-scoped, below) remains; **SIMD hardening DONE 2026-08-31** (ten-commit branch, ISA § Close-out). |
 | **2** | `neuralos-app` — Slint visualizer / lab bench | Untouched since 2026-08-08; Phase-2 items re-opened. |
 | **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). Silicon (ESP32-C3/HiFive) remains, priority-gated (board decided 2026-08-22 — merged-plan step 3). |
 | **4** | Paper track | The Branch B article (in `paper/`) — finish, gate, submit. Must not displace 1–3. |
@@ -42,7 +42,7 @@ Strict order — nothing new opens until the rung above is 100%.
 | R4 | Extract the shared hybrid harness; rewrite the 6 hybrid examples on it; re-run pins recorded verdicts | ✅ done (2026-08-21; all re-pins exact — `evidence/r4-closeout/`; the stale H1 invivo bar root-caused + the H2 record re-pinned byte-identical) |
 | R5 | `evidence/INDEX.md` — session → claim → files | ✅ done |
 | R6 | Merge `paper-draft` → main; paper builds from main | ✅ done |
-| R7 | Original roadmap work, in order (below) | ⬜ **open — NIR general assembly landed 2026-08-22 (alpha.5); lock-free + SIMD hardening remain** |
+| R7 | Original roadmap work, in order (below) | ⬜ **open — NIR general assembly landed 2026-08-22 (alpha.5); SIMD hardening landed 2026-08-31; lock-free remains** |
 
 ## Phase 1 — Substrate hardening (the starved list, now first)
 
@@ -50,7 +50,7 @@ Strict order — nothing new opens until the rung above is 100%.
 |---|---|
 | NIR import/export | Interop with snnTorch/SpikingJelly; the #1 ecosystem recommendation. **DONE through general graph assembly (slices 1+2 2026-08-21, `build_network` 2026-08-22 @ alpha.5; gates: format 4/4, hdf5 5/5, assembly 6/6 + cross-container 3/3 — evidence/INDEX.md).** Remaining: the R18 deferral family — readout edges (LIF→Linear), direct drive (Input→LIF), encoder-only (lowest pull). |
 | Lock-free ports from v0.1 archive | Throughput and future concurrency experiments. Re-scoped (2026-08-22 ruling): A-extension-capable targets only — rv32imc / ESP32-C3 are NOT (no atomics); name the target before porting |
-| SIMD follow-up / hardening | `simd.rs` untouched since 2026-08-07; keep the performance path honest |
+| SIMD follow-up / hardening | **DONE 2026-08-31** — slice-length contract enforced, overflow domain pinned (`DT_OVER_TAU_MAX`), floor-vs-truncate parking bias fixed (19 mV → ≤ 8 mV, cost 12–15 % of the vector path), every rounding-dependent number pinned exactly and reproducible from the tree (`cargo test -p neuralos-snn --features simd -- --ignored`); forks (b) exact ÷1000 and (c) half-cost recorded with triggers in the module doc; record in ISA § Close-out, evidence in `evidence/simd-hardening/` |
 | Additional regression/property tests | The transmission-wire lesson: no unit test had ever exercised live transmission until session F |
 | `no_std` discipline checks | Preserve the embedded/RISC-V posture (CI gate already green) |
 
@@ -119,7 +119,7 @@ displace substrate + lab bench + gated research.
    ("purchase within 1–2 weeks"); no purchase recorded since. It gates
    its own step and, via GUARD 3, gates outreach. Longest pole on the
    board, and it is a purchase, not a session.
-6. Lock-free ports (A-extension targets only — re-scoped above) +
-   SIMD hardening (the starved Phase-1 remainder)
+6. Lock-free ports (A-extension targets only — re-scoped above) — the
+   last Phase-1 remainder; **SIMD hardening DONE 2026-08-31** (ISA § Close-out)
 7. Visualizer Phase-2 — the lab bench catches up to the substrate the
    bridge arc hardened; also the named instrument for any step-8 arm
