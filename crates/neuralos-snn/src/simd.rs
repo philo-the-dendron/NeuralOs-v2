@@ -869,8 +869,8 @@ mod tests {
             // out the same. Opposite bounds (-100 against 50) are the loudest
             // disagreement the grid can express, not a blind row; counting them
             // as blind would let a fixture inflate its own blindness and hide a
-            // divergence it did see. No current fixture has such a row — every
-            // count below is identical under either rule — and the metric is
+            // divergence it did see. No current fixture has such a row — both
+            // counts below are identical under either rule — and the metric is
             // still stated the strict way, because the looser one was wrong.
             .filter(|(a, b)| a == b && matches!(**a, -100 | 50))
             .count();
@@ -950,6 +950,167 @@ mod tests {
         }
     }
 
+    /// The mV-grid rows, built once and read by every test that measures on
+    /// them, so a divergence number and a fork re-measurement can never come
+    /// from two different grids.
+    ///
+    /// At `|dt_over_tau| = 1884` a row only stays off the clamp when the
+    /// current term nearly cancels the leak, so the current is built from the
+    /// row's own leak: `current_term = input * 100 / 1000 = input / 10`, so
+    /// `input = -10 * leak + offset` puts the sum `leak + current_term` at
+    /// `offset / 10`.
+    /// `(membrane, resting, input_current, resistance, threshold)` — the SoA
+    /// shape every entry point in this module takes.
+    #[cfg(target_arch = "x86_64")]
+    type SoaFixture = (Vec<i16>, Vec<i16>, Vec<i16>, Vec<i16>, Vec<i16>);
+
+    #[cfg(target_arch = "x86_64")]
+    fn mv_grid_fixture() -> SoaFixture {
+        const MEMBRANE: [i16; 6] = [-100, -70, -55, -20, 0, 50];
+        // ±37 carry the extremal row (membrane −100, resting 37).
+        const RESTING: [i16; 8] = [-100, -70, -55, -37, -20, 0, 37, 50];
+        // −56 and −55 straddle the edge the AVX2 half lands on when the scalar
+        // reaches threshold exactly.
+        const THRESHOLD: [i16; 7] = [-100, -70, -56, -55, -20, 0, 50];
+        // Offset from the leak-cancelling current, in μA. ±770 reaches the
+        // extremal `input × resistance = -214_000`.
+        const OFFSET: [i16; 11] = [-770, -400, -210, -80, -20, 0, 20, 80, 210, 400, 770];
+        // The neuron default, in MΩ. Non-negative, so every row is a state a
+        // real `LIFNeuron` can hold (`resistance_mohm` is `u16`).
+        const RESISTANCE: i16 = 100;
+
+        let (mut mp, mut rp, mut ic, mut res, mut th) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for &membrane in &MEMBRANE {
+            for &resting in &RESTING {
+                let leak = resting - membrane;
+                for &offset in &OFFSET {
+                    let input = -10 * leak + offset;
+                    for &threshold in &THRESHOLD {
+                        mp.push(membrane);
+                        rp.push(resting);
+                        ic.push(input);
+                        res.push(RESISTANCE);
+                        th.push(threshold);
+                    }
+                }
+            }
+        }
+        assert_eq!(mp.len(), 3696, "6 × 8 × 11 × 7 rows");
+        assert!(mp.len().is_multiple_of(LANES), "3696 = 231 × 16, no padding");
+        (mp, rp, ic, res, th)
+    }
+
+    /// One lane of the AVX2 half, modelled in scalar Rust, in either rounding
+    /// variant. `floor_current_term = false` is the committed
+    /// `(truncate, truncate)`; `true` is the recorded fork *truncate only the
+    /// delta shift*, which leaves `current_term` on the plain arithmetic shift.
+    ///
+    /// A model is only worth what its validation is worth, so
+    /// `the_recorded_fork_re_measured_against_the_committed_choice` checks the
+    /// committed variant lane-by-lane against the real `integrate_batch_avx2`
+    /// before it reports either number.
+    #[cfg(target_arch = "x86_64")]
+    fn avx2_lane_model(
+        mp: i16,
+        rp: i16,
+        ic: i16,
+        res: i16,
+        dtot: i32,
+        floor_current_term: bool,
+    ) -> i32 {
+        let mp = i32::from(mp);
+        let leak = i32::from(rp) - mp;
+        let product = i32::from(ic) * i32::from(res);
+        // `>> 10` is the floor shift `_mm256_srai_epi32` performs; `/ 1024` is
+        // what `div1024_toward_zero` restores.
+        let current_term = if floor_current_term { product >> 10 } else { product / 1024 };
+        let delta = ((leak + current_term) * dtot) / 1024;
+        (mp + delta).clamp(-100, 50)
+    }
+
+    /// The recorded fork *truncate only the delta shift*, re-measured on a
+    /// fixture that can see the clamp region — and the committed choice
+    /// measured beside it by the same instrument.
+    ///
+    /// The fork was rejected because the committed `(truncate, truncate)` had
+    /// "zero spike disagreement at the corners" against the fork's 18. That
+    /// zero was `overflow_corners_at_max_dt_over_tau`, which is 75.6 % blind
+    /// (see its doc). On the mV grid, over both signs, the comparison inverts:
+    ///
+    /// | | spike disagreements | membrane diffs | max |
+    /// |---|---|---|---|
+    /// | committed `(truncate, truncate)` | 157 | 4592 | 15 mV |
+    /// | fork `(floor ct, truncate delta)` | 122 | 4277 | 15 mV |
+    ///
+    /// **This test measures; it does not decide.** Re-opening a recorded fork
+    /// is the principal's call, and the committed rounding is what the kernel
+    /// ships. The test exists so the numbers under that decision have a
+    /// falsifier in the tree instead of coming from a run nobody can repeat —
+    /// which is the defect § Equivalence domain confesses to about its own
+    /// older figures.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn the_recorded_fork_re_measured_against_the_committed_choice() {
+        let (mp, rp, ic, res, th) = mv_grid_fixture();
+        let n = mp.len();
+
+        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+            eprintln!("(AVX2 not available — the model cannot be validated, so nothing is reported)");
+            return;
+        }
+
+        // Validation FIRST. The model's committed variant must equal the real
+        // kernel on every row of every sign, or its fork number means nothing.
+        for dtot in [DT_OVER_TAU_MAX, -DT_OVER_TAU_MAX] {
+            let mut mp_v = mp.clone();
+            let mut sp_v = vec![false; n];
+            // SAFETY: equal-length slices, AVX2 verified available above.
+            unsafe {
+                integrate_batch_avx2(&mut mp_v, &rp, &ic, &res, &th, dtot, &mut sp_v);
+            }
+            for i in 0..n {
+                let modelled = avx2_lane_model(mp[i], rp[i], ic[i], res[i], dtot, false);
+                assert_eq!(
+                    modelled,
+                    i32::from(mp_v[i]),
+                    "the model disagrees with the real AVX2 kernel at row {i}, \
+                     dt_over_tau = {dtot}: modelled {modelled} vs kernel {}",
+                    mp_v[i],
+                );
+            }
+        }
+
+        // Only now, the measurement. Both variants, both signs, one instrument.
+        let measure = |floor_current_term: bool| {
+            let (mut max_diff, mut membrane_diffs, mut spike_diffs) = (0i32, 0usize, 0usize);
+            for dtot in [DT_OVER_TAU_MAX, -DT_OVER_TAU_MAX] {
+                let mut mp_s = mp.clone();
+                let mut sp_s = vec![false; n];
+                integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, dtot, &mut sp_s);
+                for i in 0..n {
+                    let v = avx2_lane_model(mp[i], rp[i], ic[i], res[i], dtot, floor_current_term);
+                    let s = i32::from(mp_s[i]);
+                    max_diff = max_diff.max((s - v).abs());
+                    membrane_diffs += usize::from(s != v);
+                    spike_diffs += usize::from(sp_s[i] != (v >= i32::from(th[i])));
+                }
+            }
+            (max_diff, membrane_diffs, spike_diffs)
+        };
+
+        assert_eq!(
+            measure(false),
+            (15, 4592, 157),
+            "the committed (truncate, truncate) moved"
+        );
+        assert_eq!(
+            measure(true),
+            (15, 4277, 122),
+            "the recorded fork (floor current_term, truncate delta) moved"
+        );
+    }
+
     /// The same `dt_over_tau` as the corner fixture, on the grid the neurons
     /// actually live on — and here the halves diverge by up to 15 mV and
     /// disagree on 157 spike bits.
@@ -968,38 +1129,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn mv_grid_divergence_at_max_dt_over_tau() {
-        const MEMBRANE: [i16; 6] = [-100, -70, -55, -20, 0, 50];
-        // ±37 carry the extremal row (membrane −100, resting 37).
-        const RESTING: [i16; 8] = [-100, -70, -55, -37, -20, 0, 37, 50];
-        // −56 and −55 straddle the edge the AVX2 half lands on when the scalar
-        // reaches threshold exactly.
-        const THRESHOLD: [i16; 7] = [-100, -70, -56, -55, -20, 0, 50];
-        // Offset from the leak-cancelling current, in μA. ±770 reaches the
-        // extremal `input × resistance = -214_000`.
-        const OFFSET: [i16; 11] = [-770, -400, -210, -80, -20, 0, 20, 80, 210, 400, 770];
-        const RESISTANCE: i16 = 100; // the neuron default, in MΩ
-
-        let (mut mp, mut rp, mut ic, mut res, mut th) =
-            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
-        for &membrane in &MEMBRANE {
-            for &resting in &RESTING {
-                let leak = resting - membrane;
-                for &offset in &OFFSET {
-                    // current_term = input * 100 / 1000 = input / 10, so this
-                    // input puts the sum `leak + current_term` at `offset / 10`.
-                    let input = -10 * leak + offset;
-                    for &threshold in &THRESHOLD {
-                        mp.push(membrane);
-                        rp.push(resting);
-                        ic.push(input);
-                        res.push(RESISTANCE);
-                        th.push(threshold);
-                    }
-                }
-            }
-        }
-        assert_eq!(mp.len(), 3696, "6 × 8 × 11 × 7 rows");
-        assert!(mp.len().is_multiple_of(LANES), "3696 = 231 × 16, no padding");
+        let (mp, rp, ic, res, th) = mv_grid_fixture();
 
         // (dt_over_tau, max_diff, membrane_diffs, spike_diffs, both_saturating)
         let expected: [(i32, i32, usize, usize, usize); 2] = [
@@ -1034,8 +1164,8 @@ mod tests {
     /// delta shift: `1884 × 24 = 45_216`, which is 45 over 1000 and 44 over
     /// 1024.
     ///
-    /// This row is on the same mV grid as the divergence fixture but is NOT one
-    /// of its rows — that fixture fixes `resistance = 100` and derives `input`
+    /// This row is on the same mV grid as [`mv_grid_fixture`] but is NOT one of
+    /// its rows — that fixture fixes `resistance = 100` and derives `input`
     /// from each row's leak, and no offset in it lands on 247. It is a witness
     /// standing on its own, which is why it is named and asserted here rather
     /// than counted there.
