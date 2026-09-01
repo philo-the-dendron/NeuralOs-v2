@@ -1658,7 +1658,7 @@ mod tests {
     /// rather than from someone's scratch directory.
     ///
     /// ```text
-    /// cargo test -p neuralos-snn --features simd -- --ignored
+    /// cargo test -p neuralos-snn --release --features simd -- --ignored
     /// ```
     ///
     /// Membrane and resting over the whole mV grid × every distinct current-term
@@ -1787,7 +1787,7 @@ mod tests {
     /// not see the very arm the doc calls its extremal case. See [`LANES`].
     ///
     /// ```text
-    /// cargo test -p neuralos-snn --features simd -- --ignored
+    /// cargo test -p neuralos-snn --release --features simd -- --ignored
     /// ```
     #[test]
     #[ignore = "exhaustive sweep, minutes not milliseconds"]
