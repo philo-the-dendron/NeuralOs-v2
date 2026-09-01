@@ -81,7 +81,7 @@
 //! largest deviation is its final one. Witness, `resting = 37`,
 //! `input × resistance = 100_000`, `dt_over_tau = 5`, from −70 mV: the scalar's
 //! `current_term` is 100 and it climbs to −62, while the vector's is 97 and
-//! `5 × (134 + 70) = 1020 < 1024` truncates to zero every step, so it sits at
+//! `5 × (107 + 97) = 1020 < 1024` truncates to zero every step, so it sits at
 //! −70 forever. 8 mV apart on step one and on step 20_000. The extremal case
 //! found by the sweep is the same shape: `resting = 50`, `current_term` 87
 //! against 84, `dt_over_tau = 5`.
@@ -272,8 +272,13 @@
     clippy::missing_errors_doc,
     clippy::missing_panics_doc
 )]
-// SIMD intrinsics are inherently unsafe; this module is OS-dev territory
-// (workspace has `unsafe_code = "allow"`).
+// SIMD intrinsics are inherently unsafe; this module is OS-dev territory.
+// Nothing denies `unsafe_code` here — there is no `[lints]` table in the
+// workspace or in any member manifest, so the rustc default (allow) stands.
+// (This comment claimed a workspace `unsafe_code = "allow"` until 2026-09-01.
+// That table has never existed; the permission was real, its stated source was
+// not. If a `[lints]` table is ever added, `unsafe_code` has to be allowed for
+// this module explicitly or the crate stops compiling.)
 #![allow(clippy::missing_safety_doc)]
 // Canonical SIMD idiom: `use std::arch::x86_64::*` brings in hundreds of
 // intrinsics by design; listing them explicitly is noise.
