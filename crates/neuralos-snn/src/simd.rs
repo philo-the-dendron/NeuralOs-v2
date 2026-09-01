@@ -122,16 +122,22 @@
 //! decision has not been reopened.** "Zero spike disagreement at the corners"
 //! was measured on a fixture that is 75.6 % clamp-blind (§ Overflow domain), so
 //! the zero was an artifact of the fixture, not a property of the rounding.
-//! Re-measured on `mv_grid_divergence_at_max_dt_over_tau`, over both signs, the
-//! comparison inverts: the committed `(truncate, truncate)` gives 157 spike
-//! disagreements and 4592 membrane differences, the fork gives **122 and 4277**,
-//! and both peak at the same 15 mV. On this fixture the fork is the better half
+//! Re-measured over both signs of the mV grid by
+//! `the_recorded_fork_re_measured_against_the_committed_choice`, which produces
+//! BOTH tuples from one instrument and validates that instrument against the
+//! real AVX2 kernel before reporting either. (`mv_grid_divergence_at_max_dt_over_tau`
+//! builds the same rows but measures only the committed side; it is not where
+//! the fork's numbers come from.) The comparison inverts: the committed
+//! `(truncate, truncate)` gives 157 spike disagreements and 4592 membrane
+//! differences, the fork gives **122 and 4277**, and both peak at the same
+//! 15 mV. On this fixture the fork is the better half
 //! on every axis it was rejected for, and it is also the cheaper one.
 //!
-//! The `~15%` in the trigger above is also stale: the benchmark's own scalar
-//! control puts the rounding fix at **+11.7 %** of the vector path, identical
-//! in both runs (`evidence/simd-hardening/README.md`, corrected 2026-09-01).
-//! So the fork recovers about half of ~12 %, not of ~15 %.
+//! The trigger above read `~15%` until 2026-09-01 and now reads `~12%`: the
+//! benchmark's own scalar control puts the rounding fix at **+11.7 %** of the
+//! vector path, identical in both runs
+//! (`evidence/simd-hardening/README.md`). So the fork recovers about half of
+//! ~12 %.
 //!
 //! That is a measurement, not a ruling. Re-deciding a recorded fork is the
 //! principal's call, and this note exists so the call is made on numbers that
