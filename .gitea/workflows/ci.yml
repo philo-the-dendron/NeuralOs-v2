@@ -77,7 +77,7 @@ jobs:
       # The slice-length contract is assert_eq!; its regression test is only
       # distinguishable from debug_assert_eq! in release. Added 2026-08-30.
       - name: simd release gate (neuralos-snn)
-        run: cargo test -p neuralos-snn --release --features simd
+        run: cargo test -p neuralos-snn --release --features simd -- --include-ignored
 
   # The HDF5 feature leg (NIR slice 2): vendored HDF5 (needs cmake) +
   # the reference-fixture tests + THE EVIDENCE GATE + feature clippy.
