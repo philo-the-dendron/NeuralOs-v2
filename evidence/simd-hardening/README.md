@@ -44,11 +44,19 @@ assumed:
   (`sha256 0cd66b436eeaa01c`), and it is the claim the log's own header rests
   on.
 
-The pin holds through `137088d` and no further. `e6692f9` (the `dt_over_tau`
-fix) is the first commit to change that non-test region — it hashes
-`2a5d18d6cad46298` there, and moves again with each later doc edit on the
-branch. So a binary built past `137088d` is NOT the one measured here, and
-re-running these numbers on the current branch tip is a new experiment, not
+The pin holds through `137088d` and no further, and it ends on BOTH
+follow-up branches. Commits are named by subject as well as pinned, because
+a sha is branch-local once work is cherry-picked and a bare sha is the
+failure being corrected here:
+
+- on `fix/simd-fixture-and-record`, `e79909e` — `docs(simd): two module-doc
+  comments said things that are not true` — is the first commit to change
+  the non-test region, taking it to `sha256 32e5bc3910beaf81`;
+- on `fix/lif-scalar-domain`, `fix(lif): one dt_over_tau definition,
+  saturating, shared with the batch` takes it to `sha256 2a5d18d6cad46298`.
+
+Either way, a binary built past `137088d` is NOT the one measured here, and
+re-running these numbers on a follow-up branch tip is a new experiment, not
 a rebuild.
 
 **Reading it.** The scalar column is the control (same code in both
