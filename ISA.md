@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@d840cea · open(review): PR #5 work/per-commit-gate (the per-commit job, proven green on itself and red on the PR #6 falsifier; two review lanes ruled; this record rides the branch) · open(principal): branch protection on main naming the per-commit check; the force-push-on-work/* question · next-work: ROADMAP § Practical next moves"
+head: "main@44d45e3 · PR #5 merged (per-commit CI job, round-15), mirror in sync, no open PRs, no branches but main · open(principal): branch protection on main naming the per-commit check; the force-push-on-work/* question · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-02T21:20:00Z
+updated: 2026-09-02T21:40:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
