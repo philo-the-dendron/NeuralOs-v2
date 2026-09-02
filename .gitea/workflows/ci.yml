@@ -131,15 +131,34 @@ jobs:
   # commit is a red check, not a merger's memory. Added 2026-09-02 after
   # the rule was broken by hand once and then caught two real defects the
   # same day when run as a loop. pull_request only: a push still gets
-  # the tip-only jobs above. The fmt check is judged per the gate set at
-  # each commit (present in that commit's own workflow or not).
+  # the tip-only jobs above, and workflow_dispatch skips this job too.
+  # The commit set is base..head: the commits reachable from head and
+  # not from the base sha the PR event carries. With a current base that
+  # is exactly the PR's own commits; with a stale base it can also hold
+  # commits main gained since, never fewer than the PR's own. The fmt
+  # check is judged per the gate set at each commit: it runs when either
+  # workflow file at that commit carries the fmt step, so mirror drift
+  # surfaces as fmt running, never as fmt silently skipped. The loop body
+  # IS AGENTS.md § Commands, kept in sync by hand; a divergence is drift.
+  # Green here is incremental-green: commits are checked out in place on
+  # one restored cargo cache, the same way the tip-only jobs and the
+  # repo's former `git rebase -x` loop built. Cargo fingerprints sources
+  # by content and mtime, and checkout touches what changed, so a stale
+  # artifact does not satisfy a changed source; the cold scratch-worktree
+  # loop in AGENTS.md stays the clean-build proof. The runner is a single
+  # self-hosted box (cp-desktop) that runs one job at a time, so a PR's
+  # wall time is check + hdf5 + this, in sequence, not in parallel.
+  # This job gates a merge only once branch protection on main names it
+  # as a required status; adding the job does not do that by itself.
   per-commit:
     name: every commit green on its own
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    # One full gate set per commit, cold on the first, warm after;
-    # ~8 min + ~4 min per further commit on cp-desktop. 240 min covers a
-    # long branch with a cold cache.
+    # One full gate set per commit. Measured on cp-desktop 2026-09-02:
+    # two commits cold in 20 min (PR #5); with the cache warm, two green
+    # commits plus the start of a red third in 8.5 min (PR #6). So about
+    # 10 min cold and about 4 min per further commit; 240 min budgets a
+    # branch of roughly fifty commits, and a longer one times out here.
     timeout-minutes: 240
     steps:
       - uses: https://github.com/actions/checkout@v4
@@ -166,7 +185,9 @@ jobs:
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          git fetch --no-tags --quiet origin "$base" "$head"
+          # fetch-depth 0 already holds both for a same-repo PR; this is a
+          # no-op belt for that case and non-fatal so rev-list reports instead.
+          git fetch --no-tags --quiet origin "$base" "$head" || true
           commits=$(git rev-list --reverse "$base".."$head")
           n=$(printf '%s\n' "$commits" | grep -c . || true)
           echo "== $n commit(s) in $base..$head"
@@ -174,7 +195,7 @@ jobs:
           for c in $commits; do
             git checkout --quiet "$c"
             echo "===== $c $(git log -1 --format=%s)"
-            if grep -q 'cargo fmt --all -- --check' .gitea/workflows/ci.yml; then
+            if grep -qE '^ +- name: cargo fmt --check$' .gitea/workflows/ci.yml .github/workflows/ci.yml; then
               cargo fmt --all -- --check
             else
               echo "(fmt --check is not a gate at this commit)"

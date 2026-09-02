@@ -78,9 +78,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
 cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings  # simd lint gate: workspace clippy never compiles the feature-gated module (2026-08-30)
-cargo test -p neuralos-snn --release --features simd   # simd release gate: the slice-length contract is assert_eq!, its regression test only fails in release (2026-08-30)
+cargo test -p neuralos-snn --release --features simd -- --include-ignored   # simd release gate: the slice-length contract is assert_eq!, its regression test only fails in release (2026-08-30); --include-ignored pulls the two exhaustive sweeps in, ~12 s in release (round 12, 2026-09-02)
 PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # the hdf5 gate (vendored HDF5; cmake from .nirenv; 116 green)
 PATH="$PWD/.nirenv/bin:$PATH" cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate  # THE NIR HDF5 EVIDENCE GATE (5/5)
+PATH="$PWD/.nirenv/bin:$PATH" cargo clippy -p neuralos-rt --features hdf5 --all-targets -- -D warnings  # hdf5 lint gate (in CI since the hdf5 leg; listed here 2026-09-02 so this block IS the CI set)
 
 # Run the visualizer (DISPLAY required, e.g. :0):
 cargo run -p neuralos-app --release               # ~2–9 min link on a 2-core CPU; binary cached after
@@ -271,16 +272,23 @@ claims, reopening frozen records.
   jobs only ever run the pushed tip; the **`per-commit` job** (both
   workflow files, `pull_request` only, added 2026-09-02) loops
   `git rev-list --reverse base..head` and runs the gate set at every
-  commit, so the rule is a Gitea check the merge waits on, not the
-  merger's memory — it was broken by hand once (ISA round 13) and, run
-  as a loop, caught two real defects the same day (round 14). The
-  merger reads that job's log; a local loop over `git rev-list
-  main..HEAD` in a scratch worktree with its own target dir is still
-  how a builder finds red before pushing. A red commit is reworked in
-  place (`--fixup` + `--autosquash` on an unpushed branch), never
-  patched by a later commit that leaves the red one in history. Never
-  force-push Gitea. Branches are deleted after merge (git history is
-  the archive).
+  commit, so the rule is a Gitea check, not the merger's memory — it
+  was broken by hand once (ISA round 13) and, run as a loop, caught two
+  real defects the same day (round 14). **The check gates a merge only
+  once branch protection on `main` names it as a required status;** as
+  of 2026-09-02 the repo has no branch-protection rules at all (API
+  read), and setting them is the principal's action. The merger reads
+  that job's log; a local loop over `git rev-list main..HEAD` in a
+  scratch worktree with its own target dir is still how a builder finds
+  red before pushing, and it is the clean-build proof (the job builds
+  incremental, in place, on one cache). A red commit is reworked in
+  place (`--fixup` + `--autosquash`), never patched by a later commit
+  that leaves the red one in history. **Red found after the push:** the
+  branch is never force-pushed; the rewritten history goes up under a
+  new name (`work/<name>-2`), the old PR is closed with a pointer to
+  the new one, and the old branch is deleted once the new PR is green.
+  Never force-push Gitea. Branches are deleted after merge (git history
+  is the archive).
 - **Commit trailers, machine-readable.** A commit that corrects an
   earlier one carries `Fixes: <sha> ("<subject>")`; a change that
   answers a reviewer's finding carries `Found-by: <handle> (PR #N)`.
