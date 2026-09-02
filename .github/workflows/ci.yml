@@ -53,7 +53,12 @@ jobs:
         run: cargo build --no-default-features -p neuralos-snn
 
       # SIMD kernel equivalence vs scalar (AVX2, x86_64, behind `simd`).
+      # NEURALOS_REQUIRE_AVX2 turns the module's nine "AVX2 not available"
+      # skips into one failure (`ci_runner_actually_has_avx2`), so a runner
+      # without AVX2 cannot pass this gate by not running it. Added 2026-09-02.
       - name: simd gate (neuralos-snn)
+        env:
+          NEURALOS_REQUIRE_AVX2: "1"
         run: cargo test -p neuralos-snn --features simd
 
       # Workspace clippy never compiles the feature-gated simd module; lint it
@@ -64,7 +69,9 @@ jobs:
       # The slice-length contract is assert_eq!; its regression test is only
       # distinguishable from debug_assert_eq! in release. Added 2026-08-30.
       - name: simd release gate (neuralos-snn)
-        run: cargo test -p neuralos-snn --release --features simd
+        env:
+          NEURALOS_REQUIRE_AVX2: "1"
+        run: cargo test -p neuralos-snn --release --features simd -- --include-ignored
 
   # The HDF5 feature leg (NIR slice 2): vendored HDF5 (needs cmake) +
   # the reference-fixture tests + THE EVIDENCE GATE + feature clippy.

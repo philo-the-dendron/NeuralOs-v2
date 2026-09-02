@@ -81,7 +81,7 @@
 //! largest deviation is its final one. Witness, `resting = 37`,
 //! `input × resistance = 100_000`, `dt_over_tau = 5`, from −70 mV: the scalar's
 //! `current_term` is 100 and it climbs to −62, while the vector's is 97 and
-//! `5 × (134 + 70) = 1020 < 1024` truncates to zero every step, so it sits at
+//! `5 × (107 + 97) = 1020 < 1024` truncates to zero every step, so it sits at
 //! −70 forever. 8 mV apart on step one and on step 20_000. The extremal case
 //! found by the sweep is the same shape: `resting = 50`, `current_term` 87
 //! against 84, `dt_over_tau = 5`.
@@ -102,7 +102,7 @@
 //! now in the test.)
 //!
 //! **Two different bounds, do not conflate them.** The ±2 mV in
-//! § Equivalence domain is a SINGLE step from the SAME membrane. The 4 and 5
+//! § Equivalence domain is a SINGLE step from the SAME membrane. The 8 and 8
 //! above are trajectory differences between two states that have already
 //! diverged. The single-step contract is unchanged by this fix.
 //!
@@ -112,11 +112,36 @@
 //! floor shift and truncate only the delta. Measured by the reviewer on the real
 //! kernel — B1 is fixed identically (named arms `[0, 1, 1]`), the equivalence
 //! maximum is unchanged at 2, and the corner triple comes out `[2, 270, 18]`
-//! against the committed `[4, 180, 0]`. **Trigger for revisiting: if the ~15%
+//! against the committed `[4, 180, 0]`. **Trigger for revisiting: if the ~12%
 //! vector-path cost ever matters to a consumer, this recovers about half of it,
 //! at the price of 18 corner spike disagreements where the committed choice has
 //! none.** The committed `(truncate, truncate)` stands because zero spike
 //! disagreement at the corners is worth more here than the instructions.
+//!
+//! **The stated basis does not survive the fixture rework (2026-09-01), and the
+//! decision has not been reopened.** "Zero spike disagreement at the corners"
+//! was measured on a fixture that is 75.6 % clamp-blind (§ Overflow domain), so
+//! the zero was an artifact of the fixture, not a property of the rounding.
+//! Re-measured over both signs of the mV grid by
+//! `the_recorded_fork_re_measured_against_the_committed_choice`, which produces
+//! BOTH tuples from one instrument and validates that instrument against the
+//! real AVX2 kernel before reporting either. (`mv_grid_divergence_at_max_dt_over_tau`
+//! builds the same rows but measures only the committed side; it is not where
+//! the fork's numbers come from.) The comparison inverts: the committed
+//! `(truncate, truncate)` gives 157 spike disagreements and 4592 membrane
+//! differences, the fork gives **122 and 4277**, and both peak at the same
+//! 15 mV. On this fixture the fork is the better half
+//! on every axis it was rejected for, and it is also the cheaper one.
+//!
+//! The trigger above read `~15%` until 2026-09-01 and now reads `~12%`: the
+//! benchmark's own scalar control puts the rounding fix at **+11.7 %** of the
+//! vector path, identical in both runs
+//! (`evidence/simd-hardening/README.md`). So the fork recovers about half of
+//! ~12 %.
+//!
+//! That is a measurement, not a ruling. Re-deciding a recorded fork is the
+//! principal's call, and this note exists so the call is made on numbers that
+//! are not blind. The committed choice stays in the code until then.
 //!
 //! ### Recorded fork: exact ÷1000 in the vector half
 //!
@@ -189,8 +214,11 @@
 //! Derivation, worst case over the full `i16` domain:
 //!
 //! - `leak = resting − membrane`, widened to `i32`: `|leak| ≤ 65_535`.
-//! - `input × resistance`: `|P| ≤ 32_768 × 32_768 = 1_073_741_824`, always inside
-//!   `i32`. This product is safe unconditionally.
+//! - `input × resistance`: `|P| ≤ |i16::MIN|² = 32_768² = 1_073_741_824`, always
+//!   inside `i32`. This product is safe unconditionally. The bound is reached
+//!   only at `i16::MIN × i16::MIN` — no `i16` holds `32_768` itself, so the
+//!   prose says `|i16::MIN|`, which is what
+//!   `dt_over_tau_max_is_the_documented_bound` computes.
 //! - `current_term`: `|P| / 1000 ≤ 1_073_741` (scalar), `|P| ÷ 1024 ≤ 1_048_576`
 //!   (AVX2). The scalar is the larger, so it binds. The toward-zero bias in
 //!   [`div1024_toward_zero`] only ever moves a negative value closer to zero, so
@@ -210,16 +238,39 @@
 //! bound is enforced rather than reported.
 //!
 //! Inside the bound nothing overflows, but the two halves are *not* bit-equal at
-//! the extremes — that is what the equivalence domain below is for. Measured
-//! over all 3125 combinations of `{i16::MIN, -1, 0, 1, i16::MAX}` at
-//! `dt_over_tau = DT_OVER_TAU_MAX`: both halves stay on the mV grid, 180 of 3125
-//! membranes differ, the largest difference is 4 mV, and no spike bit differs.
-//! Pinned by `overflow_corners_at_max_dt_over_tau`. (Was 375 / 3 mV / 44 spike
-//! bits before the rounding fix in § Approximation. Matching the scalar's
-//! rounding more than halves how often the corners disagree and removes spike
-//! disagreement entirely, while adding 1 mV to the single worst case — the
-//! corners sit far outside the equivalence domain, so no bound is claimed here,
-//! only the exact measurement.)
+//! the extremes — that is what the equivalence domain below is for. Two
+//! fixtures measure `|dt_over_tau| = DT_OVER_TAU_MAX`, and they answer
+//! different questions.
+//!
+//! **`overflow_corners_at_max_dt_over_tau` — overflow safety.** All 3125
+//! combinations of `{i16::MIN, -1, 0, 1, i16::MAX}`, padded to 3136, at both
+//! signs: nothing overflows, both halves stay on the mV grid, 180 membranes
+//! differ, the largest difference is 4 mV, and no spike bit differs. **That
+//! last number is an artifact and must not be quoted as agreement.** 2371 of
+//! the 3136 rows (75.6 %) land BOTH halves on a clamp bound, where the clamp
+//! erases the arithmetic; five `i16` extremes essentially never produce a
+//! current term that cancels the leak, which is the only way to stay off the
+//! bound at this `dt_over_tau`. The fixture is 75.6 % blind by construction,
+//! and now pins its own blind fraction so that cannot be forgotten again.
+//!
+//! **`mv_grid_divergence_at_max_dt_over_tau` — divergence.** The same
+//! `|dt_over_tau|`, on the mV grid, with each row's current built from its own
+//! leak so the result stays off the clamp (blind fraction 33 to 37 %:
+//! `1225/3696` at `+1884`, `1379/3696` at `−1884`). Here the
+//! halves differ by up to **8 mV at `+1884`** (2331 membranes, 65 spike bits)
+//! and up to **15 mV at `−1884`** (2261 membranes, 92 spike bits). A single
+//! row on the same grid carries the spike case, standing on its own rather
+//! than drawn from that fixture:
+//! `a_spike_bit_diverges_on_the_mv_grid_at_max_dt_over_tau` — membrane and
+//! resting −100, `input = 247` into `resistance = 100`, threshold −55; the
+//! scalar lands on −55 and fires, AVX2 lands on −56 and does not. Every value
+//! in it is one a real `LIFNeuron` can hold.
+//!
+//! (The corner triple was 375 / 3 mV / 44 spike bits before the rounding fix in
+//! § Approximation. Both fixtures sit far outside the equivalence domain, so no
+//! bound is claimed here, only exact measurements. Until 2026-09-01 only the
+//! corner fixture existed, it ran at the positive sign only, and its `0` was
+//! quoted as "no spike bit differs" here and in the recorded fork below.)
 //!
 //! # Equivalence domain (where ±2 mV holds)
 //!
@@ -298,8 +349,13 @@
     clippy::missing_errors_doc,
     clippy::missing_panics_doc
 )]
-// SIMD intrinsics are inherently unsafe; this module is OS-dev territory
-// (workspace has `unsafe_code = "allow"`).
+// SIMD intrinsics are inherently unsafe; this module is OS-dev territory.
+// Nothing denies `unsafe_code` here — there is no `[lints]` table in the
+// workspace or in any member manifest, so the rustc default (allow) stands.
+// (This comment claimed a workspace `unsafe_code = "allow"` until 2026-09-01.
+// That table has never existed; the permission was real, its stated source was
+// not. If a `[lints]` table is ever added, `unsafe_code` has to be allowed for
+// this module explicitly or the crate stops compiling.)
 #![allow(clippy::missing_safety_doc)]
 // Canonical SIMD idiom: `use std::arch::x86_64::*` brings in hundreds of
 // intrinsics by design; listing them explicitly is noise.
@@ -686,6 +742,30 @@ mod tests {
         (membrane, resting, current, resistance, threshold)
     }
 
+    /// The gate on the gates. Nine tests in this module return early when the
+    /// runner has no AVX2, and every divergence number they pin (2371, 1225,
+    /// 1379, 157, 122, the −56 witness) passes by skipping. Neither workflow
+    /// file asserted the capability, so a green CI leg could be a runner that
+    /// never executed its subject: the same defect class the fixture rework
+    /// fixed, one level up. Found by Soushi on PR #3.
+    ///
+    /// CI sets `NEURALOS_REQUIRE_AVX2` on the simd test steps (both workflow
+    /// files); with it set, a runner without AVX2 fails here instead of
+    /// skipping everywhere. Unset, a local run on an older box keeps skipping,
+    /// which is what a developer wants. Falsifier: set the variable on a
+    /// non-AVX2 target and this test must be the one that fails.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn ci_runner_actually_has_avx2() {
+        if std::env::var_os("NEURALOS_REQUIRE_AVX2").is_some() {
+            assert!(
+                matches!(detect_simd_support(), SimdSupport::Avx2),
+                "CI asked for the AVX2 gate and this runner cannot run it; \
+                 every divergence number in this module went unchecked"
+            );
+        }
+    }
+
     /// AVX2 kernel output stays within the biological bounds, like the scalar.
     #[test]
     #[cfg(target_arch = "x86_64")]
@@ -807,11 +887,92 @@ mod tests {
         assert_eq!(dt_over_tau(1000, 20_000), 50, "the physical default is untouched");
     }
 
-    /// Every `i16` corner, at the largest legal `dt_over_tau`, in both halves:
+    /// Run one batch through both halves and return
+    /// `(max_membrane_diff, membrane_diffs, spike_diffs, both_saturating)`.
+    ///
+    /// `both_saturating` counts rows where BOTH halves landed on a clamp bound.
+    /// Those rows can only ever report agreement — the clamp erases whatever
+    /// the arithmetic did — so a fixture's saturating fraction is the fraction
+    /// of it that is blind, and every caller pins it alongside the divergence
+    /// it claims to measure.
+    ///
+    /// The count over-reports by a little: a row whose exact arithmetic lands
+    /// on a bound without the clamp engaging looks the same from outside and
+    /// is counted blind too. It is a pinned measurement, not a claim, and
+    /// nothing rests on it being exact. Noted by Soushi on PR #3.
+    #[cfg(target_arch = "x86_64")]
+    fn measure_divergence(
+        mp: &[i16],
+        rp: &[i16],
+        ic: &[i16],
+        res: &[i16],
+        th: &[i16],
+        dtot: i32,
+    ) -> Option<(i32, usize, usize, usize)> {
+        let n = mp.len();
+        assert!(n.is_multiple_of(LANES), "fixture must be all vector lanes");
+
+        // Scalar first: in a debug build an overflowing `*` panics here.
+        let mut mp_s = mp.to_vec();
+        let mut sp_s = vec![false; n];
+        integrate_batch_scalar(&mut mp_s, rp, ic, res, th, dtot, &mut sp_s);
+        for &v in &mp_s {
+            assert!((-100..=50).contains(&v), "scalar left the mV grid: {v}");
+        }
+
+        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+            return None;
+        }
+        let mut mp_v = mp.to_vec();
+        let mut sp_v = vec![false; n];
+        // SAFETY: equal-length slices, AVX2 verified available above.
+        unsafe {
+            integrate_batch_avx2(&mut mp_v, rp, ic, res, th, dtot, &mut sp_v);
+        }
+        for &v in &mp_v {
+            assert!((-100..=50).contains(&v), "AVX2 left the mV grid: {v}");
+        }
+
+        let max_diff = mp_s
+            .iter()
+            .zip(&mp_v)
+            .map(|(a, b)| (i32::from(*a) - i32::from(*b)).abs())
+            .max()
+            .expect("non-empty batch");
+        let membrane_diffs = mp_s.iter().zip(&mp_v).filter(|(a, b)| a != b).count();
+        let spike_diffs = sp_s.iter().zip(&sp_v).filter(|(a, b)| a != b).count();
+        let both_saturating = mp_s
+            .iter()
+            .zip(&mp_v)
+            // Blind means the clamp erased the arithmetic and BOTH halves came
+            // out the same. Opposite bounds (-100 against 50) are the loudest
+            // disagreement the grid can express, not a blind row; counting them
+            // as blind would let a fixture inflate its own blindness and hide a
+            // divergence it did see. No current fixture has such a row — both
+            // counts below are identical under either rule — and the metric is
+            // still stated the strict way, because the looser one was wrong.
+            .filter(|(a, b)| a == b && matches!(**a, -100 | 50))
+            .count();
+        Some((max_diff, membrane_diffs, spike_diffs, both_saturating))
+    }
+
+    /// Every `i16` corner, at both signs of the largest legal `dt_over_tau`:
     /// no `i32` intermediate overflows (debug builds panic on overflow, which is
-    /// the falsifier) and both halves stay on the mV grid. They do NOT agree
-    /// here — the corners are far outside the equivalence domain — so the
-    /// divergence is pinned exactly instead.
+    /// the falsifier) and both halves stay on the mV grid.
+    ///
+    /// **This fixture measures overflow safety, NOT divergence.** 2371 of its
+    /// 3136 rows (75.6 %) land BOTH halves on a clamp bound, where the clamp
+    /// erases the arithmetic and agreement is free. Its `(4, 180, 0)` triple is
+    /// therefore a lower bound on divergence and nothing more — and the `0` in
+    /// particular is an artifact: on the mV grid, where neurons actually live,
+    /// spike bits DO diverge at this `dt_over_tau`
+    /// (`mv_grid_divergence_at_max_dt_over_tau`,
+    /// `a_spike_bit_diverges_on_the_mv_grid_at_max_dt_over_tau`). The triple is
+    /// still pinned, because any arithmetic change moves it; it is just not
+    /// evidence of agreement. (Until 2026-09-01 this test was the only fixture
+    /// at `DT_OVER_TAU_MAX`, it ran at the positive sign only, and its `0` was
+    /// read as "no spike bit differs at the corners" in the module doc and in a
+    /// recorded design fork.)
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn overflow_corners_at_max_dt_over_tau() {
@@ -842,47 +1003,285 @@ mod tests {
         for v in [&mut mp, &mut rp, &mut ic, &mut res, &mut th] {
             pad_to_lanes(v);
         }
-        let n = mp.len();
-        assert!(n.is_multiple_of(LANES), "fixture must be all vector lanes");
 
-        // Scalar first: in a debug build an overflowing `*` panics here.
-        let mut mp_s = mp.clone();
-        let mut sp_s = vec![false; mp.len()];
-        integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, DT_OVER_TAU_MAX, &mut sp_s);
-        for &v in &mp_s {
-            assert!((-100..=50).contains(&v), "scalar left the mV grid: {v}");
+        // Both signs. `dt_over_tau` itself is never negative, but
+        // `integrate_lif_batch` and `integrate_batch_scalar` both take an `i32`
+        // from the caller and clamp to `-DT_OVER_TAU_MAX..=DT_OVER_TAU_MAX`, so
+        // the negative half of that range is reachable through the public API
+        // and was untested until 2026-09-01.
+        for dtot in [DT_OVER_TAU_MAX, -DT_OVER_TAU_MAX] {
+            let Some((max_diff, membrane_diffs, spike_diffs, both_saturating)) =
+                measure_divergence(&mp, &rp, &ic, &res, &th, dtot)
+            else {
+                eprintln!("(AVX2 not available — corner agreement not checked)");
+                return;
+            };
+            assert_eq!(
+                (max_diff, membrane_diffs, spike_diffs),
+                (4, 180, 0),
+                "corner divergence moved at dt_over_tau = {dtot}"
+            );
+            assert_eq!(
+                both_saturating, 2371,
+                "the corner fixture's blind fraction moved at dt_over_tau = {dtot}; \
+                 75.6 % of it cannot see the arithmetic and the doc says so"
+            );
         }
+    }
+
+    /// The mV-grid rows, built once and read by every test that measures on
+    /// them, so a divergence number and a fork re-measurement can never come
+    /// from two different grids.
+    ///
+    /// At `|dt_over_tau| = 1884` a row only stays off the clamp when the
+    /// current term nearly cancels the leak, so the current is built from the
+    /// row's own leak: `current_term = input * 100 / 1000 = input / 10`, so
+    /// `input = -10 * leak + offset` puts the sum `leak + current_term` at
+    /// `offset / 10`.
+    /// `(membrane, resting, input_current, resistance, threshold)` — the SoA
+    /// shape every entry point in this module takes.
+    #[cfg(target_arch = "x86_64")]
+    type SoaFixture = (Vec<i16>, Vec<i16>, Vec<i16>, Vec<i16>, Vec<i16>);
+
+    #[cfg(target_arch = "x86_64")]
+    fn mv_grid_fixture() -> SoaFixture {
+        const MEMBRANE: [i16; 6] = [-100, -70, -55, -20, 0, 50];
+        // ±37 carry the extremal row (membrane −100, resting 37).
+        const RESTING: [i16; 8] = [-100, -70, -55, -37, -20, 0, 37, 50];
+        // −56 and −55 straddle the edge the AVX2 half lands on when the scalar
+        // reaches threshold exactly.
+        const THRESHOLD: [i16; 7] = [-100, -70, -56, -55, -20, 0, 50];
+        // Offset from the leak-cancelling current, in μA. ±770 reaches the
+        // extremal `input × resistance = -214_000`.
+        const OFFSET: [i16; 11] = [-770, -400, -210, -80, -20, 0, 20, 80, 210, 400, 770];
+        // The neuron default, in MΩ. Non-negative, so every row is a state a
+        // real `LIFNeuron` can hold (`resistance_mohm` is `u16`).
+        const RESISTANCE: i16 = 100;
+
+        let (mut mp, mut rp, mut ic, mut res, mut th) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for &membrane in &MEMBRANE {
+            for &resting in &RESTING {
+                let leak = resting - membrane;
+                for &offset in &OFFSET {
+                    let input = -10 * leak + offset;
+                    for &threshold in &THRESHOLD {
+                        mp.push(membrane);
+                        rp.push(resting);
+                        ic.push(input);
+                        res.push(RESISTANCE);
+                        th.push(threshold);
+                    }
+                }
+            }
+        }
+        assert_eq!(mp.len(), 3696, "6 × 8 × 11 × 7 rows");
+        assert!(mp.len().is_multiple_of(LANES), "3696 = 231 × 16, no padding");
+        (mp, rp, ic, res, th)
+    }
+
+    /// One lane of the AVX2 half, modelled in scalar Rust, in either rounding
+    /// variant. `floor_current_term = false` is the committed
+    /// `(truncate, truncate)`; `true` is the recorded fork *truncate only the
+    /// delta shift*, which leaves `current_term` on the plain arithmetic shift.
+    ///
+    /// A model is only worth what its validation is worth, so
+    /// `the_recorded_fork_re_measured_against_the_committed_choice` checks the
+    /// committed variant lane-by-lane against the real `integrate_batch_avx2`
+    /// before it reports either number.
+    #[cfg(target_arch = "x86_64")]
+    fn avx2_lane_model(
+        mp: i16,
+        rp: i16,
+        ic: i16,
+        res: i16,
+        dtot: i32,
+        floor_current_term: bool,
+    ) -> i32 {
+        let mp = i32::from(mp);
+        let leak = i32::from(rp) - mp;
+        let product = i32::from(ic) * i32::from(res);
+        // `>> 10` is the floor shift `_mm256_srai_epi32` performs; `/ 1024` is
+        // what `div1024_toward_zero` restores.
+        let current_term = if floor_current_term { product >> 10 } else { product / 1024 };
+        let delta = ((leak + current_term) * dtot) / 1024;
+        (mp + delta).clamp(-100, 50)
+    }
+
+    /// The recorded fork *truncate only the delta shift*, re-measured on a
+    /// fixture that can see the clamp region — and the committed choice
+    /// measured beside it by the same instrument.
+    ///
+    /// The fork was rejected because the committed `(truncate, truncate)` had
+    /// "zero spike disagreement at the corners" against the fork's 18. That
+    /// zero was `overflow_corners_at_max_dt_over_tau`, which is 75.6 % blind
+    /// (see its doc). On the mV grid, over both signs, the comparison inverts:
+    ///
+    /// | | spike disagreements | membrane diffs | max |
+    /// |---|---|---|---|
+    /// | committed `(truncate, truncate)` | 157 | 4592 | 15 mV |
+    /// | fork `(floor ct, truncate delta)` | 122 | 4277 | 15 mV |
+    ///
+    /// **This test measures; it does not decide.** Re-opening a recorded fork
+    /// is the principal's call, and the committed rounding is what the kernel
+    /// ships. The test exists so the numbers under that decision have a
+    /// falsifier in the tree instead of coming from a run nobody can repeat —
+    /// which is the defect § Equivalence domain confesses to about its own
+    /// older figures.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn the_recorded_fork_re_measured_against_the_committed_choice() {
+        let (mp, rp, ic, res, th) = mv_grid_fixture();
+        let n = mp.len();
 
         if !matches!(detect_simd_support(), SimdSupport::Avx2) {
-            eprintln!("(AVX2 not available — corner agreement not checked)");
+            eprintln!("(AVX2 not available — the model cannot be validated, so nothing is reported)");
             return;
         }
-        let mut mp_v = mp.clone();
-        let mut sp_v = vec![false; mp.len()];
-        // SAFETY: equal-length slices, AVX2 verified available above.
-        unsafe {
-            integrate_batch_avx2(&mut mp_v, &rp, &ic, &res, &th, DT_OVER_TAU_MAX, &mut sp_v);
-        }
-        for &v in &mp_v {
-            assert!((-100..=50).contains(&v), "AVX2 left the mV grid: {v}");
+
+        // Validation FIRST. The model's committed variant must equal the real
+        // kernel on every row of every sign, or its fork number means nothing.
+        for dtot in [DT_OVER_TAU_MAX, -DT_OVER_TAU_MAX] {
+            let mut mp_v = mp.clone();
+            let mut sp_v = vec![false; n];
+            // SAFETY: equal-length slices, AVX2 verified available above.
+            unsafe {
+                integrate_batch_avx2(&mut mp_v, &rp, &ic, &res, &th, dtot, &mut sp_v);
+            }
+            for i in 0..n {
+                let modelled = avx2_lane_model(mp[i], rp[i], ic[i], res[i], dtot, false);
+                assert_eq!(
+                    modelled,
+                    i32::from(mp_v[i]),
+                    "the model disagrees with the real AVX2 kernel at row {i}, \
+                     dt_over_tau = {dtot}: modelled {modelled} vs kernel {}",
+                    mp_v[i],
+                );
+            }
         }
 
-        // The corners are far OUTSIDE the equivalence domain, so the halves are
-        // not expected to agree here — only to stay finite and on the grid. The
-        // divergence is pinned exactly, so any arithmetic change moves it.
-        let max_diff = mp_s
-            .iter()
-            .zip(&mp_v)
-            .map(|(a, b)| (i32::from(*a) - i32::from(*b)).abs())
-            .max()
-            .expect("non-empty batch");
-        let membrane_diffs = mp_s.iter().zip(&mp_v).filter(|(a, b)| a != b).count();
-        let spike_diffs = sp_s.iter().zip(&sp_v).filter(|(a, b)| a != b).count();
+        // Only now, the measurement. Both variants, both signs, one instrument.
+        let measure = |floor_current_term: bool| {
+            let (mut max_diff, mut membrane_diffs, mut spike_diffs) = (0i32, 0usize, 0usize);
+            for dtot in [DT_OVER_TAU_MAX, -DT_OVER_TAU_MAX] {
+                let mut mp_s = mp.clone();
+                let mut sp_s = vec![false; n];
+                integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, dtot, &mut sp_s);
+                for i in 0..n {
+                    let v = avx2_lane_model(mp[i], rp[i], ic[i], res[i], dtot, floor_current_term);
+                    let s = i32::from(mp_s[i]);
+                    max_diff = max_diff.max((s - v).abs());
+                    membrane_diffs += usize::from(s != v);
+                    spike_diffs += usize::from(sp_s[i] != (v >= i32::from(th[i])));
+                }
+            }
+            (max_diff, membrane_diffs, spike_diffs)
+        };
+
         assert_eq!(
-            (max_diff, membrane_diffs, spike_diffs),
-            (4, 180, 0),
-            "corner divergence moved; the module doc records 4 mV / 180 / 0 at dt_over_tau = {DT_OVER_TAU_MAX}"
+            measure(false),
+            (15, 4592, 157),
+            "the committed (truncate, truncate) moved"
         );
+        assert_eq!(
+            measure(true),
+            (15, 4277, 122),
+            "the recorded fork (floor current_term, truncate delta) moved"
+        );
+    }
+
+    /// The same `dt_over_tau` as the corner fixture, on the grid the neurons
+    /// actually live on — and here the halves diverge by up to 15 mV and
+    /// disagree on 157 spike bits.
+    ///
+    /// The corner fixture cannot see any of this: at `|dt_over_tau| = 1884` a
+    /// row only stays off the clamp when the current term nearly cancels the
+    /// leak, and five `i16` extremes never do. So the current is built from the
+    /// row's own leak — `input = -10 * leak + offset` at the default
+    /// `resistance = 100` MΩ makes `current_term ≈ -leak`, and `offset` walks
+    /// the result across the grid. That drops the blind fraction from 75.6 % to
+    /// 33 to 37 % (`1225/3696` at `+1884`, `1379/3696` at `−1884`), which is
+    /// the whole point of the fixture and is pinned below rather than asserted
+    /// in a comment.
+    ///
+    /// `-1884` is the worse sign: 15 mV against 8, and 92 spike disagreements
+    /// against 65.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn mv_grid_divergence_at_max_dt_over_tau() {
+        let (mp, rp, ic, res, th) = mv_grid_fixture();
+
+        // (dt_over_tau, max_diff, membrane_diffs, spike_diffs, both_saturating)
+        let expected: [(i32, i32, usize, usize, usize); 2] = [
+            (DT_OVER_TAU_MAX, 8, 2331, 65, 1225),
+            (-DT_OVER_TAU_MAX, 15, 2261, 92, 1379),
+        ];
+        for (dtot, max_diff, membrane_diffs, spike_diffs, both_saturating) in expected {
+            let Some(got) = measure_divergence(&mp, &rp, &ic, &res, &th, dtot) else {
+                eprintln!("(AVX2 not available — mV-grid divergence not checked)");
+                return;
+            };
+            assert_eq!(
+                got,
+                (max_diff, membrane_diffs, spike_diffs, both_saturating),
+                "mV-grid divergence moved at dt_over_tau = {dtot}"
+            );
+            assert!(
+                both_saturating * 2 < mp.len(),
+                "non-saturating rows must dominate: {both_saturating}/{} saturate at {dtot}",
+                mp.len()
+            );
+        }
+    }
+
+    /// One row, named, because the corner fixture's `spike_diffs == 0` was read
+    /// as "the committed rounding produces no spike disagreement at
+    /// `DT_OVER_TAU_MAX`" — and it does.
+    ///
+    /// The scalar reaches threshold exactly and fires; the AVX2 half lands one
+    /// millivolt short and does not. `input × resistance = 24_700`, so
+    /// `current_term` is 24 in both halves and the split is entirely in the
+    /// delta shift: `1884 × 24 = 45_216`, which is 45 over 1000 and 44 over
+    /// 1024.
+    ///
+    /// This row is on the same mV grid as [`mv_grid_fixture`] but is NOT one of
+    /// its rows — that fixture fixes `resistance = 100` and derives `input`
+    /// from each row's leak, and no offset in it lands on 247. It is a witness
+    /// standing on its own, which is why it is named and asserted here rather
+    /// than counted there.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn a_spike_bit_diverges_on_the_mv_grid_at_max_dt_over_tau() {
+        // Every value here is one a real `LIFNeuron` can hold: `resistance_mohm`
+        // is `u16`, so the resistance must be non-negative. This row used
+        // `input = -2468, resistance = -10` until 2026-09-01 — same product,
+        // same arithmetic, but a state no neuron can reach, which made the
+        // witness unreachable from the scalar side it is a witness about.
+        let (mp, rp, ic, res, th) = (-100i16, -100i16, 247i16, 100i16, -55i16);
+        let mut mp_s = vec![mp; LANES];
+        let mut sp_s = vec![false; LANES];
+        integrate_batch_scalar(
+            &mut mp_s, &[rp; LANES], &[ic; LANES], &[res; LANES], &[th; LANES],
+            DT_OVER_TAU_MAX, &mut sp_s,
+        );
+        assert_eq!(mp_s[0], -55, "scalar lands on threshold exactly");
+        assert!(sp_s[0], "scalar fires");
+
+        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+            eprintln!("(AVX2 not available — spike divergence not checked)");
+            return;
+        }
+        let mut mp_v = vec![mp; LANES];
+        let mut sp_v = vec![false; LANES];
+        // SAFETY: equal-length slices, AVX2 verified available above.
+        unsafe {
+            integrate_batch_avx2(
+                &mut mp_v, &[rp; LANES], &[ic; LANES], &[res; LANES], &[th; LANES],
+                DT_OVER_TAU_MAX, &mut sp_v,
+            );
+        }
+        assert_eq!(mp_v[0], -56, "AVX2 lands one mV short");
+        assert!(!sp_v[0], "AVX2 does not fire — the spike bits disagree");
     }
 
     /// The slice-length contract is enforced BEFORE the caller's buffer is
@@ -1333,7 +1732,7 @@ mod tests {
     /// rather than from someone's scratch directory.
     ///
     /// ```text
-    /// cargo test -p neuralos-snn --features simd -- --ignored
+    /// cargo test -p neuralos-snn --release --features simd -- --ignored
     /// ```
     ///
     /// Membrane and resting over the whole mV grid × every distinct current-term
@@ -1462,7 +1861,7 @@ mod tests {
     /// not see the very arm the doc calls its extremal case. See [`LANES`].
     ///
     /// ```text
-    /// cargo test -p neuralos-snn --features simd -- --ignored
+    /// cargo test -p neuralos-snn --release --features simd -- --ignored
     /// ```
     #[test]
     #[ignore = "exhaustive sweep, minutes not milliseconds"]
