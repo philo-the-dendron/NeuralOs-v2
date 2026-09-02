@@ -1207,7 +1207,9 @@ fn finish_lif_population(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+// 106 lines once rustfmt reflows the call sites (2026-09-02); the body
+// did not grow, the line count did
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 fn import_node<'a>(
     r: &mut Reader<'a>,
     name: &'a str,
@@ -2036,7 +2038,8 @@ mod std_assembly {
         /// reference-emitted negative fixture each (+ the mV-on-
         /// recurrent ruling, opts-driven, same fixture file).
         #[test]
-        #[allow(clippy::type_complexity)]
+        // 107 lines once rustfmt reflows the table rows (2026-09-02)
+        #[allow(clippy::type_complexity, clippy::too_many_lines)]
         fn named_rejections_reference_fixtures() {
             let cases: Vec<(&str, &[u8], fn(&NirError<'_>) -> bool)> = vec![
                 (
@@ -3495,6 +3498,8 @@ mod tests {
     }
 
     #[test]
+    // 114 lines once rustfmt reflows the assertions (2026-09-02)
+    #[allow(clippy::too_many_lines)]
     fn lif_hard_failures() {
         // tau < dt: the whole import must fail loudly
         let opts = NirImportOptions {

@@ -502,7 +502,7 @@ pub fn integrate_lif_batch(
         // kernel processes 16-element aligned chunks plus a scalar tail, so no
         // out-of-bounds access occurs. `membrane` is &mut and uniquely borrowed
         // here; the kernel writes within bounds.
-        unsafe { integrate_batch_avx2(membrane, resting, input_currents, resistance, threshold, dt_over_tau, spikes_out) };
+        unsafe { integrate_batch_avx2(membrane, resting, input_currents, resistance, threshold, dt_over_tau, spikes_out); }
         return;
     }
     integrate_batch_scalar(membrane, resting, input_currents, resistance, threshold, dt_over_tau, spikes_out);
