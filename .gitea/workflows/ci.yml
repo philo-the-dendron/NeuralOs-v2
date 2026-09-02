@@ -50,6 +50,11 @@ jobs:
             libfreetype6-dev libfontconfig1-dev libxcb1-dev libxkbcommon-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxcursor-dev
 
+      # Formatting is a gate, not a suggestion: the tree was 48 files red
+      # for weeks with nothing looking. Added 2026-09-02 with the sweep.
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
       - name: cargo check --workspace
         run: cargo check --workspace --all-targets
 
