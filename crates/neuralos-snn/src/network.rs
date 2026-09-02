@@ -477,7 +477,8 @@ impl SpikingNeuralNetwork {
                 };
                 // dt = pre_time - post_time. Positive (pre after post) → LTD.
                 let dt_us: i32 = (pre_time as i64 - post_time as i64)
-                    .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+                    .clamp(i32::MIN as i64, i32::MAX as i64)
+                    as i32;
                 let delta = self.plasticity_rule.calculate_weight_change(dt_us);
                 if delta != 0 {
                     // In-window pairing: bucket by dt for the histogram
@@ -522,7 +523,8 @@ impl SpikingNeuralNetwork {
                 }
                 // dt = pre_time - post_time < 0 (pre fired earlier) → LTP branch.
                 let dt_us: i32 = (pre_time as i64 - post_time as i64)
-                    .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+                    .clamp(i32::MIN as i64, i32::MAX as i64)
+                    as i32;
                 if dt_us >= 0 {
                     continue; // defensive: only the LTP (dt<0) branch belongs here.
                 }
@@ -738,8 +740,7 @@ impl SpikingNeuralNetwork {
             }
             lfsr = advance_lfsr(lfsr);
             let draw = (lfsr & 0xFFFF) as u16;
-            let target =
-                crate::trit::stochastic_ternary_flip(s.weight, gamma, residual, draw);
+            let target = crate::trit::stochastic_ternary_flip(s.weight, gamma, residual, draw);
             let clamped = target.clamp(s.min_weight, s.max_weight);
             if clamped != projected {
                 flips += 1;
@@ -998,8 +999,7 @@ fn estimate_synapses(neuron_count: u16, topology: &NetworkTopology) -> usize {
                 * *connectivity) as usize
         }
         NetworkTopology::SmallWorld {
-            local_connections,
-            ..
+            local_connections, ..
         } => neuron_count as usize * (*local_connections as usize),
         NetworkTopology::Feedforward { layers } => layers
             .windows(2)
@@ -1232,11 +1232,16 @@ mod tests {
         let mut row0: Vec<(u16, i16, usize)> = m.connections(0).collect();
         row0.sort_by_key(|t| t.0);
         assert_eq!(
-            row0, vec![(1, 100, 0), (4, 150, 2)],
+            row0,
+            vec![(1, 100, 0), (4, 150, 2)],
             "connections(0) must return only pre=0's edges"
         );
         let row2: Vec<(u16, i16, usize)> = m.connections(2).collect();
-        assert_eq!(row2, vec![(3, 200, 1)], "connections(2) must return pre=2's edge only");
+        assert_eq!(
+            row2,
+            vec![(3, 200, 1)],
+            "connections(2) must return pre=2's edge only"
+        );
         // Empty rows stay empty.
         assert_eq!(m.connections(1).count(), 0);
         assert_eq!(m.connections(3).count(), 0);
@@ -1273,12 +1278,9 @@ mod tests {
         // arbitrary pre_id order + `finalize_synapses()` must produce the
         // authoritative forward CSR (right members, stable within-row order),
         // the reverse CSR (right incoming edges), and refreshed stats.
-        let mut net = SpikingNeuralNetwork::new(
-            4,
-            1000,
-            NetworkTopology::Random { connectivity: 0.0 },
-        )
-        .expect("valid");
+        let mut net =
+            SpikingNeuralNetwork::new(4, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                .expect("valid");
         net.build_topology().expect("build");
         assert_eq!(net.synapse_count(), 0, "zero-connectivity start is empty");
         // Deliberately unsorted pre order (pre 2, pre 0, pre 2 again, pre 1).
@@ -1328,24 +1330,18 @@ mod tests {
         // NEVER potentiate — the pre-1.5d LTD-only regression, silently. Same
         // drive on two nets: the finalized one potentiates, the unfinalized
         // one cannot (LTD clamps the zero-born excitatory weight at 0).
-        let mut net = SpikingNeuralNetwork::new(
-            4,
-            1000,
-            NetworkTopology::Random { connectivity: 0.0 },
-        )
-        .expect("valid");
+        let mut net =
+            SpikingNeuralNetwork::new(4, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                .expect("valid");
         net.build_topology().expect("build");
         net.neurons[1].noise_amplitude_ua = 0;
         net.neurons[2].noise_amplitude_ua = 0;
         net.add_synapse(1, 2, 0).expect("add");
         net.finalize_synapses();
 
-        let mut raw = SpikingNeuralNetwork::new(
-            4,
-            1000,
-            NetworkTopology::Random { connectivity: 0.0 },
-        )
-        .expect("valid");
+        let mut raw =
+            SpikingNeuralNetwork::new(4, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                .expect("valid");
         raw.build_topology().expect("build");
         raw.neurons[1].noise_amplitude_ua = 0;
         raw.neurons[2].noise_amplitude_ua = 0;
@@ -1415,12 +1411,9 @@ mod tests {
     fn build_topology_is_idempotent_no_accumulation() {
         // Regression for the silent-accumulation footgun: a second build must
         // REPLACE the topology, not stack on top of the first.
-        let mut net = SpikingNeuralNetwork::new(
-            50,
-            1000,
-            NetworkTopology::Random { connectivity: 0.3 },
-        )
-        .expect("valid");
+        let mut net =
+            SpikingNeuralNetwork::new(50, 1000, NetworkTopology::Random { connectivity: 0.3 })
+                .expect("valid");
         net.build_topology().expect("first build");
         let count_first = net.synapse_count();
         assert!(count_first > 0, "first build must produce synapses");
@@ -1555,11 +1548,18 @@ mod tests {
             let within = (step as u32) % (slot_len * u32::from(groups));
             let slot = within / slot_len;
             let within_slot = within % slot_len;
-            let active_group =
-                if slot < u32::from(groups) && within_slot < active_on { slot as u16 } else { groups };
+            let active_group = if slot < u32::from(groups) && within_slot < active_on {
+                slot as u16
+            } else {
+                groups
+            };
             let mut inp = vec![i_inh; neurons as usize];
             for n in 0..exc {
-                inp[n as usize] = if group_of(n) == active_group { i_active } else { i_idle };
+                inp[n as usize] = if group_of(n) == active_group {
+                    i_active
+                } else {
+                    i_idle
+                };
             }
             inputs.push(inp);
         }
@@ -1941,9 +1941,8 @@ mod tests {
         let mut net =
             SpikingNeuralNetwork::new(48, 1000, NetworkTopology::default()).expect("valid");
         net.build_topology().expect("build");
-        let mut by_post: Vec<Vec<(u16, usize)>> = (0..net.neuron_count())
-            .map(|_| Vec::new())
-            .collect();
+        let mut by_post: Vec<Vec<(u16, usize)>> =
+            (0..net.neuron_count()).map(|_| Vec::new()).collect();
         for (syn_idx, s) in net.synapses().iter().enumerate() {
             by_post[s.post_neuron_id as usize].push((s.pre_neuron_id, syn_idx));
         }
@@ -2025,11 +2024,21 @@ mod tests {
         net.finalize_synapses();
 
         let spikes = net.step(&[3000, 0]).expect("step 0");
-        assert_eq!(spikes.len(), 1, "pre fires on step 0 (E mV: 3000 μA ⇒ +15 mV)");
-        assert_eq!(net.neurons[1].membrane_potential, -70, "delay: unmoved this step");
+        assert_eq!(
+            spikes.len(),
+            1,
+            "pre fires on step 0 (E mV: 3000 μA ⇒ +15 mV)"
+        );
+        assert_eq!(
+            net.neurons[1].membrane_potential, -70,
+            "delay: unmoved this step"
+        );
 
         net.step(&[0, 0]).expect("step 1");
-        assert_eq!(net.neurons[1].membrane_potential, -68, "+2 mV one step later");
+        assert_eq!(
+            net.neurons[1].membrane_potential, -68,
+            "+2 mV one step later"
+        );
     }
 
     #[test]
@@ -2060,7 +2069,10 @@ mod tests {
         assert_eq!(net.neurons[2].membrane_potential, -7_000, "delay");
 
         net.step(&[0, 0, 0]).expect("step 1");
-        assert_eq!(net.neurons[2].membrane_potential, -6_976, "summed +24 quanta");
+        assert_eq!(
+            net.neurons[2].membrane_potential, -6_976,
+            "summed +24 quanta"
+        );
     }
 
     #[test]
@@ -2251,12 +2263,9 @@ mod tests {
     // These pin the knob's contract itself. -----
     #[test]
     fn synaptic_input_divisor_defaults_to_ten_and_rejects_zero() {
-        let mut net = SpikingNeuralNetwork::new(
-            2,
-            1000,
-            NetworkTopology::Random { connectivity: 0.0 },
-        )
-        .expect("constructs");
+        let mut net =
+            SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                .expect("constructs");
         assert_eq!(net.synaptic_input_divisor(), 10, "the historical value");
         assert!(net.set_synaptic_input_divisor(0).is_err());
         net.set_synaptic_input_divisor(4).expect("set");
@@ -2382,7 +2391,11 @@ mod tests {
 
         let mut on = build();
         let on_spikes = run(&mut on, true);
-        assert_eq!(on_spikes.len(), 1, "the pre neuron must fire the pairing step");
+        assert_eq!(
+            on_spikes.len(),
+            1,
+            "the pre neuron must fire the pairing step"
+        );
         assert!(
             on.synapses[0].weight < 100,
             "ON leg adapts (post-leads LTD at dt=+1000): weight now {}",
@@ -2398,7 +2411,8 @@ mod tests {
             "OFF must freeze the weight exactly (stuck-ON detector)"
         );
         assert_eq!(
-            off.stats().plasticity_events, 0,
+            off.stats().plasticity_events,
+            0,
             "no plasticity events may accumulate while OFF"
         );
     }
@@ -2437,10 +2451,13 @@ mod tests {
         }
         net1.neurons[0].adaptation_current_ua = 1;
         let spikes1 = net1.step(&[15]).expect("step A=1");
-        assert_eq!(spikes1.len(), 1, "decayed-to-0 adaptation must let V reach −55");
         assert_eq!(
-            net1.neurons[0].membrane_potential,
-            net1.neurons[0].reset_potential,
+            spikes1.len(),
+            1,
+            "decayed-to-0 adaptation must let V reach −55"
+        );
+        assert_eq!(
+            net1.neurons[0].membrane_potential, net1.neurons[0].reset_potential,
             "spike resets to reset potential"
         );
         assert_eq!(
@@ -2466,8 +2483,15 @@ mod tests {
         }
         net2.neurons[0].adaptation_current_ua = 2;
         let spikes2 = net2.step(&[15]).expect("step A=2");
-        assert_eq!(spikes2.len(), 0, "integrate must see exactly A_start − 1 = 1");
+        assert_eq!(
+            spikes2.len(),
+            0,
+            "integrate must see exactly A_start − 1 = 1"
+        );
         assert_eq!(net2.neurons[0].membrane_potential, -56, "ΔV = 0 exactly");
-        assert_eq!(net2.neurons[0].adaptation_current_ua, 1, "decay 2→1, no spike");
+        assert_eq!(
+            net2.neurons[0].adaptation_current_ua, 1,
+            "decay 2→1, no spike"
+        );
     }
 }

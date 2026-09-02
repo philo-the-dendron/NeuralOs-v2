@@ -449,7 +449,9 @@ pub const DT_OVER_TAU_MAX: i32 = 1884;
 #[must_use]
 pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i32 {
     let exact = crate::lif_neuron::dt_over_tau(dt_us, tau_membrane_us);
-    i32::try_from(exact).unwrap_or(i32::MAX).min(DT_OVER_TAU_MAX)
+    i32::try_from(exact)
+        .unwrap_or(i32::MAX)
+        .min(DT_OVER_TAU_MAX)
 }
 
 /// Integrate one LIF step across a batch of N neurons (SoA slices).
@@ -486,7 +488,11 @@ pub fn integrate_lif_batch(
 ) {
     let n = membrane.len();
     assert_eq!(resting.len(), n, "resting.len() != membrane.len()");
-    assert_eq!(input_currents.len(), n, "input_currents.len() != membrane.len()");
+    assert_eq!(
+        input_currents.len(),
+        n,
+        "input_currents.len() != membrane.len()"
+    );
     assert_eq!(resistance.len(), n, "resistance.len() != membrane.len()");
     assert_eq!(threshold.len(), n, "threshold.len() != membrane.len()");
     assert_eq!(spikes_out.len(), n, "spikes_out.len() != membrane.len()");
@@ -502,10 +508,28 @@ pub fn integrate_lif_batch(
         // kernel processes 16-element aligned chunks plus a scalar tail, so no
         // out-of-bounds access occurs. `membrane` is &mut and uniquely borrowed
         // here; the kernel writes within bounds.
-        unsafe { integrate_batch_avx2(membrane, resting, input_currents, resistance, threshold, dt_over_tau, spikes_out) };
+        unsafe {
+            integrate_batch_avx2(
+                membrane,
+                resting,
+                input_currents,
+                resistance,
+                threshold,
+                dt_over_tau,
+                spikes_out,
+            );
+        }
         return;
     }
-    integrate_batch_scalar(membrane, resting, input_currents, resistance, threshold, dt_over_tau, spikes_out);
+    integrate_batch_scalar(
+        membrane,
+        resting,
+        input_currents,
+        resistance,
+        threshold,
+        dt_over_tau,
+        spikes_out,
+    );
 }
 
 /// Scalar reference — exact v2 LIF math (÷1000). Also the remainder tail.
@@ -540,7 +564,11 @@ pub fn integrate_batch_scalar(
 ) {
     let n = membrane.len();
     assert_eq!(resting.len(), n, "resting.len() != membrane.len()");
-    assert_eq!(input_currents.len(), n, "input_currents.len() != membrane.len()");
+    assert_eq!(
+        input_currents.len(),
+        n,
+        "input_currents.len() != membrane.len()"
+    );
     assert_eq!(resistance.len(), n, "resistance.len() != membrane.len()");
     assert_eq!(threshold.len(), n, "threshold.len() != membrane.len()");
     assert_eq!(spikes_out.len(), n, "spikes_out.len() != membrane.len()");
@@ -569,7 +597,7 @@ unsafe fn integrate_batch_avx2(
     spikes_out: &mut [bool],
 ) {
     const WIDTH: usize = 16; // AVX2: 256-bit / 16-bit = 16 lanes.
-    // Same saturation as the scalar entry — `_mm256_mullo_epi32` wraps silently.
+                             // Same saturation as the scalar entry — `_mm256_mullo_epi32` wraps silently.
     let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX);
     let n = membrane.len();
     let chunks = n / WIDTH;
@@ -675,7 +703,10 @@ unsafe fn lif_lane(
     // new_mp = mp + delta
     let new_mp = _mm256_add_epi32(mp, delta_scaled);
     // clamp to [-100, 50] (matches MEMBRANE_MV_MIN/MAX).
-    _mm256_max_epi32(_mm256_set1_epi32(-100), _mm256_min_epi32(_mm256_set1_epi32(50), new_mp))
+    _mm256_max_epi32(
+        _mm256_set1_epi32(-100),
+        _mm256_min_epi32(_mm256_set1_epi32(50), new_mp),
+    )
 }
 
 #[cfg(all(test, feature = "simd"))]
@@ -711,10 +742,9 @@ mod tests {
         // The two domain-wide worst cases, both 8 mV. The vector half never
         // moves in either: its delta truncates to zero every step while the
         // scalar climbs away from the start. Named in the module doc.
-        (37, 1000, 100, 5),   // the reviewer's witness
-        (50, 870, 100, 5),    // the extremal case found by the exhaustive sweep
+        (37, 1000, 100, 5), // the reviewer's witness
+        (50, 870, 100, 5),  // the extremal case found by the exhaustive sweep
     ];
-
 
     /// The five SoA slices a batch needs, owned. Named because the tuple trips
     /// `clippy::type_complexity` under `--features simd`, which no workspace gate
@@ -830,10 +860,16 @@ mod tests {
                 disagree += 1;
             }
         }
-        assert!(max_diff <= 2, "SIMD diverged from scalar by {max_diff} mV (>2)");
+        assert!(
+            max_diff <= 2,
+            "SIMD diverged from scalar by {max_diff} mV (>2)"
+        );
         // Sanity: most spikes agree (>90%). Edge-flips only near threshold.
         let disagree_ratio = disagree as f64 / n as f64;
-        assert!(disagree_ratio < 0.10, "{disagree}/{n} spike disagreements (>10%)");
+        assert!(
+            disagree_ratio < 0.10,
+            "{disagree}/{n} spike disagreements (>10%)"
+        );
     }
 
     // ----- Overflow domain (module doc § Overflow domain) -----
@@ -884,7 +920,11 @@ mod tests {
         }
         assert_eq!(dt_over_tau(0, 20_000), 0, "tau == 0 guard unchanged");
         assert_eq!(dt_over_tau(1000, 0), 0, "tau == 0 guard unchanged");
-        assert_eq!(dt_over_tau(1000, 20_000), 50, "the physical default is untouched");
+        assert_eq!(
+            dt_over_tau(1000, 20_000),
+            50,
+            "the physical default is untouched"
+        );
     }
 
     /// Run one batch through both halves and return
@@ -1076,7 +1116,10 @@ mod tests {
             }
         }
         assert_eq!(mp.len(), 3696, "6 × 8 × 11 × 7 rows");
-        assert!(mp.len().is_multiple_of(LANES), "3696 = 231 × 16, no padding");
+        assert!(
+            mp.len().is_multiple_of(LANES),
+            "3696 = 231 × 16, no padding"
+        );
         (mp, rp, ic, res, th)
     }
 
@@ -1103,7 +1146,11 @@ mod tests {
         let product = i32::from(ic) * i32::from(res);
         // `>> 10` is the floor shift `_mm256_srai_epi32` performs; `/ 1024` is
         // what `div1024_toward_zero` restores.
-        let current_term = if floor_current_term { product >> 10 } else { product / 1024 };
+        let current_term = if floor_current_term {
+            product >> 10
+        } else {
+            product / 1024
+        };
         let delta = ((leak + current_term) * dtot) / 1024;
         (mp + delta).clamp(-100, 50)
     }
@@ -1135,7 +1182,9 @@ mod tests {
         let n = mp.len();
 
         if !matches!(detect_simd_support(), SimdSupport::Avx2) {
-            eprintln!("(AVX2 not available — the model cannot be validated, so nothing is reported)");
+            eprintln!(
+                "(AVX2 not available — the model cannot be validated, so nothing is reported)"
+            );
             return;
         }
 
@@ -1261,8 +1310,13 @@ mod tests {
         let mut mp_s = vec![mp; LANES];
         let mut sp_s = vec![false; LANES];
         integrate_batch_scalar(
-            &mut mp_s, &[rp; LANES], &[ic; LANES], &[res; LANES], &[th; LANES],
-            DT_OVER_TAU_MAX, &mut sp_s,
+            &mut mp_s,
+            &[rp; LANES],
+            &[ic; LANES],
+            &[res; LANES],
+            &[th; LANES],
+            DT_OVER_TAU_MAX,
+            &mut sp_s,
         );
         assert_eq!(mp_s[0], -55, "scalar lands on threshold exactly");
         assert!(sp_s[0], "scalar fires");
@@ -1276,8 +1330,13 @@ mod tests {
         // SAFETY: equal-length slices, AVX2 verified available above.
         unsafe {
             integrate_batch_avx2(
-                &mut mp_v, &[rp; LANES], &[ic; LANES], &[res; LANES], &[th; LANES],
-                DT_OVER_TAU_MAX, &mut sp_v,
+                &mut mp_v,
+                &[rp; LANES],
+                &[ic; LANES],
+                &[res; LANES],
+                &[th; LANES],
+                DT_OVER_TAU_MAX,
+                &mut sp_v,
             );
         }
         assert_eq!(mp_v[0], -56, "AVX2 lands one mV short");
@@ -1317,8 +1376,13 @@ mod tests {
         const N: usize = 32;
         const SHORT: usize = 17; // not a multiple of the 16-lane width
         const SENTINEL: i16 = -70;
-        const NAMES: [&str; 5] =
-            ["resting", "input_currents", "resistance", "threshold", "spikes_out"];
+        const NAMES: [&str; 5] = [
+            "resting",
+            "input_currents",
+            "resistance",
+            "threshold",
+            "spikes_out",
+        ];
 
         // resting = 0 against membrane = -70 gives leak = 70 and delta = +3, so
         // any element the kernel actually processes moves off SENTINEL.
@@ -1356,45 +1420,52 @@ mod tests {
         let mut failures: Vec<String> = Vec::new();
 
         for (i, name) in NAMES.iter().enumerate() {
-            for (entry_name, scalar_entry) in
-                [("integrate_lif_batch", false), ("integrate_batch_scalar", true)]
-            {
-            for (label, len) in [("short", SHORT), ("long", N * 2)] {
-                let mut lens = [N; 5];
-                lens[i] = len;
-                let (panicked, membrane, spikes) = run(scalar_entry, lens);
-                let name = &format!("{name} via {entry_name}");
-                if !panicked {
-                    let why = if label == "short" {
-                        "no panic"
-                    } else {
-                        "no panic — a prefix was integrated silently"
-                    };
-                    failures.push(format!("{label} `{name}`: {why}"));
+            for (entry_name, scalar_entry) in [
+                ("integrate_lif_batch", false),
+                ("integrate_batch_scalar", true),
+            ] {
+                for (label, len) in [("short", SHORT), ("long", N * 2)] {
+                    let mut lens = [N; 5];
+                    lens[i] = len;
+                    let (panicked, membrane, spikes) = run(scalar_entry, lens);
+                    let name = &format!("{name} via {entry_name}");
+                    if !panicked {
+                        let why = if label == "short" {
+                            "no panic"
+                        } else {
+                            "no panic — a prefix was integrated silently"
+                        };
+                        failures.push(format!("{label} `{name}`: {why}"));
+                    }
+                    // BOTH caller buffers. The AVX2 chunk loop writes
+                    // spikes_out[off + j] in the same iteration that stores the
+                    // membrane, so checking only one would let half a partial write
+                    // through a test whose name promises the caller was untouched.
+                    if let Some(pos) = membrane.iter().position(|&v| v != SENTINEL) {
+                        failures.push(format!(
+                            "{label} `{name}`: membrane[{pos}] = {} was written before the panic",
+                            membrane[pos]
+                        ));
+                    }
+                    if let Some(pos) = spikes.iter().position(|&b| !b) {
+                        failures.push(format!(
+                            "{label} `{name}`: spikes_out[{pos}] was written before the panic"
+                        ));
+                    }
                 }
-                // BOTH caller buffers. The AVX2 chunk loop writes
-                // spikes_out[off + j] in the same iteration that stores the
-                // membrane, so checking only one would let half a partial write
-                // through a test whose name promises the caller was untouched.
-                if let Some(pos) = membrane.iter().position(|&v| v != SENTINEL) {
-                    failures.push(format!(
-                        "{label} `{name}`: membrane[{pos}] = {} was written before the panic",
-                        membrane[pos]
-                    ));
-                }
-                if let Some(pos) = spikes.iter().position(|&b| !b) {
-                    failures.push(format!(
-                        "{label} `{name}`: spikes_out[{pos}] was written before the panic"
-                    ));
-                }
-            }
             }
         }
         std::panic::set_hook(previous);
 
-        assert!(failures.is_empty(), "length contract unenforced:
-  {}", failures.join("
-  "));
+        assert!(
+            failures.is_empty(),
+            "length contract unenforced:
+  {}",
+            failures.join(
+                "
+  "
+            )
+        );
     }
 
     /// The batch with `SimdSupport::None`-forcing path must still match scalar
@@ -1433,7 +1504,8 @@ mod tests {
             for &rp in &[-100i16, -70, 0, 50] {
                 for &resistance in &[1i16, 10, 100, 500, 1000] {
                     for input in (-1500i16..=1500).step_by(37) {
-                        for &(dt_us, tau_us) in &[(1000u32, 20_000u32), (500, 20_000), (100, 10_000)]
+                        for &(dt_us, tau_us) in
+                            &[(1000u32, 20_000u32), (500, 20_000), (100, 10_000)]
                         {
                             let mut n = LIFNeuron::new(0);
                             n.voltage_resolution = VoltageResolution::Millivolt;
@@ -1466,7 +1538,10 @@ mod tests {
                                 "mp={mp} rp={rp} input={input} resistance={resistance} \
                                  dt_us={dt_us} tau_us={tau_us} dt_over_tau={dtot}"
                             );
-                            assert_eq!(spikes[0], fired, "spike bit differs at an unreachable threshold");
+                            assert_eq!(
+                                spikes[0], fired,
+                                "spike bit differs at an unreachable threshold"
+                            );
                             compared += 1;
                             if membrane[0] != -100 && membrane[0] != 50 {
                                 unclamped += 1;
@@ -1529,7 +1604,13 @@ mod tests {
             // SAFETY: equal-length slices, AVX2 verified available above.
             unsafe {
                 integrate_batch_avx2(
-                    &mut mp_v, &resting, &current, &resistance, &threshold, DTOT, &mut sp_v,
+                    &mut mp_v,
+                    &resting,
+                    &current,
+                    &resistance,
+                    &threshold,
+                    DTOT,
+                    &mut sp_v,
                 );
             }
 
@@ -1538,7 +1619,8 @@ mod tests {
                 .map(|i| if i < vector_lanes { -65 } else { -64 })
                 .collect();
             assert_eq!(
-                mp_v, expected,
+                mp_v,
+                expected,
                 "n={n}: {vector_lanes} vector lanes then a {} element tail",
                 n - vector_lanes
             );
@@ -1629,7 +1711,11 @@ mod tests {
             .iter()
             .map(|&drive| run(-70, drive, 100, 50, 10_000).0)
             .collect();
-        assert_eq!(named, vec![0, 1, 1], "the named arms moved (they were 0, 1, 19 before the fix)");
+        assert_eq!(
+            named,
+            vec![0, 1, 1],
+            "the named arms moved (they were 0, 1, 19 before the fix)"
+        );
 
         assert_eq!(
             (worst_end, worst_traj),
@@ -1785,7 +1871,13 @@ mod tests {
             let resistance = vec![res0; n];
             for dt in 0..=DT_SCAN {
                 let g = max_membrane_gap(
-                    &start, &resting, &current, &resistance, &threshold, dt, &mut scratch,
+                    &start,
+                    &resting,
+                    &current,
+                    &resistance,
+                    &threshold,
+                    dt,
+                    &mut scratch,
                 );
                 let slot = &mut max_by_dt[dt as usize];
                 if g > *slot {
@@ -1805,13 +1897,19 @@ mod tests {
         );
         assert_eq!(max_by_dt[1], 0, "doc says dt_over_tau = 1 gives 0");
         assert_eq!(max_by_dt[50], 1, "doc says dt_over_tau = 50 gives 1");
-        assert_eq!(max_by_dt[200], 2, "doc says the bound is tight at dt_over_tau = 200");
+        assert_eq!(
+            max_by_dt[200], 2,
+            "doc says the bound is tight at dt_over_tau = 200"
+        );
 
         let first_three = max_by_dt
             .iter()
             .position(|&g| g >= 3)
             .expect("the scan must reach 3 before dt_over_tau = 260");
-        assert_eq!(first_three, 228, "the doc names 228 as the first dt_over_tau reaching 3");
+        assert_eq!(
+            first_three, 228,
+            "the doc names 228 as the first dt_over_tau reaching 3"
+        );
 
         // The witness the doc names. It must be a FULL 16-lane chunk: a shorter
         // batch has zero chunks and runs entirely through the scalar tail, so it
@@ -1819,9 +1917,18 @@ mod tests {
         // this assert did exactly that.)
         let mut wide = (vec![0i16; W], vec![0i16; W], vec![false; W], vec![false; W]);
         let gap = max_membrane_gap(
-            &[-100; W], &[50; W], &[1000; W], &[100; W], &[i16::MAX; W], 228, &mut wide,
+            &[-100; W],
+            &[50; W],
+            &[1000; W],
+            &[100; W],
+            &[i16::MAX; W],
+            228,
+            &mut wide,
         );
-        assert_eq!(gap, 3, "the named witness (membrane -100, resting 50, P = 100_000) must give 3");
+        assert_eq!(
+            gap, 3,
+            "the named witness (membrane -100, resting 50, P = 100_000) must give 3"
+        );
     }
 
     /// The largest `(fixed-point, trajectory)` gaps the [`ARMS`] set reaches, run
@@ -1903,12 +2010,24 @@ mod tests {
                     prev_s.copy_from_slice(&mp_s);
                     prev_v.copy_from_slice(&mp_v);
                     integrate_batch_scalar(
-                        &mut mp_s, &resting, &current, &resistance, &threshold, dt, &mut sp_s,
+                        &mut mp_s,
+                        &resting,
+                        &current,
+                        &resistance,
+                        &threshold,
+                        dt,
+                        &mut sp_s,
                     );
                     // SAFETY: equal-length slices, AVX2 checked above.
                     unsafe {
                         integrate_batch_avx2(
-                            &mut mp_v, &resting, &current, &resistance, &threshold, dt, &mut sp_v,
+                            &mut mp_v,
+                            &resting,
+                            &current,
+                            &resistance,
+                            &threshold,
+                            dt,
+                            &mut sp_v,
                         );
                     }
                     for i in 0..n {
@@ -1991,11 +2110,11 @@ mod tests {
         // leak, so it is built that way (leak 0, current_term 1) rather than
         // driven hard.
         const CASES: [(u32, u32, i16, i16, i16, i16); 5] = [
-            (40_000, 20_000, -100, -70, 0, 100),  // the ruling's witness: -40 vs -44
-            (1000, 500, -70, -70, 200, 100),      // dt/tau = 2 with current
-            (1000, 400, -70, -70, -100, 100),     // and downward: -95 vs -88
-            (20_000, 1000, -70, -70, 10, 100),    // dt/tau = 20, deep past the clamp
-            (1000, 531, -70, -70, 200, 100),      // dt/tau = 1.883, just UNDER: equal
+            (40_000, 20_000, -100, -70, 0, 100), // the ruling's witness: -40 vs -44
+            (1000, 500, -70, -70, 200, 100),     // dt/tau = 2 with current
+            (1000, 400, -70, -70, -100, 100),    // and downward: -95 vs -88
+            (20_000, 1000, -70, -70, 10, 100),   // dt/tau = 20, deep past the clamp
+            (1000, 531, -70, -70, 200, 100),     // dt/tau = 1.883, just UNDER: equal
         ];
 
         for (dt_us, tau_us, mp, rp, input, resistance) in CASES {
@@ -2021,7 +2140,13 @@ mod tests {
             let mut membrane = vec![mp];
             let mut spikes = vec![false];
             integrate_batch_scalar(
-                &mut membrane, &[rp], &[input], &[resistance], &[i16::MAX], clamped, &mut spikes,
+                &mut membrane,
+                &[rp],
+                &[input],
+                &[resistance],
+                &[i16::MAX],
+                clamped,
+                &mut spikes,
             );
 
             // The batch equals the neuron run at the CLAMPED factor: 1_884_000 µs
@@ -2041,7 +2166,8 @@ mod tests {
 
             if exact <= i64::from(DT_OVER_TAU_MAX) {
                 assert_eq!(
-                    membrane[0], neuron(tau_us, dt_us),
+                    membrane[0],
+                    neuron(tau_us, dt_us),
                     "inside the clamp the two must be bit-equal"
                 );
             }
@@ -2061,8 +2187,13 @@ mod tests {
         let mut membrane = vec![-100i16];
         let mut spikes = vec![false];
         integrate_batch_scalar(
-            &mut membrane, &[-70], &[0], &[100], &[i16::MAX],
-            dt_over_tau(40_000, 20_000), &mut spikes,
+            &mut membrane,
+            &[-70],
+            &[0],
+            &[100],
+            &[i16::MAX],
+            dt_over_tau(40_000, 20_000),
+            &mut spikes,
         );
         assert_eq!(membrane[0], -44, "batch: 1884 * 30 / 1000 = +56");
     }

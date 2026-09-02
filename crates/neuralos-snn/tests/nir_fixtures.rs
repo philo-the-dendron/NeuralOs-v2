@@ -35,14 +35,14 @@ fn import_owned(doc: &str) -> Result<NirImport<'_>, NirError<'_>> {
 fn reference_chain_imports_with_exact_quantization() {
     let scan = nir_scan(CHAIN.as_bytes()).expect("reference emission scans");
     assert_eq!(scan.version, "1.0.0");
-    assert_eq!((scan.node_count, scan.edge_count, scan.weight_cells), (4, 3, 3));
+    assert_eq!(
+        (scan.node_count, scan.edge_count, scan.weight_cells),
+        (4, 3, 3)
+    );
 
     let g = import_owned(CHAIN).expect("reference emission imports");
     assert_eq!(
-        g.nodes
-            .iter()
-            .map(|n| n.name)
-            .collect::<Vec<_>>(),
+        g.nodes.iter().map(|n| n.name).collect::<Vec<_>>(),
         vec!["input", "linear", "lif", "output"],
         "document order"
     );
@@ -51,7 +51,13 @@ fn reference_chain_imports_with_exact_quantization() {
     let lif = g.nodes[2].lif.expect("lif");
     let rec = g.lifs[lif.offset];
     assert_eq!(
-        (rec.tau_us, rec.resistance_mohm, rec.leak_q, rec.threshold_q, rec.reset_q),
+        (
+            rec.tau_us,
+            rec.resistance_mohm,
+            rec.leak_q,
+            rec.threshold_q,
+            rec.reset_q
+        ),
         (20_000, 100, -70, -55, -80)
     );
     assert_eq!(rec.capacitance_pf, 200, "C = tau/r = 200 pF");
@@ -104,7 +110,10 @@ fn absent_v_reset_is_reference_semantics_with_note() {
     assert!(rec.v_reset_defaulted);
     assert_eq!(rec.reset_q, 0);
     assert!(report.notes[NirNote::VResetDefaulted as usize] >= 1);
-    assert!(report.notes[NirNote::QuantizationLoss as usize] >= 1, "0.1 is not dyadic");
+    assert!(
+        report.notes[NirNote::QuantizationLoss as usize] >= 1,
+        "0.1 is not dyadic"
+    );
 }
 
 #[test]
@@ -130,7 +139,12 @@ fn reference_chain_assembles_and_fires() {
 fn reference_population_chain_imports_per_neuron() {
     let scan = nir_scan(CHAIN_POP.as_bytes()).expect("scans");
     assert_eq!(
-        (scan.node_count, scan.edge_count, scan.weight_cells, scan.lif_neurons),
+        (
+            scan.node_count,
+            scan.edge_count,
+            scan.weight_cells,
+            scan.lif_neurons
+        ),
         (4, 3, 6, 2)
     );
     let g = import_owned(CHAIN_POP).expect("imports");
@@ -140,14 +154,26 @@ fn reference_population_chain_imports_per_neuron() {
     let n1 = g.lifs[pop.offset + 1];
     // neuron 0: tau 20 ms, 100 MΩ, −70/−55/−80 quanta, C = 200 pF
     assert_eq!(
-        (n0.tau_us, n0.resistance_mohm, n0.leak_q, n0.threshold_q, n0.reset_q),
+        (
+            n0.tau_us,
+            n0.resistance_mohm,
+            n0.leak_q,
+            n0.threshold_q,
+            n0.reset_q
+        ),
         (20_000, 100, -70, -55, -80)
     );
     assert_eq!(n0.capacitance_pf, 200);
     // neuron 1: PER-NEURON params — tau 30 ms, 200 MΩ, −65/−50/−75,
     // C = 0.03/2e8 F = 150 pF
     assert_eq!(
-        (n1.tau_us, n1.resistance_mohm, n1.leak_q, n1.threshold_q, n1.reset_q),
+        (
+            n1.tau_us,
+            n1.resistance_mohm,
+            n1.leak_q,
+            n1.threshold_q,
+            n1.reset_q
+        ),
         (30_000, 200, -65, -50, -75)
     );
     assert_eq!(n1.capacitance_pf, 150);
@@ -163,12 +189,10 @@ fn reference_population_chain_imports_per_neuron() {
 
     // export → re-import: every per-neuron record survives
     let mut out = vec![0u8; 4096];
-    let n = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut out)
-        .expect("exports");
+    let n = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut out).expect("exports");
     let g2 = NirImport::from_json(&out[..n], g.opts).expect("re-imports");
     assert_eq!(g2.lifs, g.lifs, "per-neuron quantized state identical");
 }
-
 
 #[test]
 fn reference_chain_export_round_trips() {
@@ -200,31 +224,45 @@ fn reference_chain_export_round_trips() {
 #[allow(clippy::type_complexity)]
 fn negative_fixtures_reject_with_the_named_error() {
     let cases: &[(&str, &str, fn(&NirError) -> bool)] = &[
-        ("affine", AFFINE, |e| matches!(e, NirError::UnsupportedNodeKind("Affine"))),
-        ("unknown kind", UNKNOWN, |e| matches!(e, NirError::UnsupportedNodeKind("CubaLIF"))),
-        ("tau zero", TAU_ZERO, |e| matches!(e, NirError::BadNumber("tau"))),
-        (
-            "threshold quantizes to 0",
-            THRESH_ZERO,
-            |e| matches!(e, NirError::ThresholdZero),
-        ),
-        ("tau below dt", TAU_DT, |e| matches!(e, NirError::TauBelowDt)),
-        (
-            "potential out of range",
-            POT_RANGE,
-            |e| matches!(e, NirError::PotentialOutOfRange("v_leak")),
-        ),
-        ("missing field", MISSING_F, |e| matches!(e, NirError::MissingField("v_threshold"))),
-        ("unknown endpoint", ENDPOINT, |e| matches!(e, NirError::UnknownEdgeEndpoint("ghost"))),
-        ("duplicate edge", DUP_EDGE, |e| matches!(e, NirError::DuplicateEdge)),
-        ("ragged weight", RAGGED, |e| matches!(e, NirError::BadShape("weight"))),
-        (
-            "param length mismatch (population)",
-            PARAM_LEN,
-            |e| matches!(e, NirError::BadShape("LIF param")),
-        ),
-        ("missing version", MISSING_V, |e| matches!(e, NirError::MissingField("version"))),
-        ("escaped name", ESCAPED, |e| matches!(e, NirError::EscapedOrNonAsciiString(_))),
+        ("affine", AFFINE, |e| {
+            matches!(e, NirError::UnsupportedNodeKind("Affine"))
+        }),
+        ("unknown kind", UNKNOWN, |e| {
+            matches!(e, NirError::UnsupportedNodeKind("CubaLIF"))
+        }),
+        ("tau zero", TAU_ZERO, |e| {
+            matches!(e, NirError::BadNumber("tau"))
+        }),
+        ("threshold quantizes to 0", THRESH_ZERO, |e| {
+            matches!(e, NirError::ThresholdZero)
+        }),
+        ("tau below dt", TAU_DT, |e| {
+            matches!(e, NirError::TauBelowDt)
+        }),
+        ("potential out of range", POT_RANGE, |e| {
+            matches!(e, NirError::PotentialOutOfRange("v_leak"))
+        }),
+        ("missing field", MISSING_F, |e| {
+            matches!(e, NirError::MissingField("v_threshold"))
+        }),
+        ("unknown endpoint", ENDPOINT, |e| {
+            matches!(e, NirError::UnknownEdgeEndpoint("ghost"))
+        }),
+        ("duplicate edge", DUP_EDGE, |e| {
+            matches!(e, NirError::DuplicateEdge)
+        }),
+        ("ragged weight", RAGGED, |e| {
+            matches!(e, NirError::BadShape("weight"))
+        }),
+        ("param length mismatch (population)", PARAM_LEN, |e| {
+            matches!(e, NirError::BadShape("LIF param"))
+        }),
+        ("missing version", MISSING_V, |e| {
+            matches!(e, NirError::MissingField("version"))
+        }),
+        ("escaped name", ESCAPED, |e| {
+            matches!(e, NirError::EscapedOrNonAsciiString(_))
+        }),
     ];
     assert_eq!(cases.len(), 13);
     for (label, doc, check) in cases {
@@ -278,14 +316,13 @@ fn buffer_api_consumes_reference_emission() {
             lifs: &mut lifs,
             scratch: &mut scratch,
         };
-        let report = nir_import(
-            CHAIN.as_bytes(),
-            NirImportOptions::default(),
-            &mut bufs,
-        )
-        .expect("imports");
+        let report =
+            nir_import(CHAIN.as_bytes(), NirImportOptions::default(), &mut bufs).expect("imports");
         assert_eq!(report.weight_cells, 3);
-        assert!(report.note_count() >= 1, "QuantizationLoss noted (non-dyadic scale)");
+        assert!(
+            report.note_count() >= 1,
+            "QuantizationLoss noted (non-dyadic scale)"
+        );
     }
     assert_eq!(weights, vec![16384, -32767, 8192]);
 }

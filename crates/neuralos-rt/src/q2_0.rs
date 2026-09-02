@@ -53,7 +53,9 @@ impl core::fmt::Display for Q20Error {
         match self {
             Self::BadLength => write!(f, "activation length not a multiple of 128"),
             Self::TooShort => write!(f, "buffer shorter than the layout requires"),
-            Self::UnsupportedCode => write!(f, "2-bit code 3 (unreachable from the reference quantizer)"),
+            Self::UnsupportedCode => {
+                write!(f, "2-bit code 3 (unreachable from the reference quantizer)")
+            }
         }
     }
 }
@@ -89,7 +91,10 @@ pub fn q2_0_row_to_milli(data: &[u8], out: &mut [i32]) -> Result<(), Q20Error> {
     scan_for_code_three(data, blocks)?;
     for b in 0..blocks {
         let base = b * Q2_0_BLOCK_BYTES;
-        let d = i64::from(half_to_milli(u16::from_le_bytes([data[base], data[base + 1]])));
+        let d = i64::from(half_to_milli(u16::from_le_bytes([
+            data[base],
+            data[base + 1],
+        ])));
         let neg = (-d).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
         let pos = d.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
         for j in 0..Q2_0_BLOCK {
@@ -154,7 +159,10 @@ pub fn q2_0_matvec(
     let blocks = n / Q2_0_BLOCK;
     let row_bytes = blocks
         .checked_mul(Q2_0_BLOCK_BYTES)
-        .filter(|rb| rows.checked_mul(*rb).is_some_and(|total| total <= data.len()))
+        .filter(|rb| {
+            rows.checked_mul(*rb)
+                .is_some_and(|total| total <= data.len())
+        })
         .ok_or(Q20Error::TooShort)?;
     scan_for_code_three(&data[..rows * row_bytes], rows * blocks)?;
     for j in 0..rows {
@@ -168,10 +176,7 @@ pub fn q2_0_matvec(
             // four LSB-first lanes per code byte.
             let mut partial: i64 = 0;
             let codes = &row[base + 2..base + Q2_0_BLOCK_BYTES];
-            for (byte, act4) in codes
-                .iter()
-                .zip(acts[b * Q2_0_BLOCK..].chunks_exact(4))
-            {
+            for (byte, act4) in codes.iter().zip(acts[b * Q2_0_BLOCK..].chunks_exact(4)) {
                 let a = [
                     i64::from(act4[0]),
                     i64::from(act4[1]),
@@ -243,7 +248,9 @@ pub fn matvec_scaled(
     if out.len() < rows {
         return Err(Q20Error::TooShort);
     }
-    let row_bytes = (n / Q2_0_BLOCK).checked_mul(Q2_0_BLOCK_BYTES).ok_or(Q20Error::TooShort)?;
+    let row_bytes = (n / Q2_0_BLOCK)
+        .checked_mul(Q2_0_BLOCK_BYTES)
+        .ok_or(Q20Error::TooShort)?;
     let total = rows.checked_mul(row_bytes).ok_or(Q20Error::TooShort)?;
     if total > data.len() {
         return Err(Q20Error::TooShort);
@@ -311,7 +318,9 @@ mod tests {
                 let mut acc: f64 = 0.0;
                 for b in 0..n / Q2_0_BLOCK {
                     let d = match crate::q1_0::half_scale_mant_shift(scales[b]) {
-                        Some((m, sh)) => f64::from(u32::try_from(m).unwrap()) * f64::from(sh).exp2(),
+                        Some((m, sh)) => {
+                            f64::from(u32::try_from(m).unwrap()) * f64::from(sh).exp2()
+                        }
                         None => f64::from(half_to_milli(scales[b])) / 1000.0,
                     };
                     let mut partial: i64 = 0;
@@ -353,9 +362,7 @@ mod tests {
         let scales = [0x4248_u16, 0xC000]; // fp16 ≈3.140625 and −2.0
         let mut data = build_row(&codes, &scales);
         data.extend(build_row(&codes2, &scales));
-        let acts: Vec<i16> = (0..n)
-            .map(|i| ((i * 91) % 300 - 150) as i16)
-            .collect();
+        let acts: Vec<i16> = (0..n).map(|i| ((i * 91) % 300 - 150) as i16).collect();
         let mut out = [0_i32; 2];
         q2_0_matvec(&data, &acts, 2, &mut out).unwrap();
         let expect = reference(&data, &acts, 2);
@@ -385,8 +392,12 @@ mod tests {
         // (Σ|w|·amax/65534) + 40 per-block roundings + the final
         // rescale rounding: relative term + floor for near-cancelling
         // sums.
-        let gamma_pairs: [(u16, f64); 4] =
-            [(0x3C00, 1.0), (0x2E66, 0.0999755859375), (0x4248, 3.140625), (0x3800, 0.5)];
+        let gamma_pairs: [(u16, f64); 4] = [
+            (0x3C00, 1.0),
+            (0x2E66, 0.0999755859375),
+            (0x4248, 3.140625),
+            (0x3800, 0.5),
+        ];
         let scales: Vec<u16> = (0..20).map(|b| gamma_pairs[b % 4].0).collect();
         let d_exact: Vec<f64> = (0..20).map(|b| gamma_pairs[b % 4].1).collect();
         let codes: Vec<u8> = (0..2560).map(|i| ((i % 7) % 3) as u8).collect();
@@ -497,7 +508,15 @@ mod tests {
         // AND lane order pinned; the block boundary (element 128)
         // breaks any block-order blindness.
         let codes: Vec<u8> = (0..256)
-            .map(|i| if i % 5 == 0 { 2 } else if i % 5 == 1 { 0 } else { 1 })
+            .map(|i| {
+                if i % 5 == 0 {
+                    2
+                } else if i % 5 == 1 {
+                    0
+                } else {
+                    1
+                }
+            })
             .collect();
         let data = build_row(&codes, &[0x3C00, 0x4248]);
         let acts: Vec<i16> = (0..256).map(|i| ((i * 13) % 100 - 50) as i16).collect();
@@ -515,8 +534,8 @@ mod tests {
     #[test]
     fn matvec_scaled_zero_input_is_zero_and_validates_first() {
         let data = [0_u8; 68]; // 2 blocks (256-wide)
-        // Zero input + too-short data (1 block for a 256-wide vector)
-        // → Err, not silent Ok.
+                               // Zero input + too-short data (1 block for a 256-wide vector)
+                               // → Err, not silent Ok.
         assert_eq!(
             matvec_scaled(&data[..34], &[0_i32; 256], 1, &mut [0_i32; 1]),
             Err(Q20Error::TooShort)
@@ -550,10 +569,7 @@ mod tests {
             Err(Q20Error::TooShort)
         );
         let mut odd = [0_i32; 100];
-        assert_eq!(
-            q2_0_row_to_milli(&data, &mut odd),
-            Err(Q20Error::BadLength)
-        );
+        assert_eq!(q2_0_row_to_milli(&data, &mut odd), Err(Q20Error::BadLength));
         let acts = [0_i16; 64];
         assert_eq!(
             q2_0_matvec(&data, &acts, 1, &mut out[..1]),

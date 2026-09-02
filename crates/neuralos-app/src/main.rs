@@ -58,7 +58,11 @@ fn main() -> Result<(), slint::PlatformError> {
             controls.running.store(now_running, Ordering::Relaxed);
             if let Some(app) = weak.upgrade() {
                 app.set_running(now_running);
-                app.set_stats_text(if now_running { "Running…".into() } else { "Paused.".into() });
+                app.set_stats_text(if now_running {
+                    "Running…".into()
+                } else {
+                    "Paused.".into()
+                });
             }
         });
     }
@@ -133,11 +137,15 @@ fn main() -> Result<(), slint::PlatformError> {
                 let app_weak = app_weak.clone();
                 let _ = slint::invoke_from_event_loop(move || {
                     // Upgraded ON the UI thread — valid here. No-op if the window closed.
-                    let Some(app) = app_weak.upgrade() else { return };
-                    let mut rbuf = SharedPixelBuffer::<slint::Rgba8Pixel>::new(rw as u32, rh as u32);
+                    let Some(app) = app_weak.upgrade() else {
+                        return;
+                    };
+                    let mut rbuf =
+                        SharedPixelBuffer::<slint::Rgba8Pixel>::new(rw as u32, rh as u32);
                     rbuf.make_mut_bytes().copy_from_slice(&raster_frame);
                     app.set_raster(Image::from_rgba8(rbuf));
-                    let mut wbuf = SharedPixelBuffer::<slint::Rgba8Pixel>::new(ww as u32, wh as u32);
+                    let mut wbuf =
+                        SharedPixelBuffer::<slint::Rgba8Pixel>::new(ww as u32, wh as u32);
                     wbuf.make_mut_bytes().copy_from_slice(&weight_frame);
                     app.set_weight_map(Image::from_rgba8(wbuf));
                     app.set_stats_text(stats.into());

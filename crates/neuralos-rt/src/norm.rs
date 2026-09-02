@@ -143,15 +143,15 @@ mod tests {
         assert_eq!(f32_bits_to_milli(0x7F80_0000), i32::MAX); // +inf
         assert_eq!(f32_bits_to_milli(0xFF80_0000), i32::MIN); // −inf
         assert_eq!(f32_bits_to_milli(0x7FC0_0000), 0); // NaN
-        // 2026-08-15 review: the [1, 86] exponent decade (shift ≥ 64)
-        // previously panicked in debug / masked-shifted in release —
-        // and at shift == 64 returned −2^31 for a POSITIVE input.
+                                                       // 2026-08-15 review: the [1, 86] exponent decade (shift ≥ 64)
+                                                       // previously panicked in debug / masked-shifted in release —
+                                                       // and at shift == 64 returned −2^31 for a POSITIVE input.
         assert_eq!(f32_bits_to_milli(0x0080_0000), 0); // min normal 1.18e−38
         assert_eq!(f32_bits_to_milli(0x2A80_0000), 0); // ≈4.5e−13
         assert_eq!(f32_bits_to_milli(0x2B00_0000), 0); // ≈5.9e−13 (old sign flip)
         assert_eq!(f32_bits_to_milli(0xAB00_0000), 0); // its negative twin
-        // Smallest values that reach 1 milli: 2^-10 = 0.00098 (e = −33)
-        // rounds to 1; 2^-11 = 0.00049 (e = −34) rounds to 0 — the floor.
+                                                       // Smallest values that reach 1 milli: 2^-10 = 0.00098 (e = −33)
+                                                       // rounds to 1; 2^-11 = 0.00049 (e = −34) rounds to 0 — the floor.
         assert_eq!(f32_bits_to_milli(0x3A80_0000), 1); // 2^−10
         assert_eq!(f32_bits_to_milli(0x3A00_0000), 0); // 2^−11
     }
@@ -179,7 +179,11 @@ mod tests {
                             r as i64
                         }
                     };
-                    assert_eq!(i64::from(f32_bits_to_milli(bits)), want, "bits {bits:#010x}");
+                    assert_eq!(
+                        i64::from(f32_bits_to_milli(bits)),
+                        want,
+                        "bits {bits:#010x}"
+                    );
                 }
             }
         }

@@ -210,24 +210,17 @@ fn main() {
     println!("  (i) i16 baseline — free drift");
     println!("      plasticity events       : {base_plast}");
     println!("      weights changed         : {base_changed} / {n_syn}");
-    println!(
-        "      mean |Δweight| (changed): {:.2}",
-        base_mean_delta
-    );
+    println!("      mean |Δweight| (changed): {:.2}", base_mean_delta);
     println!();
     println!("  (ii) ternary + deterministic re-projection (Stage 1)");
     println!("      plasticity events       : {det_plast}");
     println!("      bucket flips            : {det_flips}");
-    println!(
-        "      final distribution      : −γ={det_minus}, 0={det_zero}, +γ={det_plus}"
-    );
+    println!("      final distribution      : −γ={det_minus}, 0={det_zero}, +γ={det_plus}");
     println!();
     println!("  (iii) ternary + stochastic flips (Stage 1.5b) ← measuring this");
     println!("      plasticity events       : {sto_plast}");
     println!("      bucket flips            : {sto_flips}");
-    println!(
-        "      final distribution      : −γ={sto_minus}, 0={sto_zero}, +γ={sto_plus}"
-    );
+    println!("      final distribution      : −γ={sto_minus}, 0={sto_zero}, +γ={sto_plus}");
     if sto_plast > 0 {
         println!(
             "      flip rate               : {:.4} flips/event",
@@ -262,12 +255,24 @@ fn main() {
         "bucket movement : {} stochastic flips vs {} deterministic flips → {}",
         sto_flips,
         det_flips,
-        if movement_ok { "NONTRIVIAL ✓" } else { "FROZEN ✗" }
+        if movement_ok {
+            "NONTRIVIAL ✓"
+        } else {
+            "FROZEN ✗"
+        }
     );
     println!(
         "spiking sanity  : {:.2}× baseline → {}",
-        if base_rate > 0.0 { sto_rate / base_rate } else { 0.0 },
-        if spikes_ok { "NON-COLLAPSED ✓" } else { "COLLAPSED ✗" }
+        if base_rate > 0.0 {
+            sto_rate / base_rate
+        } else {
+            0.0
+        },
+        if spikes_ok {
+            "NON-COLLAPSED ✓"
+        } else {
+            "COLLAPSED ✗"
+        }
     );
     let gate_pass = movement_ok && spikes_ok;
     println!();

@@ -28,9 +28,7 @@
 //! [orig.gguf] [h2-patched.gguf]` — writes models/null-dose-<s>.gguf and
 //! models/null-flip-<s>.gguf, all S2-asserted.
 
-use neuralos_rt::harness::{
-    decode_slice, splice_and_verify, tix, xorshift64, ExperimentParams,
-};
+use neuralos_rt::harness::{decode_slice, splice_and_verify, tix, xorshift64, ExperimentParams};
 use neuralos_snn::Trit;
 
 #[allow(non_snake_case)]
@@ -59,16 +57,22 @@ fn main() {
         comp[tix(src[i]) * 3 + tix(h2[i])] += 1;
     }
     println!("H2 diff : {h2_cells} changed cells (pre-registered 87,119)");
-    assert_eq!(h2_cells, 87_119, "the H2 terminal diff must carry exactly the recorded cell count");
+    assert_eq!(
+        h2_cells, 87_119,
+        "the H2 terminal diff must carry exactly the recorded cell count"
+    );
     println!(
         "comp    : −1→0 {} · 0→−1 {} · 0→+1 {} · +1→0 {} · (others {})",
         comp[1],
         comp[3],
         comp[5],
         comp[7],
-        comp.iter().enumerate().filter(|(k, _)| {
-            !matches!(*k, 1 | 3 | 5 | 7) // off-diagonal minus identity mappings
-        }).count()
+        comp.iter()
+            .enumerate()
+            .filter(|(k, _)| {
+                !matches!(*k, 1 | 3 | 5 | 7) // off-diagonal minus identity mappings
+            })
+            .count()
     );
 
     // ----- The surgery unit (shared harness splice_and_verify; S2
@@ -93,7 +97,10 @@ fn main() {
         .filter(|&k| comp[k] > 0 && k / 3 != k % 3)
         .map(|k| (tr_of(k / 3), tr_of(k % 3), comp[k]))
         .collect();
-    println!("classes : {} (full composition incl. crossovers)", classes.len());
+    println!(
+        "classes : {} (full composition incl. crossovers)",
+        classes.len()
+    );
     for seed in 1..=10u64 {
         let mut rng = 0xD05E_0000_0000_0001_u64 ^ seed;
         let mut patched = src.clone();

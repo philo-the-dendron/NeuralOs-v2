@@ -63,9 +63,9 @@ const H2_TOP_DIM: usize = 199;
 const H2_TOP_DIM_RAILS: u64 = 1786;
 
 fn main() {
-    let path = std::env::args().nth(1).unwrap_or_else(|| {
-        "models/Ternary-Bonsai-4B-Q2_0.gguf".into()
-    });
+    let path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "models/Ternary-Bonsai-4B-Q2_0.gguf".into());
     let corpus_path = std::env::args()
         .nth(2)
         .unwrap_or_else(|| "evidence/corpus_readme_pinned.txt".into());
@@ -80,7 +80,11 @@ fn main() {
     let ids = tok.encode(&corpus);
     println!("file    : {path}");
     println!("tokens  : {} (pin {H2_TOKENS})", ids.len());
-    assert_eq!(ids.len(), H2_TOKENS, "corpus token count must match the banked pin");
+    assert_eq!(
+        ids.len(),
+        H2_TOKENS,
+        "corpus token count must match the banked pin"
+    );
 
     // token_embd.weight: rows × emb, Q2_0 (34 B per 128-wide block).
     let emb_t = f
@@ -88,7 +92,11 @@ fn main() {
         .iter()
         .find(|t| t.name == "token_embd.weight")
         .expect("token_embd.weight present");
-    assert_eq!(emb_t.ty, neuralos_rt::GGML_TYPE_Q2_0, "token_embd must be Q2_0 in this file");
+    assert_eq!(
+        emb_t.ty,
+        neuralos_rt::GGML_TYPE_Q2_0,
+        "token_embd must be Q2_0 in this file"
+    );
     assert_eq!(emb_t.dims.len(), 2, "token_embd is 2-D");
     let emb: usize = emb_t.dims[0] as usize; // dims[0] = width (model.rs:665 convention)
     let vocab: usize = emb_t.dims[1] as usize;
@@ -193,9 +201,7 @@ fn main() {
                 end % n_tokens
             );
         }
-        println!(
-            "scaling : rms {rms_units:.4} → k = {k:.2} µA/unit (target {TARGET_RMS_UA} µA)"
-        );
+        println!("scaling : rms {rms_units:.4} → k = {k:.2} µA/unit (target {TARGET_RMS_UA} µA)");
         println!(
             "clamp@±1000 : {clamped}/{total} = {:.3}%  hist {:?}",
             clamped as f64 / total as f64 * 100.0,
@@ -220,7 +226,10 @@ fn main() {
         for &c in &[1000.0, 2000.0, 3000.0, 10_000.0, 32_767.0] {
             let over = abs_raw.partition_point(|&a| a < c) as u64;
             let frac = (total - over) as f64 / total as f64 * 100.0;
-            println!("ceiling ±{c:>7.0}: clamped {frac:.3}%{}", if frac >= 50.0 { "  ⚠ fails §7" } else { "" });
+            println!(
+                "ceiling ±{c:>7.0}: clamped {frac:.3}%{}",
+                if frac >= 50.0 { "  ⚠ fails §7" } else { "" }
+            );
         }
         println!(
             "corrected-domain (k on norm units): clamp@±1000 = {:.3}% — RMS post-clamp {:.1} µA",
@@ -244,7 +253,11 @@ fn main() {
             assert_eq!(clamped, H2_CLAMPED, "clamp count != banked");
             assert_eq!(total, H2_TOTAL);
             assert_eq!(hist, H2_HIST, "histogram != banked");
-            assert_eq!((td, tc), (H2_TOP_DIM, H2_TOP_DIM_RAILS), "hottest dim != banked");
+            assert_eq!(
+                (td, tc),
+                (H2_TOP_DIM, H2_TOP_DIM_RAILS),
+                "hottest dim != banked"
+            );
             println!("pins    : ALL H2 banked pins reproduced — probe == H2 as-run");
         }
     }

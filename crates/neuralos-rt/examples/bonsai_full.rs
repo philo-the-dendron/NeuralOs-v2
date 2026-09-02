@@ -43,9 +43,7 @@ fn main() {
     );
 
     let t1 = std::time::Instant::now();
-    let (h, health) = model
-        .forward_with_health(PROMPT)
-        .expect("forward");
+    let (h, health) = model.forward_with_health(PROMPT).expect("forward");
     let fwd = t1.elapsed();
     let (emb, layers) = (model.config().emb, model.config().layers);
     let rail = model.residual_sound_max();
@@ -53,7 +51,10 @@ fn main() {
         Some(ty) if ty == neuralos_rt::GGML_TYPE_Q2_0 => "Q2_0",
         _ => "Q1_0",
     };
-    println!("forward: {} tokens × {layers} layers in {fwd:?} (emb {emb}, rail {rail})", PROMPT.len());
+    println!(
+        "forward: {} tokens × {layers} layers in {fwd:?} (emb {emb}, rail {rail})",
+        PROMPT.len()
+    );
     if fwd > std::time::Duration::from_secs(300) {
         println!("FULL: NO (forward exceeded 5 min: {fwd:?})");
         std::process::exit(1);
@@ -77,7 +78,11 @@ fn main() {
     println!(
         "residual absmax {} (soundness rail {rail}, frozen 1.7B const {RESIDUAL_SOUND_MAX}) {}",
         health.max_abs_residual,
-        if absmax_u < rail_u { "OK" } else { "OUT OF RANGE" }
+        if absmax_u < rail_u {
+            "OK"
+        } else {
+            "OUT OF RANGE"
+        }
     );
     if absmax_u >= rail_u {
         failures += 1;

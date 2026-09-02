@@ -58,11 +58,7 @@ fn check_a_i2_s_round_trip() -> Result<usize, String> {
     let mut decoded = vec![Trit::Zero; n];
     let scale_back = decode_i2_s(&encoded[..written], &mut decoded)
         .map_err(|e| format!("decode failed: {e}"))?;
-    let mismatches = trits
-        .iter()
-        .zip(&decoded)
-        .filter(|(a, b)| a != b)
-        .count();
+    let mismatches = trits.iter().zip(&decoded).filter(|(a, b)| a != b).count();
     if mismatches != 0 || scale_back != I2_S_SCALE_BITS {
         return Err(format!(
             "{mismatches} trit mismatches, scale {scale_back:#010x} vs {I2_S_SCALE_BITS:#010x}"
@@ -96,9 +92,7 @@ fn check_b_q1_0_import() -> Result<usize, String> {
         Trit::MinusOne,
         Trit::One,
     ];
-    let bad0 = (0..128)
-        .filter(|&i| trits[i] != pat0[i % 8])
-        .count();
+    let bad0 = (0..128).filter(|&i| trits[i] != pat0[i % 8]).count();
     // Block 1: all bits clear → all −γ.
     let bad1 = (128..256).filter(|&i| trits[i] != Trit::MinusOne).count();
     let scales_ok = scales[0] == 0x3C00 && scales[1] == 0x4000;

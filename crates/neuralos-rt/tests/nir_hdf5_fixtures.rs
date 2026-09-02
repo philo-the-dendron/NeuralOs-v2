@@ -43,7 +43,10 @@ fn reference_population_chain_imports_per_neuron() {
     );
     // alphabetical link order — order carries no semantics
     assert_eq!(
-        doc.nodes.iter().map(|n| (n.name.as_str(), n.kind)).collect::<Vec<_>>(),
+        doc.nodes
+            .iter()
+            .map(|n| (n.name.as_str(), n.kind))
+            .collect::<Vec<_>>(),
         vec![
             ("input", NirHdfNodeKind::Input),
             ("lif", NirHdfNodeKind::Lif),
@@ -62,7 +65,10 @@ fn reference_population_chain_imports_per_neuron() {
 
     let g = doc.import(NirImportOptions::default()).expect("imports");
     let lin = find(&g, "linear").linear.expect("linear");
-    assert_eq!(&g.weights[lin.weight_offset..lin.weight_offset + 6], &EXPECTED_WEIGHTS);
+    assert_eq!(
+        &g.weights[lin.weight_offset..lin.weight_offset + 6],
+        &EXPECTED_WEIGHTS
+    );
 
     let lif_pop = find(&g, "lif").lif.expect("lif population");
     assert_eq!(lif_pop.len, 2);
@@ -108,7 +114,11 @@ fn hdf5_matches_the_json_path_record_for_record() {
             let jp = j.lif.expect("lif");
             assert_eq!(hp.len, jp.len);
             for k in 0..hp.len {
-                assert_eq!(h5.lifs[hp.offset + k], js.lifs[jp.offset + k], "{name}[{k}]");
+                assert_eq!(
+                    h5.lifs[hp.offset + k],
+                    js.lifs[jp.offset + k],
+                    "{name}[{k}]"
+                );
             }
         }
     }
@@ -200,10 +210,13 @@ mod hand {
             let g = nodes.create_group(name).unwrap();
             write_str_scalar(&g, "type", kind);
         }
-        let arr = Array2::from_shape_fn(
-            (edges.len(), 2),
-            |(i, j)| if j == 0 { vlen(edges[i].0) } else { vlen(edges[i].1) },
-        );
+        let arr = Array2::from_shape_fn((edges.len(), 2), |(i, j)| {
+            if j == 0 {
+                vlen(edges[i].0)
+            } else {
+                vlen(edges[i].1)
+            }
+        });
         node.new_dataset_builder()
             .with_data(&arr)
             .create("edges")
@@ -211,16 +224,9 @@ mod hand {
         f.close().unwrap();
     }
 
-    pub fn add_lif_arrays(
-        path: &std::path::Path,
-        node_name: &str,
-        tau: &[f64],
-        r: &[f64],
-    ) {
+    pub fn add_lif_arrays(path: &std::path::Path, node_name: &str, tau: &[f64], r: &[f64]) {
         let f = File::open_rw(path).unwrap();
-        let g = f
-            .group(&format!("node/nodes/{node_name}"))
-            .unwrap();
+        let g = f.group(&format!("node/nodes/{node_name}")).unwrap();
         g.new_dataset_builder()
             .with_data(tau)
             .deflate(4)
@@ -248,7 +254,13 @@ mod hand {
 #[test]
 fn missing_version_is_an_open_error() {
     let p = hand::scratch("neg_no_version.h5");
-    hand::write_container(&p, Some("NIRGraph"), false, &[("a", "b")], &[("a", "Input")]);
+    hand::write_container(
+        &p,
+        Some("NIRGraph"),
+        false,
+        &[("a", "b")],
+        &[("a", "Input")],
+    );
     let err = nir_hdf5_read(&p).expect_err("no version");
     match err {
         NirHdfError::Open(m) => assert!(m.contains("version"), "{m}"),
@@ -312,7 +324,9 @@ fn lif_param_length_mismatch_is_a_seam_badshape() {
     hand::write_container(&p, Some("NIRGraph"), true, &[], &[("l", "LIF")]);
     hand::add_lif_arrays(&p, "l", &[0.02, 0.03], &[1e8]);
     let doc = nir_hdf5_read(&p).expect("reads at container level");
-    let err = doc.import(NirImportOptions::default()).expect_err("param len");
+    let err = doc
+        .import(NirImportOptions::default())
+        .expect_err("param len");
     match err {
         NirHdfError::Seam(m) => assert!(m.contains("LIF param"), "{m}"),
         other => panic!("wrong error: {other:?}"),
@@ -327,7 +341,9 @@ fn integer_weight_dataset_is_a_shape_error() {
     f.group("node/nodes/w")
         .unwrap()
         .new_dataset_builder()
-        .with_data(&ndarray::Array2::from_shape_fn((1, 3), |(i, j)| (i * 3 + j) as i64))
+        .with_data(&ndarray::Array2::from_shape_fn((1, 3), |(i, j)| {
+            (i * 3 + j) as i64
+        }))
         .deflate(4)
         .create("weight")
         .unwrap();
@@ -399,7 +415,9 @@ fn export_read_back_is_semantically_idempotent() {
     let out2 = hand::scratch("export_roundtrip2.nir");
     nir_hdf5_write(&out2, &g2).expect("export 2");
     let doc3 = nir_hdf5_read(&out2).expect("re-read 2");
-    let g3 = doc3.import(NirImportOptions::default()).expect("re-import 2");
+    let g3 = doc3
+        .import(NirImportOptions::default())
+        .expect("re-import 2");
     assert_semantically_equal(&g2, &g3);
 }
 
@@ -429,7 +447,13 @@ fn defaulted_v_reset_survives_the_round_trip() {
     nir_hdf5_write(&path, &g).expect("export");
     let doc = nir_hdf5_read(&path).expect("read");
     assert!(
-        doc.nodes.iter().find(|n| n.name == "l").unwrap().lif.v_reset_v.is_none(),
+        doc.nodes
+            .iter()
+            .find(|n| n.name == "l")
+            .unwrap()
+            .lif
+            .v_reset_v
+            .is_none(),
         "v_reset dataset must be OMITTED when defaulted"
     );
     let g2 = doc.import(NirImportOptions::default()).unwrap();
@@ -462,14 +486,10 @@ fn json_export_stays_byte_stable_from_the_hdf5_import() {
     let g = doc.import(NirImportOptions::default()).unwrap();
     let mut a = vec![0u8; 8192];
     let mut b = vec![0u8; 8192];
-    let na = neuralos_snn::nir::nir_export(
-        &g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut a,
-    )
-    .unwrap();
-    let nb = neuralos_snn::nir::nir_export(
-        &g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut b,
-    )
-    .unwrap();
+    let na = neuralos_snn::nir::nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut a)
+        .unwrap();
+    let nb = neuralos_snn::nir::nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut b)
+        .unwrap();
     assert_eq!(&a[..na], &b[..nb], "JSON export is byte-stable");
     let g2 = NirImport::from_json(&a[..na], NirImportOptions::default()).unwrap();
     assert_semantically_equal(&g, &g2);
@@ -485,8 +505,7 @@ fn merge_graph_assembles_and_fires_from_the_hdf5_path() {
     let centi = NirImportOptions::new(1_000, VoltageResolution::CentiMillivolt);
     let gz_doc = nir_hdf5_read(&fixture("merge.nir")).expect("reference file reads");
     let gz = gz_doc.import(centi).expect("imports");
-    let raw_doc =
-        nir_hdf5_read(&fixture("merge_uncompressed.nir")).expect("uncompressed reads");
+    let raw_doc = nir_hdf5_read(&fixture("merge_uncompressed.nir")).expect("uncompressed reads");
     let raw = raw_doc.import(centi).expect("imports");
     assert_eq!(gz.weights, raw.weights, "compression is container-only");
     assert_eq!(gz.lifs, raw.lifs);

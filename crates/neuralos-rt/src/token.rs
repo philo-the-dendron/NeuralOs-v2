@@ -123,7 +123,11 @@ impl core::fmt::Display for TokenizerError {
             Self::BadMergeLine(l) => write!(f, "merge line not `A B`: {l:?}"),
             Self::UnknownMergeToken(t) => write!(f, "merge references unknown token {t:?}"),
             Self::MissingByteToken(c) => {
-                write!(f, "byte-table char {c:?} (U+{:04X}) missing from vocab", *c as u32)
+                write!(
+                    f,
+                    "byte-table char {c:?} (U+{:04X}) missing from vocab",
+                    *c as u32
+                )
             }
             Self::IdOutOfRange(i) => write!(f, "token id {i} outside vocabulary"),
             Self::InvalidByteChar(c) => write!(f, "char {c:?} not in the GPT-2 byte table"),
@@ -176,8 +180,7 @@ fn build_byte_table() -> ([char; 256], HashMap<char, u8>) {
     let mut byte_char = ['\0'; 256];
     let mut n = 0_u32;
     for b in 0..=255_u32 {
-        let c = if (33..=126).contains(&b) || (161..=172).contains(&b) || (174..=255).contains(&b)
-        {
+        let c = if (33..=126).contains(&b) || (161..=172).contains(&b) || (174..=255).contains(&b) {
             char::from_u32(b).expect("latin-1 range chars are valid")
         } else {
             let c = char::from_u32(256 + n).expect("256..323 are valid chars");
@@ -272,7 +275,11 @@ fn split_pieces(chars: &[char]) -> Vec<(usize, usize)> {
         // Rule 4 — ` ?[^\s\p{L}\p{N}]+[\r\n]*` : optional space, a run of
         // "punctuation" (defined non-space/letter/number), trailing
         // newlines. The probe char is the one AFTER an optional space.
-        let probe = if c == ' ' { chars.get(i + 1).copied() } else { Some(c) };
+        let probe = if c == ' ' {
+            chars.get(i + 1).copied()
+        } else {
+            Some(c)
+        };
         if !is_ws_letter_num(probe) {
             i += usize::from(c == ' ');
             while i < n && !is_ws_letter_num(Some(chars[i])) {
@@ -349,12 +356,16 @@ impl Tokenizer {
     pub fn from_gguf(f: &GgufFile<'_>) -> Result<Self, TokenizerError> {
         match f.value("tokenizer.ggml.model") {
             Some(MetadataValue::String(m)) if m == "gpt2" => {}
-            Some(MetadataValue::String(m)) => return Err(TokenizerError::UnsupportedModel(m.clone())),
+            Some(MetadataValue::String(m)) => {
+                return Err(TokenizerError::UnsupportedModel(m.clone()))
+            }
             _ => return Err(TokenizerError::MissingOrBadKv("tokenizer.ggml.model")),
         }
         match f.value("tokenizer.ggml.pre") {
             Some(MetadataValue::String(p)) if p == "qwen2" => {}
-            Some(MetadataValue::String(p)) => return Err(TokenizerError::UnsupportedPre(p.clone())),
+            Some(MetadataValue::String(p)) => {
+                return Err(TokenizerError::UnsupportedPre(p.clone()))
+            }
             None => {}
             _ => return Err(TokenizerError::MissingOrBadKv("tokenizer.ggml.pre")),
         }
@@ -573,22 +584,20 @@ impl Tokenizer {
 
         // Heap of (rank, left); right is carried for staleness checks.
         let mut heap: BinaryHeap<std::cmp::Reverse<(u32, u64, u64)>> = BinaryHeap::new();
-        let push_bigram = |l: i64, r: i64,
-                               ids: &Vec<u32>,
-                               merges: &HashMap<(u32, u32), MergeRule>,
-                               heap: &mut BinaryHeap<std::cmp::Reverse<(u32, u64, u64)>>| {
-            if l < 0 || r < 0 {
-                return;
-            }
-            let (l, r) = (l as usize, r as usize);
-            if let Some(rule) = merges.get(&(ids[l], ids[r])) {
-                heap.push(std::cmp::Reverse((
-                    rule.rank,
-                    l as u64,
-                    r as u64,
-                )));
-            }
-        };
+        let push_bigram =
+            |l: i64,
+             r: i64,
+             ids: &Vec<u32>,
+             merges: &HashMap<(u32, u32), MergeRule>,
+             heap: &mut BinaryHeap<std::cmp::Reverse<(u32, u64, u64)>>| {
+                if l < 0 || r < 0 {
+                    return;
+                }
+                let (l, r) = (l as usize, r as usize);
+                if let Some(rule) = merges.get(&(ids[l], ids[r])) {
+                    heap.push(std::cmp::Reverse((rule.rank, l as u64, r as u64)));
+                }
+            };
         for i in 1..n {
             push_bigram(i as i64 - 1, i as i64, &ids, &self.merges, &mut heap);
         }
@@ -681,7 +690,7 @@ mod tests {
         b.extend_from_slice(&3_u32.to_le_bytes());
         b.extend_from_slice(&0_u64.to_le_bytes()); // n_tensors
         b.extend_from_slice(&5_u64.to_le_bytes()); // n_kv
-        // model = "gpt2"
+                                                   // model = "gpt2"
         put_str(&mut b, "tokenizer.ggml.model");
         b.extend_from_slice(&8_u32.to_le_bytes());
         put_str(&mut b, "gpt2");
@@ -736,12 +745,13 @@ mod tests {
         let (byte_char, _) = build_byte_table();
         let base: Vec<String> = byte_char.iter().map(|c| c.to_string()).collect();
         let extra = ["lm", "qo", "mqo", "lmqo", "wl"];
-        let all: Vec<String> = base.iter().cloned().chain(extra.iter().map(|s| (*s).to_string())).collect();
+        let all: Vec<String> = base
+            .iter()
+            .cloned()
+            .chain(extra.iter().map(|s| (*s).to_string()))
+            .collect();
         let strs: Vec<&str> = all.iter().map(String::as_str).collect();
-        let bytes = synthetic_gguf(
-            &strs,
-            &["q o", "m qo", "l m", "w l", "l mqo"],
-        );
+        let bytes = synthetic_gguf(&strs, &["q o", "m qo", "l m", "w l", "l mqo"]);
         let f = GgufFile::parse(&bytes).expect("synthetic container parses");
         let t = Tokenizer::from_gguf(&f).expect("tokenizer loads");
 
@@ -795,7 +805,10 @@ mod tests {
         assert_eq!(pieces_of("Hello world"), ["Hello", " world"]);
         assert_eq!(pieces_of("(hi)"), ["(hi", ")"]);
         // Rule 1: contractions (case-insensitive), no leading-space rule.
-        assert_eq!(pieces_of("It's I'M don't"), ["It", "'s", " I", "'M", " don", "'t"]);
+        assert_eq!(
+            pieces_of("It's I'M don't"),
+            ["It", "'s", " I", "'M", " don", "'t"]
+        );
         // Rule 3: ONE digit per piece; spaces before digits stand alone.
         assert_eq!(pieces_of("1 2 3"), ["1", " ", "2", " ", "3"]);
         assert_eq!(pieces_of("1234"), ["1", "2", "3", "4"]);
@@ -879,7 +892,13 @@ mod tests {
             let ia = id_of[*a];
             let ib = id_of[*b];
             let out = id_of[&format!("{a}{b}")];
-            merge_map.insert((ia, ib), MergeRule { rank: rank as u32, out });
+            merge_map.insert(
+                (ia, ib),
+                MergeRule {
+                    rank: rank as u32,
+                    out,
+                },
+            );
         }
         Tokenizer {
             vocab,
@@ -982,7 +1001,8 @@ mod tests {
             t.is_special.push(true);
             t.specials.push(((*s).to_string(), base_len + i as u32));
         }
-        t.specials.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.1.cmp(&b.1)));
+        t.specials
+            .sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.1.cmp(&b.1)));
         let end = base_len;
         let e = base_len + 1;
         assert_eq!(t.special_id("<|end|>"), Some(end));
@@ -991,12 +1011,7 @@ mod tests {
         let ids = t.encode("ab<|end|>x<|e|>");
         assert_eq!(
             ids,
-            vec![
-                t.token_id("ab").unwrap(),
-                end,
-                t.token_id("x").unwrap(),
-                e
-            ]
+            vec![t.token_id("ab").unwrap(), end, t.token_id("x").unwrap(), e]
         );
         // Specials decode literally, normals through the byte table.
         assert_eq!(t.decode(&ids).unwrap(), "ab<|end|>x<|e|>");
@@ -1008,10 +1023,7 @@ mod tests {
     #[test]
     fn decode_rejects_bad_input() {
         let t = synthetic(&[], &[]);
-        assert_eq!(
-            t.decode(&[256]),
-            Err(TokenizerError::IdOutOfRange(256))
-        );
+        assert_eq!(t.decode(&[256]), Err(TokenizerError::IdOutOfRange(256)));
         assert_eq!(
             t.decode(&[u32::MAX]),
             Err(TokenizerError::IdOutOfRange(u64::from(u32::MAX)))
@@ -1030,9 +1042,12 @@ mod tests {
     // -- --ignored`; needs models/Bonsai-1.7B-Q1_0.gguf) ----
 
     fn real_file() -> Option<Vec<u8>> {
-        ["models/Bonsai-1.7B-Q1_0.gguf", "../../models/Bonsai-1.7B-Q1_0.gguf"]
-            .iter()
-            .find_map(|p| std::fs::read(p).ok())
+        [
+            "models/Bonsai-1.7B-Q1_0.gguf",
+            "../../models/Bonsai-1.7B-Q1_0.gguf",
+        ]
+        .iter()
+        .find_map(|p| std::fs::read(p).ok())
     }
 
     fn real_tokenizer(buf: &[u8]) -> Tokenizer {
@@ -1058,7 +1073,15 @@ mod tests {
         assert_eq!(t.special_id("<|im_end|>"), Some(151_645));
         // Common tokens exist as whole vocab entries (scanner pieces +
         // merges should reproduce them).
-        for s in ["hello", " world", " the", " Paris", " Thursday", " five", "<think>"] {
+        for s in [
+            "hello",
+            " world",
+            " the",
+            " Paris",
+            " Thursday",
+            " five",
+            "<think>",
+        ] {
             assert!(
                 t.token_id(s).is_some(),
                 "expected vocab entry {s:?} missing"
@@ -1132,7 +1155,9 @@ mod tests {
         // tokens, the space piece stays its own token (no Ġ-digit merge).
         assert_eq!(t.encode("1 2 3 4 5 6 7"), {
             let mut v = Vec::new();
-            for piece in ["1", " ", "2", " ", "3", " ", "4", " ", "5", " ", "6", " ", "7"] {
+            for piece in [
+                "1", " ", "2", " ", "3", " ", "4", " ", "5", " ", "6", " ", "7",
+            ] {
                 v.push(id(piece));
             }
             v

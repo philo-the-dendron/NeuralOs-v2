@@ -148,9 +148,8 @@
 //! voids.
 
 use neuralos_rt::harness::{
-    build_from_trits, decode_slice, exc_count, group_of, peak_rss_mb, rate_l1,
-    run_and_capture, shuffled_copy, splice_and_verify, tix, train_hamming, trit_val,
-    ExperimentParams, Train,
+    build_from_trits, decode_slice, exc_count, group_of, peak_rss_mb, rate_l1, run_and_capture,
+    shuffled_copy, splice_and_verify, tix, train_hamming, trit_val, ExperimentParams, Train,
 };
 use neuralos_rt::{rms_norm_milli, GgufFile, Qwen3, Tokenizer};
 use neuralos_snn::{Trit, VoltageResolution};
@@ -182,7 +181,11 @@ struct VivoStats {
 }
 
 #[allow(non_snake_case)]
-fn group_pair_classes(net: &neuralos_snn::SpikingNeuralNetwork, exc: u16, p: &ExperimentParams) -> Vec<bool> {
+fn group_pair_classes(
+    net: &neuralos_snn::SpikingNeuralNetwork,
+    exc: u16,
+    p: &ExperimentParams,
+) -> Vec<bool> {
     // per synapse: is this E→E pair INTRA-group (4-group geometry, only
     // used for the class decomposition — the drive is data-driven now)?
     net.synapses()
@@ -329,7 +332,8 @@ fn main() {
     let p = ExperimentParams::default();
     let (N, GAMMA, DT_US, STEPS, I_INH) = (p.n, p.gamma, p.dt_us, p.steps, p.i_inh);
     let (SI_FLOOR, RSS_BUDGET_MB, CONTROL_SEED) = (p.si_floor, p.rss_budget_mb, p.control_seed);
-    let (TARGET_RMS_UA, CLAMP_UA, CLAMP_WARN_FRAC) = (p.target_rms_ua, p.clamp_ua, p.clamp_warn_frac);
+    let (TARGET_RMS_UA, CLAMP_UA, CLAMP_WARN_FRAC) =
+        (p.target_rms_ua, p.clamp_ua, p.clamp_warn_frac);
     let DRIVEN_DIMS = exc_count(&p);
     // ----- argv: legacy positionals (model, export-flag, corpus) plus
     // step-5 named flags. A flagless invocation is a corrected-drive
@@ -374,7 +378,9 @@ fn main() {
                     identity = Some(
                         argv.get(i + 1)
                             .and_then(|s| s.parse::<usize>().ok())
-                            .unwrap_or_else(|| panic!("--identity expects a replicate label 0|1|2")),
+                            .unwrap_or_else(|| {
+                                panic!("--identity expects a replicate label 0|1|2")
+                            }),
                     );
                     i += 2;
                 }
@@ -408,7 +414,10 @@ fn main() {
         panic!("PREREG §3: OFF and DOMAIN-CORRECTED are different arms — OFF disables plasticity, DOMAIN measures it under the corrected drive. Run them separately.");
     }
     if let Some(r) = identity {
-        assert!((0..=2).contains(&r), "identity label r ∈ 0|1|2 (bookkeeping only — the surgery is window-independent)");
+        assert!(
+            (0..=2).contains(&r),
+            "identity label r ∈ 0|1|2 (bookkeeping only — the surgery is window-independent)"
+        );
     }
     let step5_mode = window.is_some() || off || domain || identity.is_some();
     // In step-5 modes every arm exports (final-only); the legacy
@@ -448,12 +457,23 @@ fn main() {
     }
     let norm_drive = !h2_compat;
     let arm_r = window.unwrap_or(0);
-    println!("=== Session H: the in-vivo gate — the model's own activations drive the substrate ===");
+    println!(
+        "=== Session H: the in-vivo gate — the model's own activations drive the substrate ==="
+    );
     println!("file    : {path}");
     println!(
         "reg.    : ISA sH (2026-08-19, attack-pass amended) — tiers, drive design frozen{}",
         if step5_mode {
-            format!(" · step-5 arm: {} window r{arm_r}", if off { "OFF" } else if domain { "DOMAIN-CORRECTED" } else { "ON" })
+            format!(
+                " · step-5 arm: {} window r{arm_r}",
+                if off {
+                    "OFF"
+                } else if domain {
+                    "DOMAIN-CORRECTED"
+                } else {
+                    "ON"
+                }
+            )
         } else {
             String::new()
         }
@@ -476,7 +496,10 @@ fn main() {
         assert_eq!(scale, 0, "identity surgery never touches scales");
         let sha = sha256_of(&out);
         let base_sha = sha256_of(&path);
-        assert_eq!(sha, base_sha, "identity export must be byte-≡ base (ISC-68 class)");
+        assert_eq!(
+            sha, base_sha,
+            "identity export must be byte-≡ base (ISC-68 class)"
+        );
         println!("identity-r{r}: code {code} (must be 0) · scale {scale} · S2 clean");
         println!("identity-r{r}: sha == base ({base_sha:.16}…) : PASS — judge double-run next");
         println!("wall {:.1}s", t0.elapsed().as_secs_f64());
@@ -523,7 +546,9 @@ fn main() {
         let norm_milli: Vec<i32> = {
             let d = f.tensor_data(norm_w).expect("norm slice");
             d.chunks_exact(4)
-                .map(|c| neuralos_rt::f32_bits_to_milli(u32::from_le_bytes([c[0], c[1], c[2], c[3]])))
+                .map(|c| {
+                    neuralos_rt::f32_bits_to_milli(u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                })
                 .collect()
         };
         let states = model.forward_block_states(&ids).expect("forward capture");
@@ -576,8 +601,18 @@ fn main() {
     }
     // Truncation context (registration v2): the text window around the cut.
     if !step5_mode {
-        let tail_ctx: String = corpus.chars().rev().take(160).collect::<Vec<_>>().into_iter().rev().collect();
-        println!("cut-ctx : …{:?}… (last ~160 chars before the token-2000 cut)", tail_ctx);
+        let tail_ctx: String = corpus
+            .chars()
+            .rev()
+            .take(160)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        println!(
+            "cut-ctx : …{:?}… (last ~160 chars before the token-2000 cut)",
+            tail_ctx
+        );
     }
 
     // ----- Scaling: ONE global k → corpus RMS = 450 μA (drive dims 0..408) -----
@@ -595,7 +630,9 @@ fn main() {
     }
     let rms_norm_units = (sum_sq / n_vals as f64).sqrt(); // in norm units
     let k = TARGET_RMS_UA / rms_norm_units; // μA per norm unit
-    println!("scaling : corpus RMS {rms_norm_units:.4} → k = {k:.2} μA/unit (target {TARGET_RMS_UA} μA)");
+    println!(
+        "scaling : corpus RMS {rms_norm_units:.4} → k = {k:.2} μA/unit (target {TARGET_RMS_UA} μA)"
+    );
     // Pre-burn k cross-check (the relay's cheap test): the probe-derived
     // per-window expectations, asserted BEFORE the 6–8 h run — catches
     // off-by-one window offsets while they still cost seconds. The
@@ -606,8 +643,7 @@ fn main() {
         // (evidence/step5-readout/clamp_probe_escalation.log, sha
         // 01d9bc61… — amendment 3: the wrapped-window k values are new
         // pins, provenance banked before the burn).
-        const K_EXPECTED: [f64; 5] =
-            [10_060.46, 10_101.90, 10_007.65, 9_965.58, 10_054.74];
+        const K_EXPECTED: [f64; 5] = [10_060.46, 10_101.90, 10_007.65, 9_965.58, 10_054.74];
         let exp = K_EXPECTED[arm_r];
         assert!(
             (k - exp).abs() < 0.005,
@@ -624,15 +660,19 @@ fn main() {
     // only thing that path is for since constraint 10).
     println!(
         "domain  : {} drive",
-        if norm_drive { "NORM-UNIT (corrected, constraint 10)" } else { "MILLI (H2-compat legacy)" }
+        if norm_drive {
+            "NORM-UNIT (corrected, constraint 10)"
+        } else {
+            "MILLI (H2-compat legacy)"
+        }
     );
     let mut inputs: Vec<Vec<i16>> = Vec::with_capacity(n_steps);
     let mut clamped: u64 = 0;
     let mut rail_dim = vec![0u64; DRIVEN_DIMS];
     let mut hist = [0u64; 5]; // <100, 100-150, 150-300, 300-600, railed
-    // Constraint 10: the pre-clamp distribution is measured for every
-    // arm — |raw| before the rails, same buckets — and reported before
-    // the substrate runs.
+                              // Constraint 10: the pre-clamp distribution is measured for every
+                              // arm — |raw| before the rails, same buckets — and reported before
+                              // the substrate runs.
     let mut pre_abs: Vec<f64> = Vec::with_capacity(n_steps * DRIVEN_DIMS);
     let mut pre_hist = [0u64; 5];
     for row in h_norm {
@@ -683,10 +723,18 @@ fn main() {
     println!(
         "clamp   : {clamped}/{total_vals} = {:.3}% clamped at ±{CLAMP_UA} μA{}",
         clamp_frac * 100.0,
-        if clamp_frac > CLAMP_WARN_FRAC { "  ⚠ ABOVE 10% — recorded caveat" } else { "" }
+        if clamp_frac > CLAMP_WARN_FRAC {
+            "  ⚠ ABOVE 10% — recorded caveat"
+        } else {
+            ""
+        }
     );
     if let Some((d, c)) = top_rail {
-        println!("          hottest dim {d} railed {}× ({}% of its steps)", c, c * 100 / n_steps as u64);
+        println!(
+            "          hottest dim {d} railed {}× ({}% of its steps)",
+            c,
+            c * 100 / n_steps as u64
+        );
     }
     println!(
         "hist    : |I| <100 {} · 100–150 {} · 150–300 {} · 300–600 {} · >600/railed {} (per dim-step)",
@@ -718,7 +766,9 @@ fn main() {
     println!();
 
     // ----- Tier 1: G2′ tripwire + G0 (fixed-weight, full battery) -----
-    println!("--- TIER 1: substrate gates (fixed weights, STDP off, in-vivo drive, CENTI grid) ---");
+    println!(
+        "--- TIER 1: substrate gates (fixed weights, STDP off, in-vivo drive, CENTI grid) ---"
+    );
     let mut imported = build_from_trits(&src, GAMMA, &p, VoltageResolution::CentiMillivolt);
     let ti = run_and_capture(&mut imported, &inputs, &p);
     drop(imported);
@@ -743,8 +793,12 @@ fn main() {
     let hcz = train_hamming(&tc, &tz);
     println!(
         "  rates  E Hz (i/c/z): {:.2} / {:.2} / {:.2}   I Hz: {:.2} / {:.2} / {:.2}",
-        hz(&ti, exc), hz(&tc, exc), hz(&tz, exc),
-        ihz(&ti, exc), ihz(&tc, exc), ihz(&tz, exc)
+        hz(&ti, exc),
+        hz(&tc, exc),
+        hz(&tz, exc),
+        ihz(&ti, exc),
+        ihz(&tc, exc),
+        ihz(&tz, exc)
     );
     println!(
         "  totals (i/c/z): {} / {} / {}",
@@ -752,14 +806,27 @@ fn main() {
     );
     println!(
         "  H(i,c)={hic}  H(i,z)={hiz}  H(c,z)={hcz}   L1(i,c)={}  L1(i,z)={}  L1(c,z)={}",
-        rate_l1(&ti, &tc), rate_l1(&ti, &tz), rate_l1(&tc, &tz)
+        rate_l1(&ti, &tc),
+        rate_l1(&ti, &tz),
+        rate_l1(&tc, &tz)
     );
     let tripwire = hic > 0 || hiz > 0 || hcz > 0;
     let g0 = hic > hiz;
-    println!("  G2′ wire-liveness tripwire : {}", if tripwire { "PASS (weights borne in trains)" } else { "FAIL (dead wire?!)" });
+    println!(
+        "  G2′ wire-liveness tripwire : {}",
+        if tripwire {
+            "PASS (weights borne in trains)"
+        } else {
+            "FAIL (dead wire?!)"
+        }
+    );
     println!(
         "  G0  arrangement-vs-census : H(i,c) > H(i,z) → {hic} > {hiz} : {}",
-        if g0 { "PASS — firing reads model arrangement" } else { "FAIL (T1 NO — recorded)" }
+        if g0 {
+            "PASS — firing reads model arrangement"
+        } else {
+            "FAIL (T1 NO — recorded)"
+        }
     );
 
     // ----- The learning run (STDP on, counters) -----
@@ -777,7 +844,10 @@ fn main() {
     };
     let v = run_vivo_ck(&src, &inputs, &cks, &p, !off);
     if off {
-        assert_eq!(v.flips, 0, "OFF arm: zero bucket flips (plasticity never enabled)");
+        assert_eq!(
+            v.flips, 0,
+            "OFF arm: zero bucket flips (plasticity never enabled)"
+        );
         assert_eq!(v.plasticity_events, 0, "OFF arm: zero plasticity events");
     }
     println!(
@@ -822,7 +892,9 @@ fn main() {
     }
     println!(
         "  Hamming vs imported: {}/{} = {:.4}",
-        hamming, n_syn, hamming as f64 / n_syn as f64
+        hamming,
+        n_syn,
+        hamming as f64 / n_syn as f64
     );
 
     // selectivity on the data-driven classes (4-group geometry decomposition)
@@ -865,19 +937,44 @@ fn main() {
     // ----- Verdict -----
     println!();
     println!("--- Verdict (per the frozen registration) ---");
-    println!("  T1 G2′ tripwire   : {}", if tripwire { "PASS" } else { "FAIL" });
-    println!("  T1 G0 arrangement : {}", if g0 { "PASS" } else { "FAIL (NO — recorded)" });
-    println!("  adaptation alive  : {}", if v.flips > 0 { "PASS (flips > 0)" } else { "FAIL (frozen)" });
+    println!(
+        "  T1 G2′ tripwire   : {}",
+        if tripwire { "PASS" } else { "FAIL" }
+    );
+    println!(
+        "  T1 G0 arrangement : {}",
+        if g0 { "PASS" } else { "FAIL (NO — recorded)" }
+    );
+    println!(
+        "  adaptation alive  : {}",
+        if v.flips > 0 {
+            "PASS (flips > 0)"
+        } else {
+            "FAIL (frozen)"
+        }
+    );
     let ham_frac = hamming as f64 / n_syn as f64;
-    println!("  not collapsed     : {}", if ham_frac < 0.50 { "PASS" } else { "FAIL" });
-    println!("  selective (descriptive — drift-liveness, classes dissolved): {}", if selective { "movement present" } else { "no movement" });
+    println!(
+        "  not collapsed     : {}",
+        if ham_frac < 0.50 { "PASS" } else { "FAIL" }
+    );
+    println!(
+        "  selective (descriptive — drift-liveness, classes dissolved): {}",
+        if selective {
+            "movement present"
+        } else {
+            "no movement"
+        }
+    );
     println!(
         "wall {:.1}s   peak RSS {} MB (budget {RSS_BUDGET_MB})",
         t0.elapsed().as_secs_f64(),
         peak_rss_mb()
     );
     if !tripwire || !g0 {
-        println!("T1 NO — recorded; coupling story pivots to regime-dependence per the registration.");
+        println!(
+            "T1 NO — recorded; coupling story pivots to regime-dependence per the registration."
+        );
     }
 
     // ----- Tier-2 export (readout of the SAME frozen experiment; argv
@@ -885,7 +982,9 @@ fn main() {
     // arms always export, final-only, under arm names) -----
     if export_mode || step5_mode {
         println!();
-        println!("--- TIER-2 export (the shared harness surgery unit; S2 re-read on EVERY file) ---");
+        println!(
+            "--- TIER-2 export (the shared harness surgery unit; S2 re-read on EVERY file) ---"
+        );
         // The surgery as a reusable unit (R4-extracted
         // `splice_and_verify`): writes `out` from a synapse-order
         // trit snapshot; returns (cells changed, code bytes, scale
@@ -914,8 +1013,7 @@ fn main() {
                 a
             };
             let changed = adapted.iter().zip(&src).filter(|(a, b)| a != b).count() as u64;
-            let (code_changed, scale_changed) =
-                splice_and_verify(&path, out, &adapted, None, &p);
+            let (code_changed, scale_changed) = splice_and_verify(&path, out, &adapted, None, &p);
             (changed, code_changed, scale_changed)
         };
 
@@ -925,7 +1023,9 @@ fn main() {
         for (step, snaps) in &v.ck_snaps {
             let out = format!("models/Ternary-Bonsai-4B-Q2_0-invivo-ck{step}.gguf");
             let (c, cb, sb) = do_surgery(snaps, &out);
-            println!("  ck@learn-step {step:>5}: {c} cells · code {cb} · scale {sb} · S2 clean → {out}");
+            println!(
+                "  ck@learn-step {step:>5}: {c} cells · code {cb} · scale {sb} · S2 clean → {out}"
+            );
         }
         let out_path = if step5_mode {
             if off {
@@ -954,7 +1054,9 @@ fn main() {
         if step5_mode && off {
             let base_sha = sha256_of(&path);
             assert_eq!(export_sha, base_sha, "OFF arm: export must be byte-≡ base");
-            println!("  OFF identity: sha == base ({base_sha:.16}…) : PASS (end-to-end toggle proof)");
+            println!(
+                "  OFF identity: sha == base ({base_sha:.16}…) : PASS (end-to-end toggle proof)"
+            );
         }
         if step5_mode && !off && !domain && arm_r == 0 {
             assert_eq!(
@@ -964,7 +1066,10 @@ fn main() {
             println!("  ON r0 re-pin: sha == banked 71f2518a… : PASS (H2 reproduced through the new path)");
         }
         if step5_mode && domain {
-            assert!(changed > 0, "DOMAIN arm: adaptation alive (plasticity on, norm-unit drive)");
+            assert!(
+                changed > 0,
+                "DOMAIN arm: adaptation alive (plasticity on, norm-unit drive)"
+            );
         }
         // H2b invariance assert: a 100%-checkpoint export must equal the
         // plain export — proves the checkpoint machinery did not perturb

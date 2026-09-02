@@ -6,7 +6,9 @@
 //! Prints ns per integration step and the speedup ratio for N = {64, 256, 1024}.
 //! The number that matters: is AVX2 faster than scalar here, and by how much?
 
-use neuralos_snn::simd::{detect_simd_support, dt_over_tau, integrate_batch_scalar, integrate_lif_batch, SimdSupport};
+use neuralos_snn::simd::{
+    detect_simd_support, dt_over_tau, integrate_batch_scalar, integrate_lif_batch, SimdSupport,
+};
 
 const ITERS: usize = 20_000;
 
@@ -35,11 +37,17 @@ fn main() {
     for &n in &[64_usize, 256, 1024] {
         let (s_ns, x_ns) = bench(n, dtot);
         let ratio = s_ns / x_ns;
-        println!("  │ {:>6} │ {:>13.1} │ {:>13.1} │ {:>7.2}x  │", n, s_ns, x_ns, ratio);
+        println!(
+            "  │ {:>6} │ {:>13.1} │ {:>13.1} │ {:>7.2}x  │",
+            n, s_ns, x_ns, ratio
+        );
     }
     println!("  └────────┴───────────────┴───────────────┴───────────┘");
     println!();
-    println!("  {} iterations per measurement · release build · {:?}", ITERS, support);
+    println!(
+        "  {} iterations per measurement · release build · {:?}",
+        ITERS, support
+    );
     println!();
 }
 
@@ -54,8 +62,24 @@ fn bench(n: usize, dtot: i32) -> (f64, f64) {
 
     // Warm up (fill caches, branch-predict).
     for _ in 0..100 {
-        integrate_batch_scalar(&mut s.membrane, &s.resting, &s.current, &s.resistance, &s.threshold, dtot, &mut spikes_s);
-        integrate_lif_batch(&mut x.membrane, &x.resting, &x.current, &x.resistance, &x.threshold, dtot, &mut spikes_x);
+        integrate_batch_scalar(
+            &mut s.membrane,
+            &s.resting,
+            &s.current,
+            &s.resistance,
+            &s.threshold,
+            dtot,
+            &mut spikes_s,
+        );
+        integrate_lif_batch(
+            &mut x.membrane,
+            &x.resting,
+            &x.current,
+            &x.resistance,
+            &x.threshold,
+            dtot,
+            &mut spikes_x,
+        );
     }
     // Reset to deterministic starting state for the measured runs.
     s = make_inputs(n);
@@ -64,14 +88,30 @@ fn bench(n: usize, dtot: i32) -> (f64, f64) {
     // Scalar timing.
     let t0 = std::time::Instant::now();
     for _ in 0..ITERS {
-        integrate_batch_scalar(&mut s.membrane, &s.resting, &s.current, &s.resistance, &s.threshold, dtot, &mut spikes_s);
+        integrate_batch_scalar(
+            &mut s.membrane,
+            &s.resting,
+            &s.current,
+            &s.resistance,
+            &s.threshold,
+            dtot,
+            &mut spikes_s,
+        );
     }
     let scalar_dur = t0.elapsed();
 
     // Dispatched (AVX2 when available) timing.
     let t0 = std::time::Instant::now();
     for _ in 0..ITERS {
-        integrate_lif_batch(&mut x.membrane, &x.resting, &x.current, &x.resistance, &x.threshold, dtot, &mut spikes_x);
+        integrate_lif_batch(
+            &mut x.membrane,
+            &x.resting,
+            &x.current,
+            &x.resistance,
+            &x.threshold,
+            dtot,
+            &mut spikes_x,
+        );
     }
     let simd_dur = t0.elapsed();
 

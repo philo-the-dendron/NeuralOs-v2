@@ -123,16 +123,24 @@ impl ModelConfig {
         let rope_base = kv_f64(f, "qwen3.rope.freq_base")?;
         let inv = |what: &str| ModelError::ConfigMismatch(what.into());
         if emb == 0 || emb % crate::q1_0::Q1_0_BLOCK != 0 {
-            return Err(inv("qwen3.embedding_length must be a positive multiple of 128"));
+            return Err(inv(
+                "qwen3.embedding_length must be a positive multiple of 128",
+            ));
         }
         if ffn == 0 || ffn % crate::q1_0::Q1_0_BLOCK != 0 {
-            return Err(inv("qwen3.feed_forward_length must be a positive multiple of 128"));
+            return Err(inv(
+                "qwen3.feed_forward_length must be a positive multiple of 128",
+            ));
         }
         if head_dim == 0 || head_dim % 2 != 0 {
-            return Err(inv("qwen3.attention.key_length must be positive and even (rope pairs)"));
+            return Err(inv(
+                "qwen3.attention.key_length must be positive and even (rope pairs)",
+            ));
         }
         if heads == 0 || kv_heads == 0 || heads % kv_heads != 0 {
-            return Err(inv("qwen3.attention.head_count must be a positive multiple of head_count_kv"));
+            return Err(inv(
+                "qwen3.attention.head_count must be a positive multiple of head_count_kv",
+            ));
         }
         // Optional cross-checks — loud on disagreement, absent = default.
         expect_kv(f, "qwen3.attention.value_length", head_dim as i64)?;
@@ -159,9 +167,8 @@ impl ModelConfig {
             }
         }
         let yarn_factor = match f.value("qwen3.rope.scaling.factor") {
-            Some(v) => numeric_as_f64(v).ok_or_else(|| {
-                inv("qwen3.rope.scaling.factor: non-numeric value")
-            })?,
+            Some(v) => numeric_as_f64(v)
+                .ok_or_else(|| inv("qwen3.rope.scaling.factor: non-numeric value"))?,
             None => 4.0,
         };
         let orig_ctx = match f.value("qwen3.rope.scaling.original_context_length") {
@@ -246,17 +253,17 @@ pub struct ForwardHealth {
 
 #[derive(Debug)]
 struct LayerSlices {
-    attn_norm: Vec<i32>,  // milli, emb
-    q: QuantData,         // heads·head_dim out × emb in
-    k: QuantData,         // kv_heads·head_dim out
-    v: QuantData,         // kv_heads·head_dim out
-    q_norm: Vec<i32>,     // milli, head_dim
-    k_norm: Vec<i32>,     // milli, head_dim
-    out_w: QuantData,     // emb out × heads·head_dim in
-    ffn_norm: Vec<i32>,   // milli, emb
-    gate: QuantData,      // ffn out × emb in
-    up: QuantData,        // ffn out × emb in
-    down: QuantData,      // emb out × ffn in
+    attn_norm: Vec<i32>, // milli, emb
+    q: QuantData,        // heads·head_dim out × emb in
+    k: QuantData,        // kv_heads·head_dim out
+    v: QuantData,        // kv_heads·head_dim out
+    q_norm: Vec<i32>,    // milli, head_dim
+    k_norm: Vec<i32>,    // milli, head_dim
+    out_w: QuantData,    // emb out × heads·head_dim in
+    ffn_norm: Vec<i32>,  // milli, emb
+    gate: QuantData,     // ffn out × emb in
+    up: QuantData,       // ffn out × emb in
+    down: QuantData,     // emb out × ffn in
 }
 
 /// A quantized weight tensor's bytes plus the format they lay in —
@@ -299,7 +306,12 @@ impl QuantData {
     ///
     /// [`ModelError::BadTensorSize`] on any size/code error from the
     /// underlying format matvec.
-    fn matvec_scaled(&self, x_milli: &[i32], rows: usize, out: &mut [i32]) -> Result<(), ModelError> {
+    fn matvec_scaled(
+        &self,
+        x_milli: &[i32],
+        rows: usize,
+        out: &mut [i32],
+    ) -> Result<(), ModelError> {
         let r: Result<(), ()> = match self {
             Self::Q10(d) => crate::q1_0::matvec_scaled(d, x_milli, rows, out).map_err(|_| ()),
             Self::Q20(d) => crate::q2_0::matvec_scaled(d, x_milli, rows, out).map_err(|_| ()),
@@ -408,9 +420,9 @@ pub struct Qwen3 {
 
 /// Required integer KV — loud when absent or non-numeric.
 fn kv_usize(f: &GgufFile<'_>, key: &str) -> Result<usize, ModelError> {
-    let v = f.value(key).ok_or_else(|| {
-        ModelError::ConfigMismatch(format!("{key} absent (required config KV)"))
-    })?;
+    let v = f
+        .value(key)
+        .ok_or_else(|| ModelError::ConfigMismatch(format!("{key} absent (required config KV)")))?;
     let n = match numeric_as_u64(v) {
         Some(n) => n,
         None => {
@@ -419,17 +431,15 @@ fn kv_usize(f: &GgufFile<'_>, key: &str) -> Result<usize, ModelError> {
             )))
         }
     };
-    usize::try_from(n)
-        .map_err(|_| ModelError::ConfigMismatch(format!("{key} = {n}: out of range")))
+    usize::try_from(n).map_err(|_| ModelError::ConfigMismatch(format!("{key} = {n}: out of range")))
 }
 
 /// Required float KV — loud when absent or non-numeric.
 fn kv_f64(f: &GgufFile<'_>, key: &str) -> Result<f64, ModelError> {
-    let v = f.value(key).ok_or_else(|| {
-        ModelError::ConfigMismatch(format!("{key} absent (required config KV)"))
-    })?;
-    numeric_as_f64(v)
-        .ok_or_else(|| ModelError::ConfigMismatch(format!("{key}: non-numeric value")))
+    let v = f
+        .value(key)
+        .ok_or_else(|| ModelError::ConfigMismatch(format!("{key} absent (required config KV)")))?;
+    numeric_as_f64(v).ok_or_else(|| ModelError::ConfigMismatch(format!("{key}: non-numeric value")))
 }
 
 fn numeric_as_u64(v: &MetadataValue) -> Option<u64> {
@@ -459,7 +469,9 @@ fn f32_tensor_milli(
     name: &str,
     expect_len: usize,
 ) -> Result<Vec<i32>, ModelError> {
-    let t = f.tensor(name).ok_or_else(|| ModelError::MissingTensor(name.into()))?;
+    let t = f
+        .tensor(name)
+        .ok_or_else(|| ModelError::MissingTensor(name.into()))?;
     // Shape check first: a 1-D tensor of exactly expect_len entries.
     if t.dims.len() != 1 || t.dims[0] != expect_len as u64 {
         return Err(ModelError::BadTensorSize(format!(
@@ -467,7 +479,9 @@ fn f32_tensor_milli(
             t.dims
         )));
     }
-    let d = f.tensor_data(t).map_err(|_| ModelError::BadTensorSize(name.into()))?;
+    let d = f
+        .tensor_data(t)
+        .map_err(|_| ModelError::BadTensorSize(name.into()))?;
     if d.len() < expect_len * 4 {
         return Err(ModelError::BadTensorSize(name.into()));
     }
@@ -493,14 +507,18 @@ fn q1_0_tensor(
     rows: usize,
     width: usize,
 ) -> Result<Vec<u8>, ModelError> {
-    let t = f.tensor(name).ok_or_else(|| ModelError::MissingTensor(name.into()))?;
+    let t = f
+        .tensor(name)
+        .ok_or_else(|| ModelError::MissingTensor(name.into()))?;
     if t.dims.len() != 2 || t.dims[0] != width as u64 || t.dims[1] != rows as u64 {
         return Err(ModelError::BadTensorSize(format!(
             "{name} dims {:?} (want [{width}, {rows}])",
             t.dims
         )));
     }
-    let d = f.tensor_data(t).map_err(|_| ModelError::BadTensorSize(name.into()))?;
+    let d = f
+        .tensor_data(t)
+        .map_err(|_| ModelError::BadTensorSize(name.into()))?;
     let expect = rows * (width / crate::q1_0::Q1_0_BLOCK) * crate::q1_0::Q1_0_BLOCK_BYTES;
     let align = f.alignment.max(1);
     let padded = expect
@@ -530,7 +548,9 @@ fn quant_tensor(
     rows: usize,
     width: usize,
 ) -> Result<QuantData, ModelError> {
-    let t = f.tensor(name).ok_or_else(|| ModelError::MissingTensor(name.into()))?;
+    let t = f
+        .tensor(name)
+        .ok_or_else(|| ModelError::MissingTensor(name.into()))?;
     match t.ty {
         GGML_TYPE_Q1_0 => Ok(QuantData::Q10(q1_0_tensor(f, name, rows, width)?)),
         GGML_TYPE_Q2_0 => {
@@ -540,7 +560,9 @@ fn quant_tensor(
                     t.dims
                 )));
             }
-            let d = f.tensor_data(t).map_err(|_| ModelError::BadTensorSize(name.into()))?;
+            let d = f
+                .tensor_data(t)
+                .map_err(|_| ModelError::BadTensorSize(name.into()))?;
             let expect = rows * (width / crate::q2_0::Q2_0_BLOCK) * crate::q2_0::Q2_0_BLOCK_BYTES;
             let align = f.alignment.max(1);
             let padded = expect
@@ -585,15 +607,21 @@ fn expect_kv(f: &GgufFile<'_>, key: &str, want: i64) -> Result<(), ModelError> {
             return if m == w {
                 Ok(())
             } else {
-                Err(ModelError::ConfigMismatch(format!("{key} = {x}, want {want}")))
+                Err(ModelError::ConfigMismatch(format!(
+                    "{key} = {x}, want {want}"
+                )))
             };
         }
         _ => None,
     };
     match got {
         Some(g) if g == want => Ok(()),
-        Some(g) => Err(ModelError::ConfigMismatch(format!("{key} = {g}, want {want}"))),
-        None => Err(ModelError::ConfigMismatch(format!("{key}: non-numeric value"))),
+        Some(g) => Err(ModelError::ConfigMismatch(format!(
+            "{key} = {g}, want {want}"
+        ))),
+        None => Err(ModelError::ConfigMismatch(format!(
+            "{key}: non-numeric value"
+        ))),
     }
 }
 
@@ -783,11 +811,7 @@ impl Qwen3 {
     /// # Errors
     ///
     /// Same as [`Qwen3::step`].
-    pub fn prefill(
-        &self,
-        ses: &mut Session,
-        tokens: &[u32],
-    ) -> Result<Vec<Vec<i32>>, ModelError> {
+    pub fn prefill(&self, ses: &mut Session, tokens: &[u32]) -> Result<Vec<Vec<i32>>, ModelError> {
         let mut out = Vec::with_capacity(tokens.len());
         for &t in tokens {
             out.push(self.step(ses, t)?);
@@ -812,8 +836,13 @@ impl Qwen3 {
         if pos >= self.max_pos {
             return Err(ModelError::PositionOutOfRange);
         }
-        let (emb, heads, kv_heads, head_dim, ffn) =
-            (self.cfg.emb, self.cfg.heads, self.cfg.kv_heads, self.cfg.head_dim, self.cfg.ffn);
+        let (emb, heads, kv_heads, head_dim, ffn) = (
+            self.cfg.emb,
+            self.cfg.heads,
+            self.cfg.kv_heads,
+            self.cfg.head_dim,
+            self.cfg.ffn,
+        );
         let kv_width = kv_heads * head_dim;
         let mut h = vec![0_i32; emb];
         self.embed(token, &mut h)?;
@@ -876,7 +905,8 @@ impl Qwen3 {
                     // saturating softmax into a hard argmax — the 15%
                     // block-0 drift found by the C-core microscope).
                     *score = div_round_half_away(s, 1_000_000)
-                        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+                        .clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                        as i32;
                 }
                 self.kit.softmax_q12(&scores, &mut probs);
                 acc.iter_mut().for_each(|a| *a = 0);
@@ -891,7 +921,8 @@ impl Qwen3 {
                 }
                 for (d, &a) in acc.iter().enumerate() {
                     ctx[qh * head_dim + d] = div_round_half_away(a, 4096)
-                        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+                        .clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                        as i32;
                 }
             }
             layer.out_w.matvec_scaled(&ctx, emb, &mut attn_out)?;
@@ -909,16 +940,22 @@ impl Qwen3 {
                 let s = i64::from(self.kit.silu_milli(gate[i]));
                 let u = i64::from(up[i]);
                 gate[i] = div_round_half_away(s * u, 1000)
-                    .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+                    .clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                    as i32;
             }
             let mut down = vec![0_i32; emb];
             layer.down.matvec_scaled(&gate, emb, &mut down)?;
             for d in 0..emb {
                 h[d] = h[d].saturating_add(down[d]);
             }
-            let layer_max: i64 = h.iter().map(|v| i64::from(v.unsigned_abs())).max().unwrap_or(0);
-            ses.max_abs_residual =
-                ses.max_abs_residual.max(layer_max.min(i64::from(i32::MAX)) as i32);
+            let layer_max: i64 = h
+                .iter()
+                .map(|v| i64::from(v.unsigned_abs()))
+                .max()
+                .unwrap_or(0);
+            ses.max_abs_residual = ses
+                .max_abs_residual
+                .max(layer_max.min(i64::from(i32::MAX)) as i32);
         }
         ses.n += 1;
         Ok(h)
@@ -933,8 +970,13 @@ impl Qwen3 {
         if n == 0 || n > self.max_pos {
             return Err(ModelError::PositionOutOfRange);
         }
-        let (emb, heads, kv_heads, head_dim, ffn) =
-            (self.cfg.emb, self.cfg.heads, self.cfg.kv_heads, self.cfg.head_dim, self.cfg.ffn);
+        let (emb, heads, kv_heads, head_dim, ffn) = (
+            self.cfg.emb,
+            self.cfg.heads,
+            self.cfg.kv_heads,
+            self.cfg.head_dim,
+            self.cfg.ffn,
+        );
         let kv_width = kv_heads * head_dim;
         // Hidden states per position (milli).
         let mut h: Vec<Vec<i32>> = Vec::with_capacity(n);
@@ -1000,7 +1042,7 @@ impl Qwen3 {
                     }
                     rms_norm_milli(&q_head, &layer.q_norm, &mut q_normed);
                     self.rope.apply(&mut q_normed, pos); // safe: pos < max_pos
-                    // Scores over t ≤ pos against kv head qh/(heads/kv_heads).
+                                                         // Scores over t ≤ pos against kv head qh/(heads/kv_heads).
                     let kv = qh / (heads / kv_heads);
                     for t in 0..=pos {
                         let mut dot: i64 = 0; // Σ q_milli·k_milli = real×1e6
@@ -1015,7 +1057,8 @@ impl Qwen3 {
                         // i64::MAX).
                         let s = dot * self.score.0 + dot * self.score.1 / 10_000;
                         scores[t] = div_round_half_away(s, 1_000_000)
-                            .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+                            .clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                            as i32;
                     }
                     self.kit.softmax_q12(&scores[..=pos], &mut probs[..=pos]);
                     // Context = Σ_t p_t × v_t / Q12.
@@ -1028,7 +1071,8 @@ impl Qwen3 {
                     }
                     for d in 0..head_dim {
                         ctx[qh * head_dim + d] = div_round_half_away(acc[d], 4096)
-                            .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+                            .clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                            as i32;
                     }
                 }
                 // Output projection + residual.
@@ -1055,7 +1099,8 @@ impl Qwen3 {
                     let s = i64::from(self.kit.silu_milli(gate[i]));
                     let u = i64::from(up[i]);
                     gate[i] = div_round_half_away(s * u, 1000)
-                        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+                        .clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                        as i32;
                 }
                 layer.down.matvec_scaled(&gate, emb, &mut down)?;
                 for d in 0..emb {
@@ -1076,11 +1121,12 @@ impl Qwen3 {
                         layer_max = layer_max.max(i64::from(a.unsigned_abs()));
                     }
                 }
-                health.per_layer_delta.push(
-                    delta.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
-                );
-                health.max_abs_residual =
-                    health.max_abs_residual.max(layer_max.min(i64::from(i32::MAX)) as i32);
+                health
+                    .per_layer_delta
+                    .push(delta.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32);
+                health.max_abs_residual = health
+                    .max_abs_residual
+                    .max(layer_max.min(i64::from(i32::MAX)) as i32);
             }
         }
         Ok(h)
@@ -1265,7 +1311,10 @@ mod tests {
                 dot / (HD as f64).sqrt()
             })
             .collect();
-        let mx = scores_real.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let mx = scores_real
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
         let exps: Vec<f64> = scores_real.iter().map(|s| (s - mx).exp()).collect();
         let sum: f64 = exps.iter().sum();
         for d in 0..HD {
@@ -1368,10 +1417,7 @@ mod tests {
         let n_tokens: Vec<u32> = (0..128_u32).collect();
         assert!(model.forward(&n_tokens).is_ok());
         let over: Vec<u32> = (0..129_u32).collect();
-        assert_eq!(
-            model.forward(&over),
-            Err(ModelError::PositionOutOfRange)
-        );
+        assert_eq!(model.forward(&over), Err(ModelError::PositionOutOfRange));
         assert_eq!(model.forward(&[]), Err(ModelError::PositionOutOfRange));
     }
 
@@ -1382,14 +1428,8 @@ mod tests {
         // count, which is the honest bound for any constructed model).
         let mut model = synthetic_model(8, 8);
         assert_eq!(model.forward(&[8]), Err(ModelError::TokenOutOfRange));
-        assert_eq!(
-            model.forward(&[151_669]),
-            Err(ModelError::TokenOutOfRange)
-        );
-        assert_eq!(
-            model.forward(&[u32::MAX]),
-            Err(ModelError::TokenOutOfRange)
-        );
+        assert_eq!(model.forward(&[151_669]), Err(ModelError::TokenOutOfRange));
+        assert_eq!(model.forward(&[u32::MAX]), Err(ModelError::TokenOutOfRange));
         // The last row within the tensor is fine.
         assert!(model.forward(&[7]).is_ok());
     }
@@ -1670,7 +1710,10 @@ mod tests {
         assert_eq!(m.residual_sound_max(), 67_108_864);
         assert!(m.residual_sound_max() >= RESIDUAL_SOUND_MAX);
         // Wider hidden → tighter rail (4B: emb 2560).
-        let m4 = synthetic_model_with(ModelConfig { emb: 2560, ..cfg_17b(8) });
+        let m4 = synthetic_model_with(ModelConfig {
+            emb: 2560,
+            ..cfg_17b(8)
+        });
         assert!(m4.residual_sound_max() < m.residual_sound_max());
     }
 
@@ -1763,16 +1806,10 @@ mod tests {
         assert!(model.step(&mut ses, 0).is_ok());
         assert!(model.step(&mut ses, 1).is_ok());
         // Rope table exhausted at max_pos.
-        assert_eq!(
-            model.step(&mut ses, 0),
-            Err(ModelError::PositionOutOfRange)
-        );
+        assert_eq!(model.step(&mut ses, 0), Err(ModelError::PositionOutOfRange));
         // Out-of-vocabulary ids are loud on the incremental path too.
         let mut ses2 = model.new_session();
-        assert_eq!(
-            model.step(&mut ses2, 8),
-            Err(ModelError::TokenOutOfRange)
-        );
+        assert_eq!(model.step(&mut ses2, 8), Err(ModelError::TokenOutOfRange));
         assert!(ses2.is_empty(), "failed step must not advance the session");
     }
 
@@ -1862,7 +1899,10 @@ mod tests {
         let data = vec![0_u8; bytes];
         let good = one_tensor_file("t.weight", &[6144, 2048], 42, &data);
         let f = GgufFile::parse(&good).expect("parse");
-        assert!(matches!(quant_tensor(&f, "t.weight", 2048, 6144), Ok(QuantData::Q20(_))));
+        assert!(matches!(
+            quant_tensor(&f, "t.weight", 2048, 6144),
+            Ok(QuantData::Q20(_))
+        ));
         let bad = one_tensor_file("t.weight", &[2048, 6144], 42, &data);
         let f = GgufFile::parse(&bad).expect("parse");
         assert!(matches!(
@@ -1889,7 +1929,10 @@ mod tests {
         let q1 = vec![0_u8; 2048 * (6144 / 128) * 18];
         let q1file = one_tensor_file("t.weight", &[6144, 2048], 41, &q1);
         let f = GgufFile::parse(&q1file).expect("parse");
-        assert!(matches!(quant_tensor(&f, "t.weight", 2048, 6144), Ok(QuantData::Q10(_))));
+        assert!(matches!(
+            quant_tensor(&f, "t.weight", 2048, 6144),
+            Ok(QuantData::Q10(_))
+        ));
     }
 
     #[test]
@@ -1923,7 +1966,8 @@ mod tests {
         };
         for b in 0..2048 / 128 {
             let base = 3 * row_bytes + b * 18;
-            emb_bytes[base..base + 2].copy_from_slice(&0x7BFF_u16.to_le_bytes()); // fp16 ≈ 6.5e4
+            emb_bytes[base..base + 2].copy_from_slice(&0x7BFF_u16.to_le_bytes());
+            // fp16 ≈ 6.5e4
         }
         let h = model.forward(&[0]).expect("forward");
         let (id, val) = model.argmax_logit(&h[0]).unwrap();
@@ -1937,10 +1981,12 @@ mod tests {
     #[test]
     #[ignore = "needs models/Bonsai-1.7B-Q1_0.gguf (gitignored, 248 MB)"]
     fn real_incremental_matches_forward_exact() {
-        let Some(buf) = ["models/Bonsai-1.7B-Q1_0.gguf", "../../models/Bonsai-1.7B-Q1_0.gguf"]
-            .iter()
-            .find_map(|p| std::fs::read(p).ok())
-        else {
+        let Some(buf) = [
+            "models/Bonsai-1.7B-Q1_0.gguf",
+            "../../models/Bonsai-1.7B-Q1_0.gguf",
+        ]
+        .iter()
+        .find_map(|p| std::fs::read(p).ok()) else {
             eprintln!("model file absent — skipping");
             return;
         };
@@ -1961,9 +2007,7 @@ mod tests {
         assert_eq!(&h5, full5.last().unwrap());
         // Residual witness populated and under the norm-soundness rail.
         assert!(ses.max_abs_residual() > 0);
-        assert!(
-            i64::from(ses.max_abs_residual()) < model.residual_sound_max()
-        );
+        assert!(i64::from(ses.max_abs_residual()) < model.residual_sound_max());
         assert_eq!(health.per_layer_delta.len(), 28);
     }
 
@@ -2007,20 +2051,26 @@ mod tests {
             ("models/Ternary-Bonsai-4B-Q2_0.gguf", cfg_4b),
         ];
         for (path, want) in cases {
-            let Some(buf) = std::fs::read(path).ok().or_else(|| {
-                std::fs::read(format!("../../{path}")).ok()
-            }) else {
+            let Some(buf) = std::fs::read(path)
+                .ok()
+                .or_else(|| std::fs::read(format!("../../{path}")).ok())
+            else {
                 panic!("{path} absent — this test requires both real files");
             };
             let f = GgufFile::parse(&buf).expect("container parses");
             let mut model = Qwen3::load(&f, 8).expect("model loads");
             assert_eq!(*model.config(), want, "{path}: config");
             assert!(model.residual_sound_max() > 0);
-            let (h, health) = model.forward_with_health(&[0, 42]).expect("2-token forward");
+            let (h, health) = model
+                .forward_with_health(&[0, 42])
+                .expect("2-token forward");
             assert_eq!(h.len(), 2);
             assert_eq!(h[0].len(), want.emb);
             assert_eq!(health.per_layer_delta.len(), want.layers);
-            assert!(health.per_layer_delta.iter().all(|&d| d > 0), "{path}: dead layer");
+            assert!(
+                health.per_layer_delta.iter().all(|&d| d > 0),
+                "{path}: dead layer"
+            );
             assert!(
                 i64::from(health.max_abs_residual) < model.residual_sound_max(),
                 "{path}: residual {} vs rail {}",

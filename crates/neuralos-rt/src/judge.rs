@@ -206,7 +206,10 @@ pub fn delta_table(base: &Dump, patched: &Dump) -> String {
     let mut deltas = Vec::with_capacity(n);
     for &s in &keys {
         let (b, p) = (&base[&s], &patched[&s]);
-        let (ba, pa) = (argmax(b).expect("nonempty step"), argmax(p).expect("nonempty step"));
+        let (ba, pa) = (
+            argmax(b).expect("nonempty step"),
+            argmax(p).expect("nonempty step"),
+        );
         if ba != pa {
             flips += 1;
         }
@@ -222,10 +225,7 @@ pub fn delta_table(base: &Dump, patched: &Dump) -> String {
     }
     // Python dies at `min(overlaps)` (ValueError, exit 1) when both
     // logs are dump-less — same loud failure here (exact 3.12 text).
-    assert!(
-        !overlaps.is_empty(),
-        "min() iterable argument is empty"
-    );
+    assert!(!overlaps.is_empty(), "min() iterable argument is empty");
     let mean_ov = overlaps.iter().sum::<usize>() as f64 / overlaps.len() as f64;
     let max_d = cpython_max(&deltas);
     let mean_d = deltas.iter().sum::<f64>() / deltas.len() as f64;
@@ -238,7 +238,10 @@ pub fn delta_table(base: &Dump, patched: &Dump) -> String {
     ));
     for &s in &keys {
         let (b, p) = (&base[&s], &patched[&s]);
-        let (ba, pa) = (argmax(b).expect("nonempty step"), argmax(p).expect("nonempty step"));
+        let (ba, pa) = (
+            argmax(b).expect("nonempty step"),
+            argmax(p).expect("nonempty step"),
+        );
         let flag = if ba != pa { "FLIP" } else { "same" };
         let db = match value(p, ba) {
             Some(pv) => format!("{:+.4}", (pv - value(b, ba).expect("argmax")).abs()),
@@ -327,10 +330,26 @@ pub const STEP5_BASE_CONTINUATIONS: [&str; 5] = [
 /// byte-exact destination). `\\n` entries are LITERAL backslash-n.
 const STEP5_BASINS: [(usize, &str, &str); 7] = [
     (3, "B1", " Thursday \\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\n\n"),
-    (2, "B2a", " five six seven eight nine ten eleven twelve fifteen seventeen seventeen eighteen\n\n"),
-    (2, "B2b", " five six seven eight nine ten eleven twelve fifteen seventeen twenty one\n\n"),
-    (2, "B3", " five six seven eight nine ten\n\nWhat is the sum of\n\n"),
-    (4, "B4", " Paris. The capital of the United States is Washington, D\n\n"),
+    (
+        2,
+        "B2a",
+        " five six seven eight nine ten eleven twelve fifteen seventeen seventeen eighteen\n\n",
+    ),
+    (
+        2,
+        "B2b",
+        " five six seven eight nine ten eleven twelve fifteen seventeen twenty one\n\n",
+    ),
+    (
+        2,
+        "B3",
+        " five six seven eight nine ten\n\nWhat is the sum of\n\n",
+    ),
+    (
+        4,
+        "B4",
+        " Paris. The capital of the United States is Washington, D\n\n",
+    ),
     (3, "B5a", " Thursday04:00 PM\n\nThe following is a\n\n"),
     (3, "B5b", " Thursday04:00 PM\n10:0\n\n"),
 ];
@@ -453,7 +472,11 @@ pub fn step5_band(
         .flips
         .iter()
         .any(|f| !null_dests.iter().any(|n| n.0 == f.0 && n.1 == f.1));
-    let null_m3_max = null_m3s.iter().flatten().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let null_m3_max = null_m3s
+        .iter()
+        .flatten()
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
     let m3 = on_m3.is_some_and(|v| v > null_m3_max);
     match (m2, m3) {
         (true, true) => Step5Band::Separated,
@@ -477,14 +500,18 @@ mod tests {
         assert_eq!(pairs.len(), 10);
         assert_eq!(pairs[0], (220, 15.0541));
         assert_eq!(pairs[9], (715, 7.1897));
-        assert!(pairs.iter().all(|(id, _)| *id != 10), "n_out=10 must not be a pair");
+        assert!(
+            pairs.iter().all(|(id, _)| *id != 10),
+            "n_out=10 must not be a pair"
+        );
         assert_eq!(argmax(&pairs), Some(220));
     }
 
     #[test]
     fn parse_handles_negative_comma_decimals() {
         let (step, pairs) =
-            parse_dump_line("NEURALOS_DUMP step=7 n_out=10: 16:-11,0496 220:0,0001").expect("parses");
+            parse_dump_line("NEURALOS_DUMP step=7 n_out=10: 16:-11,0496 220:0,0001")
+                .expect("parses");
         assert_eq!(step, 7);
         assert_eq!(pairs[0], (16, -11.0496));
         assert_eq!(pairs[1], (220, 0.0001));
@@ -558,8 +585,7 @@ mod tests {
         base.insert(0, vec![(1, 1.0)]);
         let mut patched = Dump::new();
         patched.insert(1, vec![(1, 1.0)]);
-        let _ = std::panic::catch_unwind(|| delta_table(&base, &patched))
-            .expect_err("must panic");
+        let _ = std::panic::catch_unwind(|| delta_table(&base, &patched)).expect_err("must panic");
     }
 
     #[test]
@@ -679,10 +705,8 @@ mod tests {
 
     #[test]
     fn duplicate_id_keeps_first_position_last_value() {
-        let (_, pairs) = parse_dump_line(
-            "NEURALOS_DUMP step=0: 3:-1,5000 4:2,0000 3:9,0000",
-        )
-        .expect("parses");
+        let (_, pairs) =
+            parse_dump_line("NEURALOS_DUMP step=0: 3:-1,5000 4:2,0000 3:9,0000").expect("parses");
         assert_eq!(pairs.len(), 2, "duplicate id collapses to one slot");
         assert_eq!(pairs[0], (3, 9.0), "first position, LAST value");
         assert_eq!(pairs[1], (4, 2.0));
@@ -787,7 +811,11 @@ mod tests {
         for (fam, want) in expect {
             let dir = step5_root(&format!("session-i-primary/{fam}"));
             let ro = step5_read_dir(&dir);
-            assert!(ro.voids.is_empty(), "{fam}: unexpected voids {:#?}", ro.voids);
+            assert!(
+                ro.voids.is_empty(),
+                "{fam}: unexpected voids {:#?}",
+                ro.voids
+            );
             let got: Vec<(usize, String)> = ro
                 .flips
                 .iter()
@@ -889,7 +917,10 @@ mod tests {
         let h2 = parse_dump_file(&step5_root("session-h2/p3_run1.err"));
         let d6 = parse_dump_file(&step5_root("session-i-primary/null-d6/p3_run1.err"));
         let bm = step_margin(fbase.get(&1).expect("step 1")).expect("≥2 entries");
-        assert!((bm - 0.0711).abs() < 0.0005, "f-judge base p3s1 margin {bm} != +0.0711");
+        assert!(
+            (bm - 0.0711).abs() < 0.0005,
+            "f-judge base p3s1 margin {bm} != +0.0711"
+        );
         // The P3′ site is step-1-specific (the pre-registered
         // |Δmargin at p3 step-1|), signed on the base's top-2 pair —
         // not max-over-knife.

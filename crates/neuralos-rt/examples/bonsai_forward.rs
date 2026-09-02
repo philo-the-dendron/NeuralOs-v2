@@ -114,11 +114,7 @@ fn main() {
     println!("attn_norm weights (milli): mean {w_mean}, absmax {w_absmax}");
 
     let row_bytes = Format::of(emb_t.ty).row_bytes(emb); // per-format stride
-    let (q_fmt, k_fmt, v_fmt) = (
-        Format::of(q_t.ty),
-        Format::of(k_t.ty),
-        Format::of(v_t.ty),
-    );
+    let (q_fmt, k_fmt, v_fmt) = (Format::of(q_t.ty), Format::of(k_t.ty), Format::of(v_t.ty));
     let mut failures = 0_usize;
 
     for &tok in &tokens {
@@ -137,13 +133,17 @@ fn main() {
         } else {
             x_nz == emb
         };
-        println!("tok {tok:>6}: emb milli mean {x_mean:>5}, absmax {x_absmax:>6}, nonzero {x_nz}/{emb}");
+        println!(
+            "tok {tok:>6}: emb milli mean {x_mean:>5}, absmax {x_absmax:>6}, nonzero {x_nz}/{emb}"
+        );
 
         // --- RMSNorm (integer).
         let mut h = vec![0_i32; emb];
         rms_norm_milli(&x, &w_norm, &mut h);
         let (h_mean, h_absmax, h_nz) = stats(&h);
-        println!("           norm milli mean {h_mean:>5}, absmax {h_absmax:>6}, nonzero {h_nz}/{emb}");
+        println!(
+            "           norm milli mean {h_mean:>5}, absmax {h_absmax:>6}, nonzero {h_nz}/{emb}"
+        );
 
         // --- QKV projections via the unit-chaining wrapper: milli in,
         // milli out (true units — the review flagged that this example's

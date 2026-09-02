@@ -36,8 +36,9 @@ const SEEDS_FILE: &str = "evidence/step5-readout/null_seeds.txt";
 /// Parse null_seeds.txt: integer lines only, comments (#) skipped.
 /// Returns the seeds in file order (ascending of record).
 fn load_seeds() -> Vec<u64> {
-    let text = std::fs::read_to_string(SEEDS_FILE)
-        .unwrap_or_else(|e| panic!("cannot read {SEEDS_FILE}: {e} — seeds are pre-committed, never minted"));
+    let text = std::fs::read_to_string(SEEDS_FILE).unwrap_or_else(|e| {
+        panic!("cannot read {SEEDS_FILE}: {e} — seeds are pre-committed, never minted")
+    });
     let seeds: Vec<u64> = text
         .lines()
         .map(|l| l.trim())
@@ -93,7 +94,8 @@ fn main() {
         (0..=4).contains(&r),
         "replicate r ∈ 0..=4 (r3/r4 are the pre-authorized escalation windows, PREREG §5 ladder)"
     );
-    let on_path = on_path.unwrap_or_else(|| format!("models/Ternary-Bonsai-4B-Q2_0-invivo-r{r}.gguf"));
+    let on_path =
+        on_path.unwrap_or_else(|| format!("models/Ternary-Bonsai-4B-Q2_0-invivo-r{r}.gguf"));
 
     // Seeds: the replicate's decade, from the file only. 201–210 → r0…
     // (the decade selection + full seed-map contract lives in
@@ -109,7 +111,10 @@ fn main() {
     let src = decode_slice(&orig_path, &p);
     let on = decode_slice(&on_path, &p);
     let diff_cells: usize = (0..N * N).filter(|&i| on[i] != src[i]).count();
-    assert!(diff_cells > 0, "ON export is byte-identical to base in the slice — nothing to shuffle (arm void?)");
+    assert!(
+        diff_cells > 0,
+        "ON export is byte-identical to base in the slice — nothing to shuffle (arm void?)"
+    );
     // Composition of record (printed; exact-dose + full-composition are
     // asserted INSIDE dose_matched_null).
     let mut comp_names = Vec::new();

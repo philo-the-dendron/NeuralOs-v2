@@ -48,7 +48,10 @@ const EXPECTED_WEIGHTS: [i16; 6] = [16384, -32767, 8192, -8192, 32767, 16384];
 
 fn main() {
     println!("=== NIR HDF5 gate — the reference's own .nir emissions ===");
-    println!("ref     : neuromorphs/NIR @ {}", neuralos_snn::nir::NIR_REF_SHA);
+    println!(
+        "ref     : neuromorphs/NIR @ {}",
+        neuralos_snn::nir::NIR_REF_SHA
+    );
     println!();
 
     // ---- gate 1: reference file reads + quantizes exactly ----------
@@ -64,7 +67,13 @@ fn main() {
     let g = doc.import(opts).unwrap_or_else(|e| fail(&e.to_string()));
     let lif_node = g.nodes.iter().find(|n| n.name == "lif").unwrap();
     let pop = lif_node.lif.unwrap();
-    let lin = g.nodes.iter().find(|n| n.name == "linear").unwrap().linear.unwrap();
+    let lin = g
+        .nodes
+        .iter()
+        .find(|n| n.name == "linear")
+        .unwrap()
+        .linear
+        .unwrap();
     for (i, (&r, (tau, leak, thr, reset, rr, c))) in g.lifs[pop.offset..pop.offset + pop.len]
         .iter()
         .zip(EXPECTED_LIFS)
@@ -74,14 +83,23 @@ fn main() {
             "quant   : LIF[{i}] tau {} us · R {} MOhm · leak {}/thr {}/reset {} quanta · C {} pF",
             r.tau_us, r.resistance_mohm, r.leak_q, r.threshold_q, r.reset_q, r.capacitance_pf
         );
-        if (r.tau_us, r.leak_q, r.threshold_q, r.reset_q, r.resistance_mohm, r.capacitance_pf)
-            != (tau, leak, thr, reset, rr, c)
+        if (
+            r.tau_us,
+            r.leak_q,
+            r.threshold_q,
+            r.reset_q,
+            r.resistance_mohm,
+            r.capacitance_pf,
+        ) != (tau, leak, thr, reset, rr, c)
         {
             fail("per-neuron quanta must be exactly the frozen values");
         }
     }
     let got: Vec<i16> = g.weights[lin.weight_offset..lin.weight_offset + 6].to_vec();
-    println!("quant   : Linear {}x{} — weights {got:?}", lin.rows, lin.cols);
+    println!(
+        "quant   : Linear {}x{} — weights {got:?}",
+        lin.rows, lin.cols
+    );
     if got != EXPECTED_WEIGHTS {
         fail("dyadic weights must quantize to the frozen vector");
     }
@@ -108,8 +126,7 @@ fn main() {
     println!("gate 2  : PASS — chain fires on the substrate: {spikes} spikes / 100 steps, first at step {first}");
 
     // ---- gate 3: named census rejection ---------------------------
-    let err = nir_hdf5_read(&fixture("neg_filter_lzf.nir"))
-        .expect_err("lzf must be censused out");
+    let err = nir_hdf5_read(&fixture("neg_filter_lzf.nir")).expect_err("lzf must be censused out");
     let msg = err.to_string();
     if !msg.contains("lzf") || !msg.contains("deflate") {
         fail("the census rejection must name the filter and the policy");
@@ -120,7 +137,9 @@ fn main() {
     let out = std::env::temp_dir().join("nir_hdf5_gate_export.nir");
     nir_hdf5_write(&out, &g).unwrap_or_else(|e| fail(&format!("export: {e}")));
     let doc2 = nir_hdf5_read(&out).unwrap_or_else(|e| fail(&format!("re-read: {e}")));
-    let g2 = doc2.import(opts).unwrap_or_else(|e| fail(&format!("re-import: {e}")));
+    let g2 = doc2
+        .import(opts)
+        .unwrap_or_else(|e| fail(&format!("re-import: {e}")));
     if doc2.version != neuralos_snn::nir::EXPORT_VERSION {
         fail("our export must carry the provenance version block");
     }
@@ -173,14 +192,17 @@ fn main() {
     // ---- gate 5: JSON export byte-stability untouched -------------
     let mut ja = vec![0u8; 8192];
     let mut jb = vec![0u8; 8192];
-    let na = neuralos_snn::nir::nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut ja)
-        .unwrap_or_else(|e| fail(&format!("json export: {e}")));
-    let nb = neuralos_snn::nir::nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut jb)
-        .unwrap();
+    let na =
+        neuralos_snn::nir::nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut ja)
+            .unwrap_or_else(|e| fail(&format!("json export: {e}")));
+    let nb =
+        neuralos_snn::nir::nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut jb)
+            .unwrap();
     if ja[..na] != jb[..nb] {
         fail("JSON export must stay byte-stable");
     }
-    let gj = NirImport::from_json(&ja[..na], opts).unwrap_or_else(|e| fail(&format!("json re-import: {e}")));
+    let gj = NirImport::from_json(&ja[..na], opts)
+        .unwrap_or_else(|e| fail(&format!("json re-import: {e}")));
     if !semantically_equal(&g, &gj) {
         fail("JSON re-import must be state-identical");
     }
@@ -189,8 +211,7 @@ fn main() {
     println!("NIR HDF5 GATE: PASS — 5/5 gates on reference-emitted .nir files");
 
     if let Ok(path) = std::env::var("NEURALOS_NIR_HDF5_OUT") {
-        std::fs::copy(&out, &path)
-            .unwrap_or_else(|e| fail(&format!("dump: {e}")));
+        std::fs::copy(&out, &path).unwrap_or_else(|e| fail(&format!("dump: {e}")));
         println!("dumped  : {path}");
     }
 }

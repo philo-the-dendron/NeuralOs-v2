@@ -78,9 +78,9 @@ use neuralos_snn::VoltageResolution;
 
 fn main() {
     let p = ExperimentParams::default();
-    let path = std::env::args().nth(1).unwrap_or_else(|| {
-        "models/Ternary-Bonsai-4B-Q2_0.gguf".into()
-    });
+    let path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "models/Ternary-Bonsai-4B-Q2_0.gguf".into());
     println!("=== Session E stage 1c: the finer-ruler sweep — centi-mV grid, same protocol ===");
     println!("file    : {path}");
     println!(
@@ -88,7 +88,10 @@ fn main() {
         p.tensor, p.n, p.n, p.gamma
     );
     println!("grid    : VoltageResolution::CentiMillivolt (0.01 mV quanta, dead zone ≈ 2 μA)");
-    println!("drive   : 1.5c schedule verbatim; I_INH={} FIXED; I_ACTIVE swept over {:?}", p.i_inh, p.amplitudes);
+    println!(
+        "drive   : 1.5c schedule verbatim; I_INH={} FIXED; I_ACTIVE swept over {:?}",
+        p.i_inh, p.amplitudes
+    );
     println!("nets    : imported / census-matched control (seed {:#x}) / zero — shared drive + noise; only weights differ", p.control_seed);
     println!("metric  : spike-TRAIN Hamming per pair (not totals) + per-neuron rate L1 + per-population Hz");
     println!("note    : centi pinned state — totals shift from the mV lineage (35,157) by design");

@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@f971c19 · PR #2 merged 3868abb, PR #3 merged f971c19, mirror in sync, no open PRs, no branches but main · open(next): fmt PR (cargo fmt --all + CI --check step), then per-commit CI job · next-work: ROADMAP § Practical next moves"
+head: "main@894fe74 · open(review): PR #4 work/fmt-sweep (lint prep + cargo fmt --all + fmt --check gate + this record), byte-identity and per-commit proofs in the PR body, cross-family review passed · next-work: per-commit CI job, then ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-02T17:40:00Z
+updated: 2026-09-02T18:30:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -6501,3 +6501,74 @@ workflows, so the class is gated and not just the instance.
 GUARD 1 honored (append only; the round-9 "33 %" is tombstoned above,
 not edited). GUARD 2 untouched. GUARD 3 untouched. Frontmatter `head:`
 line refreshed as the live-state exception permits.
+
+## Amendment (round-14 — the formatting sweep, and fmt --check becomes a gate — 2026-09-02)
+
+Session shape: the DA as adjudicator and builder, one cross-family
+reviewer lane in audit mode (read-only, findings to the adjudicator,
+verified at source before acting), the principal stamping the merge.
+Branch `work/fmt-sweep`, PR #4. Soushi informed, not gating: the
+review this PR needs is mechanical, not adversarial.
+
+### What landed, four commits, each green on its own
+
+- `bc75712` — **lint prep.** Two things are clean as written and red
+  as rustfmt writes them. In `nir.rs`, `import_node`,
+  `named_rejections_reference_fixtures` and `lif_hard_failures` cross
+  clippy's 100-line cap once their call sites and table rows are
+  reflowed: reviewer-measured under clippy's counting convention,
+  93 → 106, 91 → 107, 63 → 114; the bodies do not change. Allowed per
+  the file's five existing `too_many_lines` allows, each new one with
+  a dated reason. In `simd.rs`, `unsafe { integrate_batch_avx2(...) };`
+  on one line passes `semicolon_if_nothing_returned`; reflowed with the
+  semicolon outside the block it does not, so the semicolon moves
+  inside. `integrate_batch_avx2` returns `()`, so both forms are the
+  same expression.
+- `74fb681` — **`cargo fmt --all`**, 48 files, nothing by hand. Proven
+  by construction rather than by reading: `cargo fmt --all` re-run on
+  the parent `bc75712` in a scratch worktree produces git tree
+  `b73e06d8453304df6f700a4e1decf295ba3fb5f0`, and `74fb681^{tree}` is
+  that same hash. Byte-identical, every file.
+- `5af5d8e` — **`cargo fmt --all -- --check` as a CI step** in both
+  workflow files and in AGENTS.md § Commands. Mirror invariant holds:
+  the two files differ in the 13-line header and six `uses:` lines,
+  nothing else (reviewer-diffed and adjudicator-diffed).
+- the fourth commit — **this record**, plus the same fmt line in
+  README § Quality gates, which the reviewer found still listed the
+  gate set without it (README also omits the simd gates, a pre-existing
+  gap left for the next § Commands refresh).
+
+### Per-commit proof, before the push this time
+
+Cold scratch worktree, own `CARGO_TARGET_DIR`, `NEURALOS_REQUIRE_AVX2=1`,
+`.nirenv` cmake on PATH, the ten-command set (nine of § Commands plus
+the fmt check, judged per the gate set at each commit, so skipped at
+`bc75712` where it is not yet a gate): **29 / 29 PASS**. Two earlier
+drafts of the branch were caught red by the same loop and rebuilt
+before anything was pushed: first the three long functions (clippy
+workspace), then the semicolon (clippy under `simd`, which the warm
+tip check had not run). The loop earned its keep twice in one hour,
+which is the argument for the per-commit CI job proposed in round 13.
+
+### Reviewer findings (cross-family, audit mode), ruled
+
+Verdict pass, five findings, none blocking. Two cosmetic: README's
+gate block lacked the fmt line (fixed in this commit); the fmt step
+runs after the apt-get Slint step rather than before it, so a
+formatting failure pays for that install first (left as is, both files
+would move together, rides a later commit if it ever matters). Three
+record-only: rustfmt on the runner is inferred from
+`rust-toolchain.toml` (proven since: the pushed-ref check job on
+`cp-desktop` ran the fmt step green); no ISA append rode the branch
+(this entry); author dates on the branch are out of order because the
+prep commit was written after the sweep and placed ahead of it, one
+rebase, harmless. Also seen, out of scope, pre-existing: AGENTS.md
+§ Commands says "three members" while `Cargo.toml` lists four
+(`neuralos-nir2json`).
+
+GUARD 1 honored (append only; frontmatter head line refreshed as the
+live-state exception permits). GUARD 2 untouched. GUARD 3 untouched.
+`evidence/` untouched. Grep sweep for the moved thing (the gate set):
+AGENTS.md § Commands, both workflows, README § Quality gates all name
+fmt; ROADMAP's "current validated state" block is a dated snapshot and
+is left alone.

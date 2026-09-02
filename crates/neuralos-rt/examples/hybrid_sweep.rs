@@ -79,16 +79,21 @@ use neuralos_snn::VoltageResolution;
 
 fn main() {
     let p = ExperimentParams::default();
-    let path = std::env::args().nth(1).unwrap_or_else(|| {
-        "models/Ternary-Bonsai-4B-Q2_0.gguf".into()
-    });
-    println!("=== Session E stage 1: the amplitude sweep — where do weights begin to shape firing? ===");
+    let path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "models/Ternary-Bonsai-4B-Q2_0.gguf".into());
+    println!(
+        "=== Session E stage 1: the amplitude sweep — where do weights begin to shape firing? ==="
+    );
     println!("file    : {path}");
     println!(
         "slice   : {}, first {}×{}, γ={}, full-minus-diagonal, STDP OFF (fixed weights)",
         p.tensor, p.n, p.n, p.gamma
     );
-    println!("drive   : 1.5c schedule verbatim; I_INH={} FIXED; I_ACTIVE swept over {:?}", p.i_inh, p.amplitudes);
+    println!(
+        "drive   : 1.5c schedule verbatim; I_INH={} FIXED; I_ACTIVE swept over {:?}",
+        p.i_inh, p.amplitudes
+    );
     println!("nets    : imported / census-matched control (seed {:#x}) / zero — shared drive + noise; only weights differ", p.control_seed);
     println!("metric  : spike-TRAIN Hamming per pair (not totals) + per-neuron rate L1 + per-population Hz");
     println!();

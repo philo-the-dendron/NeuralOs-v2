@@ -66,6 +66,7 @@ NeuralOs-v2/
 These are the commands the repo is expected to satisfy:
 
 ```bash
+cargo fmt --all -- --check
 cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings

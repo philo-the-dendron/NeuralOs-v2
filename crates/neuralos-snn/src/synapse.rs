@@ -176,8 +176,8 @@ impl Default for Synapse {
 /// per neurotransmitter type.
 fn biological_params(t: SynapseType) -> (u16, u16, i16, i16) {
     match t {
-        SynapseType::Excitatory => (500, 5_000, 2000, 0),      // AMPA
-        SynapseType::Inhibitory => (300, 10_000, 0, -2000),    // GABA
+        SynapseType::Excitatory => (500, 5_000, 2000, 0), // AMPA
+        SynapseType::Inhibitory => (300, 10_000, 0, -2000), // GABA
         SynapseType::Modulatory => (1000, 50_000, 1000, -1000), // Dopamine etc.
     }
 }
@@ -253,8 +253,7 @@ impl STDPRule {
     pub fn calculate_weight_change(&self, dt_us: i32) -> i16 {
         if dt_us > 0 {
             // Post fired before pre → LTD (depress the synapse).
-            let decay =
-                (i64::from(dt_us).abs() * i64::from(SCALE)) / i64::from(self.tau_minus_us);
+            let decay = (i64::from(dt_us).abs() * i64::from(SCALE)) / i64::from(self.tau_minus_us);
             if decay < 10_000 {
                 let factor = (i64::from(SCALE) - decay).max(0); // Clamp to ≥ 0
                 ((i64::from(self.a_minus) * factor * i64::from(self.learning_rate))
@@ -264,8 +263,7 @@ impl STDPRule {
             }
         } else {
             // Pre fired before post (or simultaneous) → LTP (potentiate).
-            let decay =
-                (i64::from(dt_us).abs() * i64::from(SCALE)) / i64::from(self.tau_plus_us);
+            let decay = (i64::from(dt_us).abs() * i64::from(SCALE)) / i64::from(self.tau_plus_us);
             if decay < 10_000 {
                 let factor = (i64::from(SCALE) - decay).max(0); // Clamp to ≥ 0
                 ((i64::from(self.a_plus) * factor * i64::from(self.learning_rate))
@@ -367,7 +365,10 @@ mod tests {
         let rule = STDPRule::new();
         let dt_us: i32 = -5_000; // Pre 5ms before post
         let delta = rule.calculate_weight_change(dt_us);
-        assert!(delta >= 0, "pre-before-post must produce LTP (>=0), got {delta}");
+        assert!(
+            delta >= 0,
+            "pre-before-post must produce LTP (>=0), got {delta}"
+        );
     }
 
     #[test]
@@ -376,7 +377,10 @@ mod tests {
         let rule = STDPRule::new();
         let dt_us: i32 = 5_000;
         let delta = rule.calculate_weight_change(dt_us);
-        assert!(delta <= 0, "post-before-pre must produce LTD (<=0), got {delta}");
+        assert!(
+            delta <= 0,
+            "post-before-pre must produce LTD (<=0), got {delta}"
+        );
     }
 
     #[test]
@@ -394,8 +398,8 @@ mod tests {
         // dt = 0 → simultaneous; LTP branch with decay = 0 → factor = SCALE → a_plus · lr.
         let rule = STDPRule::new();
         let delta = rule.calculate_weight_change(0);
-        let expected = (i32::from(rule.a_plus) * SCALE * i32::from(rule.learning_rate))
-            / (SCALE * SCALE);
+        let expected =
+            (i32::from(rule.a_plus) * SCALE * i32::from(rule.learning_rate)) / (SCALE * SCALE);
         assert_eq!(delta, expected as i16);
     }
 
@@ -436,10 +440,13 @@ mod tests {
         rule.learning_rate = u16::MAX;
         // dt = 0 → factor = SCALE exactly (the maximal product).
         let delta = rule.calculate_weight_change(0);
-        let expected =
-            (i64::from(rule.a_plus) * i64::from(SCALE) * i64::from(u16::MAX))
-                / (i64::from(SCALE) * i64::from(SCALE));
-        assert_eq!(i64::from(delta), expected, "no wrap at lr = u16::MAX, dt = 0");
+        let expected = (i64::from(rule.a_plus) * i64::from(SCALE) * i64::from(u16::MAX))
+            / (i64::from(SCALE) * i64::from(SCALE));
+        assert_eq!(
+            i64::from(delta),
+            expected,
+            "no wrap at lr = u16::MAX, dt = 0"
+        );
     }
 
     // ----- Property tests (Cardano-grade rigor) -----

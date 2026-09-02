@@ -14,9 +14,15 @@
 use std::{env, fs, path::PathBuf};
 
 fn main() {
-    let plugin_dir: PathBuf = [&env::var("CARGO_MANIFEST_DIR").unwrap(), "..", "..", "tools", "hdf5-plugins"]
-        .iter()
-        .collect();
+    let plugin_dir: PathBuf = [
+        &env::var("CARGO_MANIFEST_DIR").unwrap(),
+        "..",
+        "..",
+        "tools",
+        "hdf5-plugins",
+    ]
+    .iter()
+    .collect();
     println!(
         "cargo:rustc-env=NEURALOS_HDF5_PLUGIN_DIR={}",
         plugin_dir.display()

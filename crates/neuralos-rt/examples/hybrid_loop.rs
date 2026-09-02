@@ -56,8 +56,8 @@
 #![allow(non_snake_case)] // phase-2 locals keep the frozen original's const names
 
 use neuralos_rt::harness::{
-    decode_slice, peak_rss_mb, run_gate_phase, splice_trits, tensor_abs,
-    verify_disk_roundtrip, ExperimentParams,
+    decode_slice, peak_rss_mb, run_gate_phase, splice_trits, tensor_abs, verify_disk_roundtrip,
+    ExperimentParams,
 };
 use neuralos_rt::GgufFile;
 use neuralos_snn::Trit;
@@ -86,20 +86,25 @@ const LOOP_RSS_BUDGET_MB: u64 = 2560;
 fn main() {
     let t0 = std::time::Instant::now();
     let p = ExperimentParams::default();
-    let path = std::env::args().nth(1).unwrap_or_else(|| {
-        "models/Ternary-Bonsai-4B-Q2_0.gguf".into()
-    });
-    let out_path = std::env::args().nth(2).unwrap_or_else(|| {
-        "models/Ternary-Bonsai-4B-Q2_0-loop.gguf".into()
-    });
-    let control_mode = std::env::args().nth(3).map(|a| a == "control").unwrap_or(false);
+    let path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "models/Ternary-Bonsai-4B-Q2_0.gguf".into());
+    let out_path = std::env::args()
+        .nth(2)
+        .unwrap_or_else(|| "models/Ternary-Bonsai-4B-Q2_0-loop.gguf".into());
+    let control_mode = std::env::args()
+        .nth(3)
+        .map(|a| a == "control")
+        .unwrap_or(false);
     println!(
         "=== Session E: the loop-closer — Bonsai Q2_0 → Trit → SNN → STDP → Q2_0 → patched GGUF ==="
     );
     println!("src     : {path}");
     println!("dst     : {out_path}");
     if control_mode {
-        println!("mode    : CONTROL — export carries the UNADAPTED source trits (attribution control)");
+        println!(
+            "mode    : CONTROL — export carries the UNADAPTED source trits (attribution control)"
+        );
     }
     println!(
         "host    : {}, first {}×{} slice (col j = pre → row i = post, matvec dataflow)",
@@ -112,7 +117,10 @@ fn main() {
 
     // ----- Decode (scoped: file buffer drops before any network is built) -----
     let src = decode_slice(&path, &p);
-    println!("decode  : {} trits from real Q2_0 bytes (peak RSS so far is the file buffer)", src.len());
+    println!(
+        "decode  : {} trits from real Q2_0 bytes (peak RSS so far is the file buffer)",
+        src.len()
+    );
 
     // ----- Phase 1: the D-2 gate phase, verbatim (prints G1–G3 + verdict) -----
     let o = run_gate_phase(&src, &p, true);
@@ -124,10 +132,22 @@ fn main() {
     // ----- D-2 recorded numbers: asserted BEFORE any write -----
     println!();
     println!("--- D-2 preconditions (the surgery operates only on the recorded adapted state) ---");
-    assert_eq!(o.imported_stats.total_spikes, D2_SPIKES_IMP, "D-2 G2 imported spikes");
-    assert_eq!(o.control_stats.total_spikes, D2_SPIKES_CTL, "D-2 G2 control spikes");
-    assert_eq!(o.zero_stats.total_spikes, D2_SPIKES_ZERO, "D-2 G2 zero-w spikes");
-    assert_eq!(o.hybrid.plasticity_events, D2_PLASTICITY_EVENTS, "D-2 plasticity events");
+    assert_eq!(
+        o.imported_stats.total_spikes, D2_SPIKES_IMP,
+        "D-2 G2 imported spikes"
+    );
+    assert_eq!(
+        o.control_stats.total_spikes, D2_SPIKES_CTL,
+        "D-2 G2 control spikes"
+    );
+    assert_eq!(
+        o.zero_stats.total_spikes, D2_SPIKES_ZERO,
+        "D-2 G2 zero-w spikes"
+    );
+    assert_eq!(
+        o.hybrid.plasticity_events, D2_PLASTICITY_EVENTS,
+        "D-2 plasticity events"
+    );
     assert_eq!(o.hybrid.flips, D2_FLIPS, "D-2 bucket flips");
     assert_eq!(o.hamming, D2_HAMMING, "D-2 Hamming count");
     assert!(
@@ -169,12 +189,12 @@ fn main() {
     for i in 0..N {
         adapted[i * N + i] = src[i * N + i];
     }
-    assert_eq!(k, o.hybrid.final_trits.len(), "synapse walk covered exactly");
-    let changed_cells = adapted
-        .iter()
-        .zip(&src)
-        .filter(|(a, b)| a != b)
-        .count() as u64;
+    assert_eq!(
+        k,
+        o.hybrid.final_trits.len(),
+        "synapse walk covered exactly"
+    );
+    let changed_cells = adapted.iter().zip(&src).filter(|(a, b)| a != b).count() as u64;
     assert_eq!(
         changed_cells, o.hamming,
         "cell deltas == D-2 Hamming (diagonal untouched by construction)"
@@ -196,9 +216,7 @@ fn main() {
     let f2 = GgufFile::parse(&buf).expect("re-parse");
     let abs = tensor_abs(&f2, &p);
     assert!(abs + TENSOR_BYTES <= buf.len(), "tensor window inside file");
-    println!(
-        "  tensor window: abs {abs} + {TENSOR_BYTES} B (dims-derived, not slice-inferred)"
-    );
+    println!("  tensor window: abs {abs} + {TENSOR_BYTES} B (dims-derived, not slice-inferred)");
 
     // Splice via the shared surgery unit (R4-extracted): re-encode the
     // first 4 blocks from the EXPORT trits (adapted, or source in
@@ -218,7 +236,10 @@ fn main() {
         N * 8
     );
     if control_mode {
-        assert_eq!(code_bytes_changed, 0, "control: encode(src) must reproduce every original byte");
+        assert_eq!(
+            code_bytes_changed, 0,
+            "control: encode(src) must reproduce every original byte"
+        );
     }
 
     // S1 CONTAINMENT: compare against a fresh read of the original — every
@@ -251,7 +272,10 @@ fn main() {
     if control_mode {
         assert_eq!(inside, 0, "control: the whole file must be byte-identical");
     } else {
-        assert_eq!(inside, code_bytes_changed, "inside == code bytes (scales untouched)");
+        assert_eq!(
+            inside, code_bytes_changed,
+            "inside == code bytes (scales untouched)"
+        );
     }
     drop(orig);
 

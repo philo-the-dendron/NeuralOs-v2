@@ -55,8 +55,7 @@ fn run_demo() {
     );
     println!(
         "│ Timestep: {}μs — {} ms simulated                          │",
-        TIMESTEP_US,
-        SIMULATION_STEPS
+        TIMESTEP_US, SIMULATION_STEPS
     );
 
     net.build_topology().expect("topology build");
@@ -120,8 +119,14 @@ fn run_demo() {
     println!("┌─ Weight evolution (STDP learning) ─────────────────────────┐");
     let (im, is) = weight_stats(&initial_weights);
     let (fm, fs) = weight_stats(&final_weights);
-    println!("│ Mean weight:   {:>7.1} → {:>7.1}                       │", im, fm);
-    println!("│ Std deviation: {:>7.1} → {:>7.1}                       │", is, fs);
+    println!(
+        "│ Mean weight:   {:>7.1} → {:>7.1}                       │",
+        im, fm
+    );
+    println!(
+        "│ Std deviation: {:>7.1} → {:>7.1}                       │",
+        is, fs
+    );
     println!(
         "│ Synapses changed: {} / {} ({:.0}%)                     │",
         changed,
@@ -211,9 +216,18 @@ fn print_activity_sparkline(spikes_per_step: &[u32]) {
 fn print_final_stats(net: &SpikingNeuralNetwork) {
     let s = net.stats();
     println!("┌─ Final statistics ──────────────────────────────────────────┐");
-    println!("│ Total spikes:           {:>8}                         │", s.total_spikes);
-    println!("│ Plasticity events:      {:>8}                         │", s.plasticity_events);
-    println!("│ Synapses:               {:>8}                         │", s.total_synapses);
+    println!(
+        "│ Total spikes:           {:>8}                         │",
+        s.total_spikes
+    );
+    println!(
+        "│ Plasticity events:      {:>8}                         │",
+        s.plasticity_events
+    );
+    println!(
+        "│ Synapses:               {:>8}                         │",
+        s.total_synapses
+    );
     println!(
         "│ Avg firing rate:        {:>8.2} Hz                    │",
         s.firing_rate_hz
@@ -237,7 +251,11 @@ fn weight_stats(weights: &[i16]) -> (f64, f64) {
     }
     let n = weights.len() as f64;
     let mean = weights.iter().map(|&w| w as f64).sum::<f64>() / n;
-    let variance = weights.iter().map(|&w| (w as f64 - mean).powi(2)).sum::<f64>() / n;
+    let variance = weights
+        .iter()
+        .map(|&w| (w as f64 - mean).powi(2))
+        .sum::<f64>()
+        / n;
     (mean, variance.sqrt())
 }
 
