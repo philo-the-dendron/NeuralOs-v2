@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@b9aeab0 · open(session): SIMD hardening build (builder) · doctrine ISA append (adjudicator) · next-work: ROADMAP § Practical next moves"
+head: "main@02427c0 · open(review): PR #2 fix/lif-scalar-domain @ 0aa2b29 + PR #3 fix/simd-fixture-and-record @ 25f83d9, Soushi888 requested, merge order #2 then #3 · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-08-31T04:48:35Z
+updated: 2026-09-02T00:35:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -5874,3 +5874,459 @@ GUARD 1 honored (append; live-state edit rides the post-merge bump).
 GUARD 2 untouched. GUARD 3 untouched. ROADMAP: Phase-1 SIMD row and
 § Practical next moves item 6 flipped in the same commit; lock-free
 remains the Phase-1 remainder.
+
+## Amendment (round-9 review — the scalar copy, the blind fixture, the record — 2026-09-01)
+
+Session shape: adjudicator, one builder session (this leg), findings
+from an independent cross-family review round. Seven findings, every
+one verified at the bytes by the adjudicator before the brief went out
+and re-verified at its source by the builder before it was fixed. Roles
+per AGENTS.md § Session protocol; the builder pushed nothing and merged
+nothing.
+
+**Scope ruling (the principal's, not the builder's).** PR #1 merges as
+approved at `137088d` — the reviewed record stands unaltered, and
+`work/simd-hardening` was left exactly as reviewed: no reset, no
+rewrite, no commit added. The seven fixes were restructured onto two
+follow-up branches off `137088d`, which also honors the scope the
+external reviewer approved: the `lif_neuron` change was always promised
+to its own branch and now lives there.
+
+- `fix/lif-scalar-domain` — the scalar-neuron arithmetic (F2, F3).
+- `fix/simd-fixture-and-record` — the fixture and the record (F1, F4,
+  F5, F6, F7).
+
+Every commit on both branches is green on its own under the full
+§ Commands gate set, proven in a detached-HEAD loop over
+`git rev-list --reverse 137088d..<branch>`. The loop is deliberately
+NOT `git rebase -x`: at this base that replays all seventeen branch
+commits and rewrites `cfe38f9` / `8a63d58` / `137088d`, i.e. destroys
+the very shas F4 exists to pin. Started, caught, aborted; the branch
+verified unrewritten afterwards.
+
+### What was wrong (found by the reviewer, reproduced, fixed)
+
+- **The scalar neuron carried its own copy of `dt_over_tau`, and the
+  copy was the unfixed one.** `2026-08-30` fixed
+  `simd::dt_over_tau` for wrapping `as i32` casts; the inline copy in
+  `LIFNeuron::integrate_and_fire` was never touched. `tau_membrane_us
+  = u32::MAX` cast to `-1`, so the quotient was `-dt * 1000` and a
+  single 1 ms step at 1000 µA drove the membrane from rest to the
+  −100 floor — silently, in both profiles, no panic. `dt_us >=
+  2_147_484` overflowed the product (debug panic, release wrap). Fixed
+  by making it ONE definition: the helper and `DT_OVER_TAU_MAX` moved
+  into `lif_neuron` (`no_std`, where the canonical LIF arithmetic
+  lives) and `simd` re-exports them, so the public paths
+  `simd::dt_over_tau` / `simd::DT_OVER_TAU_MAX` are unchanged and there
+  is no second definition left to drift from. Named honestly in the
+  doc: 1884 is derived over the batch's `i16`-resistance mV domain, so
+  it is conservative for `LIFNeuron`'s wider domain (`u16` resistance,
+  centi-mV scale), not tight.
+- **The test that was supposed to catch that could not reach it.**
+  `prop_scalar_batch_is_bit_equal_to_integrate_and_fire` drew
+  `dt_us <= tau_membrane_us`, a ratio of at most 1, while
+  `dt_over_tau` saturates at 1884. Nothing in the drawn domain touched
+  the clamp, so the unsaturating copy agreed with the helper everywhere
+  the test looked, and the module doc's "same `dt_over_tau`" was false
+  above `dt/τ = 1.884` with no test able to say so. Witness the domain
+  could not draw: `dt=1000, τ=500, membrane = resting = −70,
+  input=200, resistance=100` — neuron 2000 → −30 mV, batch 1884 → −33.
+  Domain widened to `dt/τ = 10`; the `dtot == inline` cross-check
+  retired (no second formula remains) and replaced by the invariant
+  that matters, `dtot ∈ 0..=DT_OVER_TAU_MAX`; the witness and both
+  sides of the edge banked as fixed rows.
+- **The corner fixture was 75.6 % blind and said so nowhere.**
+  `overflow_corners_at_max_dt_over_tau` pinned `(4 mV, 180, 0)` at
+  `DT_OVER_TAU_MAX`, and 2371 of its 3136 rows land BOTH halves on a
+  clamp bound, where the clamp erases the arithmetic and agreement is
+  free. At `|dt_over_tau| = 1884` a row only stays off the bound when
+  the current term nearly cancels the leak, and five `i16` extremes
+  essentially never do. So the `0` measured the fixture, not the
+  kernel — and it had been quoted in the module doc as "no spike bit
+  differs" and used as the basis of a recorded design fork. On the mV
+  grid the halves differ by up to 8 mV at `+1884` and **15 mV at
+  `−1884`**, and spike bits DO differ. Negative `dt_over_tau` is
+  reachable through both public entry points (they clamp to
+  `−MAX..=MAX`) and had zero coverage. Fixed by
+  `measure_divergence`, which returns the blind-row count WITH the
+  triple so no fixture can report divergence again without reporting
+  how much of itself could not see it; the corner fixture keeps its
+  overflow job at both signs and pins its own 2371; and
+  `mv_grid_divergence_at_max_dt_over_tau` (3696 rows = 231 × 16, each
+  row's current built from its own leak, blind fraction 33 %) is the
+  divergence fixture. One row named:
+  `a_spike_bit_diverges_on_the_mv_grid_at_max_dt_over_tau` — the
+  scalar lands on −55 and fires, AVX2 lands on −56 and does not.
+- **A dangling commit citation in sha-pinned evidence.**
+  `bench_alternated.log` cites `work/simd-hardening@1c5615a` for the
+  after-binary. That object is the pre-amend version of `cfe38f9`,
+  reachable from no ref and alive only via the reflog: `git rev-parse`
+  resolves it in this clone, `git log --all` cannot find it, and a
+  fresh clone has it not at all. (Recorded as dangling, not as
+  nonexistent. The review's phrasing was "exists nowhere", which is
+  exactly true where that measurement was taken — a fresh clone — and
+  overstates it in the working clone, where the reflog still holds the
+  object. Both halves are worth keeping: the citation is unusable to a
+  reader either way, and the reason differs by clone.)
+  The README had already substituted `cfe38f9`
+  without saying it had. The substitution is right and is now SHOWN:
+  shared parent `4eb2719`; every hunk of `1c5615a..cfe38f9` and of
+  `cfe38f9..8a63d58` falls after line 583, which is `mod tests {` at
+  all three revisions; lines 1–582 of `simd.rs` hash identically at
+  `1c5615a` / `cfe38f9` / `8a63d58` / `137088d`. `--example
+  bench_simd` compiles no `#[cfg(test)]` code, so the binaries are the
+  same object, which is what the log's own byte-identity claim rests
+  on. The log itself is untouched and its hash in `SHA256SUMS` is
+  unchanged; the README is the living rebuild recipe by its own species
+  line and carries the correction.
+- **The benchmark band was one run quoted as two.** "12–15 %" is run 2
+  alone (+12.5 % raw, +15.1 % min-to-min). Run 1 is **+8.2 % raw**,
+  outside the band on the low side. Controlling for the scalar column,
+  which is what the control is for, both runs agree exactly at
+  **+11.7 %**. That is now the stated cost, with a per-run table.
+- **Two comments that said things that are not true.** The trajectory
+  witness wrote `5 × (134 + 70) = 1020`: sum and conclusion right,
+  terms wrong (leak 107, AVX2 `current_term` 97). And the
+  `missing_safety_doc` allow was justified by "workspace has
+  `unsafe_code = "allow"`" — there is no `[lints]` table in the
+  workspace manifest or any member manifest, and `unsafe_code` appears
+  nowhere in the tree but that comment. The permission is real (the
+  rustc default); the cited source never existed.
+
+### The recorded fork, re-measured — NOT re-decided
+
+The fork *truncate only the delta shift* was rejected because the
+committed `(truncate, truncate)` had "zero spike disagreement at the
+corners" against the fork's 18. That zero was the blind fixture.
+Re-measured over both signs of the reworked mV-grid fixture:
+
+| | spike disagreements | membrane diffs | max |
+|---|---|---|---|
+| committed `(truncate, truncate)` | 157 | 4592 | 15 mV |
+| fork `(floor ct, truncate delta)` | **122** | **4277** | 15 mV |
+
+The comparison inverts: on a fixture that can see the clamp region the
+fork is better on every axis it was rejected for, and it is also the
+cheaper one. Second-order, the fork's trigger text says it recovers
+half of "~15 %" — that figure is the F7 error, so it is half of ~12 %.
+
+**This is a measurement, not a ruling.** Re-deciding a recorded fork is
+the principal's call. The committed choice stays in the code, the
+module doc carries the new numbers with an explicit "not a ruling"
+note, and the fork's original decision text is left as written rather
+than edited.
+
+### Named honestly against the work
+
+- The reworked fixture is NOT a stronger mutation net. Four mutants
+  (either divisor perturbed, delta floored, membrane off-by-one) are
+  caught by old and new alike; one (delta divisor 1024 → 1023) is
+  caught by neither. Its value is that the numbers it reports are true,
+  not that it kills more.
+- `total_current * resistance_mohm * scale` in `integrate_and_fire`
+  can still overflow `i32` at the centi-mV scale with a `u16`
+  resistance, independent of `dt_over_tau`. Out of scope for this
+  round, named here so it is not rediscovered as new.
+- Two builder process errors, both caught before they reached the
+  record: a `cd` that persisted across tool calls made a repo-root
+  search return empty and nearly produced a false finding that
+  `examples/bench_simd.rs` does not exist (it does); and a working-tree
+  edit issued while the per-commit checkout loop was running in that
+  same tree. Same family as the § instrument rules — the second is a
+  new instance of "never let a tool act on an input state you have not
+  re-checked".
+
+### Round-10 review — what the two independent lanes found in the fixes
+
+Both lanes read the two follow-up branches, not the summaries. One
+finding (H1, the `DT_OVER_TAU_MAX` clamp on `LIFNeuron`) was a design
+fork for the principal and is ruled in its own section below. The rest
+are fixed here, each verified at the bytes before it was touched:
+
+- **The fork's re-measured numbers had no falsifier in the tree.** The
+  committed side's 157 / 4592 pinned to an asserted tuple; the fork's
+  122 / 4277 came from a mutant run outside the repository — a fresh
+  instance of the exact defect § Equivalence domain confesses to about
+  its own older figures, committed in the session that quoted the
+  confession. Fixed by
+  `the_recorded_fork_re_measured_against_the_committed_choice`, which
+  models one AVX2 lane in either rounding variant and validates the
+  COMMITTED variant lane-by-lane against the real `integrate_batch_avx2`
+  over every row of both signs BEFORE reporting either tuple. The
+  instrument is checked against hardware before its output is believed.
+- **The spike witness stood on a state no neuron can hold.** It drove
+  `resistance = -10`; the batch takes `i16` resistance so the kernel
+  accepts it, but `LIFNeuron::resistance_mohm` is `u16`. The row was
+  unreachable from the scalar side it is a witness ABOUT. Legal twin
+  `input = 247, resistance = 100` reproduces it exactly (-55 fires,
+  -56 does not).
+- **`both_saturating` counted opposite bounds as blind.** A row where
+  the scalar clamped to −100 and AVX2 to 50 — the loudest disagreement
+  the grid can express — was counted as a row that could not see the
+  arithmetic, which would let a fixture inflate its own blindness and
+  hide a divergence it did see. Now requires equality. No current
+  fixture has such a row, so every pinned count is unmoved; the metric
+  was wrong regardless, and it is asserted.
+- **Three stale figures in the module doc.** The fork's TRIGGER line
+  still read "~15%" with its correction sixteen lines below (the
+  trigger is the read path for whoever revisits the fork, so the figure
+  belongs there; the recorded decision text is still untouched); "the 4
+  and 5 above" pointed at a paragraph that has read 8 and 8 since
+  `8a63d58`; and the overflow derivation wrote `|P| ≤ 32_768 × 32_768`
+  when no `i16` holds 32_768 and the bound is `|i16::MIN|²`.
+- **The evidence README header rounded its own table.** "roughly 12 %"
+  against a table pinning +11.7 % one paragraph below. Rounding a
+  figure the same document states exactly is how "12–15 %" got loose.
+- **A commit cited a correction that landed one commit later.** On a
+  branch whose doctrine is that every commit stands alone, `9976a77`
+  cited the README as "corrected 2026-09-01" before the correction was
+  in history. Reordered so the evidence commits precede it.
+- **The banked proptest seed was dropped, not regenerated.** It shrank
+  to all zeros, so under the fixed code it pins no arithmetic. (Not
+  vacuous, as reported: its `dt_us = 2_147_486` is past the
+  `2_147_484` overflow edge and that IS what it reproduced — but that
+  edge is already asserted by value in
+  `a_time_step_past_the_i32_product_saturates_instead_of_overflowing`.)
+  Regenerating a meaningful one would have encoded clamp semantics that
+  H1 then overturned — the clamp is off the neuron entirely — so the
+  decision to drop rather than bank was the right one on the merits and
+  not only on caution.
+
+### Corrections owed to THIS record (the 2026-08-30/31 close-out)
+
+Named here because an append is the only legal way to correct them
+(GUARD 1), and because each was quoted from this file into later work:
+
+- "Branch `work/simd-hardening` … one file
+  (`crates/neuralos-snn/src/simd.rs`), TEN commits" describes the ten
+  code commits it enumerates, not the branch: the range
+  `f82fc1e..137088d` is **eleven** commits over **seven** files
+  (ISA.md, simd.rs, docs/ROADMAP.md, evidence/INDEX.md and the three
+  files under `evidence/simd-hardening/`). True of the list, false of
+  the branch, and read as the branch.
+- ISC-3 records "corner divergence pinned exactly (was (3, 375, 44),
+  now (4, 180, 0))". The `0` there is not agreement: 75.6 % of that
+  fixture is clamp-blind, and on the mV grid the same `|dt_over_tau|`
+  gives up to 15 mV and 92 spike disagreements. The triple stands as a
+  measurement of that fixture; it never supported the reading it was
+  given.
+- The fork (c) trigger in § Decision reads "the ~15% ever matters to a
+  consumer". The benchmark's own scalar control puts it at **+11.7 %**,
+  identical in both runs. Half of ~12 %, not of ~15 %.
+- § Public-API notes is short by two items, now that H1 is ruled.
+  `LIFNeuron::integrate_and_fire` changes observable behaviour on an
+  unchanged signature, and the change is a **fix, not a trade**: it was
+  wrapping (`tau > i32::MAX` inverted the step; `dt_us >= 2_147_484`
+  overflowed the product; `resting − membrane` overflowed in `i16`
+  off-grid; `current × resistance × scale` overflowed `i32` at centi-mV)
+  and it is now exact in `i64` over the whole domain. No previously
+  CORRECT result moves. And `lif_neuron::dt_over_tau` is a new public
+  path returning the exact `i64` factor, with `simd::dt_over_tau`
+  unchanged for batch callers — it is that same function plus the
+  kernel's clamp — and `simd::DT_OVER_TAU_MAX` staying where its
+  derivation lives.
+
+### H1 — the shared bound, ruled and returned (2026-09-01)
+
+The round-9 fix gave `LIFNeuron` and the batch kernel one saturating
+helper, on the reasoning that one definition beats two. The reasoning
+was right and the object was wrong: what should be shared is the
+FORMULA, not the kernel's overflow limit. Two defects followed, both
+found by the round-10 review lanes and both verified at the bytes:
+
+- **It silently changed correct results in a legal domain.**
+  `dt = 40_000 µs` into `τ = 20_000 µs` is a ratio of 2. Nothing
+  overflows, every value is physical, and `dt_over_tau = 2000` is the
+  correct discretisation. Clamping to the batch's 1884 moved a step
+  from a −100 mV membrane toward a −70 mV rest from **−40 mV to
+  −44 mV**, and it is reachable: `SpikingNeuralNetwork::new(n, 40_000, ..)`
+  validates only `time_step != 0`. (The NIR path is capped at ratio ≤ 1
+  by `nir.rs`'s `TauBelowDt`, so it never saw this.)
+- **The doc's "conservative there, not tight" was inverted.** 1884 is
+  derived over the batch's `i16`-resistance mV domain. Over the neuron's
+  `u16` resistance and centi-mV scale the safe `i32` limit is nearer 9,
+  and `1884 × 214_753_534 / 1000` overflows `i32` outright — the same
+  residual the builder had flagged and left out of scope.
+
+**The principal's ruling: `LIFNeuron` computes exactly; 1884 belongs to
+the batch kernel alone.** As landed:
+
+- `lif_neuron::dt_over_tau` is the one definition of the formula, exact
+  over the whole `u32 × u32` domain, `u64` internals, returning `i64`,
+  saturating nothing. `simd::dt_over_tau` is that function plus the
+  kernel's clamp — observably unchanged for batch callers — and
+  `DT_OVER_TAU_MAX` moved back to `simd`, documented as the kernel's
+  `i32` limit rather than a property of the model.
+- The neuron's whole chain is `i64` and exact for every input in
+  `u32 dt × u32 τ × i16 current × u16 resistance × either scale`. Both
+  sides of the leak subtraction widen before subtracting, which also
+  retires one of the four documented neuron-vs-batch differences.
+- `i64` alone is NOT sufficient and the code says so: the largest legal
+  `dt_over_tau × (leak + current_term)` is about 9.2e20 against an
+  `i64::MAX` of 9.2e18. The delta multiply saturates, and saturating is
+  exact rather than approximate here — it requires `|delta| > 9.2e15`,
+  millions of times outside the voltage clamp, sign-preserving, so the
+  clamped answer is the unbounded-integer answer.
+- That is proved, not asserted.
+  `prop_integrate_and_fire_is_exact_over_the_whole_domain` checks the
+  result against an `i128` reference that cannot overflow, across the
+  entire domain and both grids. Red before the fix with `attempt to
+  multiply with overflow`.
+- The bit-equality contract is re-scoped rather than weakened. The
+  proptest draws `dt/τ` out to 10 so it STRADDLES the edge: below 1.884
+  bit-equal, above it the batch must equal the neuron run AT the
+  clamped factor — so the divergence is provably the clamp and nothing
+  else, and a second defect cannot hide inside the known one. Named
+  witnesses in `the_neuron_is_exact_where_the_batch_clamps` and
+  `the_batch_diverges_from_the_neuron_by_exactly_its_own_clamp`.
+
+**The neuron is the reference semantic; the batch is the documented
+approximation.** That sentence is the ruling, and it is now what the
+module doc says.
+
+### Round-11 review — the proof that could not fire, and three blind rows
+
+The arithmetic ruling held under independent attack: a reviewer verified
+the saturating-exactness claim deterministically on four rows against an
+`i128` reference. What did not hold was the EVIDENCE for it, and the
+pattern is one this record has now seen four times in three sessions.
+
+- **The load-bearing proof cited a falsifier that cannot fire.**
+  `prop_integrate_and_fire_is_exact_over_the_whole_domain` was presented
+  as proving the `saturating_mul` exact. Its uniform draws essentially
+  never reach that branch — saturation needs a `dt/τ` near 4.3e12 AND a
+  near-maximal `|leak + current_term|` in the SAME draw, and a reviewer
+  sampled two million draws from its distribution without one
+  saturating. The claim was true and the citation was empty. Fixed by
+  `the_saturating_multiply_lands_where_an_unbounded_integer_would`, four
+  fixed rows over both signs and both grids, each ASSERTED to actually
+  saturate before its value is checked — and that guard is load-bearing:
+  with the default 20 000 µs τ the rows stop saturating and the test
+  goes red rather than passing vacuously. The doc comment on the
+  proptest now says what it does not prove.
+- **Three fixture rows could not see what they claimed.** Two rows of
+  `the_batch_diverges_from_the_neuron_by_exactly_its_own_clamp` landed
+  BOTH halves on a voltage bound, where the clamp erases the arithmetic
+  and agreement is free; and the proptest's above-the-clamp arm is
+  **95.9 %** blind for the same reason (measured over 200 000 samples;
+  the reviewer measured ~92 % modelling the draw distribution
+  differently — `any::<i16>()` is edge-biased, and neither figure is
+  quoted as exact). Rows replaced with five that keep both halves
+  strictly inside the grid, including a `dt/τ = 20` row built so the
+  current term nearly cancels the leak, which is the only way to stay
+  off the bounds at that ratio. The arm now pins its own blind fraction
+  and says the fixed rows hold the pin.
+- **This is the same defect the corner fixture was rebuilt for, one day
+  later, in a fixture written by the same hand.** Round 10 found a 75.6 %
+  clamp-blind corner fixture and added a blind-fraction counter to stop
+  it recurring. The counter was added to `simd`'s measurement helper and
+  the new rows were written on the OTHER branch, where the counter is
+  not. A rule that lives in one module does not travel; the general form
+  is that a fixture measuring near a saturating bound is blind by
+  default and must prove otherwise.
+- **Two numbers in the record were wrong and are corrected.** The commit
+  message derived `214_753_534` where the code has the derivable
+  `214_810_623` (`32_768 × 65_535 × 100 / 1000 + 65_535`); and the
+  overflow comment read as centi-mV-only when the mV grid also exceeds
+  `i64::MAX` (max `|sum|` 2_212_985 × 4.295e12 ≈ 9.5e18 against 9.22e18).
+- **Three record defects on the sibling branch.** The fork note
+  attributed the (122, 4277) tuple to
+  `mv_grid_divergence_at_max_dt_over_tau`, which does not produce it —
+  the same dangling-citation shape as F4, one level up. Its "the ~15 %
+  above is also stale" line fought the trigger that had just been
+  corrected four lines up. And `docs/ROADMAP.md` still read
+  "DONE 2026-08-31" while both branches were changing arithmetic on
+  09-01 — false on a line CLAUDE.md sends every new session to read.
+
+**One correction to the review, verified at the bytes.** Of the four
+saturating rows proposed, the fourth (`mV`, membrane 32 767, resting
+−32 768, input 32 767) does NOT saturate: its product is 8.94e18,
+inside `i64::MAX`. It reaches 50 mV by clamping, not by saturating, so
+as a witness for the saturating branch it proves nothing. The landed
+fixture uses membrane −32 768 / resting 32 767 / input 32 767 for the
+positive mV row, product 9.50e18, which does saturate. Three of the
+four proposed rows were right as given.
+
+### Merge order (ruled)
+
+`fix/lif-scalar-domain` merges FIRST. Landing the fixture-and-record
+branch first would put a documented-false bit-equality claim on `main`
+— its doc describes a contract that only becomes true once the neuron
+is exact — and would leave the wrapping inline formula alive underneath
+it. Whoever lands second re-runs the pinned tuples.
+
+### Open, named
+
+`proptest-regressions/simd.txt` policy is decided by fact, not ruling,
+and in the opposite direction to the first attempt: nothing is banked.
+The seed captured while the fix was reverted was dropped rather than
+kept (see round-10 above), so `simd` remains the one module without a
+regression file while `bridge` / `network` / `synapse` have theirs.
+H1 has since settled and did not reinstate a neuron-side clamp, so
+there is no clamp semantic left for such a seed to encode; the exact
+arithmetic is pinned by an `i128` reference property test instead.
+Whether `simd` should carry a regression file at all is still open.
+
+**The sweep-cadence proposal is repriced, and should be re-read before
+it is ruled.** The close-out parked it on the premise that the two
+`#[ignore]` sweeps are too slow to gate. Measured at the branch tip on
+this box, both sweeps, warm build, nothing else competing for the
+cargo lock:
+
+| profile | test time | wall |
+|---|---|---|
+| `--release --features simd` | **11.57 s** | 11.97 s |
+| default (debug) | **446.99 s** | 447.46 s |
+
+A factor of 38.6. The module doc's "minutes not milliseconds" is a
+claim about the DEFAULT profile and it is exactly right there — 7.4
+minutes — while in release the pair costs seconds, well inside what the
+existing `--release --features simd` gate already spends. So the
+cadence question is not "can they gate" but "can they gate in
+release", and the answer looks like yes. Still the principal's call;
+the numbers are here so the call is made on some.
+
+(Both figures are from clean runs. An earlier reading of "still going
+past twelve minutes" for the debug pair was taken while a second cargo
+invocation held the lock, and overstated it; it is not the number
+above and should not be quoted.)
+
+C5 (no execution on a non-AVX2 or non-x86_64 target) is unchanged.
+
+GUARD 1 honored (append only; this record was drafted by the builder
+and applied by the adjudicator). GUARD 2 untouched. GUARD 3 untouched.
+ROADMAP § Priority order carried the same "12–15 %" band and is
+corrected in the same session as the amendment, per the grep-sweep
+rule; the `~15 %` inside the recorded fork's trigger is corrected in an
+appended note rather than in the decision text; ISA.md carries the
+figure too and is append-only, which is what this amendment is for.
+
+### Round 12 — the external reviewer's suggestions land, and the state of record (applied by the adjudicator, 2026-09-02)
+
+Soushi's PR #1 review made three suggestions philo's reply accepts; none
+had landed when the reply was drafted, so they landed first — verified at
+the branch tips before and after:
+
+- `0aa2b29` (`fix/lif-scalar-domain`) — the `tau == 0` guard comment
+  cited a construction-time rejection that does not exist; it now names
+  the false claim and its dates instead of silently swapping it.
+- `f33d154` (`fix/simd-fixture-and-record`) — both in-code sweep
+  commands gain `--release` (11.6 s vs the 7.4-minute default they
+  shipped).
+- `722f5df` (same branch) — the CI release simd gate appends
+  `-- --include-ignored` (NOT the reviewer's literal `-- --ignored`,
+  which would have dropped the 212 normal tests; 214 pass in ~12 s).
+- `25f83d9` (same branch) — the evidence rebuild recipe no longer checks
+  out commits in the live working tree or shares one `target/`; it is
+  rewritten around `git archive <sha>` into a scratch dir with its own
+  target dir, the same isolation every verification in this amendment
+  used.
+
+Where everything stands as this amendment is applied: PR #1 merged at
+`137088d` → `main@02427c0`, mirror pushed. PR #2 (`fix/lif-scalar-domain`
+@ `0aa2b29`) and PR #3 (`fix/simd-fixture-and-record` @ `25f83d9`) open
+with review requested from Soushi888, merge order #2-then-#3 stated in
+both bodies. The reply to Soushi's review is posted on PR #1 (comment
+1509752), drafted by the DA, verified claim-by-claim at the bytes, and
+posted from philo's account with that authorship stated in its first
+line.
