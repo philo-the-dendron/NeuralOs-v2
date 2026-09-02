@@ -123,3 +123,72 @@ jobs:
 
       - name: clippy with the feature
         run: cargo clippy -p neuralos-rt --features hdf5 --all-targets -- -D warnings
+
+  # Every commit on the branch is green on its own (AGENTS.md § Session
+  # protocol, ratified 2026-08-30). The check job above only ever tests
+  # the pushed tip; this job loops over the commits a pull request adds
+  # and runs the § Commands gate set at each one, so a red intermediate
+  # commit is a red check, not a merger's memory. Added 2026-09-02 after
+  # the rule was broken by hand once and then caught two real defects the
+  # same day when run as a loop. pull_request only: a push still gets
+  # the tip-only jobs above. The fmt check is judged per the gate set at
+  # each commit (present in that commit's own workflow or not).
+  per-commit:
+    name: every commit green on its own
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # One full gate set per commit, cold on the first, warm after;
+    # ~8 min + ~4 min per further commit on cp-desktop. 240 min covers a
+    # long branch with a cold cache.
+    timeout-minutes: 240
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: https://github.com/dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: https://github.com/Swatinem/rust-cache@v2
+
+      - name: Slint Linux build deps + cmake (vendored HDF5)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake \
+            libfreetype6-dev libfontconfig1-dev libxcb1-dev libxkbcommon-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxcursor-dev
+
+      - name: gate set at every commit base..head
+        env:
+          NEURALOS_REQUIRE_AVX2: "1"
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git fetch --no-tags --quiet origin "$base" "$head"
+          commits=$(git rev-list --reverse "$base".."$head")
+          n=$(printf '%s\n' "$commits" | grep -c . || true)
+          echo "== $n commit(s) in $base..$head"
+          test "$n" -gt 0
+          for c in $commits; do
+            git checkout --quiet "$c"
+            echo "===== $c $(git log -1 --format=%s)"
+            if grep -q 'cargo fmt --all -- --check' .gitea/workflows/ci.yml; then
+              cargo fmt --all -- --check
+            else
+              echo "(fmt --check is not a gate at this commit)"
+            fi
+            cargo check --workspace --all-targets
+            cargo test --workspace
+            cargo clippy --workspace --all-targets -- -D warnings
+            cargo build --no-default-features -p neuralos-snn
+            cargo test -p neuralos-snn --features simd
+            cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
+            cargo test -p neuralos-snn --release --features simd -- --include-ignored
+            cargo test -p neuralos-rt --features hdf5
+            cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate
+            cargo clippy -p neuralos-rt --features hdf5 --all-targets -- -D warnings
+            echo "===== $c GREEN"
+          done
+          echo "== all $n commit(s) green on their own"
