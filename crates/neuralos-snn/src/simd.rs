@@ -154,8 +154,8 @@
 //! bound to this kernel: the neuron is the reference semantic, the batch is the
 //! documented approximation.)
 //!
-//! Three differences are NOT arithmetic, and a caller carries each one
-//! itself; a fourth is arithmetic and is the clamp above:
+//! Four differences are NOT arithmetic, and a caller carries each one
+//! itself; a fifth is arithmetic and is the clamp above:
 //!
 //! - **Current accumulation.** `integrate_and_fire` adds synaptic current and
 //!   LFSR noise and subtracts the adaptation current. The batch takes the total
@@ -165,12 +165,18 @@
 //!   value, and it writes no history and starts no refractory period.
 //! - **The refractory period.** `integrate_and_fire` skips integration entirely
 //!   while `refractory_time_us > 0`. The batch has no such state.
+//! - **The resistance type.** `resistance_mohm` is `u16` on the neuron and
+//!   `resistance` is `&[i16]` here (§ The SoA seam). The batch accepts a
+//!   negative resistance no `LIFNeuron` can hold, and cannot hold the top half
+//!   of the neuron's range; only `0..=i16::MAX` is representable in both. The
+//!   neuron-vs-batch proptest below draws from that overlap for this reason.
 //! - **The arithmetic width.** `integrate_and_fire` works in `i64` throughout
 //!   and is exact for every input; this kernel works in `i32` and takes the
-//!   `dt_over_tau` clamp above. (A fourth difference used to live here: the
-//!   neuron subtracted `resting − membrane` in `i16` before widening, so
-//!   off-grid values that overflow the subtraction panicked in one half and not
-//!   the other. Both sides are widened first now, and that difference is gone.)
+//!   `dt_over_tau` clamp above. (A second arithmetic difference used to live
+//!   here: the neuron subtracted `resting − membrane` in `i16` before widening,
+//!   so off-grid values that overflow the subtraction panicked in one half and
+//!   not the other. Both sides are widened first now, and that difference is
+//!   gone.)
 //!
 //! # Overflow domain (the `dt_over_tau` bound)
 //!
