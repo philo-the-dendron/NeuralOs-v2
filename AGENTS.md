@@ -267,14 +267,27 @@ claims, reopening frozen records.
   pushed ref is the gate. **Every commit on the branch is green on its
   own, not only the tip** (ratified 2026-08-30): this history is
   bisected and its commits are cited by DOI, so a red intermediate
-  commit is a defect even when the tip passes. CI only ever runs the
-  pushed tip, so the merger proves it before merging —
-  `git rebase -x '<the § Commands gate set>' main` in a scratch
-  worktree (or a loop over `git rev-list main..HEAD`), result pasted
-  in the review. A red commit is reworked in place (`--fixup` +
-  `--autosquash`), never patched by a later commit that leaves the red
-  one in history. Never force-push Gitea. Branches are
-  deleted after merge (git history is the archive).
+  commit is a defect even when the tip passes. The `check` and `hdf5`
+  jobs only ever run the pushed tip; the **`per-commit` job** (both
+  workflow files, `pull_request` only, added 2026-09-02) loops
+  `git rev-list --reverse base..head` and runs the gate set at every
+  commit, so the rule is a Gitea check the merge waits on, not the
+  merger's memory — it was broken by hand once (ISA round 13) and, run
+  as a loop, caught two real defects the same day (round 14). The
+  merger reads that job's log; a local loop over `git rev-list
+  main..HEAD` in a scratch worktree with its own target dir is still
+  how a builder finds red before pushing. A red commit is reworked in
+  place (`--fixup` + `--autosquash` on an unpushed branch), never
+  patched by a later commit that leaves the red one in history. Never
+  force-push Gitea. Branches are deleted after merge (git history is
+  the archive).
+- **Commit trailers, machine-readable.** A commit that corrects an
+  earlier one carries `Fixes: <sha> ("<subject>")`; a change that
+  answers a reviewer's finding carries `Found-by: <handle> (PR #N)`.
+  Both are git trailers (`git interpret-trailers`, `git log
+  --format=%(trailers)`), so "which commit corrected which" is a query,
+  not a search through prose. Adopted 2026-09-02; prose credit stays
+  too.
 - **Findings taxonomy.** Blocking (fix before merge) · cosmetic-list
   (rides a later commit) · record-only (ISA entry, no code). Every
   review states which is which.
