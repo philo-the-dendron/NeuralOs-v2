@@ -14,11 +14,13 @@
 use std::path::Path;
 use std::process::Command;
 
-use neuralos_nir2json::{convert_file, convert_file_opts, ConvertError};
+use neuralos_nir2json::{ConvertError, convert_file, convert_file_opts};
 use neuralos_snn::nir::NirImportOptions;
 
 fn fixture(name: &str) -> std::path::PathBuf {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name);
+    let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name);
     assert!(p.exists(), "fixture missing: {}", p.display());
     p
 }
@@ -58,7 +60,11 @@ fn assert_close(a: &serde_json::Value, b: &serde_json::Value, path: &str) {
         (serde_json::Value::Object(m), serde_json::Value::Object(n)) => {
             assert_eq!(m.len(), n.len(), "{path}: key count");
             for (k, v) in m {
-                assert_close(v, n.get(k).unwrap_or_else(|| panic!("{path}/{k} missing")), &format!("{path}/{k}"));
+                assert_close(
+                    v,
+                    n.get(k).unwrap_or_else(|| panic!("{path}/{k} missing")),
+                    &format!("{path}/{k}"),
+                );
             }
         }
         (serde_json::Value::Array(x), serde_json::Value::Array(y)) => {
@@ -76,10 +82,16 @@ fn assert_close(a: &serde_json::Value, b: &serde_json::Value, path: &str) {
 #[test]
 fn f32_twin_matches_f64_origin_within_f32_tolerance() {
     for name in ["chain_population", "merge"] {
-        let origin = convert_file(&rt_fixture(&format!("{name}.nir")), NirImportOptions::default())
-            .expect("f64 origin converts");
-        let twin = convert_file(&fixture(&format!("{name}_f32.nir")), NirImportOptions::default())
-            .expect("f32 twin converts");
+        let origin = convert_file(
+            &rt_fixture(&format!("{name}.nir")),
+            NirImportOptions::default(),
+        )
+        .expect("f64 origin converts");
+        let twin = convert_file(
+            &fixture(&format!("{name}_f32.nir")),
+            NirImportOptions::default(),
+        )
+        .expect("f32 twin converts");
         assert!(
             !twin.stamp.f32_datasets.is_empty(),
             "{name}: the twin must actually carry f32 datasets (else the test tests nothing)"
@@ -94,8 +106,11 @@ fn f32_twin_matches_f64_origin_within_f32_tolerance() {
 
 #[test]
 fn f32_twin_still_imports_into_snn() {
-    let twin = convert_file(&fixture("chain_population_f32.nir"), NirImportOptions::default())
-        .expect("converts");
+    let twin = convert_file(
+        &fixture("chain_population_f32.nir"),
+        NirImportOptions::default(),
+    )
+    .expect("converts");
     neuralos_snn::nir::NirImport::from_json(&twin.json, NirImportOptions::default())
         .expect("the widened document is first-class import material");
 }
@@ -132,7 +147,10 @@ fn big_linear_converts_bounded() {
         c.json.len()
     );
     let v: serde_json::Value = serde_json::from_slice(&c.json).expect("well-formed");
-    assert!(v["node"]["nodes"]["linear"]["weight"].is_array(), "linear weights present");
+    assert!(
+        v["node"]["nodes"]["linear"]["weight"].is_array(),
+        "linear weights present"
+    );
     // and it imports — the full path, at scale
     neuralos_snn::nir::NirImport::from_json(&c.json, NirImportOptions::default())
         .expect("imports at scale");
@@ -154,8 +172,11 @@ fn stranger_smoke_two_lif_neurons_is_detected_sim_units_both_walls() {
     // Without the flag: the DOUBLE wall, named together — r fires
     // first in quantize_lif's order, but the message must carry the
     // voltage wall too (the fact-check finding).
-    let err = convert_file(&fixture("community/two_lif_neurons.nir"), NirImportOptions::default())
-        .expect_err("sim-unit file refused natively");
+    let err = convert_file(
+        &fixture("community/two_lif_neurons.nir"),
+        NirImportOptions::default(),
+    )
+    .expect_err("sim-unit file refused natively");
     match &err {
         ConvertError::SimUnits { node, r_ohm } => {
             assert_eq!(node, "lif1");
@@ -165,7 +186,10 @@ fn stranger_smoke_two_lif_neurons_is_detected_sim_units_both_walls() {
     }
     let msg = err.to_string();
     assert!(msg.contains("--sim-units"), "names the flag: {msg}");
-    assert!(msg.contains('Ω') || msg.contains("MΩ"), "names the r wall: {msg}");
+    assert!(
+        msg.contains('Ω') || msg.contains("MΩ"),
+        "names the r wall: {msg}"
+    );
     assert!(msg.contains("mV"), "names the voltage wall: {msg}");
 }
 
@@ -192,7 +216,11 @@ fn stranger_smoke_two_lif_with_sim_units_pins_discrete_centi() {
         ),
     )
     .expect("imports under centi");
-    assert_eq!(g.lifs.len(), 2, "lif1, lif2 (groups() order: input, lif1, lif2, …)");
+    assert_eq!(
+        g.lifs.len(),
+        2,
+        "lif1, lif2 (groups() order: input, lif1, lif2, …)"
+    );
     let l1 = &g.lifs[0];
     assert_eq!(l1.tau_us, 10_000, "10 ms");
     assert_eq!(l1.resistance_mohm, 1_000, "r 1.0 × 1000 → 1000 MΩ");
@@ -227,8 +255,11 @@ fn stranger_emitter_skew_rockpool_transform_pins_the_f32_path() {
     // rockpool: f32 datasets (real emitter float32) + the 0.1-threshold
     // family — the file that DIES at ThresholdZero on the default grid
     // and lives on centi. Both stamps in one stranger.
-    let err = convert_file(&fixture("community/lif_rockpool.nir"), NirImportOptions::default())
-        .expect_err("detected sim-units");
+    let err = convert_file(
+        &fixture("community/lif_rockpool.nir"),
+        NirImportOptions::default(),
+    )
+    .expect_err("detected sim-units");
     assert!(matches!(err, ConvertError::SimUnits { .. }));
 
     let c = convert_file_opts(
@@ -252,8 +283,14 @@ fn stranger_emitter_skew_rockpool_transform_pins_the_f32_path() {
     .expect("imports");
     let lif = &g.lifs[0];
     assert_eq!(lif.tau_us, 2_500, "2.5 ms");
-    assert_eq!(lif.resistance_mohm, 24_020, "24.019737 (f32) × 1000 → 24020 MΩ");
-    assert_eq!(lif.threshold_q, 10, "0.1 mV → 10 centi quanta (ThresholdZero on mV grid)");
+    assert_eq!(
+        lif.resistance_mohm, 24_020,
+        "24.019737 (f32) × 1000 → 24020 MΩ"
+    );
+    assert_eq!(
+        lif.threshold_q, 10,
+        "0.1 mV → 10 centi quanta (ThresholdZero on mV grid)"
+    );
     assert_eq!(lif.leak_q, 0);
 }
 
@@ -261,8 +298,11 @@ fn stranger_emitter_skew_rockpool_transform_pins_the_f32_path() {
 fn stranger_fallback_snntorch_head_completes_full_path_f32() {
     // The audience's emitter, the audience's dtype: torch exports f32
     // weights by default — this is the REAL f32 stranger case.
-    let c = convert_file(&fixture("community/snnTorch_linear_head.nir"), NirImportOptions::default())
-        .expect("the snnTorch head completes the full path");
+    let c = convert_file(
+        &fixture("community/snnTorch_linear_head.nir"),
+        NirImportOptions::default(),
+    )
+    .expect("the snnTorch head completes the full path");
     assert!(
         c.stamp.f32_datasets.iter().any(|d| d.ends_with("/weight")),
         "the f32 widening is stamped: {:?}",
@@ -281,8 +321,11 @@ fn stranger_emitter_skew_norse_is_a_named_wall() {
     // four-kind subset. The loud named rejection IS the recorded
     // result (anti-circularity leg: the emission is genuinely not
     // ours, and its refusal is honest).
-    let err = convert_file(&fixture("community/lif_norse.nir"), NirImportOptions::default())
-        .expect_err("Affine is out of subset");
+    let err = convert_file(
+        &fixture("community/lif_norse.nir"),
+        NirImportOptions::default(),
+    )
+    .expect_err("Affine is out of subset");
     match &err {
         ConvertError::UnsupportedNode { node, kind } => {
             assert_eq!(kind, "Affine");
@@ -301,9 +344,12 @@ fn stranger_wall_probes_are_all_named_rejections() {
         "braille_noDelay_bias_zero_subgraph.nir",
         "braille_noDelay_noBias_subtract_subgraph.nir",
     ] {
-        let err = convert_file(&fixture(&format!("community/{name}")), NirImportOptions::default())
-            .err()
-            .unwrap_or_else(|| panic!("{name}: expected a refusal"));
+        let err = convert_file(
+            &fixture(&format!("community/{name}")),
+            NirImportOptions::default(),
+        )
+        .err()
+        .unwrap_or_else(|| panic!("{name}: expected a refusal"));
         match &err {
             ConvertError::UnsupportedNode { kind, .. } => {
                 // recorded, not asserted-to-a-fixed-kind: the probes
@@ -325,7 +371,12 @@ fn binary_end_to_end_smoke_happy_and_sad() {
         .arg(&e2e)
         .output()
         .expect("binary runs");
-    assert_eq!(out.status.code(), Some(0), "happy path exits 0: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "happy path exits 0: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     // the transform through the binary: two_lif + --sim-units exits 0
     // and stamps the sidecar
@@ -345,7 +396,10 @@ fn binary_end_to_end_smoke_happy_and_sad() {
     let sidecar_path = std::path::PathBuf::from(format!("{}.meta.json", sim_path.display()));
     let sidecar = std::fs::read_to_string(&sidecar_path).unwrap();
     assert!(sidecar.contains("\"sim_units\":true"), "stamped: {sidecar}");
-    assert!(sidecar.contains("\"resolution\":\"centi-mv\""), "centi recorded: {sidecar}");
+    assert!(
+        sidecar.contains("\"resolution\":\"centi-mv\""),
+        "centi recorded: {sidecar}"
+    );
 
     // without the flag: exit 2, message names the flag + both walls
     let refused = tmp("should-not-exist.json");
@@ -356,11 +410,17 @@ fn binary_end_to_end_smoke_happy_and_sad() {
         .expect("binary runs");
     assert_eq!(sad.status.code(), Some(2), "sim-unit refusal exits 2");
     let stderr = String::from_utf8_lossy(&sad.stderr);
-    assert!(stderr.contains("--sim-units"), "suggests the flag: {stderr}");
+    assert!(
+        stderr.contains("--sim-units"),
+        "suggests the flag: {stderr}"
+    );
     assert!(stderr.contains("mV"), "names the voltage wall: {stderr}");
     assert!(!refused.exists(), "no partial output");
     assert!(e2e.exists());
-    assert!(e2e.exists() && std::path::PathBuf::from(format!("{}.meta.json", e2e.display())).exists(), "sidecar written");
+    assert!(
+        e2e.exists() && std::path::PathBuf::from(format!("{}.meta.json", e2e.display())).exists(),
+        "sidecar written"
+    );
     assert!(
         !std::path::PathBuf::from(format!("{}.meta.json", refused.display())).exists(),
         "no partial sidecar"

@@ -54,8 +54,8 @@
 use std::fmt;
 use std::path::Path;
 
-use hdf5_pure::{Dataset, DType, File, Group, VlenStringReadOptions};
-use neuralos_snn::nir::{nir_export, NirBuilder, NirError, NirImportOptions, NirLifParams};
+use hdf5_pure::{DType, Dataset, File, Group, VlenStringReadOptions};
+use neuralos_snn::nir::{NirBuilder, NirError, NirImportOptions, NirLifParams, nir_export};
 
 /// Tool version (sidecar stamp).
 pub const TOOL_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -73,7 +73,11 @@ pub enum ConvertError {
     Layout(String),
     /// Filter-census rejection: the named dataset carries a filter we
     /// refuse to decode.
-    Filter { dataset: String, id: u16, name: String },
+    Filter {
+        dataset: String,
+        id: u16,
+        name: String,
+    },
     /// Out-of-subset node kind — named, never partial.
     UnsupportedNode { node: String, kind: String },
     /// Simulation-unit LIF parameters detected without the transform
@@ -178,7 +182,10 @@ fn census(node: &Group) -> Result<(), ConvertError> {
             let g = nodes
                 .group(&name)
                 .map_err(bad_groups(format!("node/nodes/{name}")))?;
-            for d in g.datasets().map_err(bad_groups(format!("node/nodes/{name}")))? {
+            for d in g
+                .datasets()
+                .map_err(bad_groups(format!("node/nodes/{name}")))?
+            {
                 census_dataset(&g, &format!("node/nodes/{name}"), &d, &mut entries);
             }
         }
@@ -186,7 +193,11 @@ fn census(node: &Group) -> Result<(), ConvertError> {
     for (dataset, filters) in entries {
         let bad = filters.iter().copied().find(|&id| id != FILTER_DEFLATE);
         if let Some(id) = bad {
-            return Err(ConvertError::Filter { dataset, id, name: filter_name(id) });
+            return Err(ConvertError::Filter {
+                dataset,
+                id,
+                name: filter_name(id),
+            });
         }
     }
     Ok(())
@@ -212,7 +223,10 @@ fn read_param_f64(
     path: &str,
     stamps: &mut Vec<String>,
 ) -> Result<Vec<f64>, ConvertError> {
-    match ds.dtype().map_err(|e| ConvertError::Open(format!("dtype: {e}")))? {
+    match ds
+        .dtype()
+        .map_err(|e| ConvertError::Open(format!("dtype: {e}")))?
+    {
         DType::F64 => ds
             .read_f64()
             .map_err(|e| ConvertError::Open(format!("f64 read: {e}"))),
@@ -231,15 +245,19 @@ fn read_param_f64(
 }
 
 fn shape_u32(ds: &Dataset, path: &str) -> Result<Vec<u32>, ConvertError> {
-    match ds.dtype().map_err(|e| ConvertError::Open(format!("dtype: {e}")))? {
+    match ds
+        .dtype()
+        .map_err(|e| ConvertError::Open(format!("dtype: {e}")))?
+    {
         DType::I64 => ds
             .read_i64()
             .map_err(|e| ConvertError::Open(format!("i64 read: {e}")))?,
-        other =>
+        other => {
             return Err(ConvertError::BadData {
                 dataset: path.into(),
                 what: format!("shape dtype {other:?} — expected int64"),
-            }),
+            });
+        }
     }
     .into_iter()
     .map(|d: i64| {
@@ -314,13 +332,19 @@ pub fn convert_file_opts(
 
     // version (recorded, never behavior-switching)
     let nir_version = read_str(
-        &root.dataset("version").map_err(|e| ConvertError::Layout(format!("version: {e}")))?,
+        &root
+            .dataset("version")
+            .map_err(|e| ConvertError::Layout(format!("version: {e}")))?,
     )?;
 
     // node group + NIRGraph contract
-    let node = root.group("node").map_err(|e| ConvertError::Layout(format!("node/: {e}")))?;
+    let node = root
+        .group("node")
+        .map_err(|e| ConvertError::Layout(format!("node/: {e}")))?;
     let graph_type = read_str(
-        &node.dataset("type").map_err(|e| ConvertError::Layout(format!("node/type: {e}")))?,
+        &node
+            .dataset("type")
+            .map_err(|e| ConvertError::Layout(format!("node/type: {e}")))?,
     )?;
     if graph_type != "NIRGraph" {
         return Err(ConvertError::Layout(format!(
@@ -359,20 +383,29 @@ pub fn convert_file_opts(
             .group(name)
             .map_err(bad_groups(format!("node/nodes/{name}")))?;
         let ty = read_str(
-            &g.dataset("type").map_err(|e| ConvertError::Layout(format!("type: {e}")))?,
+            &g.dataset("type")
+                .map_err(|e| ConvertError::Layout(format!("type: {e}")))?,
         )?;
         match ty.as_str() {
             "Input" | "Output" => {
-                let ds = g.dataset("shape").map_err(|e| ConvertError::Layout(format!("shape: {e}")))?;
+                let ds = g
+                    .dataset("shape")
+                    .map_err(|e| ConvertError::Layout(format!("shape: {e}")))?;
                 let sh = shape_u32(&ds, &format!("node/nodes/{name}/shape"))?;
                 let idx = if ty == "Input" {
                     builder
                         .add_input(borrowed, &sh)
-                        .map_err(|e| ConvertError::Snn { stage: "add_input", msg: e.to_string() })
+                        .map_err(|e| ConvertError::Snn {
+                            stage: "add_input",
+                            msg: e.to_string(),
+                        })
                 } else {
                     builder
                         .add_output(borrowed, &sh)
-                        .map_err(|e| ConvertError::Snn { stage: "add_output", msg: e.to_string() })
+                        .map_err(|e| ConvertError::Snn {
+                            stage: "add_output",
+                            msg: e.to_string(),
+                        })
                 }?;
                 index.insert(name.clone(), idx);
             }
@@ -381,7 +414,11 @@ pub fn convert_file_opts(
                     let ds = g
                         .dataset(field)
                         .map_err(|e| ConvertError::Layout(format!("LIF {field}: {e}")))?;
-                    read_param_f64(&ds, &format!("node/nodes/{name}/{field}"), &mut stamp.f32_datasets)
+                    read_param_f64(
+                        &ds,
+                        &format!("node/nodes/{name}/{field}"),
+                        &mut stamp.f32_datasets,
+                    )
                 };
                 let tau = get("tau")?;
                 let r = get("r")?;
@@ -419,26 +456,32 @@ pub fn convert_file_opts(
                     v_threshold_v: &v_threshold,
                     v_reset_v: v_reset.as_deref(),
                 };
-                let idx = builder
-                    .add_lif_population(borrowed, &params)
-                    .map_err(|e| ConvertError::Snn {
+                let idx = builder.add_lif_population(borrowed, &params).map_err(|e| {
+                    ConvertError::Snn {
                         stage: "add_lif_population",
                         msg: format!("[node {name}] {e}"),
-                    })?;
+                    }
+                })?;
                 index.insert(name.clone(), idx);
             }
             "Linear" => {
                 let ds = g
                     .dataset("weight")
                     .map_err(|e| ConvertError::Layout(format!("Linear weight: {e}")))?;
-                let shape = ds.shape().map_err(|e| ConvertError::Open(format!("shape: {e}")))?;
+                let shape = ds
+                    .shape()
+                    .map_err(|e| ConvertError::Open(format!("shape: {e}")))?;
                 if shape.len() != 2 {
                     return Err(ConvertError::BadData {
                         dataset: format!("node/nodes/{name}/weight"),
                         what: format!("{}-D weight — expected 2-D", shape.len()),
                     });
                 }
-                let vals = read_param_f64(&ds, &format!("node/nodes/{name}/weight"), &mut stamp.f32_datasets)?;
+                let vals = read_param_f64(
+                    &ds,
+                    &format!("node/nodes/{name}/weight"),
+                    &mut stamp.f32_datasets,
+                )?;
                 let (rows, cols) = (shape[0] as usize, shape[1] as usize);
                 if vals.len() != rows * cols {
                     return Err(ConvertError::BadData {
@@ -448,11 +491,17 @@ pub fn convert_file_opts(
                 }
                 let idx = builder
                     .add_linear(borrowed, &vals, rows, cols)
-                    .map_err(|e| ConvertError::Snn { stage: "add_linear", msg: e.to_string() })?;
+                    .map_err(|e| ConvertError::Snn {
+                        stage: "add_linear",
+                        msg: e.to_string(),
+                    })?;
                 index.insert(name.clone(), idx);
             }
             other => {
-                return Err(ConvertError::UnsupportedNode { node: name.clone(), kind: other.into() });
+                return Err(ConvertError::UnsupportedNode {
+                    node: name.clone(),
+                    kind: other.into(),
+                });
             }
         }
         stamp.node_census.push((name.clone(), ty));
@@ -479,14 +528,16 @@ pub fn convert_file_opts(
                 .ok_or_else(|| ConvertError::Layout(format!("edge names unknown node {n:?}")))
         };
         let (a, b) = (resolve(&pair[0])?, resolve(&pair[1])?);
-        builder
-            .add_edge(a, b)
-            .map_err(|e| ConvertError::Snn { stage: "add_edge", msg: e.to_string() })?;
+        builder.add_edge(a, b).map_err(|e| ConvertError::Snn {
+            stage: "add_edge",
+            msg: e.to_string(),
+        })?;
     }
 
-    let graph = builder
-        .build()
-        .map_err(|e| ConvertError::Snn { stage: "build", msg: e.to_string() })?;
+    let graph = builder.build().map_err(|e| ConvertError::Snn {
+        stage: "build",
+        msg: e.to_string(),
+    })?;
 
     // Export with bounded buffer growth (start at data scale, ×4, four tries).
     let w = graph.weights.len();
@@ -495,8 +546,14 @@ pub fn convert_file_opts(
     let mut scale = cap.max(w.saturating_mul(40)).max(l.saturating_mul(300));
     loop {
         let mut buf = vec![0u8; scale];
-        match nir_export(&graph.nodes, &graph.edges, &graph.weights, &graph.lifs, graph.opts, &mut buf)
-        {
+        match nir_export(
+            &graph.nodes,
+            &graph.edges,
+            &graph.weights,
+            &graph.lifs,
+            graph.opts,
+            &mut buf,
+        ) {
             Ok(n) => {
                 buf.truncate(n);
                 return Ok(Converted { json: buf, stamp });
@@ -510,7 +567,12 @@ pub fn convert_file_opts(
                 scale = scale.saturating_mul(4).max(cap);
                 cap = scale;
             }
-            Err(e) => return Err(ConvertError::Snn { stage: "nir_export", msg: e.to_string() }),
+            Err(e) => {
+                return Err(ConvertError::Snn {
+                    stage: "nir_export",
+                    msg: e.to_string(),
+                });
+            }
         }
     }
 }
@@ -530,7 +592,13 @@ pub fn stamp_json(s: &Stamp, source: &Path) -> String {
     let mut out = String::from("{\"tool\":\"neuralos-nir2json\",\"version\":\"");
     out.push_str(TOOL_VERSION);
     out.push_str("\",\"source\":\"");
-    out.push_str(&source.display().to_string().replace('\\', "\\\\").replace('"', "\\\""));
+    out.push_str(
+        &source
+            .display()
+            .to_string()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\""),
+    );
     out.push_str("\",\"nir_version\":\"");
     out.push_str(&s.nir_version.replace('\\', "\\\\").replace('"', "\\\""));
     out.push_str("\",\"dt_us\":");
@@ -551,11 +619,7 @@ pub fn stamp_json(s: &Stamp, source: &Path) -> String {
         if i > 0 {
             out.push(',');
         }
-        out.push_str(&format!(
-            "\"{}\":\"{}\"",
-            name.replace('"', "\\\""),
-            kind
-        ));
+        out.push_str(&format!("\"{}\":\"{}\"", name.replace('"', "\\\""), kind));
     }
     out.push_str("}}");
     out
@@ -599,16 +663,16 @@ mod tests {
 
     #[test]
     fn lzf_is_refused_by_name() {
-        let err = convert_file(
-            &fixture("neg_filter_lzf.nir"),
-            NirImportOptions::default(),
-        )
-        .expect_err("lzf must be refused");
+        let err = convert_file(&fixture("neg_filter_lzf.nir"), NirImportOptions::default())
+            .expect_err("lzf must be refused");
         match &err {
             ConvertError::Filter { name, .. } => assert_eq!(name, "lzf"),
             other => panic!("expected Filter, got {other:?}"),
         }
-        assert!(err.to_string().contains("lzf"), "message names the filter: {err}");
+        assert!(
+            err.to_string().contains("lzf"),
+            "message names the filter: {err}"
+        );
     }
 
     #[test]

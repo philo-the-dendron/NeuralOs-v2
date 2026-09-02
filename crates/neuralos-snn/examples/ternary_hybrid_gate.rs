@@ -51,7 +51,11 @@ fn drive_inputs(g: u16) -> Vec<i16> {
     let exc = exc_count();
     let mut inp = vec![I_INH; NEURONS as usize];
     for n in 0..exc {
-        inp[n as usize] = if group_of(n, exc) == g { I_ACTIVE } else { I_IDLE };
+        inp[n as usize] = if group_of(n, exc) == g {
+            I_ACTIVE
+        } else {
+            I_IDLE
+        };
     }
     inp
 }
@@ -103,7 +107,9 @@ fn main() {
     net.build_topology().expect("topology must build");
     let gamma = net.ternarize_weights();
     net.set_plasticity_enabled(false);
-    println!("  SNN layer   : 128 neurons, ternary weights at gamma = {gamma}, STDP off (transducer)");
+    println!(
+        "  SNN layer   : 128 neurons, ternary weights at gamma = {gamma}, STDP off (transducer)"
+    );
 
     // Settle one full cycle of silence so the init state is steady.
     let idle = idle_inputs();

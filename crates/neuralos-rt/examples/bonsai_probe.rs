@@ -58,10 +58,7 @@ fn main() {
     for t in &f.tensors {
         *census.entry(type_name(t.ty)).or_insert(0_u32) += 1;
     }
-    let census_str: Vec<String> = census
-        .iter()
-        .map(|(k, v)| format!("{k}×{v}"))
-        .collect();
+    let census_str: Vec<String> = census.iter().map(|(k, v)| format!("{k}×{v}")).collect();
     println!("tensor types: {}", census_str.join(", "));
 
     // First + a few interesting tensor infos.
@@ -120,7 +117,13 @@ fn main() {
             // of a 32-byte boundary) — accept the formula size or its
             // alignment-rounded-up form, nothing else.
             let cols = t.dims.first().copied().unwrap_or(0);
-            let rows: u128 = t.dims.iter().skip(1).map(|&d| d as u128).product::<u128>().max(1);
+            let rows: u128 = t
+                .dims
+                .iter()
+                .skip(1)
+                .map(|&d| d as u128)
+                .product::<u128>()
+                .max(1);
             let expected: u128 = rows * ((cols as u128).div_ceil(qk)) * bpb;
             let align = f.alignment.max(1) as u128;
             let padded = expected.div_ceil(align) * align;
@@ -180,7 +183,9 @@ fn main() {
     // tiers it ships for. The embedding tensor's own type picks the
     // codec; q2_0 is where decode_q2_0 first eats real file bytes
     // (session D closes the Stage-2 gap).
-    let emb = f.tensor("token_embd.weight").expect("token_embd.weight exists");
+    let emb = f
+        .tensor("token_embd.weight")
+        .expect("token_embd.weight exists");
     let data = f.tensor_data(emb).expect("embedding data slice");
     let milli;
     if emb.ty == GGML_TYPE_Q2_0 {
@@ -218,7 +223,11 @@ fn main() {
     // max convention runs larger than the mean, so the provisional
     // window is one decade wider — the observed value is recorded in
     // the ISA and narrows this for the next file (fog (e)).
-    let (lo, hi) = if emb.ty == GGML_TYPE_Q2_0 { (1, 1000) } else { (1, 100) };
+    let (lo, hi) = if emb.ty == GGML_TYPE_Q2_0 {
+        (1, 1000)
+    } else {
+        (1, 100)
+    };
     if !(lo..=hi).contains(&milli) {
         println!("PROBE: NO (embedding scale milli {milli} outside [{lo},{hi}])");
         std::process::exit(1);

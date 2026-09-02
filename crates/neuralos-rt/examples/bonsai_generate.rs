@@ -73,8 +73,14 @@ fn render_chat(tmpl: &str) -> String {
     let user_block = "<|im_start|>' + message.role + '\\n' + content + '<|im_end|>' + '\\n'";
     let gen_block = "'<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n'";
     let system_guard = "messages[0].role == 'system'";
-    assert!(tmpl.contains(user_block), "template user block fragment absent");
-    assert!(tmpl.contains(gen_block), "template generation block fragment absent");
+    assert!(
+        tmpl.contains(user_block),
+        "template user block fragment absent"
+    );
+    assert!(
+        tmpl.contains(gen_block),
+        "template generation block fragment absent"
+    );
     assert!(
         tmpl.contains(system_guard),
         "template system guard absent (derivation assumption broken)"

@@ -113,29 +113,45 @@ fn fail(msg: &str) -> ! {
 }
 
 fn main() {
-    println!("=== NIR format gate — reference-emitted vectors, slice 1 (Input/Linear/LIF/Output) ===");
+    println!(
+        "=== NIR format gate — reference-emitted vectors, slice 1 (Input/Linear/LIF/Output) ==="
+    );
     println!("ref     : neuromorphs/NIR @ {NIR_REF_SHA}");
     println!("export  : version block \"{EXPORT_VERSION}\" (one block, derived values rendered)");
     println!();
 
     // ---- gate 1: reference chain, exact quantization ----------------
     let scan = nir_scan(CHAIN.as_bytes()).unwrap_or_else(|e| fail(&e.to_string()));
-    println!("fixture : chain.json — {} nodes / {} edges / {} weight cells, version \"{}\"",
-        scan.node_count, scan.edge_count, scan.weight_cells, scan.version);
+    println!(
+        "fixture : chain.json — {} nodes / {} edges / {} weight cells, version \"{}\"",
+        scan.node_count, scan.edge_count, scan.weight_cells, scan.version
+    );
     let opts = NirImportOptions::default();
     let g = NirImport::from_json(CHAIN.as_bytes(), opts)
         .unwrap_or_else(|e| fail(&format!("chain import: {e}")));
     let pop = g.nodes[2].lif.expect("lif");
     let lif = g.lifs[pop.offset];
     let lin = g.nodes[1].linear.expect("linear");
-    print!("quant   : LIF tau {} us · R {} MOhm · leak {}/thr {}/reset {} quanta · C {} pF",
-        lif.tau_us, lif.resistance_mohm, lif.leak_q, lif.threshold_q, lif.reset_q, lif.capacitance_pf);
+    print!(
+        "quant   : LIF tau {} us · R {} MOhm · leak {}/thr {}/reset {} quanta · C {} pF",
+        lif.tau_us,
+        lif.resistance_mohm,
+        lif.leak_q,
+        lif.threshold_q,
+        lif.reset_q,
+        lif.capacitance_pf
+    );
     if lif.max_v_err_v > 0.0 || lif.tau_err_s > 0.0 {
-        print!("  (lossy: dv<={:e} V, dtau<={:e} s)", lif.max_v_err_v, lif.tau_err_s);
+        print!(
+            "  (lossy: dv<={:e} V, dtau<={:e} s)",
+            lif.max_v_err_v, lif.tau_err_s
+        );
     }
     println!();
-    println!("quant   : Linear {}x{} @ scale {:.6e} — weights {:?}",
-        lin.rows, lin.cols, lin.scale, g.weights);
+    println!(
+        "quant   : Linear {}x{} @ scale {:.6e} — weights {:?}",
+        lin.rows, lin.cols, lin.scale, g.weights
+    );
     if g.weights != vec![16384, -32767, 8192] {
         fail("dyadic weights must quantize to [16384, -32767, 8192]");
     }
@@ -173,13 +189,15 @@ fn main() {
 
     // ---- gate 2: negative fixtures, named errors --------------------
     for (label, doc, check) in NEGATIVES {
-        let err = NirImport::from_json(doc.as_bytes(), opts)
-            .expect_err(label);
+        let err = NirImport::from_json(doc.as_bytes(), opts).expect_err(label);
         if !check(&err) {
             fail(&format!("{label}: wrong error — {err}"));
         }
     }
-    println!("gate 2  : PASS — {} negative fixtures reject with named errors", NEGATIVES.len());
+    println!(
+        "gate 2  : PASS — {} negative fixtures reject with named errors",
+        NEGATIVES.len()
+    );
 
     // ---- gate 3: assemble + fire ------------------------------------
     let (mut net, enc) = g
@@ -188,7 +206,9 @@ fn main() {
     let mut spikes = 0usize;
     let mut first_spike_step = usize::MAX;
     for t in 0..100u32 {
-        let fired = net.step(&enc.encode(&[4, 0, 0])).unwrap_or_else(|e| fail(&e.to_string()));
+        let fired = net
+            .step(&enc.encode(&[4, 0, 0]))
+            .unwrap_or_else(|e| fail(&e.to_string()));
         if !fired.is_empty() && first_spike_step == usize::MAX {
             first_spike_step = t as usize;
         }
@@ -209,8 +229,7 @@ fn main() {
     if out != out2[..n2] {
         fail("export must be byte-stable");
     }
-    let g2 = NirImport::from_json(&out, opts)
-        .unwrap_or_else(|e| fail(&format!("re-import: {e}")));
+    let g2 = NirImport::from_json(&out, opts).unwrap_or_else(|e| fail(&format!("re-import: {e}")));
     if g2.weights != g.weights {
         fail("re-imported weights differ");
     }

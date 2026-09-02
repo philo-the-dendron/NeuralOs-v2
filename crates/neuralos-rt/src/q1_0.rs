@@ -82,7 +82,10 @@ pub fn q1_0_row_to_milli(data: &[u8], out: &mut [i32]) -> Result<(), Q10Error> {
     }
     for b in 0..n / Q1_0_BLOCK {
         let base = b * Q1_0_BLOCK_BYTES;
-        let gamma = i64::from(half_to_milli(u16::from_le_bytes([data[base], data[base + 1]])));
+        let gamma = i64::from(half_to_milli(u16::from_le_bytes([
+            data[base],
+            data[base + 1],
+        ])));
         let neg = (-gamma).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
         let pos = gamma.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
         for j in 0..Q1_0_BLOCK {
@@ -126,7 +129,10 @@ pub fn q1_0_matvec(
     let blocks = n / Q1_0_BLOCK;
     let row_bytes = blocks
         .checked_mul(Q1_0_BLOCK_BYTES)
-        .filter(|rb| rows.checked_mul(*rb).is_some_and(|total| total <= data.len()))
+        .filter(|rb| {
+            rows.checked_mul(*rb)
+                .is_some_and(|total| total <= data.len())
+        })
         .ok_or(Q10Error::TooShort)?;
     for j in 0..rows {
         let row = &data[j * row_bytes..(j + 1) * row_bytes];
@@ -228,7 +234,9 @@ pub fn matvec_scaled(
     if out.len() < rows {
         return Err(Q10Error::TooShort);
     }
-    let row_bytes = (n / Q1_0_BLOCK).checked_mul(Q1_0_BLOCK_BYTES).ok_or(Q10Error::TooShort)?;
+    let row_bytes = (n / Q1_0_BLOCK)
+        .checked_mul(Q1_0_BLOCK_BYTES)
+        .ok_or(Q10Error::TooShort)?;
     let total = rows.checked_mul(row_bytes).ok_or(Q10Error::TooShort)?;
     if total > data.len() {
         return Err(Q10Error::TooShort);
@@ -390,9 +398,7 @@ mod tests {
         // f64, ×1000.
         let signs: Vec<bool> = (0..256).map(|i| i % 3 != 0).collect();
         let data = build_row(&signs, &[0x3C00, 0x4248]);
-        let x: Vec<i32> = (0..256)
-            .map(|i| (i * 71) % 400 - 200)
-            .collect();
+        let x: Vec<i32> = (0..256).map(|i| (i * 71) % 400 - 200).collect();
         let mut out = [0_i32; 1];
         matvec_scaled(&data, &x, 1, &mut out).unwrap();
 
@@ -422,8 +428,12 @@ mod tests {
         // activation quantization (≤ Σ|γ|·amax/65534), and the final
         // rescale rounding — generous relative term + a floor covering
         // near-cancelling sums.
-        let gamma_pairs: [(u16, f64); 4] =
-            [(0x3C00, 1000.0), (0x2E66, 100.0), (0x4248, 3141.0), (0x3800, 500.0)];
+        let gamma_pairs: [(u16, f64); 4] = [
+            (0x3C00, 1000.0),
+            (0x2E66, 100.0),
+            (0x4248, 3141.0),
+            (0x3800, 500.0),
+        ];
         // ^ 0x2E66 is fp16 ≈0.099976 → 100 milli (the "0.05" label in
         // the older single-block test was wrong — this table is derived
         // from half_to_milli, not from comments).
@@ -537,10 +547,7 @@ mod tests {
             Err(Q10Error::TooShort)
         );
         let mut odd = [0_i32; 100];
-        assert_eq!(
-            q1_0_row_to_milli(&data, &mut odd),
-            Err(Q10Error::BadLength)
-        );
+        assert_eq!(q1_0_row_to_milli(&data, &mut odd), Err(Q10Error::BadLength));
         let acts = [0_i16; 64];
         assert_eq!(
             q1_0_matvec(&data, &acts, 1, &mut out[..1]),

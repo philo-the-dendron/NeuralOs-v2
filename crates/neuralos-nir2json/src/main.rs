@@ -17,7 +17,9 @@ fn main() -> ExitCode {
     if positional.len() != 2 {
         eprintln!("usage: neuralos-nir2json [--sim-units] <input.nir> <output.json>");
         eprintln!("  --sim-units : interpret LIF parameters in the ecosystem's simulation-unit");
-        eprintln!("                 convention (r×1000 → MΩ, voltages as mV, centi grid) — stamped");
+        eprintln!(
+            "                 convention (r×1000 → MΩ, voltages as mV, centi grid) — stamped"
+        );
         eprintln!("  exit 0: converted (sidecar <output>.meta.json written)");
         eprintln!("  exit 1: usage / IO error");
         eprintln!("  exit 2: named refusal — filter census, out-of-subset node, layout,");
@@ -57,11 +59,17 @@ fn main() -> ExitCode {
         converted.stamp.node_census.len(),
         converted.stamp.node_census.len().saturating_sub(1),
         converted.stamp.f32_datasets.len(),
-        if converted.stamp.f32_datasets.is_empty() { "s" } else { "" },
+        if converted.stamp.f32_datasets.is_empty() {
+            "s"
+        } else {
+            ""
+        },
     );
     println!("  nir version: {}", converted.stamp.nir_version);
     if converted.stamp.sim_units {
-        println!("  sim-units  : transform APPLIED (r×1000 → MΩ, V as mV, centi grid) — see sidecar");
+        println!(
+            "  sim-units  : transform APPLIED (r×1000 → MΩ, V as mV, centi grid) — see sidecar"
+        );
     }
     println!("  sidecar    : {}", sidecar.display());
     ExitCode::SUCCESS

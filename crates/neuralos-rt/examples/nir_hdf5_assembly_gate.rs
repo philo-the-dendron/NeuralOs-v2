@@ -46,32 +46,47 @@ fn centi() -> NirImportOptions {
 
 fn main() {
     println!("=== NIR HDF5 assembly gate — the merge graph, three containers ===");
-    println!("ref     : neuromorphs/NIR @ {}", neuralos_snn::nir::NIR_REF_SHA);
+    println!(
+        "ref     : neuromorphs/NIR @ {}",
+        neuralos_snn::nir::NIR_REF_SHA
+    );
     println!();
 
     // ---- gate 1: gzip pair -> identical records --------------------
-    let gz_doc = nir_hdf5_read(&fixture("merge.nir"))
-        .unwrap_or_else(|e: NirHdfError| fail(&e.to_string()));
-    let gz = gz_doc.import(centi()).unwrap_or_else(|e| fail(&e.to_string()));
+    let gz_doc =
+        nir_hdf5_read(&fixture("merge.nir")).unwrap_or_else(|e: NirHdfError| fail(&e.to_string()));
+    let gz = gz_doc
+        .import(centi())
+        .unwrap_or_else(|e| fail(&e.to_string()));
     let raw_doc = nir_hdf5_read(&fixture("merge_uncompressed.nir"))
         .unwrap_or_else(|e: NirHdfError| fail(&e.to_string()));
-    let raw = raw_doc.import(centi()).unwrap_or_else(|e| fail(&e.to_string()));
-    println!("fixture : merge.nir (gzip) + merge_uncompressed.nir — {} nodes / {} edges",
-        gz.nodes.len(), gz.edges.len());
+    let raw = raw_doc
+        .import(centi())
+        .unwrap_or_else(|e| fail(&e.to_string()));
+    println!(
+        "fixture : merge.nir (gzip) + merge_uncompressed.nir — {} nodes / {} edges",
+        gz.nodes.len(),
+        gz.edges.len()
+    );
     if gz.weights != raw.weights {
         fail("compression must be container-only: quantized weights differ");
     }
     if gz.lifs != raw.lifs {
         fail("compression must be container-only: LIF records differ");
     }
-    println!("gate 1  : PASS — gzip and uncompressed import to identical records ({} weight cells)",
-        gz.weights.len());
+    println!(
+        "gate 1  : PASS — gzip and uncompressed import to identical records ({} weight cells)",
+        gz.weights.len()
+    );
 
     // ---- gate 2: HDF5 == JSON (cross-container contract) -----------
     let json_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../neuralos-snn/tests/nir_fixtures/merge.json");
-    let json_bytes = std::fs::read(&json_path)
-        .unwrap_or_else(|e| fail(&format!("JSON fixture: {e} (regenerate via tools/gen_nir_fixtures.py)")));
+    let json_bytes = std::fs::read(&json_path).unwrap_or_else(|e| {
+        fail(&format!(
+            "JSON fixture: {e} (regenerate via tools/gen_nir_fixtures.py)"
+        ))
+    });
     let js = NirImport::from_json(&json_bytes, centi())
         .unwrap_or_else(|e| fail(&format!("JSON import: {e}")));
     if gz.weights != js.weights {
@@ -84,8 +99,10 @@ fn main() {
     if names != vec!["in1", "in2", "la", "lb", "lif", "out"] {
         fail(&format!("unexpected node order: {names:?}"));
     }
-    println!("gate 2  : PASS — HDF5 and JSON paths produce the same records ({:?} node order)",
-        names);
+    println!(
+        "gate 2  : PASS — HDF5 and JSON paths produce the same records ({:?} node order)",
+        names
+    );
 
     // ---- gate 3: assemble + fire, the exact snn-side pins ----------
     let (mut net, enc, rep) = gz
@@ -117,7 +134,9 @@ fn main() {
         }
     }
     if first != 52 {
-        fail(&format!("summed fan-in first spike must be step 52, got {first}"));
+        fail(&format!(
+            "summed fan-in first spike must be step 52, got {first}"
+        ));
     }
     println!("gate 3  : PASS — assembles from the HDF5 path: single stalls (0/200), summed fires at step {first}");
 

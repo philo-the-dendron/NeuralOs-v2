@@ -259,7 +259,10 @@ pub fn splice_trits(
     let CHUNK_BYTES = p.chunk_bytes();
     let f2 = GgufFile::parse(buf).expect("re-parse");
     let abs = tensor_abs(&f2, p);
-    assert!(abs + p.tensor_bytes() <= buf.len(), "tensor window inside file");
+    assert!(
+        abs + p.tensor_bytes() <= buf.len(),
+        "tensor window inside file"
+    );
     let mut row_orig = vec![Trit::Zero; N];
     let mut scales = vec![0u16; N / 128];
     let mut enc = vec![0u8; CHUNK_BYTES];
@@ -406,9 +409,11 @@ pub fn peak_rss_mb() -> u64 {
     std::fs::read_to_string("/proc/self/status")
         .ok()
         .and_then(|s| {
-            s.lines()
-                .find(|l| l.starts_with("VmHWM:"))
-                .and_then(|l| l.split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok()))
+            s.lines().find(|l| l.starts_with("VmHWM:")).and_then(|l| {
+                l.split_whitespace()
+                    .nth(1)
+                    .and_then(|v| v.parse::<u64>().ok())
+            })
         })
         .map(|kb| kb / 1024)
         .unwrap_or(0)
@@ -931,7 +936,11 @@ pub fn run_and_capture(
             total += 1;
         }
     }
-    Train { words, counts, total }
+    Train {
+        words,
+        counts,
+        total,
+    }
 }
 
 /// (step, neuron) events present in exactly one train.
@@ -1079,7 +1088,14 @@ pub fn run_gate_phase(src: &[Trit], p: &ExperimentParams, phase1: bool) -> GateO
     println!(
         "  round-trip: substrate weight → Trit::from_weight({GAMMA}) vs source — {mismatch} mismatches / {k} synapses"
     );
-    println!("  [G1: {}]", if g1_pass { "PASS — import is trit-exact" } else { "FAIL" });
+    println!(
+        "  [G1: {}]",
+        if g1_pass {
+            "PASS — import is trit-exact"
+        } else {
+            "FAIL"
+        }
+    );
     println!();
 
     // ----- G2: spiking fidelity, imported vs census-matched control -----
@@ -1094,7 +1110,9 @@ pub fn run_gate_phase(src: &[Trit], p: &ExperimentParams, phase1: bool) -> GateO
         "  control: census-matched shuffle (same +/0/− multiset), seed {CONTROL_SEED:#x}, STDP off"
     );
     println!("  interpretation matrix (stated up front):");
-    println!("    both above floor      → density suffices to spike; the structure claim lives in G3");
+    println!(
+        "    both above floor      → density suffices to spike; the structure claim lives in G3"
+    );
     println!("    only pretrained above → G2 passes with the stronger structural claim");
     println!("    neither above floor   → degenerate under this drive");
     let imported_stats = run_fixed(&mut imported, &make_inputs(p.i_active, p), p);
@@ -1160,7 +1178,11 @@ pub fn run_gate_phase(src: &[Trit], p: &ExperimentParams, phase1: bool) -> GateO
         imported_stats.quarter_hz[1],
         imported_stats.quarter_hz[2],
         imported_stats.quarter_hz[3],
-        if imported_stats.quarter_hz[3] > 0.0 { "> 0 PASS (no self-quench)" } else { "= 0 FAIL (quench)" }
+        if imported_stats.quarter_hz[3] > 0.0 {
+            "> 0 PASS (no self-quench)"
+        } else {
+            "= 0 FAIL (quench)"
+        }
     );
     println!(
         "  containment (imported): own-active {:.1} Hz vs own-idle {:.1} Hz ({:.1}×)",
@@ -1189,12 +1211,18 @@ pub fn run_gate_phase(src: &[Trit], p: &ExperimentParams, phase1: bool) -> GateO
         if imported_above { "yes" } else { "no" },
         SPIKE_RATIO_FLOOR,
         if ratio_ok { "yes" } else { "no" },
-        if imported_stats.quarter_hz[3] > 0.0 { "yes" } else { "no" },
+        if imported_stats.quarter_hz[3] > 0.0 {
+            "yes"
+        } else {
+            "no"
+        },
     );
     println!();
 
     // ----- G3: selective adaptation on pretrained structure -----
-    println!("--- G3: SELECTIVE ADAPTATION (STDP on + stochastic flips, γ={GAMMA}, 1.5c schedule) ---");
+    println!(
+        "--- G3: SELECTIVE ADAPTATION (STDP on + stochastic flips, γ={GAMMA}, 1.5c schedule) ---"
+    );
     let h = run_hybrid(src, &make_inputs(p.i_active, p), p);
     println!(
         "  input structure (learn phase): co-fire intra={:.4} inter={:.4} ({:.1}×); drive containment own-active {:.1} Hz vs own-idle {:.1} Hz",
@@ -1366,9 +1394,7 @@ pub fn run_gate_phase(src: &[Trit], p: &ExperimentParams, phase1: bool) -> GateO
     } else {
         "LTD-carried — intra depressed more (net applied drift negative)"
     };
-    println!(
-        "  mean Δ (final − imported): intra {din:+.4}   inter {dit:+.4}"
-    );
+    println!("  mean Δ (final − imported): intra {din:+.4}   inter {dit:+.4}");
     println!("  mechanism label : [{mechanism}]");
     println!(
         "  intra |mean Δ| (GATE) : {:.4}   (floor {SI_FLOOR:.2} — the non-degenerate degree of discrimination)",
@@ -1394,10 +1420,22 @@ pub fn run_gate_phase(src: &[Trit], p: &ExperimentParams, phase1: bool) -> GateO
     } else {
         println!("--- Verdict ---");
     }
-    println!("  G1 import trit-exact        : {}", if g1_pass { "PASS" } else { "FAIL" });
-    println!("  G2 non-degenerate sustained : {}", if g2_pass { "PASS" } else { "FAIL" });
-    println!("  firing under STDP sustained : {}", if firing_ok { "PASS" } else { "FAIL" });
-    println!("  not frozen (flips > 0)      : {}", if not_frozen { "PASS" } else { "FAIL" });
+    println!(
+        "  G1 import trit-exact        : {}",
+        if g1_pass { "PASS" } else { "FAIL" }
+    );
+    println!(
+        "  G2 non-degenerate sustained : {}",
+        if g2_pass { "PASS" } else { "FAIL" }
+    );
+    println!(
+        "  firing under STDP sustained : {}",
+        if firing_ok { "PASS" } else { "FAIL" }
+    );
+    println!(
+        "  not frozen (flips > 0)      : {}",
+        if not_frozen { "PASS" } else { "FAIL" }
+    );
     println!(
         "  not collapsed (Hamming < {:.2}) : {}",
         HAMMING_BOUND,
@@ -1463,11 +1501,7 @@ pub fn run_gate_phase(src: &[Trit], p: &ExperimentParams, phase1: bool) -> GateO
 /// # Panics
 ///
 /// Panics on decode failure (via [`decode_slice`]).
-pub fn run_amplitude_sweep(
-    path: &str,
-    p: &ExperimentParams,
-    resolution: VoltageResolution,
-) {
+pub fn run_amplitude_sweep(path: &str, p: &ExperimentParams, resolution: VoltageResolution) {
     let t0 = std::time::Instant::now();
     let (N, GAMMA, STEPS) = (p.n, p.gamma, p.steps);
     let CONTROL_SEED = p.control_seed;
@@ -1529,9 +1563,12 @@ pub fn run_amplitude_sweep(
         );
         if (hic > 0 || hiz > 0 || hcz > 0) && a_star.is_none() {
             a_star = Some(amp);
-            first_divergence =
-                format!("H(i,c)={hic} H(i,z)={hiz} H(c,z)={hcz} L1(i,c)={} L1(i,z)={} L1(c,z)={}",
-                    rate_l1(&ti, &tc), rate_l1(&ti, &tz), rate_l1(&tc, &tz));
+            first_divergence = format!(
+                "H(i,c)={hic} H(i,z)={hiz} H(c,z)={hcz} L1(i,c)={} L1(i,z)={} L1(c,z)={}",
+                rate_l1(&ti, &tc),
+                rate_l1(&ti, &tz),
+                rate_l1(&tc, &tz)
+            );
         }
     }
 
@@ -1602,7 +1639,8 @@ mod tests {
         let mut patched = vec![Zero; 64];
         for slot in patched.iter_mut().take(8) {
             *slot = One;
-        }        let a = dose_matched_null(&src, &patched, 201);
+        }
+        let a = dose_matched_null(&src, &patched, 201);
         let b = dose_matched_null(&src, &patched, 201);
         let c = dose_matched_null(&src, &patched, 202);
         assert_eq!(a, b, "same seed → identical null");
@@ -1672,8 +1710,7 @@ mod tests {
             assert!(!is_banked_model_path(arm), "{arm} is a legal arm output");
         }
         // The guard fires loudly (never silently writes):
-        assert!(std::panic::catch_unwind(|| assert_unbanked("models/null-dose-1.gguf"))
-            .is_err());
+        assert!(std::panic::catch_unwind(|| assert_unbanked("models/null-dose-1.gguf")).is_err());
         // Bare basenames (no dir component) are still recognized:
         assert!(is_banked_model_path("null-random-3.gguf"));
     }
@@ -1697,7 +1734,7 @@ mod tests {
         b.extend_from_slice(&3u32.to_le_bytes()); // version
         b.extend_from_slice(&1u64.to_le_bytes()); // tensor count
         b.extend_from_slice(&0u64.to_le_bytes()); // kv count
-        // tensor info: name, 2 dims, type, offset
+                                                  // tensor info: name, 2 dims, type, offset
         let name = p.tensor;
         b.extend_from_slice(&(name.len() as u64).to_le_bytes());
         b.extend_from_slice(name.as_bytes());
@@ -1706,7 +1743,7 @@ mod tests {
         b.extend_from_slice(&(p.model_rows as u64).to_le_bytes());
         b.extend_from_slice(&crate::GGML_TYPE_Q2_0.to_le_bytes());
         b.extend_from_slice(&0u64.to_le_bytes()); // offset
-        // pad to 32, then data
+                                                  // pad to 32, then data
         while b.len() % 32 != 0 {
             b.push(0);
         }
@@ -1759,8 +1796,12 @@ mod tests {
         let mut src = vec![Trit::Zero; n * n];
         let mut scales = vec![0u16; n / 128];
         for r in 0..n {
-            decode_q2_0(&buf[abs + r * row_bytes..][..chunk], &mut src[r * n..(r + 1) * n], &mut scales)
-                .expect("decode row");
+            decode_q2_0(
+                &buf[abs + r * row_bytes..][..chunk],
+                &mut src[r * n..(r + 1) * n],
+                &mut scales,
+            )
+            .expect("decode row");
         }
         assert!(src.iter().all(|&t| t == Trit::Zero));
         assert!(scales.iter().all(|&s| s == 0x3C00));
@@ -1802,8 +1843,13 @@ mod tests {
         // the one-call form agrees on the same inputs
         let base_path = dir.join("harness_splice_base.gguf");
         std::fs::write(&base_path, &before).expect("write base");
-        let (code2, scale2) =
-            splice_and_verify(base_path.to_str().unwrap(), out.to_str().unwrap(), &patch, Some(&src), &p);
+        let (code2, scale2) = splice_and_verify(
+            base_path.to_str().unwrap(),
+            out.to_str().unwrap(),
+            &patch,
+            Some(&src),
+            &p,
+        );
         assert_eq!((code2, scale2), (code, scale));
         std::fs::remove_file(&base_path).expect("cleanup base");
         std::fs::remove_file(&out).expect("cleanup out");
@@ -1819,6 +1865,9 @@ mod tests {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             splice_trits(&mut buf, &lie, Some(&lie), &p);
         }));
-        assert!(result.is_err(), "the chunk==slice assert must fire on a lying src");
+        assert!(
+            result.is_err(),
+            "the chunk==slice assert must fire on a lying src"
+        );
     }
 }

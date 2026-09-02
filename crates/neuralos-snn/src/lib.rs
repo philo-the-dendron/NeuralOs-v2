@@ -5,19 +5,19 @@
 #![doc = include_str!("../README.md")]
 
 pub mod bridge;
-pub mod kernel;
-pub mod lif_neuron;
-pub mod nir;
-pub mod synapse;
-pub mod trit;
-#[cfg(feature = "std")]
-pub mod network;
 #[cfg(feature = "std")]
 pub mod csr;
+pub mod kernel;
+pub mod lif_neuron;
 #[cfg(feature = "std")]
-pub mod stats;
+pub mod network;
+pub mod nir;
 #[cfg(feature = "simd")]
 pub mod simd;
+#[cfg(feature = "std")]
+pub mod stats;
+pub mod synapse;
+pub mod trit;
 
 pub use bridge::{
     decode_i2_s, decode_q1_0, decode_q2_0, encode_i2_s, encode_q2_0, half_to_f32_bits,
@@ -27,8 +27,11 @@ pub use kernel::{
     absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit, Q15_MAX, TRITS_PER_BYTE,
 };
 pub use lif_neuron::{
-    LIFNeuron, NeuronType, VoltageResolution, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN,
-    MAX_SPIKE_HISTORY,
+    LIFNeuron, NeuronType, VoltageResolution, MAX_SPIKE_HISTORY, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN,
+};
+#[cfg(feature = "std")]
+pub use network::{
+    NetworkStats, NetworkTopology, SparseSynapseMatrix, Spike, SpikingNeuralNetwork,
 };
 pub use nir::{
     nir_export, nir_import, nir_scan, quantize_lif, quantize_linear, NirBuffers, NirError,
@@ -37,10 +40,6 @@ pub use nir::{
 };
 pub use synapse::{STDPRule, Synapse, SynapseType, SCALE};
 pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternarize, Trit};
-#[cfg(feature = "std")]
-pub use network::{
-    NetworkStats, NetworkTopology, SparseSynapseMatrix, SpikingNeuralNetwork, Spike,
-};
 
 /// Crate-level error type.
 ///

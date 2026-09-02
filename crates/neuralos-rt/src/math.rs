@@ -71,8 +71,8 @@ impl MathKit {
         }
         // y = x·log2(e): milli × milli → micro-exponent (y_real × 1e6).
         let y_micro = x_milli * LOG2_E_MILLI; // ≤ 0; |y| < 2^63 for |x| < 3e12
-        // Decompose y = −n + f, n integer ≥ 0, f ∈ [0,1):
-        //   n = ceil(−y) = (−y_micro + 1e6 − 1) / 1e6 (floor div on negatives)
+                                              // Decompose y = −n + f, n integer ≥ 0, f ∈ [0,1):
+                                              //   n = ceil(−y) = (−y_micro + 1e6 − 1) / 1e6 (floor div on negatives)
         let neg_micro = -y_micro;
         let n = (neg_micro + 999_999) / 1_000_000; // ceil div (stable)
         if n >= 12 {
@@ -221,7 +221,10 @@ impl RopeTables {
         beta_fast: f64,
         beta_slow: f64,
     ) -> Self {
-        assert!(head_dim.is_multiple_of(2), "head_dim must be even (rotation pairs)");
+        assert!(
+            head_dim.is_multiple_of(2),
+            "head_dim must be even (rotation pairs)"
+        );
         let pairs = head_dim / 2;
         let freq_scale = 1.0 / yarn_factor;
         // corr_dim(n_rot) = n_dims·ln(orig/(n_rot·2π))/(2·ln(base)).
@@ -260,7 +263,12 @@ impl RopeTables {
                 theta_base *= theta_scale;
             }
         }
-        Self { max_pos, head_dim, cos_milli, sin_milli }
+        Self {
+            max_pos,
+            head_dim,
+            cos_milli,
+            sin_milli,
+        }
     }
 
     /// Apply RoPE in place to one head's `head_dim` milli values at
@@ -312,9 +320,13 @@ mod tests {
         // Randomized sweep vs the f64 reference (round = half away).
         let mut x = 0x2545_F491_4F6C_DD1D_u64;
         for _ in 0..2000 {
-            x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
             let num = (x >> 1) as i64 % 1_000_003 - 500_001;
-            x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
             let den = ((x >> 1) % 4093 + 1) as i64;
             let want = ((num as f64) / (den as f64)).round() as i64;
             assert_eq!(div_round_half_away(num, den), want, "{num}/{den}");
@@ -325,7 +337,7 @@ mod tests {
     fn exp2_table_basics() {
         let kit = MathKit::new();
         assert_eq!(kit.exp2_q12(0), Q12); // e^0 = 1
-        // e^x in Q12 vs f64 — the function computes e^x (2^(x·log2e)).
+                                          // e^x in Q12 vs f64 — the function computes e^x (2^(x·log2e)).
         for x_milli in [-1000_i64, -693, -2000, -3010, -500, -1200] {
             let want = ((x_milli as f64 / 1000.0).exp() * Q12 as f64).round();
             let got = kit.exp2_q12(x_milli);
@@ -363,7 +375,9 @@ mod tests {
         ];
         // Every tie-count from 2..=20 with a floored tail, plus a
         // 64-way tie (the in-model window).
-        for k in [2_usize, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 19, 20, 26, 31, 63] {
+        for k in [
+            2_usize, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 19, 20, 26, 31, 63,
+        ] {
             let mut v = vec![0_i32; k];
             v.push(-7624);
             cases.push(v);
@@ -379,7 +393,7 @@ mod tests {
             let max_l = logits.iter().copied().max().unwrap() as f64 / 1000.0;
             let exps: Vec<f64> = logits
                 .iter()
-                .map(|l| (( *l as f64 / 1000.0) - max_l).exp())
+                .map(|l| ((*l as f64 / 1000.0) - max_l).exp())
                 .collect();
             let sum: f64 = exps.iter().sum();
             for (i, p) in out.iter().enumerate() {
@@ -438,7 +452,10 @@ mod tests {
         rope.apply(&mut head, 0);
         // mscale ≈ 1.1386 ≠ 1 → not an exact identity; tolerance covers it.
         for (b, a) in before.iter().zip(&head) {
-            assert!((a - b).abs() <= b.unsigned_abs() as i32 / 5 + 2, "{b} -> {a}");
+            assert!(
+                (a - b).abs() <= b.unsigned_abs() as i32 / 5 + 2,
+                "{b} -> {a}"
+            );
         }
     }
 

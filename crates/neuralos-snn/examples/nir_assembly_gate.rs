@@ -41,11 +41,11 @@
 //! fixtures are embedded.
 
 use neuralos_snn::lif_neuron::VoltageResolution;
-use neuralos_snn::nir::{
-    nir_export, NirAssemblyReport, NirError, NirGraphEncoder, NirImport, NirImportOptions,
-    LinearFusedRecord, EDGE_PULSE_QUANTA,
-};
 use neuralos_snn::network::SpikingNeuralNetwork;
+use neuralos_snn::nir::{
+    nir_export, LinearFusedRecord, NirAssemblyReport, NirError, NirGraphEncoder, NirImport,
+    NirImportOptions, EDGE_PULSE_QUANTA,
+};
 
 const CHAIN: &[u8] = include_bytes!("../tests/nir_fixtures/chain.json");
 const BRANCH: &[u8] = include_bytes!("../tests/nir_fixtures/branch.json");
@@ -70,7 +70,10 @@ fn raster(
 ) -> Vec<(usize, usize)> {
     let mut out = vec![(usize::MAX, 0usize); net.neurons().len()];
     for t in 0..steps {
-        for s in net.step(&enc.encode(drive)).unwrap_or_else(|e| fail(&e.to_string())) {
+        for s in net
+            .step(&enc.encode(drive))
+            .unwrap_or_else(|e| fail(&e.to_string()))
+        {
             let e = &mut out[s.neuron_id as usize];
             e.0 = e.0.min(t);
             e.1 += 1;
@@ -91,7 +94,9 @@ fn print_report(rep: &NirAssemblyReport<'_>) {
         println!("undriven: {n} (assembles silent — documented, never silently)");
     }
     if rep.multi_linear_gain {
-        println!("quant   : D6 note — >1 drive Linear; per-tensor absmax scales absorb branch gain");
+        println!(
+            "quant   : D6 note — >1 drive Linear; per-tensor absmax scales absorb branch gain"
+        );
     }
     if !rep.plasticity_frozen {
         fail("plasticity must be frozen at assembly");
@@ -100,7 +105,10 @@ fn print_report(rep: &NirAssemblyReport<'_>) {
 
 fn main() {
     println!("=== NIR assembly gate — general four-kind graphs, reference-emitted vectors ===");
-    println!("ref     : neuromorphs/NIR @ {}", neuralos_snn::nir::NIR_REF_SHA);
+    println!(
+        "ref     : neuromorphs/NIR @ {}",
+        neuralos_snn::nir::NIR_REF_SHA
+    );
     println!("contract: EDGE_PULSE_QUANTA = {EDGE_PULSE_QUANTA} (20 uA pulse @ divisor 10)");
     println!();
 
@@ -123,7 +131,9 @@ fn main() {
     // 49->34 -> step 14; n2 g/10 decay -> -48 >= -50 at step 1)
     let firsts: Vec<usize> = pins.iter().map(|p| p.0).collect::<Vec<_>>();
     if firsts != vec![3, 14, 1, 3] {
-        fail(&format!("branch first-spike steps must be [3, 14, 1, 3], got {firsts:?}"));
+        fail(&format!(
+            "branch first-spike steps must be [3, 14, 1, 3], got {firsts:?}"
+        ));
     }
     println!("gate 1  : PASS — all 4 neurons fire; first-spike steps pinned [3, 14, 1, 3]");
 
@@ -144,10 +154,15 @@ fn main() {
     let (mut net2, enc2, _) = g2.build_network().unwrap();
     let both = raster(&mut net2, &enc2, &[&[1, 1], &[1, 1]], 100);
     if both[0].0 != 52 {
-        fail(&format!("summed 162 uA first spike must be step 52 (g: 1620->116 by g/20), got {}", both[0].0));
+        fail(&format!(
+            "summed 162 uA first spike must be step 52 (g: 1620->116 by g/20), got {}",
+            both[0].0
+        ));
     }
-    println!("gate 2  : PASS — single stalls (0/200), summed fires: neuron 0 first at step {}",
-        both[0].0);
+    println!(
+        "gate 2  : PASS — single stalls (0/200), summed fires: neuron 0 first at step {}",
+        both[0].0
+    );
 
     // ---- gate 3: recurrent — the D1 pulse assert -------------------
     let g = NirImport::from_json(RECURRENT, centi()).unwrap_or_else(|e| fail(&e.to_string()));
@@ -182,8 +197,10 @@ fn main() {
     if !net.synapses().iter().all(|s| s.weight == EDGE_PULSE_QUANTA) {
         fail("edge quanta frozen (plasticity off)");
     }
-    println!("gate 3  : PASS — pulse moves b0 exactly +10 quanta one step after a0 fires (t={})",
-        moved_at.unwrap_or(usize::MAX));
+    println!(
+        "gate 3  : PASS — pulse moves b0 exactly +10 quanta one step after a0 fires (t={})",
+        moved_at.unwrap_or(usize::MAX)
+    );
 
     // ---- gate 4: fusion exactness through the seam -----------------
     let g = NirImport::from_json(BRANCH, NirImportOptions::default()).unwrap();
@@ -204,8 +221,8 @@ fn main() {
     let flat: Vec<f64> = prod.iter().flat_map(|r| r.iter().copied()).collect();
     let mut expect = vec![0i16; 6];
     neuralos_snn::nir::quantize_linear(&flat, 2, 3, &mut expect, 0).expect("seam quantizes");
-    let fused_found = (0..enc.stage_count())
-        .any(|i| enc.stage_quanta(i) == Some(expect.as_slice()));
+    let fused_found =
+        (0..enc.stage_count()).any(|i| enc.stage_quanta(i) == Some(expect.as_slice()));
     if !fused_found {
         fail("the fused stage must BE the once-quantized f64 product");
     }
@@ -216,31 +233,106 @@ fn main() {
     // rejection; the tuple shape IS the table
     #[allow(clippy::type_complexity)]
     let table: Vec<(&str, &[u8], NirImportOptions, fn(&NirError<'_>) -> bool)> = vec![
-        ("pass-through", include_bytes!("../tests/nir_fixtures/neg_asm_passthrough.json"), centi(),
-            |e| matches!(e, NirError::UnsupportedTopology("Input->Output pass-through"))),
-        ("direct drive (Input->LIF)", include_bytes!("../tests/nir_fixtures/neg_asm_direct_drive.json"), centi(),
-            |e| matches!(e, NirError::UnsupportedTopology(
-                "direct drive (Input->LIF) deferred — drive convention not yet named"))),
-        ("readout (LIF->Linear)", include_bytes!("../tests/nir_fixtures/neg_asm_lif_to_linear.json"), centi(),
-            |e| matches!(e, NirError::UnsupportedTopology(
-                "readout (LIF->Linear) deferred — spike-count readout convention not yet named"))),
-        ("no LIF (encoder-only)", include_bytes!("../tests/nir_fixtures/neg_asm_no_lif.json"), centi(),
-            |e| matches!(e, NirError::UnsupportedTopology(
-                "graph without LIF: nothing to fire — encoder-only assembly deferred"))),
-        ("self-loop", include_bytes!("../tests/nir_fixtures/neg_asm_self_loop.json"), centi(),
-            |e| matches!(e, NirError::UnsupportedTopology(
-                "LIF self-loop — the substrate forbids self-synapse"))),
-        ("empty graph", include_bytes!("../tests/nir_fixtures/neg_asm_empty.json"), centi(),
-            |e| matches!(e, NirError::UnsupportedTopology("empty graph"))),
-        ("shape mismatch", include_bytes!("../tests/nir_fixtures/neg_asm_shape_mismatch.json"), centi(),
-            |e| matches!(e, NirError::EdgeShapeMismatch { src: "input", dst: "l1" })),
-        ("cycle without Output", include_bytes!("../tests/nir_fixtures/neg_asm_cycle_no_output.json"), centi(),
-            |e| matches!(e, NirError::UnsupportedTopology("no Output node"))),
-        ("no Input", include_bytes!("../tests/nir_fixtures/neg_asm_no_input.json"), centi(),
-            |e| matches!(e, NirError::UnsupportedTopology("no Input node"))),
-        ("recurrent on mV", RECURRENT, NirImportOptions::default(),
-            |e| matches!(e, NirError::UnsupportedTopology(m)
-                if m.contains("CentiMillivolt") && m.contains("~200 uA dead zone"))),
+        (
+            "pass-through",
+            include_bytes!("../tests/nir_fixtures/neg_asm_passthrough.json"),
+            centi(),
+            |e| {
+                matches!(
+                    e,
+                    NirError::UnsupportedTopology("Input->Output pass-through")
+                )
+            },
+        ),
+        (
+            "direct drive (Input->LIF)",
+            include_bytes!("../tests/nir_fixtures/neg_asm_direct_drive.json"),
+            centi(),
+            |e| {
+                matches!(
+                    e,
+                    NirError::UnsupportedTopology(
+                        "direct drive (Input->LIF) deferred — drive convention not yet named"
+                    )
+                )
+            },
+        ),
+        (
+            "readout (LIF->Linear)",
+            include_bytes!("../tests/nir_fixtures/neg_asm_lif_to_linear.json"),
+            centi(),
+            |e| {
+                matches!(e, NirError::UnsupportedTopology(
+                "readout (LIF->Linear) deferred — spike-count readout convention not yet named"))
+            },
+        ),
+        (
+            "no LIF (encoder-only)",
+            include_bytes!("../tests/nir_fixtures/neg_asm_no_lif.json"),
+            centi(),
+            |e| {
+                matches!(
+                    e,
+                    NirError::UnsupportedTopology(
+                        "graph without LIF: nothing to fire — encoder-only assembly deferred"
+                    )
+                )
+            },
+        ),
+        (
+            "self-loop",
+            include_bytes!("../tests/nir_fixtures/neg_asm_self_loop.json"),
+            centi(),
+            |e| {
+                matches!(
+                    e,
+                    NirError::UnsupportedTopology(
+                        "LIF self-loop — the substrate forbids self-synapse"
+                    )
+                )
+            },
+        ),
+        (
+            "empty graph",
+            include_bytes!("../tests/nir_fixtures/neg_asm_empty.json"),
+            centi(),
+            |e| matches!(e, NirError::UnsupportedTopology("empty graph")),
+        ),
+        (
+            "shape mismatch",
+            include_bytes!("../tests/nir_fixtures/neg_asm_shape_mismatch.json"),
+            centi(),
+            |e| {
+                matches!(
+                    e,
+                    NirError::EdgeShapeMismatch {
+                        src: "input",
+                        dst: "l1"
+                    }
+                )
+            },
+        ),
+        (
+            "cycle without Output",
+            include_bytes!("../tests/nir_fixtures/neg_asm_cycle_no_output.json"),
+            centi(),
+            |e| matches!(e, NirError::UnsupportedTopology("no Output node")),
+        ),
+        (
+            "no Input",
+            include_bytes!("../tests/nir_fixtures/neg_asm_no_input.json"),
+            centi(),
+            |e| matches!(e, NirError::UnsupportedTopology("no Input node")),
+        ),
+        (
+            "recurrent on mV",
+            RECURRENT,
+            NirImportOptions::default(),
+            |e| {
+                matches!(e, NirError::UnsupportedTopology(m)
+                if m.contains("CentiMillivolt") && m.contains("~200 uA dead zone"))
+            },
+        ),
     ];
     for (label, doc, opts, check) in &table {
         let g = NirImport::from_json(doc, *opts)
@@ -253,12 +345,17 @@ fn main() {
             fail(&format!("{label}: wrong error — {err}"));
         }
     }
-    println!("gate 5  : PASS — {} named rejections, one negative fixture each", table.len());
+    println!(
+        "gate 5  : PASS — {} named rejections, one negative fixture each",
+        table.len()
+    );
 
     // ---- gate 6: frozen chain re-runs UNCHANGED through both -------
     let opts = NirImportOptions::default();
     let g = NirImport::from_json(CHAIN, opts).unwrap_or_else(|e| fail(&e.to_string()));
-    let (mut net1, enc1) = g.build_chain_network().unwrap_or_else(|e| fail(&e.to_string()));
+    let (mut net1, enc1) = g
+        .build_chain_network()
+        .unwrap_or_else(|e| fail(&e.to_string()));
     let (mut net2, enc2, _) = g.build_network().unwrap_or_else(|e| fail(&e.to_string()));
     let mut spikes1 = 0usize;
     let mut first1 = usize::MAX;
@@ -291,8 +388,10 @@ fn main() {
     if n != 826 {
         fail(&format!("chain export must stay 826 B (banked), got {n}"));
     }
-    println!("gate 6  : PASS — frozen pins byte-identical: 9 spikes/100 @ step 6, export {n} B, \
-general-builder raster bit-identical");
+    println!(
+        "gate 6  : PASS — frozen pins byte-identical: 9 spikes/100 @ step 6, export {n} B, \
+general-builder raster bit-identical"
+    );
 
     println!();
     println!("NIR ASSEMBLY GATE: PASS — 6/6 gates on reference-emitted general graphs");

@@ -240,7 +240,11 @@ pub const fn q1_0_encoded_len(n: usize) -> usize {
 /// # Errors
 ///
 /// [`BridgeError::BadLength`] / [`BridgeError::TooShort`] on bad sizes.
-pub fn decode_q1_0(bytes: &[u8], trits: &mut [Trit], scale_bits_out: &mut [u16]) -> Result<(), BridgeError> {
+pub fn decode_q1_0(
+    bytes: &[u8],
+    trits: &mut [Trit],
+    scale_bits_out: &mut [u16],
+) -> Result<(), BridgeError> {
     let n = trits.len();
     if !n.is_multiple_of(Q1_0_BLOCK) {
         return Err(BridgeError::BadLength);
@@ -291,7 +295,11 @@ pub const fn q2_0_encoded_len(n: usize) -> usize {
 ///
 /// [`BridgeError::BadLength`] / [`BridgeError::TooShort`] on bad sizes;
 /// [`BridgeError::UnsupportedCode`] on code 3.
-pub fn decode_q2_0(bytes: &[u8], trits: &mut [Trit], scale_bits_out: &mut [u16]) -> Result<(), BridgeError> {
+pub fn decode_q2_0(
+    bytes: &[u8],
+    trits: &mut [Trit],
+    scale_bits_out: &mut [u16],
+) -> Result<(), BridgeError> {
     let n = trits.len();
     if !n.is_multiple_of(Q2_0_BLOCK) {
         return Err(BridgeError::BadLength);
@@ -537,7 +545,11 @@ mod tests {
         let mut expected = [0_u8; 64];
         expected[..32].copy_from_slice(&[0xAA, 0x00, 0x55, 0xAA, 0x55, 0x55, 0x00, 0xAA].repeat(4));
         expected[32..36].copy_from_slice(&scale_bits.to_le_bytes());
-        assert_eq!(&buf[..written], &expected, "i2_s bytes must match reference layout");
+        assert_eq!(
+            &buf[..written],
+            &expected,
+            "i2_s bytes must match reference layout"
+        );
 
         // Round-trip through the decoder.
         let mut back = [Trit::Zero; I2_S_BLOCK];
@@ -615,15 +627,9 @@ mod tests {
     fn i2_s_rejects_short_buffers() {
         let trits = [Trit::One; I2_S_BLOCK];
         let mut out = [0u8; 10]; // needs 64
-        assert_eq!(
-            encode_i2_s(&trits, 0, &mut out),
-            Err(BridgeError::TooShort)
-        );
+        assert_eq!(encode_i2_s(&trits, 0, &mut out), Err(BridgeError::TooShort));
         let mut back = [Trit::Zero; I2_S_BLOCK];
-        assert_eq!(
-            decode_i2_s(&[0; 12], &mut back),
-            Err(BridgeError::TooShort)
-        );
+        assert_eq!(decode_i2_s(&[0; 12], &mut back), Err(BridgeError::TooShort));
     }
 
     #[test]
@@ -712,7 +718,11 @@ mod tests {
         let positives: std::collections::HashSet<usize> =
             (0..16_usize).map(|j| 8 * j + j % 8).collect();
         for (i, t) in trits.iter().enumerate() {
-            let want = if positives.contains(&i) { Trit::One } else { Trit::MinusOne };
+            let want = if positives.contains(&i) {
+                Trit::One
+            } else {
+                Trit::MinusOne
+            };
             assert_eq!(*t, want, "element {i}");
         }
     }
@@ -855,9 +865,9 @@ mod tests {
     /// 34 bytes: fp16 scale 0x24C8 (~18.7 milli max|w|) + 32 code bytes
     /// decoding to census +37 / 0×43 / −48 of 128.
     const REAL_Q2_0_FIRST_BLOCK: [u8; 34] = [
-        0xC8, 0x24, 0x14, 0x44, 0x45, 0x1A, 0x18, 0x68, 0x68, 0x61, 0x8A, 0xA8, 0x91, 0x66,
-        0x45, 0x42, 0x91, 0x80, 0x11, 0x62, 0x18, 0x11, 0x29, 0x48, 0x61, 0x00, 0x1A, 0x94,
-        0x81, 0x24, 0x54, 0x0A, 0x86, 0x84,
+        0xC8, 0x24, 0x14, 0x44, 0x45, 0x1A, 0x18, 0x68, 0x68, 0x61, 0x8A, 0xA8, 0x91, 0x66, 0x45,
+        0x42, 0x91, 0x80, 0x11, 0x62, 0x18, 0x11, 0x29, 0x48, 0x61, 0x00, 0x1A, 0x94, 0x81, 0x24,
+        0x54, 0x0A, 0x86, 0x84,
     ];
 
     #[test]
@@ -873,7 +883,11 @@ mod tests {
             Trit::Zero => (p, z + 1, m),
             Trit::MinusOne => (p, z, m + 1),
         });
-        assert_eq!(census, (37, 43, 48), "recorded probe census: +37 / 0×43 / −48");
+        assert_eq!(
+            census,
+            (37, 43, 48),
+            "recorded probe census: +37 / 0×43 / −48"
+        );
         // The strongest artifact assertion: decode → encode is the IDENTITY
         // on real bytes — the export codec reproduces the file it came from.
         let mut back = [0u8; 34];
@@ -1052,7 +1066,11 @@ mod tests {
                 w == gamma || w == 0 || w == -gamma,
                 "imported trit produced off-grid weight {w}"
             );
-            assert_eq!(Trit::from_weight(w, gamma), t, "classification must round-trip");
+            assert_eq!(
+                Trit::from_weight(w, gamma),
+                t,
+                "classification must round-trip"
+            );
         }
     }
 
@@ -1086,7 +1104,7 @@ mod tests {
         assert_eq!(wire_gamma_to_substrate(24), 24); // γ = 0.024
         assert_eq!(wire_gamma_to_substrate(0), 0);
         assert_eq!(wire_gamma_to_substrate(125), 125); // Stage-1.5 gate γ
-        // …and saturates at the i16 rails.
+                                                       // …and saturates at the i16 rails.
         assert_eq!(wire_gamma_to_substrate(65_504_000), i16::MAX); // fp16 max finite
         assert_eq!(wire_gamma_to_substrate(-40_000), i16::MIN);
         assert_eq!(wire_gamma_to_substrate(-40_000_000), i16::MIN);
@@ -1195,7 +1213,11 @@ mod tests {
         if exp == 0 {
             sign * mant * (2.0_f32).powi(-24)
         } else if exp == 0x1F {
-            if mant == 0.0 { sign * f32::INFINITY } else { f32::NAN }
+            if mant == 0.0 {
+                sign * f32::INFINITY
+            } else {
+                f32::NAN
+            }
         } else {
             sign * (1.0 + mant / 1024.0) * (2.0_f32).powi(exp - 15)
         }

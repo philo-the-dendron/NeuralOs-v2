@@ -173,12 +173,7 @@ pub const STOCHASTIC_FLIP_RATE: u32 = 3000;
 /// No float in the hot path. The probability is realized as a fixed-point
 /// threshold compared against a 16-bit LFSR draw.
 #[must_use]
-pub fn stochastic_ternary_flip(
-    current_weight: i16,
-    gamma: i16,
-    residual: i16,
-    draw: u16,
-) -> i16 {
+pub fn stochastic_ternary_flip(current_weight: i16, gamma: i16, residual: i16, draw: u16) -> i16 {
     if gamma <= 0 || residual == 0 {
         return project_to_ternary(current_weight, gamma);
     }
@@ -327,12 +322,12 @@ mod tests {
     fn stochastic_flip_draw_zero_always_flips() {
         // draw = 0 is below any nonzero threshold → always flips.
         let g = 125_i16;
-        assert_eq!(stochastic_ternary_flip(-g, g, 1, 0), 0);   // -γ → 0 (LTP)
-        assert_eq!(stochastic_ternary_flip(0, g, 1, 0), g);     // 0 → +γ (LTP)
-        assert_eq!(stochastic_ternary_flip(g, g, 1, 0), g);     // +γ → +γ (saturate)
-        assert_eq!(stochastic_ternary_flip(g, g, -1, 0), 0);    // +γ → 0 (LTD)
-        assert_eq!(stochastic_ternary_flip(0, g, -1, 0), -g);   // 0 → -γ (LTD)
-        assert_eq!(stochastic_ternary_flip(-g, g, -1, 0), -g);  // -γ → -γ (saturate)
+        assert_eq!(stochastic_ternary_flip(-g, g, 1, 0), 0); // -γ → 0 (LTP)
+        assert_eq!(stochastic_ternary_flip(0, g, 1, 0), g); // 0 → +γ (LTP)
+        assert_eq!(stochastic_ternary_flip(g, g, 1, 0), g); // +γ → +γ (saturate)
+        assert_eq!(stochastic_ternary_flip(g, g, -1, 0), 0); // +γ → 0 (LTD)
+        assert_eq!(stochastic_ternary_flip(0, g, -1, 0), -g); // 0 → -γ (LTD)
+        assert_eq!(stochastic_ternary_flip(-g, g, -1, 0), -g); // -γ → -γ (saturate)
     }
 
     #[test]

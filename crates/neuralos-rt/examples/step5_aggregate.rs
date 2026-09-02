@@ -89,7 +89,11 @@ fn assert_double_run(dir: &Path) {
                 std::fs::read(&r1).unwrap_or_else(|e| panic!("read {}: {e}", r1.display())),
                 std::fs::read(&r2).unwrap_or_else(|e| panic!("read {}: {e}", r2.display())),
             );
-            assert!(a == b, "{}: run1 != run2 (double-run determinism)", dir.display());
+            assert!(
+                a == b,
+                "{}: run1 != run2 (double-run determinism)",
+                dir.display()
+            );
         }
     }
 }
@@ -124,7 +128,10 @@ fn calibrate() {
             .collect();
         let got = got.join(" ");
         let pass = got == want && ro.voids.is_empty();
-        println!("  loud  {dir}: [{got}] want [{want}] : {}", if pass { "PASS" } else { "FAIL" });
+        println!(
+            "  loud  {dir}: [{got}] want [{want}] : {}",
+            if pass { "PASS" } else { "FAIL" }
+        );
         ok &= pass;
     }
 
@@ -133,14 +140,22 @@ fn calibrate() {
         let dir = "session-i-primary/null-d7";
         let ro = step5_read_dir(&root(dir));
         let pass = ro.flips.is_empty() && ro.voids.is_empty();
-        println!("  quiet {dir}: {} flips : {}", ro.flips.len(), if pass { "PASS" } else { "FAIL" });
+        println!(
+            "  quiet {dir}: {} flips : {}",
+            ro.flips.len(),
+            if pass { "PASS" } else { "FAIL" }
+        );
         ok &= pass;
     }
     for p in 0..5 {
-        let text = std::fs::read_to_string(root(&format!("session-f-judge/p{p}_run1.log"))).unwrap();
+        let text =
+            std::fs::read_to_string(root(&format!("session-f-judge/p{p}_run1.log"))).unwrap();
         let pass = step5_classify(p, step5_continuation(p, &text).unwrap())
             == neuralos_rt::judge::Step5Destination::Identical;
-        println!("  quiet loop p{p}: base-identical : {}", if pass { "PASS" } else { "FAIL" });
+        println!(
+            "  quiet loop p{p}: base-identical : {}",
+            if pass { "PASS" } else { "FAIL" }
+        );
         ok &= pass;
     }
     // (M3 provenance pins are test-enforced in judge.rs —
@@ -148,7 +163,11 @@ fn calibrate() {
 
     println!(
         "calibration: {}",
-        if ok { "GATE PASS — arms may be trusted" } else { "GATE FAIL — stop, fix, re-gate" }
+        if ok {
+            "GATE PASS — arms may be trusted"
+        } else {
+            "GATE FAIL — stop, fix, re-gate"
+        }
     );
     if !ok {
         exit(1);
@@ -197,13 +216,21 @@ fn aggregate(root: &Path) {
         }
         let on_m3 = m3_of(&on_dir, &base);
         let band = step5_band(&on, on_m3, &nulls, &null_m3s);
-        let null_m3_max = null_m3s.iter().flatten().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let null_m3_max = null_m3s
+            .iter()
+            .flatten()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
         println!(
             "  on-r{r}: {} flips · M3 {:?} · nulls {} · M3max {} → {:?}",
             on.flips.len(),
             on_m3,
             nulls.len(),
-            if null_m3_max == f64::NEG_INFINITY { "n/a".to_string() } else { format!("{null_m3_max:.4}") },
+            if null_m3_max == f64::NEG_INFINITY {
+                "n/a".to_string()
+            } else {
+                format!("{null_m3_max:.4}")
+            },
             band
         );
         verdict.push(band);
@@ -220,7 +247,10 @@ fn aggregate(root: &Path) {
         return;
     }
 
-    let sep = verdict.iter().filter(|b| **b == Step5Band::Separated).count();
+    let sep = verdict
+        .iter()
+        .filter(|b| **b == Step5Band::Separated)
+        .count();
     let mixed = verdict.iter().filter(|b| **b == Step5Band::Mixed).count();
     let outcome = match (verdict.len(), sep, mixed) {
         (0, _, _) => "no complete replicates yet".to_string(),
@@ -240,7 +270,10 @@ fn aggregate(root: &Path) {
         }
         _ => "see PREREG §1 bands".to_string(),
     };
-    println!("\nverdict: {sep}/{} SEPARATED · {mixed} MIXED → {outcome}", verdict.len());
+    println!(
+        "\nverdict: {sep}/{} SEPARATED · {mixed} MIXED → {outcome}",
+        verdict.len()
+    );
 }
 
 fn main() {

@@ -245,7 +245,7 @@ impl LIFNeuron {
     ) -> Self {
         let (threshold_mv, tau_membrane_us, capacitance_pf) = match neuron_type {
             NeuronType::Excitatory => (-55, 20_000, 100), // 20 ms tau, pyramidal
-            NeuronType::Inhibitory => (-50, 10_000, 80), // 10 ms tau, interneuron
+            NeuronType::Inhibitory => (-50, 10_000, 80),  // 10 ms tau, interneuron
         };
         let s = resolution.scale();
         Self {
@@ -325,8 +325,7 @@ impl LIFNeuron {
         // off-grid states (resting = i16::MAX against membrane = i16::MIN) and
         // panicked in debug.
         let leak_term = i64::from(self.resting_potential) - i64::from(self.membrane_potential);
-        let current_term =
-            (i64::from(total_current) * i64::from(self.resistance_mohm) * s) / 1000;
+        let current_term = (i64::from(total_current) * i64::from(self.resistance_mohm) * s) / 1000;
         // The ONE multiply in this chain that cannot fit `i64` for every legal
         // input. Worst case `|leak + current_term|` is
         // `32_768 * 65_535 * scale / 1000 + 65_535`: 214_810_623 on the
@@ -344,7 +343,10 @@ impl LIFNeuron {
 
         let new_v = i64::from(self.membrane_potential)
             .saturating_add(delta_v)
-            .clamp(i64::from(MEMBRANE_MV_MIN) * s, i64::from(MEMBRANE_MV_MAX) * s);
+            .clamp(
+                i64::from(MEMBRANE_MV_MIN) * s,
+                i64::from(MEMBRANE_MV_MAX) * s,
+            );
         self.membrane_potential = new_v as i16;
 
         if self.membrane_potential >= self.threshold {
@@ -407,11 +409,11 @@ impl LIFNeuron {
         self.last_update_time_us = 0;
         self.last_spike_time_us = 0;
         self.synaptic_current_ua = 0;
-         self.adaptation_current_ua = 0;
-         self.spike_history.clear();
-     }
+        self.adaptation_current_ua = 0;
+        self.spike_history.clear();
+    }
 
-     /// Deterministic LFSR noise seeded by `id XOR current_time_us`.
+    /// Deterministic LFSR noise seeded by `id XOR current_time_us`.
     ///
     /// # Bug fix vs v0.1
     ///
@@ -645,7 +647,11 @@ mod tests {
         let mut cmv = quiet_neuron(13, VoltageResolution::CentiMillivolt);
         cmv.integrate_and_fire(12, 1000, 0);
         // ct = 12·100·100/1000 = 120 cV; ΔV = 50·120/1000 = 6 cV.
-        assert_eq!(cmv.membrane_potential, -7_000 + 6, "centi grid: 12 μA ⇒ 6 cV");
+        assert_eq!(
+            cmv.membrane_potential,
+            -7_000 + 6,
+            "centi grid: 12 μA ⇒ 6 cV"
+        );
     }
 
     #[test]
@@ -867,10 +873,18 @@ mod tests {
     fn the_saturating_multiply_lands_where_an_unbounded_integer_would() {
         // (name, membrane, resting, input, resistance, centi, expected)
         let rows: [(&str, i16, i16, i16, u16, bool, i16); 4] = [
-            ("mV, positive",    -32768,  32767,  32767, 65535, false,    50),
-            ("mV, negative",     32767, -32768, -32768, 65535, false,  -100),
-            ("centi, positive", -32768,  32767,  32767, 65535, true,   5000),
-            ("centi, negative",  32767, -32768, -32768, 65535, true, -10000),
+            ("mV, positive", -32768, 32767, 32767, 65535, false, 50),
+            ("mV, negative", 32767, -32768, -32768, 65535, false, -100),
+            ("centi, positive", -32768, 32767, 32767, 65535, true, 5000),
+            (
+                "centi, negative",
+                32767,
+                -32768,
+                -32768,
+                65535,
+                true,
+                -10000,
+            ),
         ];
 
         for (name, mp, rp, input, resistance, centi, expected) in rows {
@@ -908,8 +922,10 @@ mod tests {
                 "{name}: this row must actually saturate i64, |product| = {}",
                 product.abs()
             );
-            let unbounded = (i128::from(mp) + product / 1000)
-                .clamp(i128::from(MEMBRANE_MV_MIN) * s, i128::from(MEMBRANE_MV_MAX) * s);
+            let unbounded = (i128::from(mp) + product / 1000).clamp(
+                i128::from(MEMBRANE_MV_MIN) * s,
+                i128::from(MEMBRANE_MV_MAX) * s,
+            );
 
             assert_eq!(i128::from(n.membrane_potential), unbounded, "{name}");
             assert_eq!(n.membrane_potential, expected, "{name}");
@@ -1121,8 +1137,16 @@ mod tests {
     fn a_time_step_past_the_i32_product_no_longer_overflows() {
         assert_eq!(dt_over_tau(2_147_484, u32::MAX), 0);
         assert_eq!(dt_over_tau(i32::MAX as u32, u32::MAX), 499);
-        assert_eq!(dt_over_tau(u32::MAX, 1), 4_294_967_295_000, "exact, not clamped");
-        assert_eq!(dt_over_tau(1000, 20_000), 50, "the physical default is untouched");
+        assert_eq!(
+            dt_over_tau(u32::MAX, 1),
+            4_294_967_295_000,
+            "exact, not clamped"
+        );
+        assert_eq!(
+            dt_over_tau(1000, 20_000),
+            50,
+            "the physical default is untouched"
+        );
 
         let mut n = quiet_neuron(25, VoltageResolution::Millivolt);
         n.membrane_potential = MEMBRANE_MV_MIN;
@@ -1155,7 +1179,10 @@ mod tests {
 
         let exact = dt_over_tau(40_000, 20_000);
         assert_eq!(exact, 2000, "dt/tau = 2, exactly");
-        assert!(exact > BATCH_BOUND, "the witness must be above the batch's bound");
+        assert!(
+            exact > BATCH_BOUND,
+            "the witness must be above the batch's bound"
+        );
 
         let _ = n.integrate_and_fire(0, 40_000, 0);
 

@@ -318,8 +318,9 @@ impl<'a> GgufFile<'a> {
         // Hash-set duplicate detection: the naive O(n²) scan was a CPU
         // DoS on hostile files (a 30 MB file can legally declare ~1M
         // tensors → ~10^12 comparisons; 2026-08-15 review).
-        let mut seen: std::collections::HashSet<String> =
-            std::collections::HashSet::with_capacity(usize::try_from(n_tensors).unwrap_or(4096).min(4096));
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::with_capacity(
+            usize::try_from(n_tensors).unwrap_or(4096).min(4096),
+        );
         for _ in 0..n_tensors {
             let name = r.string()?;
             if !seen.insert(name.clone()) {
@@ -335,13 +336,22 @@ impl<'a> GgufFile<'a> {
             }
             let ty = r.u32()?;
             let offset = r.u64()?;
-            tensors.push(TensorInfo { name, dims, ty, offset });
+            tensors.push(TensorInfo {
+                name,
+                dims,
+                ty,
+                offset,
+            });
         }
 
         // Data section begins at the next alignment boundary after the
         // tensor-info table.
         let overhang = (r.pos as u64) % alignment;
-        let pad = if overhang == 0 { 0 } else { alignment - overhang };
+        let pad = if overhang == 0 {
+            0
+        } else {
+            alignment - overhang
+        };
         let data_start = (r.pos as u64) + pad;
 
         let file = Self {
@@ -521,7 +531,8 @@ fn read_value(r: &mut Reader<'_>, ty: u32, buf: &[u8]) -> Result<MetadataValue, 
             // variant — a hostile blob can no longer demand ~32× the
             // file size in per-element enum overhead.
             if elem_ty == types::UINT8 {
-                let mut bytes = Vec::with_capacity(usize::try_from(n).map_err(|_| GgufError::BadCount(n))?);
+                let mut bytes =
+                    Vec::with_capacity(usize::try_from(n).map_err(|_| GgufError::BadCount(n))?);
                 for _ in 0..n {
                     bytes.push(r.u8()?);
                 }
@@ -682,7 +693,13 @@ mod tests {
             other => panic!("expected ByteArray, got {other:?}"),
         }
         // The view helper works; non-byte arrays still use the typed path.
-        assert_eq!(f.value("tokenizer.ggml.tokens.hashes").unwrap().as_byte_array().len(), 512);
+        assert_eq!(
+            f.value("tokenizer.ggml.tokens.hashes")
+                .unwrap()
+                .as_byte_array()
+                .len(),
+            512
+        );
     }
 
     /// Session C (d): contiguity validation — the sample file (one
@@ -707,7 +724,8 @@ mod tests {
         assert!(!f2.is_contiguous());
         let v = f2.contiguity_violations();
         assert!(
-            v.iter().any(|(i, _, kind)| *i == 1 && kind.contains("backwards")),
+            v.iter()
+                .any(|(i, _, kind)| *i == 1 && kind.contains("backwards")),
             "overlap flagged: {v:?}"
         );
 
@@ -721,7 +739,9 @@ mod tests {
         let f3 = GgufFile::parse(&bytes3).expect("parse");
         assert!(!f3.is_contiguous());
         assert!(
-            f3.contiguity_violations().iter().any(|(_, _, k)| k.contains("aligned")),
+            f3.contiguity_violations()
+                .iter()
+                .any(|(_, _, k)| k.contains("aligned")),
             "misalignment flagged"
         );
     }
@@ -732,8 +752,10 @@ mod tests {
         let f = GgufFile::parse(&bytes).expect("parse");
         assert_eq!(f.data_start % f.alignment, 0);
         // The block starts exactly at the data section.
-        assert_eq!(&bytes[f.data_start as usize..f.data_start as usize + 2],
-                   &0x3C00_u16.to_le_bytes());
+        assert_eq!(
+            &bytes[f.data_start as usize..f.data_start as usize + 2],
+            &0x3C00_u16.to_le_bytes()
+        );
     }
 
     #[test]
@@ -769,10 +791,7 @@ mod tests {
         let data = f.tensor_data(&f.tensors[0]).expect("slice");
         assert_eq!(data.len(), 13);
         // Truncation into the HEADER, by contrast, is a hard error.
-        assert_eq!(
-            GgufFile::parse(&bytes[..30]),
-            Err(GgufError::UnexpectedEof)
-        );
+        assert_eq!(GgufFile::parse(&bytes[..30]), Err(GgufError::UnexpectedEof));
     }
 
     #[test]
@@ -828,7 +847,10 @@ mod tests {
         w.counts(0, u64::MAX / 2);
         w.kv_str("a", "b"); // one real kv so the loop can start
         let bytes = w.finish(32, &[]);
-        assert_eq!(GgufFile::parse(&bytes).err(), Some(GgufError::BadCount(u64::MAX / 2)));
+        assert_eq!(
+            GgufFile::parse(&bytes).err(),
+            Some(GgufError::BadCount(u64::MAX / 2))
+        );
     }
 
     #[test]

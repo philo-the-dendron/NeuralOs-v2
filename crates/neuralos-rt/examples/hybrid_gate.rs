@@ -65,19 +65,19 @@
 //!   one-directional per class (+γ↔0, −γ↔0, 0→+γ only). That asymmetry is a
 //!   FINDING the census measures, not a defect to repair.
 //! - **Selectivity metric = intra |mean Δ|** (session F amendment; was
-  //!   Δ-SI). The gate asserts the raw, non-degenerate degree field —
-  //!   intra |mean Δ| ≥ 0.05, the 1.5c floor now meaningfully applied —
-  //!   alongside flips > 0, Hamming < 0.50, sign crossings = 0, sustained
-  //!   firing. The DIRECTION of the class difference is printed as the
-  //!   era's mechanism label (Hebbian-carried = intra potentiated more,
-  //!   live-wire LTP; LTD-carried = intra depressed more, the dead-wire
-  //!   era's co-fire mode) and never gated — a metric's sign encodes the
-  //!   mechanism it was written under. Δ-SI is printed as a SUPPORTING
-  //!   LABEL only: the 1.5c schedule's 40 ms group gaps put every inter
-  //!   pair outside the 20 ms STDP window, so inter Δ ≡ 0 by geometry and
-  //!   |Δ-SI| ≡ 1 whenever any movement exists — it cannot gate on degree
-  //!   (second-reviewer finding, adopted). The 1.5c level-SI stays
-  //!   printed, confounded by pretrained levels as before.
+//!   Δ-SI). The gate asserts the raw, non-degenerate degree field —
+//!   intra |mean Δ| ≥ 0.05, the 1.5c floor now meaningfully applied —
+//!   alongside flips > 0, Hamming < 0.50, sign crossings = 0, sustained
+//!   firing. The DIRECTION of the class difference is printed as the
+//!   era's mechanism label (Hebbian-carried = intra potentiated more,
+//!   live-wire LTP; LTD-carried = intra depressed more, the dead-wire
+//!   era's co-fire mode) and never gated — a metric's sign encodes the
+//!   mechanism it was written under. Δ-SI is printed as a SUPPORTING
+//!   LABEL only: the 1.5c schedule's 40 ms group gaps put every inter
+//!   pair outside the 20 ms STDP window, so inter Δ ≡ 0 by geometry and
+//!   |Δ-SI| ≡ 1 whenever any movement exists — it cannot gate on degree
+//!   (second-reviewer finding, adopted). The 1.5c level-SI stays
+//!   printed, confounded by pretrained levels as before.
 //! - **Schedule = 2000 steps, 1.5c verbatim**: 400-step init cycle (STDP off,
 //!   defeats the last_spike=0 never-fired artifact) + 1600 learning steps.
 //!
@@ -109,9 +109,9 @@ use neuralos_rt::harness::{decode_slice, peak_rss_mb, run_gate_phase, Experiment
 fn main() {
     let t0 = std::time::Instant::now();
     let p = ExperimentParams::default();
-    let path = std::env::args().nth(1).unwrap_or_else(|| {
-        "models/Ternary-Bonsai-4B-Q2_0.gguf".into()
-    });
+    let path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "models/Ternary-Bonsai-4B-Q2_0.gguf".into());
     println!("=== Session D slice 2: the hybrid experiment — Bonsai Q2_0 → Trit → SNN → STDP ===");
     println!("file    : {path}");
     println!(
@@ -123,7 +123,10 @@ fn main() {
 
     // Decode (scoped: file buffer drops before any network is built).
     let src = decode_slice(&path, &p);
-    println!("decode  : {} trits from real Q2_0 bytes (peak RSS so far is the file buffer)", src.len());
+    println!(
+        "decode  : {} trits from real Q2_0 bytes (peak RSS so far is the file buffer)",
+        src.len()
+    );
 
     // G1 → G2 → G3 → verdict (verbatim phase; prints its own evidence).
     let outcome = run_gate_phase(&src, &p, false);

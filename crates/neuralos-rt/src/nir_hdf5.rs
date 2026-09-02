@@ -58,11 +58,11 @@ use std::path::{Path, PathBuf};
 use hdf5::types::VarLenUnicode;
 use hdf5::{Dataset, File as H5File, Group};
 use hdf5_sys::h5d::H5Dget_create_plist;
-use hdf5_sys::h5p::{H5Pget_filter2, H5Pget_nfilters, H5Pclose};
+use hdf5_sys::h5p::{H5Pclose, H5Pget_filter2, H5Pget_nfilters};
 use ndarray::{Array1, Array2};
 use neuralos_snn::nir::{
-    NirBuilder, NirImport, NirImportOptions, NirLif, NirLifParams, NirNode, NirNodeKind,
-    NirError, EXPORT_VERSION,
+    NirBuilder, NirError, NirImport, NirImportOptions, NirLif, NirLifParams, NirNode, NirNodeKind,
+    EXPORT_VERSION,
 };
 
 /// HDF5's built-in deflate filter id (`H5Z_FILTER_DEFLATE`).
@@ -321,8 +321,8 @@ pub struct NirHdfDoc {
 /// reads; [`NirHdfError::Seam`] for an unknown node kind.
 pub fn nir_hdf5_read(path: &Path) -> Result<NirHdfDoc, NirHdfError> {
     ensure_plugin_dir();
-    let file = H5File::open(path)
-        .map_err(|e| NirHdfError::Open(format!("{}: {e}", path.display())))?;
+    let file =
+        H5File::open(path).map_err(|e| NirHdfError::Open(format!("{}: {e}", path.display())))?;
 
     // root layout: version dataset + node group typed NIRGraph
     let version_ds = file
@@ -349,9 +349,9 @@ pub fn nir_hdf5_read(path: &Path) -> Result<NirHdfDoc, NirHdfError> {
             "missing 'node/edges' dataset (the reference always emits it)".into(),
         ));
     }
-    let edges_ds = node.dataset("edges").map_err(|e| {
-        NirHdfError::Open(format!("'node/edges' is not a dataset: {e}"))
-    })?;
+    let edges_ds = node
+        .dataset("edges")
+        .map_err(|e| NirHdfError::Open(format!("'node/edges' is not a dataset: {e}")))?;
 
     // nodes, alphabetical member order
     let names = nodes_group
@@ -389,7 +389,11 @@ fn read_string_scalar(ds: &Dataset, path: &str) -> Result<String, NirHdfError> {
 /// would otherwise silently convert integers to f64).
 fn read_f64_1d(ds: &Dataset, path: &str) -> Result<Vec<f64>, NirHdfError> {
     census_dataset(ds, path)?;
-    if !ds.dtype().map_err(|e| NirHdfError::Shape(format!("'{path}': {e}")))?.is::<f64>() {
+    if !ds
+        .dtype()
+        .map_err(|e| NirHdfError::Shape(format!("'{path}': {e}")))?
+        .is::<f64>()
+    {
         return Err(NirHdfError::Shape(format!(
             "'{path}' must be float64 (the reference dtype)"
         )));
@@ -409,7 +413,11 @@ fn read_f64_1d(ds: &Dataset, path: &str) -> Result<Vec<f64>, NirHdfError> {
 /// Census + read one 1-D i64 dataset (the `shape` fields).
 fn read_shape_1d(ds: &Dataset, path: &str) -> Result<Vec<u32>, NirHdfError> {
     census_dataset(ds, path)?;
-    if !ds.dtype().map_err(|e| NirHdfError::Shape(format!("'{path}': {e}")))?.is::<i64>() {
+    if !ds
+        .dtype()
+        .map_err(|e| NirHdfError::Shape(format!("'{path}': {e}")))?
+        .is::<i64>()
+    {
         return Err(NirHdfError::Shape(format!(
             "'{path}' must be int64 (the reference dtype)"
         )));
@@ -436,9 +444,9 @@ fn missing(name: &str, field: &'static str) -> NirHdfError {
 
 /// Read one node group: census every dataset, decode by `type`.
 fn read_node(nodes_group: &Group, name: &str) -> Result<NirHdfNode, NirHdfError> {
-    let group = nodes_group.group(name).map_err(|e| {
-        NirHdfError::Open(format!("'node/nodes/{name}' is not a group: {e}"))
-    })?;
+    let group = nodes_group
+        .group(name)
+        .map_err(|e| NirHdfError::Open(format!("'node/nodes/{name}' is not a group: {e}")))?;
     let type_ds = group
         .dataset("type")
         .map_err(|e| NirHdfError::Open(format!("'node/nodes/{name}/type': {e}")))?;
@@ -470,7 +478,9 @@ fn read_node(nodes_group: &Group, name: &str) -> Result<NirHdfNode, NirHdfError>
             })
         }
         "Linear" => {
-            let ds = group.dataset("weight").map_err(|_| missing(name, "weight"))?;
+            let ds = group
+                .dataset("weight")
+                .map_err(|_| missing(name, "weight"))?;
             census_dataset(&ds, &path("weight"))?;
             if !ds
                 .dtype()
@@ -656,8 +666,8 @@ impl NirHdfDoc {
 /// starved node (missing population/linear view).
 pub fn nir_hdf5_write(path: &Path, g: &NirImport<'_>) -> Result<(), NirHdfError> {
     ensure_plugin_dir();
-    let file = H5File::create(path)
-        .map_err(|e| NirHdfError::Open(format!("{}: {e}", path.display())))?;
+    let file =
+        H5File::create(path).map_err(|e| NirHdfError::Open(format!("{}: {e}", path.display())))?;
     write_str_scalar(&file, "version", EXPORT_VERSION)?;
     let node_g = file
         .create_group("node")
@@ -674,7 +684,11 @@ pub fn nir_hdf5_write(path: &Path, g: &NirImport<'_>) -> Result<(), NirHdfError>
     // cannot emit one; its constructor auto-wires junctions)
     let edges = Array2::from_shape_fn((g.edges.len(), 2), |(i, j)| {
         let (a, b) = g.edges[i];
-        let name = if j == 0 { g.nodes[a as usize].name } else { g.nodes[b as usize].name };
+        let name = if j == 0 {
+            g.nodes[a as usize].name
+        } else {
+            g.nodes[b as usize].name
+        };
         vlen_str(name).expect("node names are valid vlen strings (checked in write_node)")
     });
     node_g
@@ -703,11 +717,7 @@ fn write_str_scalar(parent: &hdf5::Group, name: &str, s: &str) -> Result<(), Nir
         .map_err(|e| NirHdfError::Strings(format!("write '{name}': {e}")))
 }
 
-fn write_f64_array(
-    parent: &hdf5::Group,
-    name: &str,
-    values: &[f64],
-) -> Result<(), NirHdfError> {
+fn write_f64_array(parent: &hdf5::Group, name: &str, values: &[f64]) -> Result<(), NirHdfError> {
     let arr = Array1::from(values.to_vec());
     parent
         .new_dataset_builder()
@@ -742,7 +752,11 @@ fn write_i64_scalar(parent: &hdf5::Group, name: &str, v: i64) -> Result<(), NirH
     Ok(())
 }
 
-fn write_node(nodes_g: &hdf5::Group, node: &NirNode<'_>, g: &NirImport<'_>) -> Result<(), NirHdfError> {
+fn write_node(
+    nodes_g: &hdf5::Group,
+    node: &NirNode<'_>,
+    g: &NirImport<'_>,
+) -> Result<(), NirHdfError> {
     if node.name.contains('/') || node.name.contains('\0') || node.name.is_empty() {
         return Err(NirHdfError::Strings(format!(
             "node name '{}' is not a legal HDF5 link name",
@@ -786,7 +800,9 @@ fn write_node(nodes_g: &hdf5::Group, node: &NirNode<'_>, g: &NirImport<'_>) -> R
                 .deflate(4)
                 .create("weight")
                 .map_err(|e| NirHdfError::Open(format!("'{}': weight: {e}", node.name)))?;
-            let meta = ng.create_group("metadata").and_then(|m| m.create_group("neuralos"));
+            let meta = ng
+                .create_group("metadata")
+                .and_then(|m| m.create_group("neuralos"));
             let meta = meta.map_err(|e| NirHdfError::Open(format!("metadata: {e}")))?;
             let prov = meta
                 .create_group("provenance")
@@ -874,7 +890,8 @@ fn write_node(nodes_g: &hdf5::Group, node: &NirNode<'_>, g: &NirImport<'_>) -> R
             write_str_scalar(
                 &quant,
                 "grid",
-                if g.opts.resolution == neuralos_snn::lif_neuron::VoltageResolution::CentiMillivolt {
+                if g.opts.resolution == neuralos_snn::lif_neuron::VoltageResolution::CentiMillivolt
+                {
                     "cV"
                 } else {
                     "mV"
@@ -1019,7 +1036,10 @@ mod tests {
         };
         let msg = e.to_string();
         assert!(msg.contains("node/nodes/lif/tau") && msg.contains("lzf"));
-        assert!(msg.contains("deflate"), "the policy must be stated in the error");
+        assert!(
+            msg.contains("deflate"),
+            "the policy must be stated in the error"
+        );
     }
 
     #[test]
@@ -1029,7 +1049,10 @@ mod tests {
         let NirHdfError::Seam(msg) = e else {
             panic!("seam error must map to Seam, got {e:?}");
         };
-        assert!(msg.starts_with("tau < dt"), "full seam rendering rides along: {msg}");
+        assert!(
+            msg.starts_with("tau < dt"),
+            "full seam rendering rides along: {msg}"
+        );
     }
 
     // silence dead-code lint for H5Type import used only via macro path
