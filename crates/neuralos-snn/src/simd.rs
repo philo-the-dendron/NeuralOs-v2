@@ -229,7 +229,8 @@
 //!
 //! **`mv_grid_divergence_at_max_dt_over_tau` — divergence.** The same
 //! `|dt_over_tau|`, on the mV grid, with each row's current built from its own
-//! leak so the result stays off the clamp (blind fraction 33 %). Here the
+//! leak so the result stays off the clamp (blind fraction 33 to 37 %:
+//! `1225/3696` at `+1884`, `1379/3696` at `−1884`). Here the
 //! halves differ by up to **8 mV at `+1884`** (2331 membranes, 65 spike bits)
 //! and up to **15 mV at `−1884`** (2261 membranes, 92 spike bits). A single
 //! row on the same grid carries the spike case, standing on its own rather
@@ -851,6 +852,11 @@ mod tests {
     /// the arithmetic did — so a fixture's saturating fraction is the fraction
     /// of it that is blind, and every caller pins it alongside the divergence
     /// it claims to measure.
+    ///
+    /// The count over-reports by a little: a row whose exact arithmetic lands
+    /// on a bound without the clamp engaging looks the same from outside and
+    /// is counted blind too. It is a pinned measurement, not a claim, and
+    /// nothing rests on it being exact. Noted by Soushi on PR #3.
     #[cfg(target_arch = "x86_64")]
     fn measure_divergence(
         mp: &[i16],
@@ -1151,8 +1157,9 @@ mod tests {
     /// row's own leak — `input = -10 * leak + offset` at the default
     /// `resistance = 100` MΩ makes `current_term ≈ -leak`, and `offset` walks
     /// the result across the grid. That drops the blind fraction from 75.6 % to
-    /// 33 %, which is the whole point of the fixture and is pinned below rather
-    /// than asserted in a comment.
+    /// 33 to 37 % (`1225/3696` at `+1884`, `1379/3696` at `−1884`), which is
+    /// the whole point of the fixture and is pinned below rather than asserted
+    /// in a comment.
     ///
     /// `-1884` is the worse sign: 15 mV against 8, and 92 spike disagreements
     /// against 65.
