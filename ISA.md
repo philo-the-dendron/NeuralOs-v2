@@ -6,7 +6,7 @@ phase: complete
 progress: 88/88
 head: "main@02427c0 · open(review): PR #2 fix/lif-scalar-domain @ 0aa2b29 + PR #3 fix/simd-fixture-and-record @ 25f83d9, Soushi888 requested, merge order #2 then #3 · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-02T00:35:00Z
+updated: 2026-09-02T00:45:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -6330,3 +6330,12 @@ both bodies. The reply to Soushi's review is posted on PR #1 (comment
 1509752), drafted by the DA, verified claim-by-claim at the bytes, and
 posted from philo's account with that authorship stated in its first
 line.
+
+**Correction (2026-09-02, adjudicator).** The round-12 S3 entry above
+quotes "214 pass in ~12 s" for the `--include-ignored` CI step; that was
+the measurement at the pre-round-12 tip. The step as landed runs
+**217 passed, 0 failed, 0 ignored, 13.46 s** per the builder's final
+per-commit gate loop (all four round-12 commits green individually).
+The `0 ignored` is the direct proof the flag pulls both sweeps in
+without dropping the other 215. The PR #1 reply carried the same stale
+count and is corrected in place, marked edited.
