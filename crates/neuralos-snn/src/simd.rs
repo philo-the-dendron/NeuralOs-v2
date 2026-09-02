@@ -698,6 +698,30 @@ mod tests {
         (membrane, resting, current, resistance, threshold)
     }
 
+    /// The gate on the gates. Nine tests in this module return early when the
+    /// runner has no AVX2, and every divergence number they pin (2371, 1225,
+    /// 1379, 157, 122, the −56 witness) passes by skipping. Neither workflow
+    /// file asserted the capability, so a green CI leg could be a runner that
+    /// never executed its subject: the same defect class the fixture rework
+    /// fixed, one level up. Found by Soushi on PR #3.
+    ///
+    /// CI sets `NEURALOS_REQUIRE_AVX2` on the simd test steps (both workflow
+    /// files); with it set, a runner without AVX2 fails here instead of
+    /// skipping everywhere. Unset, a local run on an older box keeps skipping,
+    /// which is what a developer wants. Falsifier: set the variable on a
+    /// non-AVX2 target and this test must be the one that fails.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn ci_runner_actually_has_avx2() {
+        if std::env::var_os("NEURALOS_REQUIRE_AVX2").is_some() {
+            assert!(
+                matches!(detect_simd_support(), SimdSupport::Avx2),
+                "CI asked for the AVX2 gate and this runner cannot run it; \
+                 every divergence number in this module went unchecked"
+            );
+        }
+    }
+
     /// AVX2 kernel output stays within the biological bounds, like the scalar.
     #[test]
     #[cfg(target_arch = "x86_64")]
