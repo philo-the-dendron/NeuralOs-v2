@@ -85,8 +85,8 @@ Work lands on `work/<name>` or `fix/<name>`; CI runs on the branch.
 mirror's run is a second opinion that never blocks a merge: do not wait
 on it, do not treat its red as a gate. Merge to main requires branch-CI
 green plus review passed, and every commit on the branch green on its
-own, proven with `git rebase -x` before the merge (source: `AGENTS.md`
-§ Session protocol, Git discipline). Those are mechanical conditions
+own, proven by the `per-commit` CI job on the pull request, whose log the
+merger reads (source: `AGENTS.md` § Session protocol, Git discipline). Those are mechanical conditions
 with no discretion, and the builder may merge on them. Branches are
 deleted after merge.
 

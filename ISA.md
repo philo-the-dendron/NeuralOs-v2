@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@59db46d · PR #4 merged (fmt sweep + fmt --check gate + round-14), mirror in sync, no open PRs, no branches but main · open(next): the per-commit CI job (round-13 proposal), then ROADMAP § Practical next moves"
+head: "main@d840cea · open(review): PR #5 work/per-commit-gate (the per-commit job, proven green on itself and red on the PR #6 falsifier; two review lanes ruled; this record rides the branch) · open(principal): branch protection on main naming the per-commit check; the force-push-on-work/* question · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-02T18:55:00Z
+updated: 2026-09-02T21:20:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -6572,3 +6572,154 @@ live-state exception permits). GUARD 2 untouched. GUARD 3 untouched.
 AGENTS.md § Commands, both workflows, README § Quality gates all name
 fmt; ROADMAP's "current validated state" block is a dated snapshot and
 is left alone.
+
+## Amendment (round-15 — the per-commit rule becomes a check, proven both ways — 2026-09-02)
+
+Session shape: the DA as adjudicator and builder, one cross-family
+reviewer lane in audit mode on the two commits, the principal stamping
+the merge. Branch `work/per-commit-gate`, PR #5. Closes the round-13
+proposal the same day it was written.
+
+### What landed
+
+- `5c0a1aa` — **the `per-commit` job**, in both workflow files,
+  `pull_request` only. It lists `git rev-list --reverse base..head`,
+  checks out each commit, and runs the § Commands gate set there, the
+  fmt check judged per the gate set at that commit (present in that
+  commit's own workflow or not). A red intermediate commit is a red
+  Gitea check the merge waits on. On push events the job reports
+  `skipped`, and Gitea still resolves the combined state to `success`,
+  so the skip blocks nothing (observed on PR #5 and PR #6). Mirror
+  invariant holds: the two files differ in the 13-line header and the
+  `uses:` lines only.
+- `c1675dc` — **AGENTS.md § Session protocol** no longer says "CI only
+  ever runs the pushed tip, so the merger proves it": the job proves
+  it, the merger reads its log, and the local loop stays as the way a
+  builder finds red before pushing. New bullet: `Fixes: <sha>
+  ("<subject>")` and `Found-by: <handle> (PR #N)` as git trailers.
+- the third commit — **this record**, the two reviews' findings applied
+  (CLAUDE.md cross-reference, § Commands synced to CI, the escape hatch
+  for red-after-push, the branch-protection statement, the job comments
+  and the fmt probe).
+
+### Proven green: PR #5's own run
+
+The job's first run on `cp-desktop` walked the PR's two commits and
+passed (job started 19:38Z, about 20 min cold for two commits).
+
+### Proven red: the falsifier, PR #6 (throwaway, closed unmerged)
+
+Branch `test/per-commit-falsifier` off this branch: `2128acb` adds an
+unused variable under `-D warnings`, red on purpose; `00da0bc` reverts
+it, so the tip is green. Verified locally before pushing: `RUSTFLAGS="-D
+warnings" cargo check --workspace --all-targets` exits 101 at `2128acb`
+and 0 at `00da0bc`. Gitea run 859960, job 1167112:
+
+```
+== 4 commit(s) in d840cea..00da0bc
+===== 5c0a1aa GREEN
+===== c1675dc GREEN
+===== 2128acb test(falsifier): RED on purpose — an unused variable under -D warnings
+error: unused variable: `unused_on_purpose`
+##[error]Process completed with exit code 101.
+```
+
+Combined status on PR #6: `check` green, `hdf5` green, `every commit
+green on its own` **failure**, PR state `failure`. On the GitHub mirror
+the same branch was fully green, because the mirror has no pull request
+and the job is skipped there: a branch carrying a commit that does not
+compile, green on every check that existed before today. PR #6 closed
+unmerged, its branch deleted on Gitea, GitHub and locally; the red
+commit never existed on main.
+
+### Reviewer findings (cross-family, audit mode), ruled
+
+Two lanes. The first was dispatched as the cross-vendor audit agent,
+but the codex binary is absent on this box, so it ran in-family: a
+careful second reading, not a second family, and weighted as such. The
+second was **muse** (Meta lineage) through the OpenCode bridge, unscoped,
+told what the first had checked and asked for what nobody named. Every
+finding below was verified at the bytes by the adjudicator before it
+was acted on.
+
+**First lane, verdict fail, three blocking, ruled:**
+
+- CLAUDE.md § Do not violate still said the rule is "proven with
+  `git rebase -x` before the merge" and cited a paragraph that no longer
+  says so. TRUE, and a breach of the repo's own grep-sweep rule by the
+  builder. Fixed in this commit.
+- "The loop is a superset of § Commands." TRUE as written, but the
+  divergence was § Commands' fault: `--include-ignored` entered CI in
+  round 12 and the hdf5 clippy line has been in the hdf5 job since that
+  leg, and § Commands listed neither. § Commands is synced to CI here,
+  so the loop, § Commands and CI are one list. The lane's cost worry
+  about the sweeps ("minutes at every commit") is wrong on the facts:
+  round 12 measured the release sweeps at 11.57 s and today's gate log
+  shows 218 tests in 10.69 s; "minutes" is the debug profile, which
+  the loop never runs.
+- "The cost comment contradicts neighbouring comments." The neighbours
+  are older estimates; the runner's measured times are in the tasks API
+  and now in the comment (two commits cold in 20 min, two green plus a
+  red start in 8.5 min warm). Timeout kept at 240, stated as a budget
+  of roughly fifty commits.
+- Cosmetic, TRUE: the fmt probe matched its own grep line (three hits
+  for one fact). Rewritten as an anchored pattern on the step's own line
+  shape; tested one hit at the gated file, zero at `894fe74`.
+- Record-only, adopted into the comments: the fetch-by-sha is a no-op
+  belt under `fetch-depth: 0` and is now non-fatal; `workflow_dispatch`
+  skips the job; `base..head` semantics stated.
+
+**muse, verdict fail, three blocking, ruled:**
+
+- "Incremental artifacts can mask a red commit." Ruled record-only: no
+  mechanism was shown, cargo fingerprints sources by content and mtime
+  and checkout touches what changed, and both the tip-only jobs and the
+  repo's former `git rebase -x` loop built the same way. The trade-off
+  is now stated in the job header ("incremental-green"), and the cold
+  scratch-worktree loop in AGENTS.md is named as the clean-build proof.
+- "Red found after the push has no compliant fix": TRUE and the best
+  finding of the round. The text said rework in place on an unpushed
+  branch and never force-push, and the job only finds red after a
+  push. AGENTS.md now documents the escape hatch that obeys both rules:
+  rewritten history goes up under a new branch name, the old PR is
+  closed with a pointer, the old branch deleted once the new PR is
+  green. Whether `work/*` branches under review may instead be
+  force-pushed is a doctrine change and the principal's call; not made
+  here.
+- "The job is advisory until branch protection names it": TRUE, and
+  already known from an API read earlier today (the repo has no
+  branch-protection rules at all). AGENTS.md now says so in the
+  protocol paragraph, and the job header too. Setting protection is
+  the principal's action.
+- Cosmetic, TRUE: the builder's own "superset if the branch merged main
+  in" sentence was wrong for a current base (those commits are
+  reachable from base and excluded). Reworded per muse.
+- Cosmetic, TRUE: the GitHub file probed the Gitea file. Both files now
+  probe both, with "either carries the step" semantics, so mirror drift
+  surfaces as fmt running, never as fmt silently skipped, and the two
+  files stay byte-mirrors.
+- Cosmetic: single-runner queuing not in the cost model. Stated in the
+  header; the runner serializes jobs, so no apt or memory contention,
+  only summed wall time.
+
+One builder incident on the way, recorded because it is the third of
+its family today: a JavaScript `String.replace` with a replacement
+containing `$'` duplicated a workflow file's tail (the `$'` pattern
+means "the text after the match"). Caught by the YAML parse in the same
+command, both files restored from the commit and rebuilt with function
+replacements. Nothing reached a commit.
+
+### Cost, measured
+
+One full gate set per commit on `cp-desktop`: about 8 min cold, about
+4 min per further commit with the cache warm, paid only on pull
+requests. The four-commit falsifier run took 8.5 min to reach the red
+commit. The rule's price was always this; it is now visible instead of
+paid by the merger's hand.
+
+GUARD 1 honored (append only; frontmatter head line refreshed as the
+live-state exception permits). GUARD 2 untouched. GUARD 3 untouched.
+`evidence/` untouched. Grep sweep for the moved thing (who proves the
+per-commit rule): AGENTS.md § Session protocol is the only prose that
+stated the old mechanism; § Commands' header comment about the two
+workflow files is still true.
