@@ -80,6 +80,57 @@ pub const MEMBRANE_MV_MIN: i16 = -100;
 /// Membrane potential upper bound (mV) — biological ceiling.
 pub const MEMBRANE_MV_MAX: i16 = 50;
 
+/// The `dt/τ` scaling factor, scaled by 1000: `(dt_us * 1000) / tau_us`.
+///
+/// **Exact over the whole `u32 × u32` domain, and never saturated here.** The
+/// batch kernel cannot accept every value this returns — its `i32`
+/// intermediates overflow above `simd::DT_OVER_TAU_MAX` — so `simd` applies
+/// that bound at its own boundary. The bound belongs to the kernel that needs
+/// it; it is not a property of `dt/τ`, and a neuron must not inherit it. See
+/// [`LIFNeuron::integrate_and_fire`].
+///
+/// This is the ONE definition of the formula. `simd::dt_over_tau` is this
+/// function plus the batch's clamp, so the two cannot drift.
+///
+/// The product and the division are computed in `u64`. Computing them with
+/// `as i32` casts wrapped for `dt_us > i32::MAX` and for
+/// `tau_membrane_us > i32::MAX`: `dt_over_tau(2_147_484, u32::MAX)` returned
+/// `-2_147_483_647`, a value that overflows every downstream multiply, and
+/// `dt_over_tau(1000, u32::MAX)` returned `-1_000_000` — a single step that
+/// drove the membrane to the floor. Both inputs are `u32`, so `u64` covers the
+/// whole domain exactly, the result is always non-negative, and `i64` holds it
+/// with room to spare (the maximum is `u32::MAX * 1000 = 4_294_967_295_000`).
+///
+/// # Examples
+/// ```
+/// # use neuralos_snn::lif_neuron::dt_over_tau;
+/// assert_eq!(dt_over_tau(1_000, 20_000), 50);    // the physical default
+/// assert_eq!(dt_over_tau(40_000, 20_000), 2_000); // dt/tau = 2, exact
+/// assert_eq!(dt_over_tau(1_000, u32::MAX), 0);   // no wrap to a negative
+/// ```
+#[must_use]
+pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i64 {
+    if tau_membrane_us == 0 {
+        // Division-by-zero guard, and nothing more. This comment claimed "the
+        // network rejects tau == 0 at construction" until 2026-09-01; no such
+        // rejection exists anywhere in the crate. `tau_membrane_us` is a `pub`
+        // field on `LIFNeuron`, and `SpikingNeuralNetwork::new` validates only
+        // `neuron_count` and `time_step_us`. So a zero time constant is
+        // reachable, and it lands here rather than on a panic.
+        //
+        // Returning 0 means "this step does not move the membrane", which is
+        // the safe reading: a zero time constant is not physical, and refusing
+        // to move is better than dividing by zero or inventing an infinity.
+        // Construction-time validation is deliberately deferred to the
+        // resistance-seam change (PR #1 scope note), which is where the
+        // signature moves anyway.
+        return 0;
+    }
+    let raw = (u64::from(dt_us) * 1000) / u64::from(tau_membrane_us);
+    // u32::MAX * 1000 < i64::MAX, so this is lossless for every input.
+    raw as i64
+}
+
 /// Voltage-domain resolution of a neuron's stored potentials.
 ///
 /// The membrane/threshold/resting/reset fields hold quanta of this grid.
@@ -258,19 +309,42 @@ impl LIFNeuron {
         // LIF equation: dV/dt = (V_rest − V + R·I) / τ
         // Discretized:   ΔV = (dt/τ) · (V_rest − V + R·I)
         // Fixed-point:   dt_over_tau = (dt · 1000) / τ      (scaled by 1000)
+        // The whole chain is `i64` and EXACT: no input in the full
+        // `u32 dt × u32 τ × i16 current × u16 resistance × either scale` domain
+        // can wrap or panic, and no correct result is approximated. The batch
+        // kernel's `DT_OVER_TAU_MAX` bound is NOT applied here — it is the
+        // kernel's `i32` limit, not a property of the model, and the neuron is
+        // the reference semantic the batch approximates.
         //                delta_v      = dt_over_tau · (leak + current) / 1000
         // Voltage quanta: leak is stored-native; the current term converts
         // μA → quanta (R·I/1000 mV, ×scale for the grid). At scale = 1 the
         // expression sequence is byte-identical to the historical arithmetic.
-        let s = self.voltage_resolution.scale();
-        let dt_over_tau = ((dt_us as i32) * 1000) / self.tau_membrane_us as i32;
-        let leak_term = i32::from(self.resting_potential - self.membrane_potential);
-        let current_term = (i32::from(total_current) * i32::from(self.resistance_mohm) * s) / 1000;
-        let delta_v = (dt_over_tau * (leak_term + current_term)) / 1000;
+        let s = i64::from(self.voltage_resolution.scale());
+        let dt_over_tau = dt_over_tau(dt_us, self.tau_membrane_us);
+        // Both sides widened before the subtraction: in `i16` this overflows for
+        // off-grid states (resting = i16::MAX against membrane = i16::MIN) and
+        // panicked in debug.
+        let leak_term = i64::from(self.resting_potential) - i64::from(self.membrane_potential);
+        let current_term =
+            (i64::from(total_current) * i64::from(self.resistance_mohm) * s) / 1000;
+        // The ONE multiply in this chain that cannot fit `i64` for every legal
+        // input. Worst case `|leak + current_term|` is
+        // `32_768 * 65_535 * scale / 1000 + 65_535`: 214_810_623 on the
+        // centi-mV grid, and 2_212_985 on the mV grid. Against
+        // `dt_over_tau`'s maximum of 4_294_967_295_000 those give about 9.2e20
+        // and 9.5e18 — BOTH past an `i64::MAX` of 9.22e18, so this is not a
+        // centi-mV-only concern. Saturating is exact rather than approximate
+        // here, and that is a proof, not a hope: saturating requires
+        // `|delta_v| > i64::MAX / 1000 ≈ 9.2e15`, and every such delta is
+        // already millions of times outside the voltage clamp below, which
+        // preserves the sign. So the clamped result is identical to the one an
+        // unbounded integer would give. Pinned over the whole domain against an
+        // `i128` reference by `prop_integrate_and_fire_is_exact_over_the_whole_domain`.
+        let delta_v = dt_over_tau.saturating_mul(leak_term + current_term) / 1000;
 
-        let new_v = i32::from(self.membrane_potential)
+        let new_v = i64::from(self.membrane_potential)
             .saturating_add(delta_v)
-            .clamp(i32::from(MEMBRANE_MV_MIN) * s, i32::from(MEMBRANE_MV_MAX) * s);
+            .clamp(i64::from(MEMBRANE_MV_MIN) * s, i64::from(MEMBRANE_MV_MAX) * s);
         self.membrane_potential = new_v as i16;
 
         if self.membrane_potential >= self.threshold {
@@ -774,7 +848,150 @@ mod tests {
 
     // ----- Property tests (Cardano-grade rigor) -----
 
+    /// The `saturating_mul` in the delta chain, exercised deterministically —
+    /// because the property test above essentially never reaches it.
+    ///
+    /// Saturation needs `dt/τ` near 4.3e12 AND a near-maximal
+    /// `|leak + current_term|` in the SAME draw, and uniform draws over
+    /// `u32 × u32 × i16 × u16` deliver that combination with vanishing
+    /// probability: a reviewer sampled two million draws from that
+    /// distribution and not one saturated. So the proptest proves exactness
+    /// over the domain it actually reaches, and THESE rows prove the
+    /// saturating branch is exact. Neither claim stands on the other.
+    ///
+    /// Each row saturates the multiply (verified: `|product|` is 9.50e18 on
+    /// the mV grid and 9.23e20 on centi, against an `i64::MAX` of 9.22e18) and
+    /// each lands exactly where an unbounded integer would put it — on the
+    /// voltage bound, because a delta that large has nowhere else to go.
+    #[test]
+    fn the_saturating_multiply_lands_where_an_unbounded_integer_would() {
+        // (name, membrane, resting, input, resistance, centi, expected)
+        let rows: [(&str, i16, i16, i16, u16, bool, i16); 4] = [
+            ("mV, positive",    -32768,  32767,  32767, 65535, false,    50),
+            ("mV, negative",     32767, -32768, -32768, 65535, false,  -100),
+            ("centi, positive", -32768,  32767,  32767, 65535, true,   5000),
+            ("centi, negative",  32767, -32768, -32768, 65535, true, -10000),
+        ];
+
+        for (name, mp, rp, input, resistance, centi, expected) in rows {
+            let resolution = if centi {
+                VoltageResolution::CentiMillivolt
+            } else {
+                VoltageResolution::Millivolt
+            };
+            let mut n = LIFNeuron::new(0);
+            n.voltage_resolution = resolution;
+            n.membrane_potential = mp;
+            n.resting_potential = rp;
+            n.resistance_mohm = resistance;
+            n.threshold = i16::MAX;
+            // The shortest legal time constant, so dt/tau is maximal. Without
+            // this the neuron keeps `LIFNeuron::new`'s 20_000 us default, the
+            // product lands near 4.6e16, and NOTHING saturates — the rows
+            // would pass while proving the opposite of what they claim.
+            n.tau_membrane_us = 1;
+            n.noise_amplitude_ua = 0;
+            n.synaptic_current_ua = 0;
+            n.adaptation_current_ua = 0;
+            n.refractory_time_us = 0;
+            let _ = n.integrate_and_fire(input, u32::MAX, 0);
+
+            // The same step with no width limit at all, reading the neuron's
+            // own tau rather than assuming it.
+            let s = i128::from(resolution.scale());
+            let dtot = (i128::from(u32::MAX) * 1000) / i128::from(n.tau_membrane_us);
+            let leak = i128::from(rp) - i128::from(mp);
+            let current_term = (i128::from(input) * i128::from(resistance) * s) / 1000;
+            let product = dtot * (leak + current_term);
+            assert!(
+                product > i128::from(i64::MAX) || product < i128::from(i64::MIN),
+                "{name}: this row must actually saturate i64, |product| = {}",
+                product.abs()
+            );
+            let unbounded = (i128::from(mp) + product / 1000)
+                .clamp(i128::from(MEMBRANE_MV_MIN) * s, i128::from(MEMBRANE_MV_MAX) * s);
+
+            assert_eq!(i128::from(n.membrane_potential), unbounded, "{name}");
+            assert_eq!(n.membrane_potential, expected, "{name}");
+        }
+    }
+
     proptest! {
+        /// `integrate_and_fire` is EXACT over the whole input domain, against an
+        /// independent `i128` reference that cannot overflow: every `u32` step,
+        /// every `u32` time constant, every `i16` current, every `u16`
+        /// resistance, both voltage grids, membrane and resting anywhere in
+        /// `i16`.
+        ///
+        /// Three separate claims, and the third is the one worth having:
+        ///
+        /// - it never panics (debug builds are the falsifier — this whole class
+        ///   is what the `i32` chain got wrong: `dt_us as i32 * 1000`,
+        ///   `resting - membrane` in `i16`, and
+        ///   `total_current * resistance_mohm * scale` at the centi-mV scale
+        ///   all overflowed for reachable inputs);
+        /// - the result stays inside the voltage grid;
+        /// - the result EQUALS the unbounded-integer answer, computed here in
+        ///   `i128`, which cannot overflow.
+        ///
+        /// What this test does NOT prove, and must not be cited for: that the
+        /// `saturating_mul` in the delta chain is exact. Uniform draws over
+        /// this domain essentially never reach it — saturation needs a `dt/τ`
+        /// near 4.3e12 AND a near-maximal `|leak + current_term|` in the same
+        /// draw, and two million sampled draws produced none. That branch is
+        /// proved by `the_saturating_multiply_lands_where_an_unbounded_integer_would`,
+        /// which reaches it deterministically on four rows.
+        #[test]
+        fn prop_integrate_and_fire_is_exact_over_the_whole_domain(
+            mp in any::<i16>(),
+            rp in any::<i16>(),
+            input in any::<i16>(),
+            resistance in any::<u16>(),
+            tau_us in 1u32..=u32::MAX,
+            dt_us in 0u32..=u32::MAX,
+            centi in any::<bool>(),
+        ) {
+            let resolution = if centi {
+                VoltageResolution::CentiMillivolt
+            } else {
+                VoltageResolution::Millivolt
+            };
+            let mut n = LIFNeuron::new(0);
+            n.voltage_resolution = resolution;
+            n.membrane_potential = mp;
+            n.resting_potential = rp;
+            n.tau_membrane_us = tau_us;
+            n.resistance_mohm = resistance;
+            n.threshold = i16::MAX; // unreachable: no spike, no reset
+            n.noise_amplitude_ua = 0;
+            n.synaptic_current_ua = 0;
+            n.adaptation_current_ua = 0;
+            n.refractory_time_us = 0;
+
+            let _ = n.integrate_and_fire(input, dt_us, 0);
+
+            // The same equation with no width limit anywhere. i128 holds it:
+            // the largest product is about 9.2e20 against an i128::MAX of 1.7e38.
+            let s = i128::from(resolution.scale());
+            let dtot = (i128::from(dt_us) * 1000) / i128::from(tau_us);
+            let leak = i128::from(rp) - i128::from(mp);
+            let current_term = (i128::from(input) * i128::from(resistance) * s) / 1000;
+            let delta = (dtot * (leak + current_term)) / 1000;
+            let expected = (i128::from(mp) + delta)
+                .clamp(i128::from(MEMBRANE_MV_MIN) * s, i128::from(MEMBRANE_MV_MAX) * s);
+
+            prop_assert_eq!(
+                i128::from(n.membrane_potential), expected,
+                "membrane {} != exact {} (mp={} rp={} input={} resistance={} dt={} tau={} centi={})",
+                n.membrane_potential, expected, mp, rp, input, resistance, dt_us, tau_us, centi
+            );
+            let bound = i128::from(MEMBRANE_MV_MAX) * s;
+            prop_assert!(
+                i128::from(n.membrane_potential).abs() <= bound.max(i128::from(MEMBRANE_MV_MIN).abs() * s),
+                "membrane {} left the voltage grid", n.membrane_potential
+            );
+        }
+
         /// After reset, membrane = resting, no currents, no refractory, no history.
         #[test]
         fn prop_reset_clears_all_state(id in 0u16..=1000) {
@@ -870,6 +1087,88 @@ mod tests {
         let spiked = n.integrate_and_fire(1000, 1000, 0);
         assert!(spiked);
         assert_eq!(n.adaptation_current_ua, 2, "+2 per spike");
+    }
+
+    // ----- The dt/tau formula, and the neuron's exactness over the whole domain -----
+
+    /// `integrate_and_fire` used to inline
+    /// `((dt_us as i32) * 1000) / self.tau_membrane_us as i32`. Both casts
+    /// wrapped. `tau = u32::MAX` became `-1`, so the quotient was `-dt * 1000`
+    /// and a single 1 ms step drove the membrane from rest to the floor —
+    /// silently, no panic in either profile.
+    #[test]
+    fn a_time_constant_longer_than_i32_no_longer_inverts_the_step() {
+        assert_eq!(dt_over_tau(1000, u32::MAX), 0, "tau >> dt is a zero step");
+
+        let mut n = quiet_neuron(24, VoltageResolution::Millivolt);
+        n.tau_membrane_us = u32::MAX;
+        n.threshold = i16::MAX; // unreachable: read the raw membrane
+        let before = n.membrane_potential;
+        let _ = n.integrate_and_fire(1000, 1000, 0);
+        // Old inline: dt_over_tau = 1_000_000 / -1 = -1_000_000, so
+        // delta_v = -1_000_000 * (0 + 100) / 1000 = -100_000 -> clamped to -100.
+        assert_eq!(
+            n.membrane_potential, before,
+            "a 4295 s time constant must not move the membrane in a 1 ms step"
+        );
+    }
+
+    /// The other half of the same cast bug: `dt_us as i32 * 1000` overflowed
+    /// `i32` for `dt_us >= 2_147_484` — a debug panic, a release wrap. The
+    /// formula computes in `u64` and returns `i64`, which holds the whole
+    /// domain: `u32::MAX * 1000` is about 4.29e12.
+    #[test]
+    fn a_time_step_past_the_i32_product_no_longer_overflows() {
+        assert_eq!(dt_over_tau(2_147_484, u32::MAX), 0);
+        assert_eq!(dt_over_tau(i32::MAX as u32, u32::MAX), 499);
+        assert_eq!(dt_over_tau(u32::MAX, 1), 4_294_967_295_000, "exact, not clamped");
+        assert_eq!(dt_over_tau(1000, 20_000), 50, "the physical default is untouched");
+
+        let mut n = quiet_neuron(25, VoltageResolution::Millivolt);
+        n.membrane_potential = MEMBRANE_MV_MIN;
+        n.threshold = i16::MAX;
+        // Old inline: (2_147_484 as i32) * 1000 = 2_147_484_000 > i32::MAX.
+        let _ = n.integrate_and_fire(0, 2_147_484, 0);
+        // Exact: dt_over_tau = 107_374_200, leak = 30, so the delta is enormous
+        // and the clamp — not a bound on dt/tau — is what bounds the result.
+        assert_eq!(n.membrane_potential, MEMBRANE_MV_MAX);
+    }
+
+    /// The neuron is EXACT where the batch kernel clamps, and this is the row
+    /// that made the shared-bound design wrong.
+    ///
+    /// `dt = 40_000 µs` into `τ = 20_000 µs` is a ratio of 2. Nothing
+    /// overflows, every value is physical, and the discretisation
+    /// `dt_over_tau = 2000` is the correct one. Borrowing the batch's
+    /// `DT_OVER_TAU_MAX = 1884` moved this step from −40 mV to −44 mV: a wrong
+    /// answer, silently, in a domain a caller can reach through
+    /// `SpikingNeuralNetwork::new(n, 40_000, ..)`.
+    #[test]
+    fn the_neuron_is_exact_where_the_batch_clamps() {
+        const BATCH_BOUND: i64 = 1884; // simd::DT_OVER_TAU_MAX, not imported: no_std
+
+        let mut n = quiet_neuron(26, VoltageResolution::Millivolt);
+        n.membrane_potential = -100;
+        n.resting_potential = -70;
+        n.tau_membrane_us = 20_000;
+        n.threshold = i16::MAX; // unreachable: read the raw membrane
+
+        let exact = dt_over_tau(40_000, 20_000);
+        assert_eq!(exact, 2000, "dt/tau = 2, exactly");
+        assert!(exact > BATCH_BOUND, "the witness must be above the batch's bound");
+
+        let _ = n.integrate_and_fire(0, 40_000, 0);
+
+        // leak = -70 - (-100) = 30, no current.
+        //   neuron: 2000 * 30 / 1000 = +60  ->  -40
+        //   batch:  1884 * 30 / 1000 = +56  ->  -44
+        assert_eq!(n.membrane_potential, -40, "the neuron takes the exact step");
+        let clamped = -100 + i16::try_from(BATCH_BOUND * 30 / 1000).expect("fits i16");
+        assert_eq!(clamped, -44, "what the batch's bound would have given");
+        assert_ne!(
+            n.membrane_potential, clamped,
+            "the divergence above dt/tau = 1.884 is real and documented, not a bug"
+        );
     }
 
     #[test]
