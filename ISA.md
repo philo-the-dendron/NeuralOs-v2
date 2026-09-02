@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@02427c0 · open(review): PR #2 fix/lif-scalar-domain @ 0aa2b29 + PR #3 fix/simd-fixture-and-record @ 25f83d9, Soushi888 requested, merge order #2 then #3 · next-work: ROADMAP § Practical next moves"
+head: "main@f971c19 · PR #2 merged 3868abb, PR #3 merged f971c19, mirror in sync, no open PRs, no branches but main · open(next): fmt PR (cargo fmt --all + CI --check step), then per-commit CI job · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-02T00:45:00Z
+updated: 2026-09-02T17:40:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -6339,3 +6339,165 @@ per-commit gate loop (all four round-12 commits green individually).
 The `0 ignored` is the direct proof the flag pulls both sweeps in
 without dropping the other 215. The PR #1 reply carried the same stale
 count and is corrected in place, marked edited.
+
+## Amendment (round-13 — Soushi's PR #2 / #3 review lands, both merged — 2026-09-02)
+
+Session shape: one session holding the adjudicator and builder seats
+(the DA), the principal stamping both merges. Soushi's review of PR #2
+(comment 1509937) and PR #3 (comment 1509939) was pulled verbatim into
+LifeOS work notes the night before; every finding was verified at the
+bytes before anything was written. Findings taxonomy per AGENTS.md:
+one blocking (the AVX2 gate), two cosmetic-list (doc band, the
+`both_saturating` note), one record-only (this entry).
+
+### What landed, in merge order
+
+- `9059cda` (`fix/lif-scalar-domain`, PR #2) — **doc only.** The
+  module-doc list of differences a caller carries between the batch
+  and `integrate_and_fire` omitted the one the proptest had to work
+  around: `resistance_mohm` is `u16` on the neuron, `resistance` is
+  `&[i16]` in the batch, only `0..=i16::MAX` is representable in both.
+  The seam was already named under § The SoA seam; the list now points
+  at it, and the count reads four non-arithmetic differences, one
+  arithmetic. Soushi's finding, true at `lif_neuron.rs:210` vs
+  `simd.rs:438,492`.
+- **PR #2 merged** → `main@3868abb`. Gitea four checks green at
+  `9059cda`; GitHub mirror green on the same sha.
+- `a6df11a` (`fix/simd-fixture-and-record`, PR #3) — **the gate on the
+  gates.** Nine tests in `simd.rs` return early when the runner has no
+  AVX2, so every divergence number this branch pins (2371, 1225, 1379,
+  157, 122, the −56 witness) passed by skipping on any runner without
+  it, and neither workflow asserted the capability. Soushi's finding,
+  true: 9 guard sites, zero assertions in either `ci.yml`. Fixed by
+  `ci_runner_actually_has_avx2`, which fails when
+  `NEURALOS_REQUIRE_AVX2` is set and `detect_simd_support()` is not
+  `Avx2`; both workflows set the variable on the two simd test steps
+  (the lint step runs no tests and does not carry it). The mirror
+  invariant holds: the two files still differ only in the `uses:` form
+  and the Gitea header.
+- `46ae2f7` (same branch) — **doc only.** The mV fixture's blind
+  fraction was quoted as a point, `33 %`, in the module doc and the
+  test doc. It is a band: `1225/3696` at `+1884`, `1379/3696` at
+  `−1884`, so 33 to 37 %. Both places now carry the band with the
+  fractions beside it. Also a note on `measure_divergence` that
+  `both_saturating` over-reports blindness by a little, since a row
+  whose exact arithmetic lands on a bound without the clamp engaging
+  is counted too; pinned measurement, nothing rests on it.
+- **PR #3 merged** → `main@f971c19`. Gitea four checks green at
+  `46ae2f7`; GitHub mirror green on the same sha. Mirror `main` pushed
+  to `f971c19`.
+
+### The AVX2 gate, measured on a non-AVX2 CPU
+
+C5 in the round-9 close-out (no execution on a non-AVX2 or non-x86_64
+target) is now partially answered, for the gate test only. The
+`neuralos-snn` test binary at `a6df11a` was run under
+`qemu-x86_64-static -cpu Nehalem`, a CPU model without AVX2:
+
+| condition | result |
+|---|---|
+| var unset, `simd::` filter, `--nocapture` | 16 passed, **7 "AVX2 not available" skips**, all green |
+| var set, `simd::` filter | 15 passed, **1 failed** — `ci_runner_actually_has_avx2`, with its message |
+| host (AVX2), var set, full crate | 216 passed, 2 ignored |
+
+The first row is the defect Soushi described, reproduced: a non-AVX2
+machine reports the simd module green while executing none of its
+subject. The 7 (not 9) is because two of the nine guard sites live in
+the `#[ignore]` sweeps, which that run did not pull in. Still no CI leg
+on a non-AVX2 target; C5 stays open as a CI question.
+
+### A rule broken and repaired in the same session
+
+**"Every commit on the branch is green on its own"** (§ Session
+protocol, ratified 2026-08-30) requires the merger to prove every
+intermediate commit under the full § Commands gate set before merging.
+`a6df11a` was pushed together with `46ae2f7`, so CI ran only the tip,
+and the merger (the DA) ran only the simd tests and simd clippy at
+`a6df11a` before merging, not the gate set, and recorded nothing. That
+is the rule broken in order: the proof came after the merge. Repaired
+by running the full nine-command gate set at `a6df11a` in a scratch
+worktree (`git worktree add`, its own `CARGO_TARGET_DIR`, `.nirenv`
+cmake on PATH, `NEURALOS_REQUIRE_AVX2=1` as CI sets it):
+
+| gate | result |
+|---|---|
+| `cargo check --workspace --all-targets` | PASS |
+| `cargo test --workspace` | PASS (3 app, 200 + 8 + 1 snn, 11 + 107 rt, 5 rt model-gated ignored) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | PASS |
+| `cargo build --no-default-features -p neuralos-snn` | PASS |
+| `cargo test -p neuralos-snn --features simd` | PASS, 216 passed, 2 ignored |
+| `cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings` | PASS |
+| `cargo test -p neuralos-snn --release --features simd -- --include-ignored` | PASS, 218 passed, 0 ignored, 10.69 s |
+| `cargo test -p neuralos-rt --features hdf5` | PASS, 115 + 16 passed, 5 ignored |
+| `cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate` | PASS |
+
+Nine of nine green at `a6df11a`, cold build, no shared target dir.
+
+Every other commit merged today (`9059cda`, `46ae2f7`) has its own
+four-check Gitea run. No history was rewritten; the proof is recorded
+here rather than moved into the past.
+
+### Grep sweep for the moved figure
+
+"blind fraction 33 %" appears once outside `simd.rs`: the round-9
+amendment above (the `mv_grid_divergence_at_max_dt_over_tau` bullet).
+**Tombstone: true when written**, it is the `+1884` figure; the band is
+33 to 37 % as stated in this entry. `docs/ROADMAP.md`, `README.md` and
+`evidence/simd-hardening/README.md` do not carry it. The test counts in
+§ Commands ("208 snn", "214/217" on the release step) are superseded by
+the new gate test: **222 passed, 2 ignored** on the default simd gate,
+**224 passed, 0 ignored** on the release `--include-ignored` step at
+`main@f971c19`, measured on this box; § Commands' inline counts are
+descriptive comments and were not edited, since the file is not a
+record and the next amendment that touches it should refresh them.
+
+### The `proptest-regressions/simd.txt` question, settled by fact
+
+The round-12 entry left open whether `simd` should carry a regression
+file. The only surviving candidate seed lived on the local, unmerged
+draft branch `work/simd-hardening` (7 commits past its merged remote
+tip, the pre-split form of PR #2 and #3). That seed
+(`cc a5f3d43e…`, shrinks to `tau_us = 218507, dt_ratio = 9828`) was
+replayed against `main`'s `prop_scalar_batch_is_bit_equal_to_integrate_and_fire`
+and **passes**, so it recorded a defect of the draft's design (the
+neuron-side clamp), not of the merged code. Nothing to bank; `simd`
+stays without a regression file until a real failure produces one.
+The draft branch carries nothing main lacks and is tagged locally as
+`draft/simd-hardening-2026-09-01` before deletion, for reading only.
+
+### Branch hygiene (§ Session protocol: "branches are deleted after merge")
+
+Done after both merges, each branch checked for `git rev-list --count
+main..<ref> == 0` before deletion: `fix/lif-scalar-domain` and
+`fix/simd-fixture-and-record` deleted locally, on Gitea and on the
+GitHub mirror; `work/simd-hardening` deleted on both remotes (its
+remote tip `137088d` is PR #1's merged tip), and its local copy
+(`1d5a77b`, seven draft commits) tagged `draft/simd-hardening-2026-09-01`
+locally then deleted. The only branch anywhere is now `main`. Two
+instrument notes for the record: a first listing filtered
+`fix/lif-scalar-domain` out because the pattern `main` matches
+`domain`, and a multi-ref `git push origin --delete` aborted on the
+GitHub URL when one ref was already gone there, so that mirror needed
+its own delete. Both caught by re-listing, neither cost anything.
+
+### Proposed next move on the rule itself (the principal's call)
+
+The per-commit rule is right for this repo (bisected history, commits
+cited by DOI) and its enforcement is manual, which is how it was broken
+today with the rule in view. Proposal: one CI job on `pull_request`
+that loops `git rev-list --reverse <base>..<head>` and runs the gate
+set at each commit, so "every commit green" becomes a Gitea check the
+merge waits on. Cost is one full run per commit on the branch, paid
+visibly. Not started; rides its own PR after the fmt PR.
+
+### Cosmetic-list, rides a later PR
+
+`cargo fmt --all -- --check` is red across the repo: 484 diff hunks,
+predating this session, and CI does not gate on it. Planned as its own
+PR at a moment with no open branches (which is now): one commit
+`cargo fmt --all`, one commit adding the `--check` step to both
+workflows, so the class is gated and not just the instance.
+
+GUARD 1 honored (append only; the round-9 "33 %" is tombstoned above,
+not edited). GUARD 2 untouched. GUARD 3 untouched. Frontmatter `head:`
+line refreshed as the live-state exception permits.
