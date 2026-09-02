@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@894fe74 · open(review): PR #4 work/fmt-sweep (lint prep + cargo fmt --all + fmt --check gate + this record), byte-identity and per-commit proofs in the PR body, cross-family review passed · next-work: per-commit CI job, then ROADMAP § Practical next moves"
+head: "main@59db46d · PR #4 merged (fmt sweep + fmt --check gate + round-14), mirror in sync, no open PRs, no branches but main · open(next): the per-commit CI job (round-13 proposal), then ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-02T18:30:00Z
+updated: 2026-09-02T18:55:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
