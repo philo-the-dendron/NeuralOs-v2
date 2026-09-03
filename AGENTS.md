@@ -119,9 +119,11 @@ is only worth the multi-minute link when you want real smoothness.
 `origin` has **two push URLs**: Gitea (`Caramoussin/NeuralOs-v2`,
 canonical) and the GitHub mirror (`philo-the-dendron/NeuralOs-v2`). A
 normal `git push origin main` hits both. If Gitea has commits you don't
-(e.g. a web edit), **rebase, never force-push Gitea**. The GitHub
-mirror is the only force-push target, and only when it has desynced
-pre-rebase history — get explicit OK first.
+(e.g. a web edit), **rebase, never force-push Gitea `main`** (the one
+`work/*` exception, with a lease, is in § Session protocol). The GitHub
+mirror is the only bare-force target, and only when it has desynced
+pre-rebase history — get explicit OK first, and set its `main mirror`
+ruleset to Disabled for the push, then back to Active.
 
 ## Published crate
 
@@ -275,20 +277,31 @@ claims, reopening frozen records.
   commit, so the rule is a Gitea check, not the merger's memory — it
   was broken by hand once (ISA round 13) and, run as a loop, caught two
   real defects the same day (round 14). **The check gates a merge only
-  once branch protection on `main` names it as a required status;** as
-  of 2026-09-02 the repo has no branch-protection rules at all (API
-  read), and setting them is the principal's action. The merger reads
+  once branch protection on `main` names it as a required status;**
+  since 2026-09-03 it does (API read): `main` refuses direct and force
+  pushes for everyone, admins included, requires the three
+  `(pull_request)` checks green and an up-to-date branch, and only the
+  principal may merge. The GitHub mirror carries one ruleset on its
+  default branch (block force pushes, restrict deletions). The merger reads
   that job's log; a local loop over `git rev-list main..HEAD` in a
   scratch worktree with its own target dir is still how a builder finds
   red before pushing, and it is the clean-build proof (the job builds
   incremental, in place, on one cache). A red commit is reworked in
   place (`--fixup` + `--autosquash`), never patched by a later commit
   that leaves the red one in history. **Red found after the push:** the
-  branch is never force-pushed; the rewritten history goes up under a
-  new name (`work/<name>-2`), the old PR is closed with a pointer to
-  the new one, and the old branch is deleted once the new PR is green.
-  Never force-push Gitea. Branches are deleted after merge (git history
-  is the archive).
+  fix goes in place and the branch is rewritten with
+  `git push --force-with-lease` (never bare `--force`), so the PR keeps
+  its number and its thread. Allowed on `work/*` branches only, and
+  never while a reviewer is mid-thread: post the fix, wait for the
+  answer, then rewrite. Every rewrite gets a note on the PR — old head,
+  new head, which commit was red and why — because Gitea keeps the
+  review comments but their anchors now point at commits that no
+  longer exist. (Rule changed 2026-09-03; before that a rewrite went up
+  as `work/<name>-2` with the old PR closed, which lost the same
+  anchors and added a dead PR.) `main` is never rewritten anywhere;
+  the lease is what protects Gitea from a blind force, and the branch
+  rule is what protects `main`. Branches are deleted after merge (git
+  history is the archive).
 - **Commit trailers, machine-readable.** A commit that corrects an
   earlier one carries `Fixes: <sha> ("<subject>")`; a change that
   answers a reviewer's finding carries `Found-by: <handle> (PR #N)`.
