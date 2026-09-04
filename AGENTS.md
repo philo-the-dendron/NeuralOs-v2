@@ -289,19 +289,29 @@ claims, reopening frozen records.
   incremental, in place, on one cache). A red commit is reworked in
   place (`--fixup` + `--autosquash`), never patched by a later commit
   that leaves the red one in history. **Red found after the push:** the
-  fix goes in place and the branch is rewritten with
-  `git push --force-with-lease` (never bare `--force`), so the PR keeps
-  its number and its thread. Allowed on `work/*` branches only, and
-  never while a reviewer is mid-thread: post the fix, wait for the
-  answer, then rewrite. Every rewrite gets a note on the PR — old head,
-  new head, which commit was red and why — because Gitea keeps the
-  review comments but their anchors now point at commits that no
-  longer exist. (Rule changed 2026-09-03; before that a rewrite went up
-  as `work/<name>-2` with the old PR closed, which lost the same
-  anchors and added a dead PR.) `main` is never rewritten anywhere;
-  the lease is what protects Gitea from a blind force, and the branch
-  rule is what protects `main`. Branches are deleted after merge (git
-  history is the archive).
+  fix goes in place and the branch is rewritten, so the PR keeps its
+  number and its thread. Allowed on `work/*` branches only. The push
+  is the explicit lease, never the bare one and never `--force`:
+
+      git push --force-with-lease=work/<name>:<old-head-sha> --force-if-includes
+
+  The bare `--force-with-lease` compares against the remote-tracking
+  ref, and any fetch in between (the per-commit loop, a status poll)
+  updates that ref and lets the force through over a commit you never
+  saw. Naming the SHA, plus `--force-if-includes`, is what makes it a
+  lease (Soushi, PR #7). Order of operations, each step checkable:
+  (1) rewrite only when the newest event on the PR is your own — if
+  the reviewer spoke last, answer first; (2) post the note BEFORE the
+  push — old head, new head, which commit was red and why — because
+  after the push the old head is unreachable from any ref Gitea keeps,
+  and that comment is the only durable copy of the SHA; (3) push with
+  the explicit lease above. Gitea keeps the review comments, but their
+  anchors point at commits that no longer exist; the note is how a
+  reader reconnects them. (Rule changed 2026-09-03; before that a
+  rewrite went up as `work/<name>-2` with the old PR closed, which
+  lost the same anchors and added a dead PR.) `main` is never
+  rewritten anywhere; the branch rule is what protects `main`.
+  Branches are deleted after merge (git history is the archive).
 - **Commit trailers, machine-readable.** A commit that corrects an
   earlier one carries `Fixes: <sha> ("<subject>")`; a change that
   answers a reviewer's finding carries `Found-by: <handle> (PR #N)`.
