@@ -278,11 +278,14 @@ claims, reopening frozen records.
   was broken by hand once (ISA round 13) and, run as a loop, caught two
   real defects the same day (round 14). **The check gates a merge only
   once branch protection on `main` names it as a required status;**
-  since 2026-09-03 it does (API read): `main` refuses direct and force
-  pushes for everyone, admins included, requires the three
-  `(pull_request)` checks green and an up-to-date branch, and only the
-  principal may merge. The GitHub mirror carries one ruleset on its
-  default branch (block force pushes, restrict deletions). The merger reads
+  since 2026-09-03 it does: `main` refuses direct and force pushes for
+  everyone, admins included, requires the three `(pull_request)` checks
+  green and an up-to-date branch, and only the principal may merge
+  (the public branch endpoint shows `protected`, the three contexts and
+  `required_approvals: 0`; the admin and merge-list facts are readable
+  only with the owner's token). The GitHub mirror carries one ruleset
+  on its default branch only (block force pushes, restrict deletions),
+  so `work/*` there has no guard beyond the lease. The merger reads
   that job's log; a local loop over `git rev-list main..HEAD` in a
   scratch worktree with its own target dir is still how a builder finds
   red before pushing, and it is the clean-build proof (the job builds
@@ -296,17 +299,34 @@ claims, reopening frozen records.
   `git rebase -i --autosquash main` melts each fixup into the commit
   it names, the per-commit check re-runs on the new head, and the
   merge waits for it. One rewrite per PR at the moment nobody holds a
-  live anchor, not one per red (Soushi, PR #7). The PR keeps its
+  live anchor, not one per red (Soushi, PR #7). Known cost: while a
+  `fixup!` is visible the per-commit check stays red by design, so a
+  pending fixup and a broken branch look the same on the PR page until
+  the squash; teaching the job to skip commits that a later `fixup!`
+  names is a CI change, tracked separately. The PR keeps its
   number and its thread. Allowed on `work/*` branches only. The push
-  is the explicit lease, never the bare one and never `--force`:
+  names the canonical host, carries both lease flags, and never
+  `--force`:
 
-      git push --force-with-lease=work/<name>:<old-head-sha> --force-if-includes
+      git push git@gitea.com:Caramoussin/NeuralOs-v2.git \
+          --force-with-lease --force-if-includes work/<name>
+      git push github --force-with-lease --force-if-includes work/<name>
 
-  The bare `--force-with-lease` compares against the remote-tracking
-  ref, and any fetch in between (the per-commit loop, a status poll)
-  updates that ref and lets the force through over a commit you never
-  saw. Naming the SHA, plus `--force-if-includes`, is what makes it a
-  lease (Soushi, PR #7). Order of operations, each step checkable:
+  Why both flags: `--force-with-lease` alone compares against the
+  remote-tracking ref, and any fetch in between (the per-commit loop,
+  a status poll) updates that ref and lets the force through over a
+  commit you never saw; `--force-if-includes` refuses unless that
+  fetched tip is already integrated locally, which is the check a
+  background fetch cannot fake. Do NOT write the explicit
+  `--force-with-lease=<ref>:<sha>` form with `--force-if-includes`:
+  git-push(1) makes the second flag a no-op in that combination, and
+  the explicit form is only as safe as where the SHA came from (from
+  the note in step 2, never `git rev-parse origin/work/<name>`). Why
+  the host is named: `origin` fans out to two push URLs, and a lease
+  can pass on one host and fail on the other, leaving a rewrite that
+  happened but reported failure; hit Gitea alone, then bring the
+  mirror up as its own step. (Soushi, PR #7, both measured in scratch
+  repos on git 2.43.) Order of operations, each step checkable:
   (1) rewrite only when the newest event on the PR is your own — if
   the reviewer spoke last, answer first; (2) post the note BEFORE the
   push — old head, new head, which commit was red and why — because
