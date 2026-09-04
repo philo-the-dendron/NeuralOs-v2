@@ -288,8 +288,15 @@ claims, reopening frozen records.
   red before pushing, and it is the clean-build proof (the job builds
   incremental, in place, on one cache). A red commit is reworked in
   place (`--fixup` + `--autosquash`), never patched by a later commit
-  that leaves the red one in history. **Red found after the push:** the
-  fix goes in place and the branch is rewritten, so the PR keeps its
+  that leaves the red one in history. **Red found after the push:**
+  the fix is committed as `git commit --fixup <red-sha>` and stays
+  visible on the branch for the whole review, so every reviewer anchor
+  keeps pointing at a commit that exists. The branch is rewritten
+  ONCE, right before merge, after every thread is resolved:
+  `git rebase -i --autosquash main` melts each fixup into the commit
+  it names, the per-commit check re-runs on the new head, and the
+  merge waits for it. One rewrite per PR at the moment nobody holds a
+  live anchor, not one per red (Soushi, PR #7). The PR keeps its
   number and its thread. Allowed on `work/*` branches only. The push
   is the explicit lease, never the bare one and never `--force`:
 
