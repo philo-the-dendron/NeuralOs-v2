@@ -34,6 +34,12 @@
 #
 # Exit codes: 0 ok · 2 setup/refusal · 3 cap or disk stop = VOID (INCOMPLETE)
 set -euo pipefail
+# Every threshold below is compared in INTEGER BYTES or SECONDS, never on a
+# formatted number: this box runs fr_CA, where printf "%.1f" yields "125,4",
+# and mawk then treats that as a STRING, so `125,4 < 20` was TRUE by
+# lexicographic order. C numeric formatting on top, so the log reads the
+# same everywhere and nothing re-parses a localized figure.
+export LC_ALL=C
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -48,6 +54,13 @@ CAP_HOURS=${CAL_CAP_HOURS:-9}
 MIN_FREE_GIB=${CAL_MIN_FREE_GIB:-20}
 NULL_DIR=${CAL_NULL_DIR:-}
 ONLY_ARM=${1:-}
+
+# Thresholds as integers, derived once. The awk here runs under LC_ALL=C
+# and its output is consumed as an integer, never re-parsed as a decimal.
+MIN_FREE_BYTES=$(awk -v g="$MIN_FREE_GIB" 'BEGIN{printf "%d", g*1073741824}')
+CAP_SECONDS=$(awk -v h="$CAP_HOURS" 'BEGIN{printf "%d", h*3600}')
+# 105 nulls × 1.0011 GiB + the 20 GiB floor = 126 GiB.
+KEEP_DISK_BYTES=135291469824
 
 GEN_SRC="crates/neuralos-rt/examples/step5_calibration.rs"
 SELF="tools/step5_calibration_burn.sh"
@@ -81,10 +94,10 @@ avail_bytes() { df -B1 --output=avail "$1" | tail -1 | tr -d ' '; }
 # failure stops the burn. There is no fallback device: writing somewhere
 # else would put half the run on a disk BURN.log does not name.
 require_free() { # $1 = receiving dir, $2 = what is about to be written
-  local dir="$1" what="$2" b f
-  b=$(avail_bytes "$dir"); f=$(gib "$b")
-  if awk -v f="$f" -v m="$MIN_FREE_GIB" 'BEGIN{exit !(f<m)}'; then
-    say "STOP: $dir has ${f} GiB free, under the ${MIN_FREE_GIB} GiB floor, before $what"
+  local dir="$1" what="$2" b
+  b=$(avail_bytes "$dir")
+  if [ "$b" -lt "$MIN_FREE_BYTES" ]; then
+    say "STOP: $dir has $(gib "$b") GiB free, under the ${MIN_FREE_GIB} GiB floor, before $what"
     say "      no fallback device — VOID (INCOMPLETE)"
     exit 3
   fi
@@ -113,19 +126,17 @@ require_mount() { # $1 = what is about to happen
     say "      — VOID (INCOMPLETE)"
     exit 3
   fi
-  local b f
-  b=$(avail_bytes "$NULL_DIR"); f=$(gib "$b")
-  # 105.1 GiB of nulls plus the 20 GiB floor, which is never reclaimed on a
-  # keep disk: at 106 the floor would trip around the 86th null.
-  if awk -v f="$f" 'BEGIN{exit !(f<126)}'; then
-    say "STOP: $NULL_DIR has ${f} GiB free, under the 126 GiB the kept null set needs"
-    say "      (105.1 GiB of nulls + the ${MIN_FREE_GIB} GiB floor), before $1"
-    exit 3
-  fi
+  # No space check here. The 126 GiB figure is the WHOLE RUN's requirement
+  # and belongs only at the start-of-run gate below: free space on a keep
+  # disk falls monotonically, so re-testing the total before every write
+  # would kill a disk that started at exactly the documented minimum on its
+  # second file. Per-write space is `require_free`, which tests the floor
+  # and is called on this same directory right before each move.
 }
 gib() { awk -v b="$1" 'BEGIN{printf "%.1f", b/1073741824}'; }
 gb() { awk -v b="$1" 'BEGIN{printf "%.1f", b/1000000000}'; }
 elapsed_h() { awk -v s="$START" 'BEGIN{printf "%.2f", (systime()-s)/3600}'; }
+elapsed_s() { echo $(( $(date +%s) - START )); }
 
 KEEP_NULLS=0
 NULL_MOUNT=""
@@ -140,8 +151,11 @@ if [ -n "$NULL_DIR" ]; then
   NULL_MOUNT_DEV=$(stat -c %d "$NULL_MOUNT")
   NB=$(avail_bytes "$NULL_DIR")
   # 126 GiB: 105 × 1.0011 GiB of nulls = 105.1, plus the 20 GiB floor that
-  # a keep disk never reclaims.
-  if awk -v b="$NB" 'BEGIN{exit !(b >= 135291469824)}'; then
+  # a keep disk never reclaims. This is the WHOLE RUN's requirement and it
+  # is tested HERE ONLY — free space falls as the run writes, so re-testing
+  # a total before every write would kill a disk that started at exactly
+  # the minimum. Per-write space is require_free's floor.
+  if [ "$NB" -ge "$KEEP_DISK_BYTES" ]; then
     KEEP_NULLS=1
   else
     echo "REFUSING: CAL_NULL_DIR $NULL_DIR has $(gib "$NB") GiB free, under the 126 GiB a kept" >&2
@@ -249,7 +263,10 @@ for line in "${LINES[@]}"; do
   say "--- arm $arm · free ${FREE} GiB · elapsed ${EL} h · families [${fams:-none}] ---"
   require_free "$MODELS" "arm $arm generate"
   require_mount "arm $arm"
-  if awk -v e="$EL" -v c="$CAP_HOURS" 'BEGIN{exit !(e>c)}'; then
+  if [ "$KEEP_NULLS" = 1 ]; then
+    require_free "$NULL_DIR" "arm $arm nulls"
+  fi
+  if [ "$(elapsed_s)" -gt "$CAP_SECONDS" ]; then
     say "STOP: ${EL} h exceeds the ${CAP_HOURS} h cap — VOID (INCOMPLETE)"
     exit 3
   fi
