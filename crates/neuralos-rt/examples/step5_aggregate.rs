@@ -282,11 +282,32 @@ fn aggregate(root: &Path) {
     );
 }
 
-/// Null families are exactly five files (PREREG §5): a PRIMARY family
-/// reduced below five by the void protocol voids its ARM, because a
-/// smaller family lowers the M3 max and biases toward the positive
-/// verdict. A depleted graft SCAT family degrades only the SCAT band.
-const NULLS_PER_FAMILY: usize = 5;
+/// A PRIMARY family is ten files, a reported one five (PREREG §5). A
+/// PRIMARY family reduced below its count by the void protocol voids its
+/// ARM, because a smaller family lowers the M3 max and biases toward the
+/// positive verdict. A depleted reported family (graft SCAT, lesion MID)
+/// degrades only its own band.
+const PRIMARY_NULLS: usize = 10;
+const REPORTED_NULLS: usize = 5;
+/// Session cap (§7); a stop at the cap is VOID (INCOMPLETE), never a
+/// verdict on what happened to finish.
+const CAP_HOURS: f64 = 9.0;
+
+/// A judged file whose dump is missing any step the BASE carries makes M3
+/// undefined for that prompt (`judge.rs` does `cand.get(&s)?`), so it is a
+/// VOID file under the void protocol, not a quiet one. Returns the prompts
+/// where that happened.
+fn missing_base_steps(dir: &Path, base_root: &Path) -> Vec<usize> {
+    let mut out = Vec::new();
+    for p in 0..5 {
+        let base = parse_dump_file(&base_root.join(format!("p{p}_run1.err")).to_string_lossy());
+        let cand = parse_dump_file(&dir.join(format!("p{p}_run1.err")).to_string_lossy());
+        if base.keys().any(|s| !cand.contains_key(s)) {
+            out.push(p);
+        }
+    }
+    out
+}
 
 /// `arms.txt` lives beside PREREG.md, one level above the burn root, and
 /// is written by `step5_calibration --generate` (§7 step 5). The arm list
@@ -337,9 +358,10 @@ fn family_band(
     base: &Path,
     stem: &str,
     family: &str,
+    required: usize,
     arm: &Step5FileReadout,
     arm_m3: Option<f64>,
-) -> Option<(Step5Band, &'static str)> {
+) -> Option<(Step5Band, &'static str, bool)> {
     let prefix = format!("cal-{stem}-{family}-s");
     let mut nulls: Vec<Step5FileReadout> = Vec::new();
     let mut m3s: Vec<Option<f64>> = Vec::new();
@@ -367,12 +389,20 @@ fn family_band(
             );
             continue;
         }
+        let missing = missing_base_steps(&d, base);
+        if !missing.is_empty() {
+            println!(
+                "    {name}: dump missing base steps on prompts {missing:?} — M3 undefined there, \
+                 VOID file, excluded (void protocol §7; re-run once, then exclude)"
+            );
+            continue;
+        }
         m3s.push(m3_of(&d, base));
         nulls.push(ro);
     }
-    if nulls.len() != NULLS_PER_FAMILY {
+    if nulls.len() != required {
         println!(
-            "    {family}: {} of {NULLS_PER_FAMILY} usable ({found} found) — family incomplete (§5)",
+            "    {family}: {} of {required} usable ({found} found) — family incomplete (§5)",
             nulls.len()
         );
         return None;
@@ -387,11 +417,16 @@ fn family_band(
     } else {
         (arm_m3, "m3: compared")
     };
-    Some((step5_band(arm, effective_m3, &nulls, &m3s), note))
+    // M2 alone, isolated by asking the SAME band function for the band it
+    // would give with no M3 to compare against: it can then only be Mixed
+    // (M2 fired) or NullConsistent (it did not). No second implementation
+    // of M2 anywhere.
+    let m2_fired = step5_band(arm, None, &nulls, &m3s) == Step5Band::Mixed;
+    Some((step5_band(arm, effective_m3, &nulls, &m3s), note, m2_fired))
 }
 
 /// The step-5 CALIBRATION positive control: bands per arm file against its
-/// PRIMARY null family (LESION → scat, GRAFT → local), the secondary band
+/// PRIMARY null family (marked in arms.txt), the reported families
 /// alongside, and the §6 verdict computed by `judge::poscontrol_verdict` —
 /// the rule lives in the library with its exhaustive truth-table test,
 /// never inline here.
@@ -400,6 +435,7 @@ fn poscontrol(root: &Path) {
         "== step-5 positive control (PREREG §5/§6) over {} ==",
         root.display()
     );
+    println!("cap     : ≤ {CAP_HOURS} h judge wall-time; a cap stop is VOID (INCOMPLETE)");
     let base = base_dir(root);
     let af = arms_file(root);
     println!("arms    : {}", af.display());
@@ -407,13 +443,12 @@ fn poscontrol(root: &Path) {
         std::fs::read_to_string(&af).unwrap_or_else(|e| panic!("read {}: {e}", af.display()));
 
     let mut partial = false;
-    let (mut lj, mut ls, mut lq) = (0usize, 0usize, 0usize);
-    let (mut gj, mut gs, mut gq, mut gscat) = (0usize, 0usize, 0usize, 0usize);
-    // The global print rule (§6, reviewer D2): every graft file SEPARATED
-    // while the verdict is not CALIBRATED is printed verbatim, under every
-    // rule, never promoted.
+    let (mut lj, mut ls, mut lq, mut lm2, mut lmid) = (0usize, 0usize, 0usize, 0usize, 0usize);
+    let (mut gj, mut gs, mut gq, mut gm2, mut gscat) = (0usize, 0usize, 0usize, 0usize, 0usize);
+    // The global print rule (§6): every graft file SEPARATED while the
+    // verdict is not CALIBRATED is printed verbatim, under every rule.
     let mut graft_separated: Vec<String> = Vec::new();
-    let mut scat_bands: Vec<String> = Vec::new();
+    let mut reported: Vec<String> = Vec::new();
 
     for line in text
         .lines()
@@ -437,6 +472,7 @@ fn poscontrol(root: &Path) {
             "{}: {stem} must mark exactly one primary family (none for the tripwire), got {tokens:?}",
             af.display()
         );
+
         let dir = root.join(format!("cal-{stem}"));
         if !dir.exists() {
             println!("  {stem}: ABSENT — partial root");
@@ -449,6 +485,14 @@ fn poscontrol(root: &Path) {
             println!(
                 "  {stem}: VOIDS {:?} — arm voided (void protocol §7)",
                 arm.voids
+            );
+            continue;
+        }
+        let missing = missing_base_steps(&dir, &base);
+        if !missing.is_empty() {
+            println!(
+                "  {stem}: dump missing base steps on prompts {missing:?} — M3 undefined there, \
+                 VOID file, arm voided (void protocol §7; re-run once, then exclude)"
             );
             continue;
         }
@@ -470,9 +514,9 @@ fn poscontrol(root: &Path) {
             continue;
         }
 
-        // The arm CLASS still comes from the stem — `lesion-h{h}` and
-        // `graft-k{k}` are the §7 filenames, and §6 counts the two classes
-        // separately. The PRIMARY family no longer does.
+        // The arm CLASS comes from the stem — `lesion-h{h}` and
+        // `graft-k{k}` are the §7 filenames and §6 counts the two classes
+        // separately. The PRIMARY family does not.
         let is_lesion = stem.starts_with("lesion-");
         assert!(
             is_lesion || stem.starts_with("graft-"),
@@ -487,37 +531,40 @@ fn poscontrol(root: &Path) {
 
         let arm_m3 = m3_of(&dir, &base);
         let quiet = arm.flips.is_empty();
-        let Some((band, note)) = family_band(root, &base, stem, primary, &arm, arm_m3) else {
+        let Some((band, note, m2)) =
+            family_band(root, &base, stem, primary, PRIMARY_NULLS, &arm, arm_m3)
+        else {
             println!("  {stem}: PRIMARY family {primary} unusable — arm VOIDED (§5)");
             continue;
         };
         println!(
-            "  {stem}: {} flips · {note} · vs {primary} → {}{}",
+            "  {stem}: {} flips · {note} · vs {primary} → {}{}{}",
             arm.flips.len(),
             band_label(&band),
+            if m2 { " · M2 fired" } else { "" },
             if quiet { " · QUIET" } else { "" }
         );
-        // The secondary family is reported and never enters §6 (§3), but
-        // for grafts its band rides in the verdict string.
+        // Reported families never enter §6 (§3); the graft SCAT and lesion
+        // MID bands ride in the verdict string.
         for family in families.iter().filter(|f| **f != primary) {
-            match family_band(root, &base, stem, family, &arm, arm_m3) {
-                Some((b, n)) => {
+            match family_band(root, &base, stem, family, REPORTED_NULLS, &arm, arm_m3) {
+                Some((b, n, _)) => {
                     println!(
                         "    {family}: {} · {n} (reported, not banded into §6)",
                         band_label(&b)
                     );
-                    if !is_lesion && *family == "scat" {
-                        if b == Step5Band::Separated && !quiet {
+                    reported.push(format!("{stem} {} {}", family, band_label(&b)));
+                    if b == Step5Band::Separated && !quiet {
+                        if is_lesion && *family == "mid" {
+                            lmid += 1;
+                        } else if !is_lesion && *family == "scat" {
                             gscat += 1;
                         }
-                        scat_bands.push(format!("{stem} {}", band_label(&b)));
                     }
                 }
                 None => {
-                    println!("    {family}: not usable (reported only, §6 unaffected)");
-                    if !is_lesion && *family == "scat" {
-                        scat_bands.push(format!("{stem} DEPLETED"));
-                    }
+                    println!("    {family}: depleted — band degraded, §6 unaffected (§5)");
+                    reported.push(format!("{stem} {family} DEPLETED"));
                 }
             }
         }
@@ -527,10 +574,12 @@ fn poscontrol(root: &Path) {
             lj += 1;
             ls += usize::from(separated);
             lq += usize::from(quiet);
+            lm2 += usize::from(m2);
         } else {
             gj += 1;
             gs += usize::from(separated);
             gq += usize::from(quiet);
+            gm2 += usize::from(m2);
             if separated {
                 graft_separated.push(stem.to_string());
             }
@@ -543,14 +592,23 @@ fn poscontrol(root: &Path) {
     }
     let out = poscontrol_verdict(lj, ls, lq, gj, gs, gq);
     println!(
-        "\nverdict: {} (graft: {gs}/{gj} SEPARATED vs LOCAL, {gscat}/{gj} SEPARATED vs SCAT)",
+        "\nverdict: {} (graft: {gs}/{gj} vs LOCAL, {gscat}/{gj} vs SCAT · lesion: {ls}/{lj} vs \
+         SCAT, {lmid}/{lj} vs MID)",
         out.verdict.label()
     );
     // Every number §1's licence templates read, printed as numbers.
-    println!("counts : Ls={ls} Lj={lj} Lq={lq} · Gs={gs} Gj={gj} Gq={gq} · Gscat={gscat}");
+    println!(
+        "counts : Ls={ls} Lj={lj} Lq={lq} Lmid={lmid} · Gs={gs} Gj={gj} Gq={gq} Gscat={gscat}"
+    );
+    // M2 alone, per class: how many files partitioned their destination
+    // against the primary family regardless of M3. With three base
+    // knife-edge steps in two prompts, M3 is the scarce half of the
+    // conjunction, so this tally says how much of a non-SEPARATED result
+    // is M3's absence rather than M2's silence.
+    println!("m2-only: lesions {lm2}/{lj} · grafts {gm2}/{gj} fired M2 against their primary");
     println!("rule   : §6 rule {}", out.rule);
-    if !scat_bands.is_empty() {
-        println!("scat   : {}", scat_bands.join(" · "));
+    if !reported.is_empty() {
+        println!("reported: {}", reported.join(" · "));
     }
     if out.rule == 3 {
         println!(

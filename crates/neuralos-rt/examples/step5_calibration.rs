@@ -79,6 +79,52 @@ const SHA256SUMS: &str = "evidence/step5-calibration/SHA256SUMS";
 /// the base side (its `base_dir` default). M3 is defined over THEIR
 /// knife-edge steps, so they are read here, before any arm exists.
 const BASE_JUDGE_DIRS: [&str; 2] = ["evidence/session-f-judge", "../../evidence/session-f-judge"];
+/// The judge runtime, pinned FILE BY FILE. `llama-completion` is a 16 KB
+/// driver: the sampler, the loader, the CPU kernels and the NEURALOS_DUMP
+/// patch all live in the shared objects beside it, so hashing the driver
+/// alone would leave everything that produces a number unpinned (§2, the
+/// cross-family lane's finding, widened here to the whole set).
+const JUDGE_DIR: &str = "fork-build/llama.cpp/build/bin";
+const JUDGE_FILES: [(&str, &str); 7] = [
+    (
+        "llama-completion",
+        "45c3213681383dc7f5f54bd0b16585c769e3c00450fbc987c250b96214de6246",
+    ),
+    (
+        "libllama-completion-impl.so",
+        "64a1e1848ca747d2ac369a8d93f6a0f46ac7317796683d8c54df3f97bbd32886",
+    ),
+    (
+        "libllama-common.so",
+        "911ad4a6548fbae453652df30692154eb3100d068eed35207c5e264c25f2dff3",
+    ),
+    (
+        "libllama.so",
+        "9f2d10aca3e3e3080650f80624db503459e77e0a889f30f262536b65f79e6ab6",
+    ),
+    (
+        "libggml.so",
+        "ea7f9fd250bc72879a765a0a6156816776a4f570253064fedc446b3cdb7ad63a",
+    ),
+    (
+        "libggml-base.so",
+        "123cbdcd73c0ed5b91f67f593d0a8e2a533113bdb8c2b4e33645ceb88362071d",
+    ),
+    (
+        "libggml-cpu.so",
+        "3e1e166ce399d9e20032deed5e4f3fae3ad7b513a1ad689e906c93f8e9d1bc0a",
+    ),
+];
+/// The upstream commit the judge is built from. Recorded in
+/// `tools/build_fork.sh` (`PIN=`) and named in
+/// `evidence/session-h2/README.md` § Rebuild; read from the script at run
+/// time and asserted against this constant, so the two records must agree.
+const FORK_PIN: &str = "9ca265a57f85f2117942490f421f64a226dd9847";
+const BUILD_FORK_SH: &str = "tools/build_fork.sh";
+/// Session cap (§7). Printed in every banner so a stop is never a surprise.
+const CAP_HOURS: f64 = 9.0;
+/// Judge wall-time per file (BURN.md measured), for the run-total line.
+const MIN_PER_FILE: (f64, f64) = (2.0, 4.0);
 
 /// The banked window census (§2/§4, evidence/r4-baselines/loop_run2.log),
 /// in `harness::tix` order: −1 · 0 · +1. The four head blocks must decode
@@ -88,13 +134,16 @@ const WINDOW_CENSUS: [u64; 3] = [83_253, 95_802, 83_089];
 /// a RESULT, never a gate. Below it is measured correlation between the
 /// layers and goes to §8.
 const GRAFT_INDEPENDENCE: (u64, u64) = (41_580, 44_760);
-/// Five per family, no escalation (§3: both metrics are one-sided, so more
+/// Ten nulls in a PRIMARY family (the band §6 decides on), five in a
+/// reported one. No escalation (§3: both metrics are one-sided, so more
 /// nulls could only demote a band).
-const NULLS_PER_FAMILY: usize = 5;
+const PRIMARY_NULLS: usize = 10;
+const REPORTED_NULLS: usize = 5;
 /// 4B head width: 4096 output rows / 32 heads.
 const HEAD_ROWS: usize = 128;
-/// §7 seed decades: 10 slots of 10, first 301–310, last 391–400.
-const SEED_SLOTS: usize = 10;
+/// §7 seed decades: 14 slots of 10, first 301–310, last 431–440.
+/// 0–3 lesion SCAT · 4–6 graft SCAT · 7–9 graft LOCAL · 10–13 lesion MID.
+const SEED_SLOTS: usize = 14;
 const SEED_BASE: u64 = 301;
 
 /// Graft sources, in §7 seed order. A const table, not a runtime format:
@@ -418,6 +467,28 @@ impl Arm {
             Kind::Identity => (0, block),
         }
     }
+
+    /// The 256×512 half-window containing this arm's block: rows
+    /// [256·floor(h/2), +256). The MID family shuffles inside it.
+    fn half_bounds(&self, block: usize) -> (usize, usize) {
+        let h = match self.kind {
+            Kind::Lesion(h, _) => h,
+            Kind::Graft(ref src) => src.h,
+            Kind::Identity => 0,
+        };
+        let half = 2 * block;
+        let lo = (h / 2) * half;
+        (lo, lo + half)
+    }
+
+    /// The window range a given family shuffles over.
+    fn family_bounds(&self, family: Family, block: usize, window: usize) -> (usize, usize) {
+        match family {
+            Family::Scat => (0, window),
+            Family::Local => self.block_bounds(block),
+            Family::Mid => self.half_bounds(block),
+        }
+    }
 }
 
 /// Which arm this is, and the block-scoped facts §4 checks about it.
@@ -435,9 +506,10 @@ struct Arm {
     name: String,
     patch: Vec<Trit>,
     kind: Kind,
-    /// (family, seed slot) — LESION: SCAT only. GRAFT: SCAT + LOCAL.
+    /// (family, seed slot, how many nulls) — LESION: SCAT ×10 primary +
+    /// MID ×5 reported. GRAFT: LOCAL ×10 primary + SCAT ×5 reported.
     /// IDENTITY: none (a tripwire, not a banded comparison).
-    families: Vec<(Family, usize)>,
+    families: Vec<(Family, usize, usize)>,
     /// The family §6 decides on, marked `*` in arms.txt. LESION: SCAT.
     /// GRAFT: LOCAL, the deconfounded one (§3). IDENTITY: none. The
     /// generator knows what an arm IS, so the reader never has to guess
@@ -452,6 +524,10 @@ enum Family {
     Scat,
     /// Shuffle inside the arm's own 128×512 block, embedded there.
     Local,
+    /// Shuffle inside the 256×512 half-window containing the arm's block,
+    /// embedded there: an intermediate concentration between SCAT and the
+    /// block itself.
+    Mid,
 }
 
 impl Family {
@@ -459,6 +535,7 @@ impl Family {
         match self {
             Family::Scat => "scat",
             Family::Local => "local",
+            Family::Mid => "mid",
         }
     }
 }
@@ -475,7 +552,14 @@ fn build_arms(base: &[Trit], p: &ExperimentParams, srcs: &[(usize, String, u64)]
             name: format!("lesion-h{h}"),
             patch: lesion_patch(base, h, n),
             kind: Kind::Lesion(h, census(&base[h * block..(h + 1) * block])),
-            families: vec![(Family::Scat, i)],
+            families: vec![
+                (Family::Scat, i, PRIMARY_NULLS),
+                (
+                    Family::Mid,
+                    LESION_HEADS.len() + 2 * GRAFT_LAYERS.len() + i,
+                    REPORTED_NULLS,
+                ),
+            ],
             primary: Some(Family::Scat),
         });
     }
@@ -503,8 +587,12 @@ fn build_arms(base: &[Trit], p: &ExperimentParams, srcs: &[(usize, String, u64)]
             }),
             patch: graft_patch(base, &src, n, h),
             families: vec![
-                (Family::Scat, LESION_HEADS.len() + i),
-                (Family::Local, LESION_HEADS.len() + GRAFT_LAYERS.len() + i),
+                (Family::Scat, LESION_HEADS.len() + i, REPORTED_NULLS),
+                (
+                    Family::Local,
+                    LESION_HEADS.len() + GRAFT_LAYERS.len() + i,
+                    PRIMARY_NULLS,
+                ),
             ],
             primary: Some(Family::Local),
         });
@@ -672,13 +760,13 @@ fn check_arm(t: &mut Tee, arm: &Arm, base: &[Trit], block: usize) -> u64 {
     changed
 }
 
-/// LOCAL-family feasibility (§3): a block-local null must place the arm's
-/// whole diff inside the arm's own 128×512 block, drawing each class from
-/// that block's OWN src-class cells. `dose_matched_null` asserts the exact
+/// Concentrated-family feasibility (§3): a null drawn inside a scope must
+/// place the arm's whole diff there, drawing each class from that scope's
+/// OWN src-class cells. `dose_matched_null` asserts the exact
 /// dose and panics if a pool runs short — but that panic would land
 /// mid-`--generate`, after gigabytes are written. Checked here too, in the
 /// mode that writes nothing.
-fn local_feasible(base_block: &[Trit], arm_block: &[Trit]) -> (bool, String) {
+fn scope_feasible(base_block: &[Trit], arm_block: &[Trit]) -> (bool, String) {
     let mut demand = [0u64; 3];
     let mut avail = [0u64; 3];
     for (b, a) in base_block.iter().zip(arm_block.iter()) {
@@ -695,7 +783,7 @@ fn local_feasible(base_block: &[Trit], arm_block: &[Trit]) -> (bool, String) {
     (
         ok,
         format!(
-            "local pools (demand/available) {detail} : {}",
+            "pools (demand/available) {detail} : {}",
             if ok {
                 "FEASIBLE"
             } else {
@@ -751,6 +839,50 @@ fn load_seeds() -> Vec<u64> {
         seeds.len()
     );
     seeds
+}
+
+/// §2 reader check: the judge runtime is pinned file by file, and the
+/// upstream commit recorded in `tools/build_fork.sh` must match the
+/// constant here. §7 checks that the judge exists and is deterministic; a
+/// rebuilt fork that still exits 0 would pass every other kill criterion
+/// and change every number.
+fn check_judge_runtime(t: &mut Tee) {
+    let dir = std::path::Path::new(JUDGE_DIR);
+    assert!(
+        dir.join(JUDGE_FILES[0].0).exists(),
+        "judge runtime not found under {JUDGE_DIR} — build it first: bash tools/build_fork.sh"
+    );
+    let script = std::fs::read_to_string(BUILD_FORK_SH)
+        .unwrap_or_else(|e| panic!("cannot read {BUILD_FORK_SH}: {e}"));
+    let pin = script
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("PIN="))
+        .map(|v| v.trim().trim_matches('"').to_string())
+        .unwrap_or_else(|| panic!("{BUILD_FORK_SH}: no PIN= line — the fork commit has no record"));
+    assert_eq!(
+        pin, FORK_PIN,
+        "{BUILD_FORK_SH} pins fork commit {pin}, this code pins {FORK_PIN} — the two records \
+         disagree, KILL (§7)"
+    );
+    say!(
+        t,
+        "judge   : {JUDGE_DIR} · fork {pin} (from {BUILD_FORK_SH} PIN=)"
+    );
+    for (name, want) in JUDGE_FILES {
+        let path = dir.join(name).to_string_lossy().into_owned();
+        let got = sha256_of(&path);
+        assert_eq!(
+            got, want,
+            "judge file {name}: sha {got} != pin {want} — the judge was rebuilt or replaced, \
+             KILL (§7): every number it produces is off the record"
+        );
+        say!(t, "          {name} · sha {got} : PINNED");
+    }
+    say!(
+        t,
+        "          {} files pinned (driver + 5 shared objects + the dump-patched impl) : PASS",
+        JUDGE_FILES.len()
+    );
 }
 
 /// §4 reader check: M3 is defined only over the BASE knife-edge steps
@@ -850,6 +982,20 @@ fn measure() {
     );
     check_window(&mut t, &base, block);
     check_base_knife_edges(&mut t);
+    check_judge_runtime(&mut t);
+    // Read the seeds here too, before the stamp: a short or mis-ranged
+    // seeds.txt is a §7 kill that must not first surface mid-generate.
+    let seeds = load_seeds();
+    let decades: Vec<u64> = (0..SEED_SLOTS).map(|i| decade(&seeds, i)[0]).collect();
+    say!(
+        t,
+        "seeds   : {} entries, {SEED_SLOTS} decades starting {decades:?} : PASS",
+        seeds.len()
+    );
+    say!(
+        t,
+        "cap     : one burn window, ≤ {CAP_HOURS} h judge wall-time; a cap stop is VOID (INCOMPLETE)"
+    );
     say!(t, "");
 
     let arms = build_arms(&base, &p, &srcs);
@@ -857,14 +1003,18 @@ fn measure() {
     let mut rows: Vec<(String, u64, String)> = Vec::with_capacity(arms.len());
     for arm in &arms {
         let changed = check_arm(&mut t, arm, &base, block);
-        if arm.families.iter().any(|(f, _)| *f == Family::Local) {
-            let (lo, hi) = arm.block_bounds(block);
-            let (feasible, detail) = local_feasible(&base[lo..hi], &arm.patch[lo..hi]);
-            say!(t, "    {detail}");
+        // A concentrated null must place the arm's whole diff inside its own
+        // scope, drawing each class from that scope's own src-class cells.
+        // SCAT is the whole window and cannot be short by construction.
+        for &(family, _, _) in arm.families.iter().filter(|(f, _, _)| *f != Family::Scat) {
+            let (lo, hi) = arm.family_bounds(family, block, base.len());
+            let (feasible, detail) = scope_feasible(&base[lo..hi], &arm.patch[lo..hi]);
+            say!(t, "    {} {detail}", family.label());
             assert!(
                 feasible,
-                "{}: the LOCAL family cannot be built inside the block — KILL before any write",
-                arm.name
+                "{}: the {} family cannot be built inside its scope — KILL before any write",
+                arm.name,
+                family.label()
             );
         }
         let (_, classes) = composition(&base, &arm.patch);
@@ -893,130 +1043,234 @@ fn measure() {
         "reader checks: {} arms PASS — no §4 check fired, no §7 kill",
         rows.len()
     );
+    let nulls: usize = arms
+        .iter()
+        .map(|a| a.families.iter().map(|f| f.2).sum::<usize>())
+        .sum();
+    let judge_files = 2 * arms.len() + nulls;
+    say!(
+        t,
+        "run totals: {} double-run files ({}) + {nulls} nulls = {judge_files} judge files · \
+         {:.1}–{:.1} h at {}–{} min per file · cap {CAP_HOURS} h",
+        arms.len(),
+        2 * arms.len(),
+        judge_files as f64 * MIN_PER_FILE.0 / 60.0,
+        judge_files as f64 * MIN_PER_FILE.1 / 60.0,
+        MIN_PER_FILE.0,
+        MIN_PER_FILE.1
+    );
+    let ggufs = arms.len() + nulls;
+    say!(
+        t,
+        "disk: {ggufs} gguf if kept at once ({:.1} GiB); arm-by-arm peak is {} arm files + one \
+         arm's {} nulls = {:.1} GiB (§7 burn script)",
+        ggufs as f64 * 1_074_969_344.0 / 1_073_741_824.0,
+        arms.len(),
+        arms.iter()
+            .map(|a| a.families.iter().map(|f| f.2).sum::<usize>())
+            .max()
+            .unwrap_or(0),
+        (arms.len()
+            + arms
+                .iter()
+                .map(|a| a.families.iter().map(|f| f.2).sum::<usize>())
+                .max()
+                .unwrap_or(0)) as f64
+            * 1_074_969_344.0
+            / 1_073_741_824.0
+    );
     say!(
         t,
         "measure done — nothing written under models/. Log: {MEASURE_LOG}, sha pinned in {SHA256SUMS}."
     );
 }
 
-/// `--generate` — the eight arm files, their null families, and arms.txt.
-/// Refuses while §10 is unstamped; tees to `generate.log`.
-fn generate() {
+/// What `--generate` was asked to do. The whole set no longer fits on one
+/// disk (113 gguf = 113.1 GiB against 91.4 GiB free, measured), so the burn
+/// runs arm by arm: plan once, then one arm at a time, each judged and its
+/// nulls pinned and deleted before the next (§7 burn script).
+enum GenMode {
+    /// Write arms.txt only. No gguf.
+    Plan,
+    /// Write one arm file and its null families. Refuses an arm arms.txt
+    /// does not list.
+    Arm(String),
+}
+
+/// The arms.txt manifest line for one arm: its families in §7 decade
+/// order, the primary marked `*`.
+fn manifest_line(arm: &Arm) -> String {
+    let fams: Vec<String> = arm
+        .families
+        .iter()
+        .map(|(family, _, _)| {
+            format!(
+                "{}{}",
+                family.label(),
+                if arm.primary == Some(*family) {
+                    "*"
+                } else {
+                    ""
+                }
+            )
+        })
+        .collect();
+    assert_eq!(
+        fams.iter().filter(|f| f.ends_with('*')).count(),
+        usize::from(arm.primary.is_some()),
+        "{}: exactly one primary family must be marked (none for the tripwire)",
+        arm.name
+    );
+    format!("{} {}", arm.name, fams.join(" "))
+        .trim_end()
+        .to_string()
+}
+
+fn write_arms_txt(t: &mut Tee, arms: &[Arm]) {
+    let mut text = String::from(
+        "# Step-5 calibration arm files — written by step5_calibration --generate --plan.\n\
+         # One line per arm: <arm-stem> [family …], in PREREG §7 decade order;\n\
+         # the family §6 decides on carries a trailing *. The tripwire has none.\n\
+         # Files are models/cal-<arm>.gguf and models/cal-<arm>-<family>-s<seed>.gguf.\n\
+         # The aggregator reads THIS file; no arm list is ever hardcoded (§7).\n",
+    );
+    for arm in arms {
+        text.push_str(&manifest_line(arm));
+        text.push('\n');
+    }
+    std::fs::write(ARMS_FILE, &text).unwrap_or_else(|e| panic!("cannot write {ARMS_FILE}: {e}"));
+    say!(t, "arms.txt: {} arm(s) → {ARMS_FILE}", arms.len());
+}
+
+/// `--generate` — the arm files and their null families. Refuses while §10
+/// is unstamped; tees to `generate.log`.
+fn generate(mode: GenMode) {
     let mut t = Tee::new(GENERATE_LOG);
     let p = ExperimentParams::default();
     let block = HEAD_ROWS * p.n;
-    say!(
-        t,
-        "=== step-5 calibration: --generate (PREREG §7 step 5) ==="
-    );
+    say!(t, "=== step-5 calibration: --generate (PREREG §7) ===");
     verify_base_sha(&mut t);
     assert_stamped(&mut t);
+    check_judge_runtime(&mut t);
+    say!(
+        t,
+        "cap     : one burn window, ≤ {CAP_HOURS} h judge wall-time; a cap stop is VOID (INCOMPLETE)"
+    );
     let srcs = assert_graft_layouts(&mut t, &p);
     let base = decode_slice(BASE, &p);
     check_window(&mut t, &base, block);
     let seeds = load_seeds();
     let arms = build_arms(&base, &p, &srcs);
-    assert_distinct_graft_blocks(&mut t, &arms);
 
-    let mut manifest: Vec<String> = Vec::with_capacity(arms.len());
-    for arm in &arms {
-        let changed = check_arm(&mut t, arm, &base, block);
-        let out = format!("models/cal-{}.gguf", arm.name);
-        assert_unbanked(&out);
-        splice_and_verify(BASE, &out, &arm.patch, Some(&base), &p);
-        say!(t, "    S2 clean → {out}");
-        if matches!(arm.kind, Kind::Identity) {
-            // §7 kill criterion: the tripwire's file must BE the base.
-            let (sha, base_sha) = (sha256_of(&out), sha256_of(BASE));
-            assert_eq!(
-                sha, base_sha,
-                "identity export sha {sha} != base {base_sha} — KILL (§7): \
-                 the pipeline is not transparent"
+    let wanted = match mode {
+        GenMode::Plan => {
+            write_arms_txt(&mut t, &arms);
+            say!(
+                t,
+                "plan done — no gguf written. Next: the §7 burn script, arm by arm."
             );
-            say!(t, "    identity sha == base ({base_sha:.16}…) : PASS");
+            return;
         }
+        GenMode::Arm(stem) => stem,
+    };
 
-        let mut fams: Vec<String> = Vec::new();
-        for &(family, slot) in &arm.families {
-            for &seed in decade(&seeds, slot).iter().take(NULLS_PER_FAMILY) {
-                let null = match family {
-                    Family::Scat => dose_matched_null(&base, &arm.patch, seed),
-                    Family::Local => {
-                        // Shuffle inside the arm's own 128×512 block, then
-                        // embed at that block: same count, same composition,
-                        // positions random INSIDE the footprint (§3). The
-                        // block is the arm's own, which now differs per
-                        // graft (§3 rotation).
-                        let (lo, hi) = arm.block_bounds(block);
-                        let shuffled = dose_matched_null(&base[lo..hi], &arm.patch[lo..hi], seed);
-                        let mut full = base.clone();
-                        full[lo..hi].copy_from_slice(&shuffled);
-                        full
-                    }
-                };
-                let nout = format!("models/cal-{}-{}-s{seed}.gguf", arm.name, family.label());
-                assert_unbanked(&nout);
-                splice_and_verify(BASE, &nout, &null, Some(&base), &p);
-                let n = null.iter().zip(base.iter()).filter(|(a, b)| a != b).count() as u64;
-                assert_eq!(
-                    n,
-                    changed,
-                    "{} {} s{seed}: dose {n} != arm {changed}",
-                    arm.name,
-                    family.label()
-                );
-                say!(
-                    t,
-                    "    {} s{seed}: {n} cells (exact dose) · S2 clean → {nout}",
-                    family.label()
-                );
-            }
-            fams.push(format!(
-                "{}{}",
-                family.label(),
-                if arm.primary == Some(family) { "*" } else { "" }
-            ));
-        }
-        assert_eq!(
-            fams.iter().filter(|f| f.ends_with('*')).count(),
-            usize::from(arm.primary.is_some()),
-            "{}: arms.txt must mark exactly one primary family (none for the tripwire)",
-            arm.name
-        );
-        manifest.push(
-            format!("{} {}", arm.name, fams.join(" "))
-                .trim_end()
-                .to_string(),
-        );
-    }
-
-    let mut text = String::from(
-        "# Step-5 calibration arm files — written by step5_calibration --generate.\n\
-         # One line per arm: <arm-stem> [family …], in PREREG §7 decade order;\n\
-         # the family §6 decides on carries a trailing *. The tripwire has none.\n\
-         # Files are models/cal-<arm>.gguf and models/cal-<arm>-<family>-s<seed>.gguf.\n\
-         # The aggregator reads THIS file; no arm list is ever hardcoded (§7 step 7).\n",
+    // The arm must already be planned: arms.txt is the manifest the
+    // aggregator reads, so generating an arm it does not list would put a
+    // file on disk that no reader will ever look at.
+    let listed = std::fs::read_to_string(ARMS_FILE).unwrap_or_else(|e| {
+        panic!("cannot read {ARMS_FILE}: {e} — run --generate --plan first (§7)")
+    });
+    let planned = listed
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .find(|l| l.split_whitespace().next() == Some(wanted.as_str()))
+        .unwrap_or_else(|| {
+            panic!("{ARMS_FILE} does not list arm {wanted:?} — refusing to generate it")
+        });
+    let arm = arms
+        .iter()
+        .find(|a| a.name == wanted)
+        .unwrap_or_else(|| panic!("unknown arm {wanted:?} — not one of the pre-registered arms"));
+    assert_eq!(
+        manifest_line(arm),
+        planned,
+        "{ARMS_FILE} line for {wanted} disagrees with this build — regenerate the plan"
     );
-    for line in &manifest {
-        text.push_str(line);
-        text.push('\n');
+    say!(t, "arm     : {wanted} · planned as {planned:?}");
+
+    let changed = check_arm(&mut t, arm, &base, block);
+    let out = format!("models/cal-{}.gguf", arm.name);
+    assert_unbanked(&out);
+    splice_and_verify(BASE, &out, &arm.patch, Some(&base), &p);
+    say!(t, "    S2 clean → {out}");
+    if matches!(arm.kind, Kind::Identity) {
+        // §7 kill criterion: the tripwire's file must BE the base.
+        let (sha, base_sha) = (sha256_of(&out), sha256_of(BASE));
+        assert_eq!(
+            sha, base_sha,
+            "identity export sha {sha} != base {base_sha} — KILL (§7): the pipeline is not \
+             transparent"
+        );
+        say!(t, "    identity sha == base ({base_sha:.16}…) : PASS");
     }
-    std::fs::write(ARMS_FILE, &text).unwrap_or_else(|e| panic!("cannot write {ARMS_FILE}: {e}"));
+
+    for &(family, slot, count) in &arm.families {
+        for &seed in decade(&seeds, slot).iter().take(count) {
+            // One construction, three scopes (§3): the diff is shuffled over
+            // the whole window (SCAT), the arm's own 128×512 block (LOCAL),
+            // or the 256×512 half-window containing it (MID), and embedded
+            // back at that scope. Same count and composition in every case —
+            // only the concentration moves.
+            let (lo, hi) = arm.family_bounds(family, block, base.len());
+            let shuffled = dose_matched_null(&base[lo..hi], &arm.patch[lo..hi], seed);
+            let mut null = base.clone();
+            null[lo..hi].copy_from_slice(&shuffled);
+            let nout = format!("models/cal-{}-{}-s{seed}.gguf", arm.name, family.label());
+            assert_unbanked(&nout);
+            splice_and_verify(BASE, &nout, &null, Some(&base), &p);
+            let n = null.iter().zip(base.iter()).filter(|(a, b)| a != b).count() as u64;
+            assert_eq!(
+                n,
+                changed,
+                "{} {} s{seed}: dose {n} != arm {changed}",
+                arm.name,
+                family.label()
+            );
+            say!(
+                t,
+                "    {} s{seed}: {n} cells (exact dose) · S2 clean → {nout}",
+                family.label()
+            );
+        }
+    }
     say!(t, "");
-    say!(t, "arms.txt: {} arm(s) → {ARMS_FILE}", manifest.len());
     say!(
         t,
-        "generate done — judge chain next (§7 step 6). Log: {GENERATE_LOG}, sha in {SHA256SUMS}."
+        "arm {wanted} done — judge it, pin its nulls, delete them, then the next arm (§7)."
     );
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.first().map(String::as_str) {
-        Some("--measure") if args.len() == 1 => measure(),
-        Some("--generate") if args.len() == 1 => generate(),
+    match (
+        args.first().map(String::as_str),
+        args.get(1).map(String::as_str),
+        args.get(2).map(String::as_str),
+    ) {
+        (Some("--measure"), None, None) => measure(),
+        (Some("--generate"), Some("--plan"), None) => generate(GenMode::Plan),
+        (Some("--generate"), Some("--arm"), Some(stem)) => {
+            generate(GenMode::Arm(stem.to_string()));
+        }
         _ => {
-            eprintln!("usage: step5_calibration --measure | --generate");
+            // No whole-set --generate: 113 gguf do not fit (§7), and a mode
+            // that cannot finish is worse than no mode.
+            eprintln!(
+                "usage: step5_calibration --measure\n\
+                        step5_calibration --generate --plan\n\
+                        step5_calibration --generate --arm <stem>"
+            );
             std::process::exit(2);
         }
     }
