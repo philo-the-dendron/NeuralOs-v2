@@ -126,8 +126,10 @@ require_mount() { # $1 = what is about to happen
     exit 3
   fi
   if [ "$m" != "$NULL_MOUNT" ]; then
-    say "STOP: CAL_NULL_DIR is now on '$m', not the mount it started on, before $1"
-    say "      — VOID (INCOMPLETE)"
+    # Report the DEVICE, not the target: a findmnt target is a real mount
+    # path and this message reaches the committed log.
+    say "STOP: CAL_NULL_DIR is now on a different mount (device $(stat -c %d "$m" 2>/dev/null),"
+    say "      not $NULL_MOUNT_DEV), before $1 — VOID (INCOMPLETE)"
     exit 3
   fi
   # No space check here. The 126 GiB figure is the WHOLE RUN's requirement
