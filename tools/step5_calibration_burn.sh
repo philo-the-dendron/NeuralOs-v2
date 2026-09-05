@@ -44,6 +44,19 @@ export LC_ALL=C
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Anything this script PRINTS must be repo-relative or a label. An absolute
+# path under $ROOT is stripped to its repo-relative form; an absolute path
+# outside the repo is replaced by the name of the variable that carried it,
+# because the operator's environment is not the log's business. The same
+# treatment `where` gets in require_free.
+repo_rel() { # $1 = path, $2 = variable name for the fallback label
+  case "$1" in
+    "$ROOT"/*) printf '%s' "${1#"$ROOT"/}" ;;
+    /*) printf '%s (outside the repo)' "$2" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 MODELS=${CAL_MODELS_DIR:-models}
 EV=${CAL_EVIDENCE_DIR:-evidence/step5-calibration}
 BURN="$EV/burn"
@@ -66,7 +79,8 @@ GEN_SRC="crates/neuralos-rt/examples/step5_calibration.rs"
 SELF="tools/step5_calibration_burn.sh"
 
 [ -f "$ARMS" ] || { echo "no $ARMS — run: step5_calibration --generate --plan" >&2; exit 2; }
-[ -x "$JUDGE" ] || { echo "judge chain not executable: $JUDGE" >&2; exit 2; }
+[ -x "$JUDGE" ] || {
+  echo "judge chain not executable: $(repo_rel "$JUDGE" CAL_JUDGE)" >&2; exit 2; }
 
 # The regeneration recipe must be committed content, not a working copy.
 for f in "$GEN_SRC" "$SELF"; do
@@ -85,9 +99,12 @@ say() { echo "$*" | tee -a "$LOG"; }
 # produced every file; a dry run points CAL_GENERATE at a stub.
 if [ -z "${CAL_GENERATE:-}" ]; then
   cargo build -p neuralos-rt --release --example step5_calibration >&2
-  CAL_GENERATE="$ROOT/target/release/examples/step5_calibration"
+  # Relative: the script has already cd'd to $ROOT, and an absolute default
+  # would put the home directory in the committed banner.
+  CAL_GENERATE="target/release/examples/step5_calibration"
 fi
-[ -x "$CAL_GENERATE" ] || { echo "generator not executable: $CAL_GENERATE" >&2; exit 2; }
+[ -x "$CAL_GENERATE" ] || {
+  echo "generator not executable: $(repo_rel "$CAL_GENERATE" CAL_GENERATE)" >&2; exit 2; }
 
 avail_bytes() { df -B1 --output=avail "$1" | tail -1 | tr -d ' '; }
 # The floor is checked on the filesystem that will RECEIVE the file, and a
@@ -248,9 +265,9 @@ START=$(date +%s)
   echo "frozen-at : $FROZEN_AT — copies extracted from the commit into $EV/generator/,"
   echo "            digests asserted against $PINNED (written at stamp time), listed in"
   echo "            $EV/generator/SHA256SUMS (commit them with the burn evidence)"
-  echo "generator : $CAL_GENERATE"
+  echo "generator : $(repo_rel "$CAL_GENERATE" CAL_GENERATE)"
   echo "gen binsha: $(sha256sum "$CAL_GENERATE" | cut -d' ' -f1)"
-  echo "judge     : $JUDGE"
+  echo "judge     : $(repo_rel "$JUDGE" CAL_JUDGE)"
   echo "models    : $MODELS"
   echo "evidence  : $EV"
   if [ "$KEEP_NULLS" = 1 ]; then
