@@ -958,4 +958,14 @@ adjudicator had not read the clock; philo noticed the time.
 
 ## 10. Stamp
 
-_unstamped_
+Stamped. philo, in his own words, received by the adjudicator at 2026-09-05 17:12 EDT:
+
+> I stamp the step-5 calibration pre-registration, philo, 2026-09-05.
+
+Document at stamp: v29. Frozen generator commit
+`6b3eab0529c955e7e9d6739fb8c959760c3aa67e` (PINNED.sha256 committed at
+89d260c). Adjudicator: Kai (session claude-e9). In-family reviewer:
+session neuralos-v2-33, twenty-one passes plus two stamp-time reads,
+CLEARED. Cross-family lanes: Meta and MiniMax-family (§9 v10, v11).
+Builder: session neuralos-v2-00. No arm file existed and no judge run had
+started before this line was written.
