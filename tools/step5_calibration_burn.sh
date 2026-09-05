@@ -94,10 +94,14 @@ avail_bytes() { df -B1 --output=avail "$1" | tail -1 | tr -d ' '; }
 # failure stops the burn. There is no fallback device: writing somewhere
 # else would put half the run on a disk BURN.log does not name.
 require_free() { # $1 = receiving dir, $2 = what is about to be written
-  local dir="$1" what="$2" b
+  local dir="$1" what="$2" b where
   b=$(avail_bytes "$dir")
   if [ "$b" -lt "$MIN_FREE_BYTES" ]; then
-    say "STOP: $dir has $(gib "$b") GiB free, under the ${MIN_FREE_GIB} GiB floor, before $what"
+    # $dir is echoed by name only when it is inside the repo; the external
+    # mount is referred to by its variable, never by its value (§7 hygiene).
+    where=$dir
+    if [ -n "$NULL_DIR" ] && [ "$dir" = "$NULL_DIR" ]; then where="CAL_NULL_DIR"; fi
+    say "STOP: $where has $(gib "$b") GiB free, under the ${MIN_FREE_GIB} GiB floor, before $what"
     say "      no fallback device — VOID (INCOMPLETE)"
     exit 3
   fi
@@ -116,13 +120,13 @@ require_mount() { # $1 = what is about to happen
   local m
   m=$(mount_of "$NULL_DIR")
   if [ -z "$m" ] || [ "$m" = "/" ]; then
-    say "STOP: '$NULL_DIR' is contained by '${m:-nothing}' before $1 — the external disk is"
+    say "STOP: CAL_NULL_DIR is contained by '${m:-nothing}' before $1 — the external disk is"
     say "      unmounted or vanished; refusing to write nulls onto the root filesystem"
     say "      — VOID (INCOMPLETE)"
     exit 3
   fi
   if [ "$m" != "$NULL_MOUNT" ]; then
-    say "STOP: '$NULL_DIR' is now on '$m', not the '$NULL_MOUNT' it started on, before $1"
+    say "STOP: CAL_NULL_DIR is now on '$m', not the mount it started on, before $1"
     say "      — VOID (INCOMPLETE)"
     exit 3
   fi
@@ -141,10 +145,10 @@ elapsed_s() { echo $(( $(date +%s) - START )); }
 KEEP_NULLS=0
 NULL_MOUNT=""
 if [ -n "$NULL_DIR" ]; then
-  [ -d "$NULL_DIR" ] || { echo "CAL_NULL_DIR does not exist: '$NULL_DIR'" >&2; exit 2; }
+  [ -d "$NULL_DIR" ] || { echo "CAL_NULL_DIR does not name a directory" >&2; exit 2; }
   NULL_MOUNT=$(mount_of "$NULL_DIR")
   if [ -z "$NULL_MOUNT" ] || [ "$NULL_MOUNT" = "/" ]; then
-    echo "REFUSING: '$NULL_DIR' is contained by '${NULL_MOUNT:-nothing}', not by an external" >&2
+    echo "REFUSING: CAL_NULL_DIR is contained by '${NULL_MOUNT:-nothing}', not by an external" >&2
     echo "mount. A disk that is not mounted would silently fill the root filesystem." >&2
     exit 2
   fi
@@ -158,7 +162,7 @@ if [ -n "$NULL_DIR" ]; then
   if [ "$NB" -ge "$KEEP_DISK_BYTES" ]; then
     KEEP_NULLS=1
   else
-    echo "REFUSING: CAL_NULL_DIR $NULL_DIR has $(gib "$NB") GiB free, under the 126 GiB a kept" >&2
+    echo "REFUSING: CAL_NULL_DIR has $(gib "$NB") GiB free, under the 126 GiB a kept" >&2
     echo "null set needs (105.1 GiB of nulls + the ${MIN_FREE_GIB} GiB floor, never reclaimed)." >&2
     echo "Unset it to run the delete-after-pin path instead." >&2
     exit 2
@@ -172,7 +176,7 @@ fi
 # BURN.log names — and each copy's digest is asserted against the recorded
 # one before the first arm runs.
 FROZEN_AT=$(date -Is)
-FROZEN_COMMIT=$(git rev-parse HEAD)
+HEAD_COMMIT=$(git rev-parse HEAD)
 mkdir -p "$EV/generator"
 PINNED="$EV/generator/PINNED.sha256"
 # The digests are checked against a file written at STAMP TIME and
@@ -182,6 +186,21 @@ if [ ! -f "$PINNED" ]; then
   echo "REFUSING: $PINNED is missing. It is written at stamp time from the frozen commit" >&2
   echo "and committed with the stamp; without it there is nothing independent to check" >&2
   echo "the frozen generator against." >&2
+  exit 2
+fi
+# The FROZEN commit is the CODE commit named in PINNED.sha256, never HEAD.
+# The stamp commit necessarily comes after it (§7 step 4b: "It is NOT the
+# stamp commit, which comes later and points back at it"), so HEAD is ahead
+# of the frozen commit on every correct stamp sequence. What must hold is
+# ancestry plus identity of the two files, not equality of the shas.
+FROZEN_COMMIT=$(awk '$1 == "commit" { print $2; exit }' "$PINNED")
+if [ -z "$FROZEN_COMMIT" ]; then
+  echo "REFUSING: $PINNED has no \`commit <sha>\` line" >&2
+  exit 2
+fi
+if ! git merge-base --is-ancestor "$FROZEN_COMMIT" "$HEAD_COMMIT"; then
+  echo "REFUSING: the pinned commit $FROZEN_COMMIT is not an ancestor of HEAD" >&2
+  echo "$HEAD_COMMIT — the frozen code is not in this branch's history." >&2
   exit 2
 fi
 : > "$EV/generator/SHA256SUMS"
@@ -197,24 +216,24 @@ for f in "$GEN_SRC" "$SELF"; do
   git show "$FROZEN_COMMIT:$f" > "$EV/generator/$bn"
   got=$(sha256sum "$EV/generator/$bn" | cut -d' ' -f1)
   if [ "$want" != "$got" ]; then
-    echo "REFUSING: $bn at $FROZEN_COMMIT is $got, $PINNED says $want" >&2
-    echo "The stamped generator and this commit are not the same code." >&2
+    echo "REFUSING: $bn at the frozen commit $FROZEN_COMMIT is $got, $PINNED says $want" >&2
+    echo "The stamped generator and the frozen commit are not the same code." >&2
+    exit 2
+  fi
+  # And what will actually RUN is the working tree, which the dirty check
+  # above ties to HEAD. So HEAD's copy must equal the pin too: a later
+  # commit that edited either file would otherwise run unpinned code under
+  # a pinned label.
+  at_head=$(git show "$HEAD_COMMIT:$f" | sha256sum | cut -d' ' -f1)
+  if [ "$want" != "$at_head" ]; then
+    echo "REFUSING: $f at HEAD $HEAD_COMMIT is $at_head, $PINNED says $want" >&2
+    echo "The branch moved the generator after the stamp; re-stamp before burning." >&2
     exit 2
   fi
   echo "$got  $bn" >> "$EV/generator/SHA256SUMS"
 done
 GEN_SRC_SHA=$(awk -v n="$GEN_SRC" '$1 != "commit" { sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
 SELF_SHA=$(awk -v n="$SELF" '$1 != "commit" { sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
-PINNED_COMMIT=$(awk '$1 == "commit" { print $2; exit }' "$PINNED")
-if [ -z "$PINNED_COMMIT" ]; then
-  echo "REFUSING: $PINNED has no \`commit <sha>\` line" >&2
-  exit 2
-fi
-if [ "$PINNED_COMMIT" != "$FROZEN_COMMIT" ]; then
-  echo "REFUSING: $PINNED pins commit $PINNED_COMMIT, HEAD is $FROZEN_COMMIT — the branch" >&2
-  echo "moved between stamp and burn despite the freeze." >&2
-  exit 2
-fi
 
 START=$(date +%s)
 {
@@ -233,8 +252,10 @@ START=$(date +%s)
   echo "models    : $MODELS"
   echo "evidence  : $EV"
   if [ "$KEEP_NULLS" = 1 ]; then
-    echo "nulls     : KEPT in '$NULL_DIR'"
-    echo "            mount '$NULL_MOUNT' (device $NULL_MOUNT_DEV), $(gib "$(avail_bytes "$NULL_DIR")") GiB free"
+    # The path is an environment value and this log is committed evidence:
+    # it records WHAT the disk is, never WHERE it is mounted.
+    echo "nulls     : KEPT on an external mount (fstype $(findmnt -n -o FSTYPE -T "$NULL_DIR" | tail -1),"
+    echo "            device $NULL_MOUNT_DEV, $(gib "$(avail_bytes "$NULL_DIR")") GiB free) — path from CAL_NULL_DIR"
   else
     echo "nulls     : pinned then DELETED per arm (no CAL_NULL_DIR)"
   fi
@@ -322,12 +343,12 @@ for line in "${LINES[@]}"; do
         # the null on the root filesystem with the right path.
         fdev=$(stat -c %d "$f")
         if [ "$fdev" != "$NULL_MOUNT_DEV" ]; then
-          say "VOID arm $arm: $stem.gguf landed on device $fdev, the '$NULL_MOUNT' mount is"
+          say "VOID arm $arm: $stem.gguf landed on device $fdev, the external mount is"
           say "     $NULL_MOUNT_DEV — it is not on the disk. Arm VOID, run continues (§7)."
           arm_void=1
           break 2
         fi
-        say "moved   : $stem.gguf → $NULL_DIR (device $fdev)"
+        say "moved   : $stem.gguf → the external mount (device $fdev)"
       fi
 
       say "judge   : $f → $BURN/$stem (single)"
@@ -353,7 +374,7 @@ for line in "${LINES[@]}"; do
       fi
 
       if [ "$KEEP_NULLS" = 1 ]; then
-        say "pinned  : $sha  $stem.gguf — judged, pinned, KEPT in $NULL_DIR"
+        say "pinned  : $sha  $stem.gguf — judged, pinned, KEPT on the external mount"
       else
         rm -f "$f"
         say "pinned  : $sha  $stem.gguf — judged, pinned, deleted"
