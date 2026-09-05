@@ -149,20 +149,35 @@ fi
 FROZEN_AT=$(date -Is)
 FROZEN_COMMIT=$(git rev-parse HEAD)
 mkdir -p "$EV/generator"
+PINNED="$EV/generator/PINNED.sha256"
+# The digests are checked against a file written at STAMP TIME and
+# committed with the stamp — not against anything this run produces. A
+# digest pinned by the burn and checked by the burn cannot fail.
+if [ ! -f "$PINNED" ]; then
+  echo "REFUSING: $PINNED is missing. It is written at stamp time from the frozen commit" >&2
+  echo "and committed with the stamp; without it there is nothing independent to check" >&2
+  echo "the frozen generator against." >&2
+  exit 2
+fi
 : > "$EV/generator/SHA256SUMS"
 for f in "$GEN_SRC" "$SELF"; do
   bn=$(basename "$f")
-  want=$(git show "$FROZEN_COMMIT:$f" | sha256sum | cut -d' ' -f1)
+  want=$(awk -v n="$bn" '{ sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
+  if [ -z "$want" ]; then
+    echo "REFUSING: $PINNED has no line for $bn" >&2
+    exit 2
+  fi
   git show "$FROZEN_COMMIT:$f" > "$EV/generator/$bn"
   got=$(sha256sum "$EV/generator/$bn" | cut -d' ' -f1)
   if [ "$want" != "$got" ]; then
-    echo "REFUSING: frozen copy of $bn is $got, the commit says $want" >&2
+    echo "REFUSING: $bn at $FROZEN_COMMIT is $got, $PINNED says $want" >&2
+    echo "The stamped generator and this commit are not the same code." >&2
     exit 2
   fi
   echo "$got  $bn" >> "$EV/generator/SHA256SUMS"
 done
-GEN_SRC_SHA=$(git show "$FROZEN_COMMIT:$GEN_SRC" | sha256sum | cut -d' ' -f1)
-SELF_SHA=$(git show "$FROZEN_COMMIT:$SELF" | sha256sum | cut -d' ' -f1)
+GEN_SRC_SHA=$(awk -v n="$(basename "$GEN_SRC")" '{ sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
+SELF_SHA=$(awk -v n="$(basename "$SELF")" '{ sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
 
 START=$(date +%s)
 {
@@ -173,8 +188,8 @@ START=$(date +%s)
   echo "script    : $SELF"
   echo "scriptsha : $SELF_SHA"
   echo "frozen-at : $FROZEN_AT — copies extracted from the commit into $EV/generator/,"
-  echo "            digests asserted, listed in $EV/generator/SHA256SUMS (commit them with"
-  echo "            the burn evidence)"
+  echo "            digests asserted against $PINNED (written at stamp time), listed in"
+  echo "            $EV/generator/SHA256SUMS (commit them with the burn evidence)"
   echo "generator : $CAL_GENERATE"
   echo "gen binsha: $(sha256sum "$CAL_GENERATE" | cut -d' ' -f1)"
   echo "judge     : $JUDGE"
@@ -215,6 +230,7 @@ for line in "${LINES[@]}"; do
     exit 3
   fi
 
+  arm_void=0
   say "generate: $arm"
   "$CAL_GENERATE" --generate --arm "$arm" >&2
 
@@ -248,7 +264,17 @@ for line in "${LINES[@]}"; do
         require_free "$NULL_DIR" "moving $stem.gguf"
         mv "$f" "$NULL_DIR/$stem.gguf"
         f="$NULL_DIR/$stem.gguf"
-        say "moved   : $stem.gguf → $NULL_DIR"
+        # The file must be ON the mount, not in a directory that shadows it:
+        # a mount that vanished between the check and the write would leave
+        # the null on the root filesystem with the right path.
+        fdev=$(stat -c %d "$f"); mdev=$(stat -c %d "$NULL_DIR")
+        if [ "$fdev" != "$mdev" ]; then
+          say "VOID arm $arm: $stem.gguf landed on device $fdev, $NULL_DIR is $mdev —"
+          say "     it is not on the mount. Arm VOID, run continues (§7)."
+          arm_void=1
+          break 2
+        fi
+        say "moved   : $stem.gguf → $NULL_DIR (device $fdev)"
       fi
 
       say "judge   : $f → $BURN/$stem (single)"
@@ -280,6 +306,10 @@ for line in "${LINES[@]}"; do
     done
   done
 
+  if [ "$arm_void" = 1 ]; then
+    say "arm $arm: VOID — no done marker written, it will be retried on the next run"
+    continue
+  fi
   date -Is > "$BURN/$arm.done"
   say "arm $arm: done · free $(gib "$(avail_bytes "$MODELS")") GiB · elapsed $(elapsed_h) h"
 done
