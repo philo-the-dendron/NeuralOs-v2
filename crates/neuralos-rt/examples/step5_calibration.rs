@@ -75,6 +75,14 @@ const ARMS_FILE: &str = "evidence/step5-calibration/arms.txt";
 const MEASURE_LOG: &str = "evidence/step5-calibration/measure.log";
 const GENERATE_LOG: &str = "evidence/step5-calibration/generate.log";
 const SHA256SUMS: &str = "evidence/step5-calibration/SHA256SUMS";
+/// Written at stamp time from the frozen commit and committed with the
+/// stamp: three lines, `commit <sha>` then two sha256sum lines. It is the
+/// AUTHORITATIVE copy; §7's transcription is human-readable only.
+const PINNED_FILE: &str = "evidence/step5-calibration/generator/PINNED.sha256";
+/// No placeholder survives into the stamp commit (§7 step 4).
+const PLACEHOLDERS: [&str; 2] = ["_filled at stamp_", "_filled before stamp_"];
+const GEN_SRC_PATH: &str = "crates/neuralos-rt/examples/step5_calibration.rs";
+const BURN_SH_PATH: &str = "tools/step5_calibration_burn.sh";
 /// The banked base judge dumps — the same legs `step5_aggregate` reads as
 /// the base side (its `base_dir` default). M3 is defined over THEIR
 /// knife-edge steps, so they are read here, before any arm exists.
@@ -294,6 +302,104 @@ fn verify_base_sha(t: &mut Tee) {
     );
     say!(t, "base    : {BASE}");
     say!(t, "          sha {sha} == §2 pin : PASS");
+}
+
+/// The first hex token of `len` digits after `anchor`, skipping whitespace
+/// and the backticks a markdown transcription may wrap it in. Tries every
+/// occurrence of the anchor, because the phrase also appears in prose that
+/// is not followed by a value.
+fn hex_after(text: &str, anchor: &str, len: usize) -> Option<String> {
+    let mut from = 0usize;
+    while let Some(i) = text[from..].find(anchor) {
+        let start = from + i + anchor.len();
+        let tok: String = text[start..]
+            .chars()
+            .skip_while(|c| c.is_whitespace() || *c == '`')
+            .take_while(char::is_ascii_hexdigit)
+            .collect();
+        if tok.len() == len {
+            return Some(tok);
+        }
+        from = start;
+    }
+    None
+}
+
+/// §7 step 4, enforced not narrated: no placeholder survives into the
+/// stamp commit, and §7's three transcribed values must match the
+/// authoritative `PINNED.sha256` byte for byte. A transcription that
+/// drifted from the file the burn asserts against would make the
+/// human-readable record and the machine-checked one disagree silently.
+fn check_stamp_pins(t: &mut Tee) {
+    let prereg = std::fs::read_to_string(PREREG_FILE)
+        .unwrap_or_else(|e| panic!("cannot read {PREREG_FILE}: {e}"));
+    let pinned = std::fs::read_to_string(PINNED_FILE).unwrap_or_else(|e| {
+        panic!("cannot read {PINNED_FILE}: {e} — it is written at stamp time (§7 step 4d)")
+    });
+    for (file, text) in [(PREREG_FILE, &prereg), (PINNED_FILE, &pinned)] {
+        for ph in PLACEHOLDERS {
+            assert!(
+                !text.contains(ph),
+                "{file} still contains {ph:?} — the stamp sequence is not complete (§7 step 4)"
+            );
+        }
+    }
+
+    // PINNED.sha256: `commit <sha>` then two sha256sum lines.
+    let mut commit = None;
+    let mut gen_sha = None;
+    let mut burn_sha = None;
+    for line in pinned.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let mut f = line.split_whitespace();
+        match (f.next(), f.next()) {
+            (Some("commit"), Some(sha)) => commit = Some(sha.to_string()),
+            (Some(sha), Some(path)) => {
+                let path = path.trim_start_matches('*');
+                if path == GEN_SRC_PATH {
+                    gen_sha = Some(sha.to_string());
+                } else if path == BURN_SH_PATH {
+                    burn_sha = Some(sha.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    let commit = commit
+        .unwrap_or_else(|| panic!("{PINNED_FILE}: no `commit <sha>` line (§7 step 4d format)"));
+    let gen_sha = gen_sha.unwrap_or_else(|| panic!("{PINNED_FILE}: no line for {GEN_SRC_PATH}"));
+    let burn_sha = burn_sha.unwrap_or_else(|| panic!("{PINNED_FILE}: no line for {BURN_SH_PATH}"));
+
+    // §7's transcription of the same three values.
+    let want_commit = hex_after(&prereg, "frozen commit", 40).unwrap_or_else(|| {
+        panic!("{PREREG_FILE} §7: no 40-hex value after \"frozen commit\" — transcription missing")
+    });
+    let want_gen = hex_after(&prereg, "`step5_calibration.rs` sha256", 64).unwrap_or_else(|| {
+        panic!("{PREREG_FILE} §7: no 64-hex value after \"`step5_calibration.rs` sha256\"")
+    });
+    let want_burn =
+        hex_after(&prereg, "`step5_calibration_burn.sh` sha256", 64).unwrap_or_else(|| {
+            panic!("{PREREG_FILE} §7: no 64-hex value after \"`step5_calibration_burn.sh` sha256\"")
+        });
+
+    for (what, a, b) in [
+        ("frozen commit", &want_commit, &commit),
+        ("step5_calibration.rs sha256", &want_gen, &gen_sha),
+        ("step5_calibration_burn.sh sha256", &want_burn, &burn_sha),
+    ] {
+        assert_eq!(
+            a, b,
+            "{PREREG_FILE} §7 says {what} {a}, {PINNED_FILE} says {b} — the human-readable \
+             transcription and the authoritative pin disagree (§7 step 4e)"
+        );
+    }
+    say!(t, "pins    : §7 transcription == {PINNED_FILE} : PASS");
+    say!(t, "          frozen commit {commit}");
+    say!(t, "          {GEN_SRC_PATH} {gen_sha}");
+    say!(t, "          {BURN_SH_PATH} {burn_sha}");
+    say!(
+        t,
+        "          no stamp placeholder left in either file : PASS"
+    );
 }
 
 /// §7 step 4: no arm file exists before the stamp. Enforced here rather
@@ -1151,6 +1257,7 @@ fn generate(mode: GenMode) {
     say!(t, "=== step-5 calibration: --generate (PREREG §7) ===");
     verify_base_sha(&mut t);
     assert_stamped(&mut t);
+    check_stamp_pins(&mut t);
     check_judge_runtime(&mut t);
     say!(
         t,

@@ -162,9 +162,11 @@ fi
 : > "$EV/generator/SHA256SUMS"
 for f in "$GEN_SRC" "$SELF"; do
   bn=$(basename "$f")
-  want=$(awk -v n="$bn" '{ sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
+  # PINNED.sha256 is `commit <sha>` plus two sha256sum lines carrying the
+  # REPO-RELATIVE paths, so match on the path, not the basename.
+  want=$(awk -v n="$f" '$1 != "commit" { sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
   if [ -z "$want" ]; then
-    echo "REFUSING: $PINNED has no line for $bn" >&2
+    echo "REFUSING: $PINNED has no line for $f" >&2
     exit 2
   fi
   git show "$FROZEN_COMMIT:$f" > "$EV/generator/$bn"
@@ -176,8 +178,18 @@ for f in "$GEN_SRC" "$SELF"; do
   fi
   echo "$got  $bn" >> "$EV/generator/SHA256SUMS"
 done
-GEN_SRC_SHA=$(awk -v n="$(basename "$GEN_SRC")" '{ sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
-SELF_SHA=$(awk -v n="$(basename "$SELF")" '{ sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
+GEN_SRC_SHA=$(awk -v n="$GEN_SRC" '$1 != "commit" { sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
+SELF_SHA=$(awk -v n="$SELF" '$1 != "commit" { sub(/^\*/, "", $2); if ($2 == n) { print $1; exit } }' "$PINNED")
+PINNED_COMMIT=$(awk '$1 == "commit" { print $2; exit }' "$PINNED")
+if [ -z "$PINNED_COMMIT" ]; then
+  echo "REFUSING: $PINNED has no \`commit <sha>\` line" >&2
+  exit 2
+fi
+if [ "$PINNED_COMMIT" != "$FROZEN_COMMIT" ]; then
+  echo "REFUSING: $PINNED pins commit $PINNED_COMMIT, HEAD is $FROZEN_COMMIT — the branch" >&2
+  echo "moved between stamp and burn despite the freeze." >&2
+  exit 2
+fi
 
 START=$(date +%s)
 {
