@@ -1,0 +1,60 @@
+=== step-5 calibration: --measure (PREREG §4 reader checks; writes nothing to models/) ===
+base    : models/Ternary-Bonsai-4B-Q2_0.gguf
+          sha 4e0bf8b737b0431552f8c2c97695ab7c0cb214c94bcdeb4f5f267e67ddf28b8b == §2 pin : PASS
+layout  : host blk.0.attn_q.weight — ty q2_0 · dims [2560, 4096] · 2785280 B
+          graft k=1 blk.1.attn_q.weight — ty q2_0 · dims [2560, 4096] · 2785280 B · data offset 133467360 : MATCHES HOST
+          graft k=18 blk.18.attn_q.weight — ty q2_0 · dims [2560, 4096] · 2785280 B · data offset 589574368 : MATCHES HOST
+          graft k=35 blk.35.attn_q.weight — ty q2_0 · dims [2560, 4096] · 2785280 B · data offset 1045681376 : MATCHES HOST
+window  : blk.0.attn_q.weight rows 0..512 × cols 0..512 — 262144 cells
+          head 0: census [21191, 23323, 21022] · zero fraction 0.3559
+          head 1: census [20439, 24959, 20138] · zero fraction 0.3808
+          head 2: census [20616, 23987, 20933] · zero fraction 0.3660
+          head 3: census [21007, 23533, 20996] · zero fraction 0.3591
+          heads sum to [83253, 95802, 83089] == banked window census : PASS
+
+provenance: 3 graft source blocks, shas pairwise distinct : PASS
+lesion-h0: 42213 cells
+    composition (-1→0 : 21191) (+1→0 : 21022)
+    block census [21191, 23323, 21022] of 65536 · zero fraction 0.3559 (measurement, not a gate) · patched block all-zero : PASS
+lesion-h1: 40577 cells
+    composition (-1→0 : 20439) (+1→0 : 20138)
+    block census [20439, 24959, 20138] of 65536 · zero fraction 0.3808 (measurement, not a gate) · patched block all-zero : PASS
+lesion-h2: 41549 cells
+    composition (-1→0 : 20616) (+1→0 : 20933)
+    block census [20616, 23987, 20933] of 65536 · zero fraction 0.3660 (measurement, not a gate) · patched block all-zero : PASS
+lesion-h3: 42003 cells
+    composition (-1→0 : 21007) (+1→0 : 20996)
+    block census [21007, 23533, 20996] of 65536 · zero fraction 0.3591 (measurement, not a gate) · patched block all-zero : PASS
+graft-k1: 43586 cells
+    composition (-1→0 : 7479) (-1→+1 : 6936) (0→-1 : 7551) (0→+1 : 7290) (+1→-1 : 6761) (+1→0 : 7569)
+    provenance: blk.1.attn_q.weight · data offset 133467360 · block sha 402c4a1c7cc2577e50dc6e1edaf8e70593f431890c7230f7dbfae6522865ca1c
+    blk.1 block census [21088, 23530, 20918] sums to 65536 : PASS · changed 43586 vs independence [41580, 44760] : inside the interval
+    local pools (demand/available) -1: 14415/21191 · 0: 14841/23323 · +1: 14330/21022 : FEASIBLE
+graft-k18: 43388 cells
+    composition (-1→0 : 7887) (-1→+1 : 6627) (0→-1 : 7288) (0→+1 : 7358) (+1→-1 : 6539) (+1→0 : 7689)
+    provenance: blk.18.attn_q.weight · data offset 589574368 · block sha bfbf655c6d4b4d61aa3e17210663a3c308162de3cb8dc66c69463afb67429c58
+    blk.18 block census [20504, 24253, 20779] sums to 65536 : PASS · changed 43388 vs independence [41580, 44760] : inside the interval
+    local pools (demand/available) -1: 14514/21191 · 0: 14646/23323 · +1: 14228/21022 : FEASIBLE
+graft-k35: 43424 cells
+    composition (-1→0 : 7559) (-1→+1 : 6806) (0→-1 : 7395) (0→+1 : 7493) (+1→-1 : 6798) (+1→0 : 7373)
+    provenance: blk.35.attn_q.weight · data offset 1045681376 · block sha c84818e896a67ed5593b99ab2d0db74bd735a325e4efc300da99cda3d6fec6e4
+    blk.35 block census [21019, 23367, 21150] sums to 65536 : PASS · changed 43424 vs independence [41580, 44760] : inside the interval
+    local pools (demand/available) -1: 14365/21191 · 0: 14888/23323 · +1: 14171/21022 : FEASIBLE
+identity: 0 cells
+    composition (none)
+    0 changed cells : PASS — the tripwire is transparent
+
+--- PREREG §4 table ---
+| Arm | measured | composition (from→to : n) |
+|---|---|---|
+| LESION-0 | 42213 | (-1→0 : 21191) (+1→0 : 21022) |
+| LESION-1 | 40577 | (-1→0 : 20439) (+1→0 : 20138) |
+| LESION-2 | 41549 | (-1→0 : 20616) (+1→0 : 20933) |
+| LESION-3 | 42003 | (-1→0 : 21007) (+1→0 : 20996) |
+| GRAFT-1 | 43586 | (-1→0 : 7479) (-1→+1 : 6936) (0→-1 : 7551) (0→+1 : 7290) (+1→-1 : 6761) (+1→0 : 7569) |
+| GRAFT-18 | 43388 | (-1→0 : 7887) (-1→+1 : 6627) (0→-1 : 7288) (0→+1 : 7358) (+1→-1 : 6539) (+1→0 : 7689) |
+| GRAFT-35 | 43424 | (-1→0 : 7559) (-1→+1 : 6806) (0→-1 : 7395) (0→+1 : 7493) (+1→-1 : 6798) (+1→0 : 7373) |
+| IDENTITY | 0 | (none) |
+
+reader checks: 8 arms PASS — no §4 check fired, no §7 kill
+measure done — nothing written under models/. Log: evidence/step5-calibration/measure.log, sha pinned in evidence/step5-calibration/SHA256SUMS.
