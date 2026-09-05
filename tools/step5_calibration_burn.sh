@@ -300,8 +300,8 @@ for line in "${LINES[@]}"; do
 
   # 1. the arm file itself, double-run. It stays in models/ always.
   armgguf="$MODELS/cal-$arm.gguf"
-  [ -f "$armgguf" ] || { say "REFUSING: $armgguf missing after generate"; exit 2; }
-  say "judge   : $armgguf → $BURN/cal-$arm (double)"
+  [ -f "$armgguf" ] || { say "REFUSING: cal-$arm.gguf missing after generate"; exit 2; }
+  say "judge   : cal-$arm.gguf → $BURN/cal-$arm (double)"
   "$JUDGE" "$armgguf" "$BURN/cal-$arm" --double
 
   # 2. its nulls — IDENTITY has none, and this loop then does nothing.
@@ -317,33 +317,47 @@ for line in "${LINES[@]}"; do
       # moved or removed, on both paths.
       case "$stem" in
         cal-"$arm"-scat-s*|cal-"$arm"-local-s*|cal-"$arm"-mid-s*) ;;
-        *) say "REFUSING: $f is not a null of $arm"; exit 2 ;;
+        *) say "REFUSING: $stem.gguf is not a null of $arm"; exit 2 ;;
       esac
       if ! echo " $fams " | grep -q " $fam "; then
         say "REFUSING: family $fam is not listed for $arm in $ARMS"; exit 2
       fi
 
+      # Judge FIRST, while the file is still in models/ and its path is
+      # repo-relative. The judge chain echoes the model path it was given,
+      # and that output lands in the committed log, so the external path
+      # must never be the one it sees. This is also §7's order: the file is
+      # judged before it leaves.
+      say "judge   : $stem.gguf → $BURN/$stem (single)"
+      "$JUDGE" "$f" "$BURN/$stem"
+
+      if [ ! -f "$BURN/$stem/SHA256SUMS" ]; then
+        say "REFUSING: $BURN/$stem/SHA256SUMS is missing — the judge leg is not pinned"; exit 2
+      fi
+
+      # The digest of record, read back from disk, never from memory.
+      sync -f "$f" 2>/dev/null || sync
+      sha=$(sha256sum "$f" | cut -d' ' -f1)
+
       if [ "$KEEP_NULLS" = 1 ]; then
         require_mount "moving $stem.gguf"
         require_free "$NULL_DIR" "moving $stem.gguf"
-        # Across filesystems mv is a copy, and exFAT has no journal: a
-        # truncated copy would look like a file. Digest before, digest the
-        # read-back after, and require them equal.
-        before=$(sha256sum "$f" | cut -d' ' -f1)
+        # Across filesystems mv is a copy and exFAT has no journal, so a
+        # truncated copy would look like a file: the read-back after the
+        # move must reproduce the digest taken before it.
         mv "$f" "$NULL_DIR/$stem.gguf"
         sync -f "$NULL_DIR/$stem.gguf" 2>/dev/null || sync
-        f="$NULL_DIR/$stem.gguf"
-        after=$(sha256sum "$f" | cut -d' ' -f1)
-        if [ "$before" != "$after" ]; then
-          say "VOID arm $arm: $stem.gguf read back as $after after the move, was $before —"
+        after=$(sha256sum "$NULL_DIR/$stem.gguf" | cut -d' ' -f1)
+        if [ "$sha" != "$after" ]; then
+          say "VOID arm $arm: $stem.gguf read back as $after after the move, was $sha —"
           say "     a short or corrupted copy. Arm VOID, run continues (§7)."
           arm_void=1
           break 2
         fi
         # The file must be ON the mount, not in a directory that shadows it:
         # a mount that vanished between the check and the write would leave
-        # the null on the root filesystem with the right path.
-        fdev=$(stat -c %d "$f")
+        # the null on the root filesystem under the right path.
+        fdev=$(stat -c %d "$NULL_DIR/$stem.gguf")
         if [ "$fdev" != "$NULL_MOUNT_DEV" ]; then
           say "VOID arm $arm: $stem.gguf landed on device $fdev, the external mount is"
           say "     $NULL_MOUNT_DEV — it is not on the disk. Arm VOID, run continues (§7)."
@@ -353,15 +367,6 @@ for line in "${LINES[@]}"; do
         say "moved   : $stem.gguf → the external mount (device $fdev)"
       fi
 
-      say "judge   : $f → $BURN/$stem (single)"
-      "$JUDGE" "$f" "$BURN/$stem"
-
-      if [ ! -f "$BURN/$stem/SHA256SUMS" ]; then
-        say "REFUSING: $BURN/$stem/SHA256SUMS is missing — the judge leg is not pinned"; exit 2
-      fi
-      # Read back from disk, never from anything held in memory.
-      sync -f "$f" 2>/dev/null || sync
-      sha=$(sha256sum "$f" | cut -d' ' -f1)
       touch "$NULLSUMS"
       if grep -q "  $stem.gguf\$" "$NULLSUMS"; then
         prev=$(grep "  $stem.gguf\$" "$NULLSUMS" | cut -d' ' -f1)
