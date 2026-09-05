@@ -18,7 +18,7 @@ knife   : base dumps evidence/session-f-judge · θ = 0.05
           p3: 2 knife-edge steps of 12 · sha d92f9ae62573575d6ba93e5d32e811b1cb096ec533e979aa67ff10df11fb4adf
           p4: 1 knife-edge steps of 12 · sha fb73a0ac68c4fda7b3c3a119800dd8fa10af0ae68a15929c32888bbd0256fa16
           total 3 knife-edge steps : PASS (M3 has a set to measure on)
-judge   : fork-build/llama.cpp/build/bin · fork 9ca265a57f85f2117942490f421f64a226dd9847 (from tools/build_fork.sh PIN=)
+judge   : fork-build/llama.cpp/build/bin · fork commit 9ca265a57f85f2117942490f421f64a226dd9847 — tools/build_fork.sh PIN, the code constant and the checked-out fork all agree
           llama-completion · sha 45c3213681383dc7f5f54bd0b16585c769e3c00450fbc987c250b96214de6246 : PINNED
           libllama-completion-impl.so · sha 64a1e1848ca747d2ac369a8d93f6a0f46ac7317796683d8c54df3f97bbd32886 : PINNED
           libllama-common.so · sha 911ad4a6548fbae453652df30692154eb3100d068eed35207c5e264c25f2dff3 : PINNED
