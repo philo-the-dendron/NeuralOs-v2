@@ -350,7 +350,7 @@ fn check_stamp_pins(t: &mut Tee) {
         panic!("cannot read {PINNED_FILE}: {e} — it is written at stamp time (§7 step 4d)")
     });
 
-    // §2: the five judge digests the document names, and the fork commit.
+    // §2: the seven judge digests the document names, and the fork commit.
     for name in PREREG_JUDGE_FILES {
         let want = JUDGE_FILES
             .iter()
@@ -439,7 +439,8 @@ fn check_stamp_pins(t: &mut Tee) {
     }
     say!(
         t,
-        "pins    : §2 five judge digests + fork commit == code : PASS"
+        "pins    : §2 {} judge digests + fork commit == code : PASS",
+        PREREG_JUDGE_FILES.len()
     );
     say!(t, "          §7 three values == {PINNED_FILE} : PASS");
     say!(t, "          frozen commit {commit}");
