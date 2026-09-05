@@ -1031,5 +1031,18 @@ in §8.
 
 ## 10. Stamp
 
-_unstamped_ — awaiting the principal's second stamp. The first stamp is
-on record in §9 (v30) and authorised nothing that ran.
+Stamped. philo, in his own words, given to the adjudicator at 2026-09-05
+17:27 EDT and written here at 2026-09-05 17:46 EDT, after the sixth stamp-time read
+cleared the frozen commit it applies to:
+
+> I stamp the step-5 calibration pre-registration, philo, 2026-09-05.
+
+Document at stamp: v33. Frozen generator commit
+`c27084ccbdf330e29542fed8995e10fe5358df47` (PINNED.sha256 committed at
+17ebcd0). Adjudicator: Kai (session claude-e9). In-family reviewer:
+session neuralos-v2-33, twenty-one document passes, one recount, six
+stamp-time reads, CLEARED. Cross-family lanes: Meta and MiniMax-family
+(§9 v10, v11). Builder: session neuralos-v2-00. philo's first stamp of
+17:12 EDT (frozen commit 6b3eab0) is superseded and on record in §9 v30;
+it authorised nothing that ran. No arm file existed and no judge run had
+started before this line was written.
