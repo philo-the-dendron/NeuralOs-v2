@@ -410,6 +410,11 @@ struct Arm {
     /// (family, seed slot) — LESION: SCAT only. GRAFT: SCAT + LOCAL.
     /// IDENTITY: none (a tripwire, not a banded comparison).
     families: Vec<(Family, usize)>,
+    /// The family §6 decides on, marked `*` in arms.txt. LESION: SCAT.
+    /// GRAFT: LOCAL, the deconfounded one (§3). IDENTITY: none. The
+    /// generator knows what an arm IS, so the reader never has to guess
+    /// a primary from the arm's name.
+    primary: Option<Family>,
 }
 
 /// Which dose-matched null construction a family uses (§3).
@@ -443,6 +448,7 @@ fn build_arms(base: &[Trit], p: &ExperimentParams, srcs: &[(usize, String, u64)]
             patch: lesion_patch(base, h, n),
             kind: Kind::Lesion(h, census(&base[h * block..(h + 1) * block])),
             families: vec![(Family::Scat, i)],
+            primary: Some(Family::Scat),
         });
     }
     for (i, (k, tensor)) in GRAFT_LAYERS.into_iter().enumerate() {
@@ -470,6 +476,7 @@ fn build_arms(base: &[Trit], p: &ExperimentParams, srcs: &[(usize, String, u64)]
                 (Family::Scat, LESION_HEADS.len() + i),
                 (Family::Local, LESION_HEADS.len() + GRAFT_LAYERS.len() + i),
             ],
+            primary: Some(Family::Local),
         });
     }
     arms.push(Arm {
@@ -477,6 +484,7 @@ fn build_arms(base: &[Trit], p: &ExperimentParams, srcs: &[(usize, String, u64)]
         patch: base.to_vec(),
         kind: Kind::Identity,
         families: Vec::new(),
+        primary: None,
     });
     arms
 }
@@ -882,8 +890,18 @@ fn generate() {
                     family.label()
                 );
             }
-            fams.push(family.label().to_string());
+            fams.push(format!(
+                "{}{}",
+                family.label(),
+                if arm.primary == Some(family) { "*" } else { "" }
+            ));
         }
+        assert_eq!(
+            fams.iter().filter(|f| f.ends_with('*')).count(),
+            usize::from(arm.primary.is_some()),
+            "{}: arms.txt must mark exactly one primary family (none for the tripwire)",
+            arm.name
+        );
         manifest.push(
             format!("{} {}", arm.name, fams.join(" "))
                 .trim_end()
@@ -893,7 +911,8 @@ fn generate() {
 
     let mut text = String::from(
         "# Step-5 calibration arm files — written by step5_calibration --generate.\n\
-         # One line per arm: <arm-stem> [family …], in PREREG §7 decade order.\n\
+         # One line per arm: <arm-stem> [family …], in PREREG §7 decade order;\n\
+         # the family §6 decides on carries a trailing *. The tripwire has none.\n\
          # Files are models/cal-<arm>.gguf and models/cal-<arm>-<family>-s<seed>.gguf.\n\
          # The aggregator reads THIS file; no arm list is ever hardcoded (§7 step 7).\n",
     );

@@ -422,7 +422,21 @@ fn poscontrol(root: &Path) {
     {
         let mut it = line.split_whitespace();
         let stem = it.next().expect("a non-empty line carries an arm stem");
-        let families: Vec<&str> = it.collect();
+        // `<family>*` marks the family §6 decides on. The generator writes
+        // it because the generator knows what an arm is; the reader never
+        // infers a primary from the arm's name.
+        let tokens: Vec<&str> = it.collect();
+        let families: Vec<&str> = tokens.iter().map(|f| f.trim_end_matches('*')).collect();
+        let primaries: Vec<&str> = tokens
+            .iter()
+            .filter(|f| f.ends_with('*'))
+            .map(|f| f.trim_end_matches('*'))
+            .collect();
+        assert!(
+            primaries.len() == usize::from(!families.is_empty()),
+            "{}: {stem} must mark exactly one primary family (none for the tripwire), got {tokens:?}",
+            af.display()
+        );
         let dir = root.join(format!("cal-{stem}"));
         if !dir.exists() {
             println!("  {stem}: ABSENT — partial root");
@@ -456,16 +470,19 @@ fn poscontrol(root: &Path) {
             continue;
         }
 
+        // The arm CLASS still comes from the stem — `lesion-h{h}` and
+        // `graft-k{k}` are the §7 filenames, and §6 counts the two classes
+        // separately. The PRIMARY family no longer does.
         let is_lesion = stem.starts_with("lesion-");
         assert!(
             is_lesion || stem.starts_with("graft-"),
             "{}: unknown arm stem {stem:?} — arms.txt is written by --generate",
             af.display()
         );
-        let primary = if is_lesion { "scat" } else { "local" };
+        let primary = primaries[0];
         assert!(
             families.contains(&primary),
-            "{stem}: arms.txt lists families {families:?} without its primary {primary:?}"
+            "{stem}: primary {primary:?} is not among its families {families:?}"
         );
 
         let arm_m3 = m3_of(&dir, &base);
