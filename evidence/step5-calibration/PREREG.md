@@ -1,6 +1,6 @@
-# Step-5 Calibration — the lesion/graft positive control — PRE-REGISTRATION (DRAFT v29)
+# Step-5 Calibration — the lesion/graft positive control — PRE-REGISTRATION (DRAFT v33)
 
-Status: DRAFT v29, 2026-09-05 (all dates in this document are local, America/Toronto). Review history, pass by pass and
+Status: DRAFT v33, 2026-09-05 (all dates in this document are local, America/Toronto). Review history, pass by pass and
 finding by finding, lives in §9 and nowhere else (reviewer T1: a count
 in this header went stale by eight passes). In short: in-family
 reviewer passes plus one independent recount, two cross-family lanes
@@ -26,9 +26,13 @@ documented minimum would die at the second null — the N1 defect in
 code, caught because the hygiene edit sent the reviewer to the pinned
 blob). The fix changes the script, so the frozen commit, PINNED.sha256
 and §7's constants change with it, under §7's own consequence clause.
-Steps 4c–4e redone at the new frozen commit 6b3eab0; second stamp-time
-read CLEARED (six checks plus a read of the script's numeric logic).
-Awaiting 4f and the principal stamp (4g). No arm file is generated and no judge run starts
+The first stamp (17:12 EDT, frozen commit 6b3eab0) is SUPERSEDED: the
+burn refused to launch on a self-contradictory check in the pinned
+script (§9 v30); nothing was written. Steps 4c–4e redone at the new
+frozen commit c27084c (30e2b83, the path-print fix,
+judge-before-move, then the relative generator default); sixth
+stamp-time read CLEARED.
+Awaiting the stamp-time read, 4f, and the principal's second stamp (4g). No arm file is generated and no judge run starts
 before the stamp line (§10) carries philo's word and a date. Ledger authority:
 ISA.md constraint 1 ("the lesion/graft positive control is a
 PREREQUISITE, not an option"); `paper/sections/limitations.tex`
@@ -559,9 +563,12 @@ Order:
    and its families (15 nulls for each of the seven perturbation arms;
    IDENTITY has none), so at most 23 files are on disk at once (the 8
    kept arm files plus one arm's 15 transient nulls, ≈ 23 GiB). The
-   judge runs them, every null gguf is sha256-pinned into
-   `evidence/step5-calibration/nulls.SHA256SUMS`, and only then are
-   the null ggufs deleted (arm files and IDENTITY stay). A deleted null
+   judge runs every file WHILE IT IS STILL IN `models/`, so the frozen
+   judge script (§2, run verbatim) only ever sees a repo-relative path;
+   every null gguf is then sha256-pinned into
+   `evidence/step5-calibration/nulls.SHA256SUMS`, and only then is it
+   deleted (delete path) or moved to the external disk and read back
+   (keep path). Arm files and IDENTITY stay. A deleted null
    is regenerable byte-for-byte from four pinned inputs: the committed
    seed, the sha-pinned base (§2), the kept arm file, and the
    generator, which `burn/BURN.log` pins BY CONTENT, not by branch:
@@ -582,9 +589,9 @@ Order:
    `evidence/step5-calibration/generator/PINNED.sha256`, so the check
    has a source that predates the burn (reviewer O1: a digest pinned by
    the burn itself and checked by the same burn is a tautology, the
-   dead-check class of v1's ±5% band): frozen commit `6b3eab0529c955e7e9d6739fb8c959760c3aa67e`,
+   dead-check class of v1's ±5% band): frozen commit `c27084ccbdf330e29542fed8995e10fe5358df47`,
    `step5_calibration.rs` sha256 `3fcc1a2fa918d6d628fadf42cd42621b821cbc2c3a7e87a32c449a4f19535040`,
-   `step5_calibration_burn.sh` sha256 `b0c40eddc6851212eb4b9b01e9573792c48e80aac4cf588f3e204610b3ab40b7`. At burn start
+   `step5_calibration_burn.sh` sha256 `003875825fc88b31cf2e084f9f65ac3ed21d407dc8e09a1534be899bc94eb423`. At burn start
    the script extracts both files FROM THE FROZEN COMMIT (`git show
    <commit>:<path>`, never the working tree — the CipherPulse PR 3
    lesson, a tree measured for a commit), asserts each extraction
@@ -737,6 +744,15 @@ what ran file by file; an incomplete run is evidence for nothing
   (grafts). The step-5 record changed 61k–80k cells at ~25% density
   over the whole window. The licence transfers a readout property
   across that gap only as far as §1 says, which is not to step 8.
+- Deferred, defaults correct (reviewer AD1): the burn script prints
+  `$MODELS` and `$EV` raw in its banner; their defaults are
+  repo-relative and this run uses defaults, but both are overridable and
+  an absolute override would print what AC1 printed. Two more calls to
+  the existing `repo_rel` helper close the class; a script change, so a
+  re-stamp, deferred to the next revision with Z1. Also considered and
+  left: a deliberately relative override such as `../../x` is printed
+  verbatim — it carries no absolute location and no account name, and
+  canonicalising it would add a dependency to hide nothing.
 - Deferred, defaults correct (reviewer Z1): the burn script's keep-disk
   start-gate constant bakes in the 20 GiB floor while the floor itself
   is overridable through `CAL_MIN_FREE_GIB`; with a raised floor a disk
@@ -956,16 +972,64 @@ still 2026-09-05 (the whole review ran on one day, 2026-09-05, roughly
 clock, were right all along). Eighteen occurrences corrected. The
 adjudicator had not read the clock; philo noticed the time.
 
+**v30 (refused launch and re-freeze, 2026-09-05 17:22 EDT):** philo stamped at 17:12 EDT
+("I stamp the step-5 calibration pre-registration, philo, 2026-09-05."),
+the stamp commit 4418282 and `--plan` were clean, and the burn REFUSED at
+launch: the pinned script asserted HEAD == frozen commit, which §7 step 4b
+makes impossible (the stamp commit always follows the frozen one). The
+adjudicator's sentence "fires if the branch moved between stamp and burn"
+had been implemented as the wrong predicate, and every probe had run with
+HEAD on the code commit. Nothing was written: zero arm files, zero nulls,
+no judge run. Fixed in one code commit on top of the stamp commit: the
+pinned commit must be an ANCESTOR of HEAD, both files AT HEAD must equal
+the pinned digests, the generator copies are extracted from the PINNED
+commit; and BURN.log and every message name the external disk by
+variable, fstype and device, never by path (it would otherwise enter the
+public tree with committed burn evidence). Probes: a stamp-shaped commit
+on top passes; a later edit of the script refuses; a non-ancestor pin
+refuses. New frozen commit c27084c (after 30e2b83, a44bafd, 7169225; see v31–v32); PINNED.sha256 and §7 rewritten from
+`git show`; the generator digest unchanged (3fcc1a2f…), the script digest
+now 00387582…. The 17:12 stamp is superseded and philo signs again. Worth
+stating as evidence, not only as an incident (reviewer): the refusal was
+the gate going red on a real violation, not a drill — the pinned script
+refused to run unpinned code and wrote nothing, so the stamp-time pin
+and the rule that red stops the run rather than degrading it both proved
+themselves at once, on the first live attempt. A further pass found one
+remaining path print on a rare branch of the script (remount elsewhere
+mid-burn); fixed in the next code commit, which is the frozen commit
+this §7 names.
+
+**v31 (fourth stamp-time read, 2026-09-05):** two path prints on the
+NORMAL path of the keep branch (a reassigned `$f`, and the frozen judge
+script echoing the model path it is given) → the keep path now judges
+each null in `models/` before moving it, and prints stems, never paths;
+the judge script is untouched. Reviewer's method, recorded: sweep every
+output statement that expands ANY variable and trace it to its
+assignments; a grep for the path's names cannot see a path that arrives
+through a generic variable. Frozen commit 7169225: 53 output statements
+swept with trace-back; full keep-path probe captured through the real
+launch redirect showed zero external-path hits and models-relative judge
+invocations; one digest now serves the pin and the after-move read-back.
+
+**v32 (fifth stamp-time read, 2026-09-05):** the generator binary's
+default location was built from the repo's absolute path and printed
+into the committed banner; the probe had overridden that variable with a
+stub, so the default never once executed. Rule recorded: a probe that
+substitutes a value cannot test that value's default, and a leak can
+live only in a run-time value while the script text greps clean. Fix at
+c27084c: relative default, a `repo_rel` helper on every program-path
+print (repo-relative when inside, the variable's NAME when outside), same
+for the judge; probed with the variable UNSET against the real binary
+(banner reads `target/release/examples/step5_calibration`, zero
+absolute-path hits) and with outside-repo stubs (banner prints the
+labels). The reviewer also re-read four inferred checks from the bytes
+and confirmed them.
+
+**v33 (sixth stamp-time read, 2026-09-05):** CLEARED; AD1 (raw `$MODELS`/`$EV`
+banner prints, defaults safe) and the `../` residual recorded as deferred
+in §8.
+
 ## 10. Stamp
 
-Stamped. philo, in his own words, received by the adjudicator at 2026-09-05 17:12 EDT:
-
-> I stamp the step-5 calibration pre-registration, philo, 2026-09-05.
-
-Document at stamp: v29. Frozen generator commit
-`6b3eab0529c955e7e9d6739fb8c959760c3aa67e` (PINNED.sha256 committed at
-89d260c). Adjudicator: Kai (session claude-e9). In-family reviewer:
-session neuralos-v2-33, twenty-one passes plus two stamp-time reads,
-CLEARED. Cross-family lanes: Meta and MiniMax-family (§9 v10, v11).
-Builder: session neuralos-v2-00. No arm file existed and no judge run had
-started before this line was written.
+_unstamped_ — awaiting the principal's second stamp. The first stamp is
+on record in §9 (v30) and authorised nothing that ran.
