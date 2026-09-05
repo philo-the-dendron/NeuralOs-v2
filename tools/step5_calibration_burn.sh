@@ -89,20 +89,28 @@ require_free() { # $1 = receiving dir, $2 = what is about to be written
     exit 3
   fi
 }
-# A vanished or unmounted external disk must stop the run, not silently
-# become a directory on the root filesystem.
-is_mountpoint() { # $1 = path
-  if command -v mountpoint >/dev/null 2>&1; then
-    mountpoint -q "$1"
-  else
-    [ "$(stat -c %d "$1" 2>/dev/null)" != "$(stat -c %d "$1/.." 2>/dev/null)" ]
-  fi
+# The null directory is a SUBDIRECTORY of the external mount, not the mount
+# itself, and its path contains a space — so `mountpoint -q` on it is wrong
+# twice. Ask which filesystem contains it instead, and quote everything.
+mount_of() { # $1 = path -> the mount target that contains it
+  findmnt -n -o TARGET -T "$1" 2>/dev/null | tail -1
+}
+mount_dev() { # $1 = path -> device id of the containing mount
+  stat -c %d "$(mount_of "$1")" 2>/dev/null
 }
 require_mount() { # $1 = what is about to happen
   [ "$KEEP_NULLS" = 1 ] || return 0
-  if ! is_mountpoint "$NULL_DIR"; then
-    say "STOP: $NULL_DIR is not a mount point before $1 — unmounted or vanished"
-    say "      refusing to write nulls onto the root filesystem — VOID (INCOMPLETE)"
+  local m
+  m=$(mount_of "$NULL_DIR")
+  if [ -z "$m" ] || [ "$m" = "/" ]; then
+    say "STOP: '$NULL_DIR' is contained by '${m:-nothing}' before $1 — the external disk is"
+    say "      unmounted or vanished; refusing to write nulls onto the root filesystem"
+    say "      — VOID (INCOMPLETE)"
+    exit 3
+  fi
+  if [ "$m" != "$NULL_MOUNT" ]; then
+    say "STOP: '$NULL_DIR' is now on '$m', not the '$NULL_MOUNT' it started on, before $1"
+    say "      — VOID (INCOMPLETE)"
     exit 3
   fi
   local b f
@@ -120,13 +128,16 @@ gb() { awk -v b="$1" 'BEGIN{printf "%.1f", b/1000000000}'; }
 elapsed_h() { awk -v s="$START" 'BEGIN{printf "%.2f", (systime()-s)/3600}'; }
 
 KEEP_NULLS=0
+NULL_MOUNT=""
 if [ -n "$NULL_DIR" ]; then
-  [ -d "$NULL_DIR" ] || { echo "CAL_NULL_DIR does not exist: $NULL_DIR" >&2; exit 2; }
-  if ! is_mountpoint "$NULL_DIR"; then
-    echo "REFUSING: CAL_NULL_DIR $NULL_DIR is a directory, not a mount point. An external" >&2
-    echo "disk that is not mounted would silently fill the root filesystem instead." >&2
+  [ -d "$NULL_DIR" ] || { echo "CAL_NULL_DIR does not exist: '$NULL_DIR'" >&2; exit 2; }
+  NULL_MOUNT=$(mount_of "$NULL_DIR")
+  if [ -z "$NULL_MOUNT" ] || [ "$NULL_MOUNT" = "/" ]; then
+    echo "REFUSING: '$NULL_DIR' is contained by '${NULL_MOUNT:-nothing}', not by an external" >&2
+    echo "mount. A disk that is not mounted would silently fill the root filesystem." >&2
     exit 2
   fi
+  NULL_MOUNT_DEV=$(stat -c %d "$NULL_MOUNT")
   NB=$(avail_bytes "$NULL_DIR")
   # 126 GiB: 105 × 1.0011 GiB of nulls = 105.1, plus the 20 GiB floor that
   # a keep disk never reclaims.
@@ -208,7 +219,8 @@ START=$(date +%s)
   echo "models    : $MODELS"
   echo "evidence  : $EV"
   if [ "$KEEP_NULLS" = 1 ]; then
-    echo "nulls     : KEPT in $NULL_DIR ($(gb "$(avail_bytes "$NULL_DIR")") GB free)"
+    echo "nulls     : KEPT in '$NULL_DIR'"
+    echo "            mount '$NULL_MOUNT' (device $NULL_MOUNT_DEV), $(gib "$(avail_bytes "$NULL_DIR")") GiB free"
   else
     echo "nulls     : pinned then DELETED per arm (no CAL_NULL_DIR)"
   fi
@@ -274,15 +286,27 @@ for line in "${LINES[@]}"; do
       if [ "$KEEP_NULLS" = 1 ]; then
         require_mount "moving $stem.gguf"
         require_free "$NULL_DIR" "moving $stem.gguf"
+        # Across filesystems mv is a copy, and exFAT has no journal: a
+        # truncated copy would look like a file. Digest before, digest the
+        # read-back after, and require them equal.
+        before=$(sha256sum "$f" | cut -d' ' -f1)
         mv "$f" "$NULL_DIR/$stem.gguf"
+        sync -f "$NULL_DIR/$stem.gguf" 2>/dev/null || sync
         f="$NULL_DIR/$stem.gguf"
+        after=$(sha256sum "$f" | cut -d' ' -f1)
+        if [ "$before" != "$after" ]; then
+          say "VOID arm $arm: $stem.gguf read back as $after after the move, was $before —"
+          say "     a short or corrupted copy. Arm VOID, run continues (§7)."
+          arm_void=1
+          break 2
+        fi
         # The file must be ON the mount, not in a directory that shadows it:
         # a mount that vanished between the check and the write would leave
         # the null on the root filesystem with the right path.
-        fdev=$(stat -c %d "$f"); mdev=$(stat -c %d "$NULL_DIR")
-        if [ "$fdev" != "$mdev" ]; then
-          say "VOID arm $arm: $stem.gguf landed on device $fdev, $NULL_DIR is $mdev —"
-          say "     it is not on the mount. Arm VOID, run continues (§7)."
+        fdev=$(stat -c %d "$f")
+        if [ "$fdev" != "$NULL_MOUNT_DEV" ]; then
+          say "VOID arm $arm: $stem.gguf landed on device $fdev, the '$NULL_MOUNT' mount is"
+          say "     $NULL_MOUNT_DEV — it is not on the disk. Arm VOID, run continues (§7)."
           arm_void=1
           break 2
         fi
@@ -295,6 +319,8 @@ for line in "${LINES[@]}"; do
       if [ ! -f "$BURN/$stem/SHA256SUMS" ]; then
         say "REFUSING: $BURN/$stem/SHA256SUMS is missing — the judge leg is not pinned"; exit 2
       fi
+      # Read back from disk, never from anything held in memory.
+      sync -f "$f" 2>/dev/null || sync
       sha=$(sha256sum "$f" | cut -d' ' -f1)
       touch "$NULLSUMS"
       if grep -q "  $stem.gguf\$" "$NULLSUMS"; then

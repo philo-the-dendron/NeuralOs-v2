@@ -79,8 +79,19 @@ const SHA256SUMS: &str = "evidence/step5-calibration/SHA256SUMS";
 /// stamp: three lines, `commit <sha>` then two sha256sum lines. It is the
 /// AUTHORITATIVE copy; §7's transcription is human-readable only.
 const PINNED_FILE: &str = "evidence/step5-calibration/generator/PINNED.sha256";
-/// No placeholder survives into the stamp commit (§7 step 4).
-const PLACEHOLDERS: [&str; 2] = ["_filled at stamp_", "_filled before stamp_"];
+/// The stamp gate parses ten fields: seven judge digests, the fork commit,
+/// and §7's three. All seven judge files are pinned in code and all seven
+/// are transcribed in §2 — the front-end binary is a thin shell over the
+/// shared objects that do the inference, so a subset enforces nothing.
+const PREREG_JUDGE_FILES: [&str; 7] = [
+    "llama-completion",
+    "libllama-completion-impl.so",
+    "libllama-common.so",
+    "libllama.so",
+    "libggml.so",
+    "libggml-base.so",
+    "libggml-cpu.so",
+];
 const GEN_SRC_PATH: &str = "crates/neuralos-rt/examples/step5_calibration.rs";
 const BURN_SH_PATH: &str = "tools/step5_calibration_burn.sh";
 /// The banked base judge dumps — the same legs `step5_aggregate` reads as
@@ -325,27 +336,47 @@ fn hex_after(text: &str, anchor: &str, len: usize) -> Option<String> {
     None
 }
 
-/// §7 step 4, enforced not narrated: no placeholder survives into the
-/// stamp commit, and §7's three transcribed values must match the
-/// authoritative `PINNED.sha256` byte for byte. A transcription that
-/// drifted from the file the burn asserts against would make the
-/// human-readable record and the machine-checked one disagree silently.
+/// §7 step 4, enforced not narrated. The check reads FIELDS, never
+/// placeholder tokens: the rule text itself quotes those tokens, so a
+/// token scan can never clear once the document describes its own rule
+/// (reviewer Q1). Every pinned value must be a well-formed digest, §2's
+/// transcription must equal what this code pins, and §7's three must
+/// equal `PINNED.sha256`, which is authoritative.
 fn check_stamp_pins(t: &mut Tee) {
     let prereg = std::fs::read_to_string(PREREG_FILE)
         .unwrap_or_else(|e| panic!("cannot read {PREREG_FILE}: {e}"));
     let pinned = std::fs::read_to_string(PINNED_FILE).unwrap_or_else(|e| {
         panic!("cannot read {PINNED_FILE}: {e} — it is written at stamp time (§7 step 4d)")
     });
-    for (file, text) in [(PREREG_FILE, &prereg), (PINNED_FILE, &pinned)] {
-        for ph in PLACEHOLDERS {
-            assert!(
-                !text.contains(ph),
-                "{file} still contains {ph:?} — the stamp sequence is not complete (§7 step 4)"
-            );
-        }
-    }
 
-    // PINNED.sha256: `commit <sha>` then two sha256sum lines.
+    // §2: the five judge digests the document names, and the fork commit.
+    for name in PREREG_JUDGE_FILES {
+        let want = JUDGE_FILES
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, sha)| *sha)
+            .unwrap_or_else(|| panic!("{name} is transcribed in §2 but not pinned in code"));
+        let got = hex_after(&prereg, &format!("`{name}`"), 64).unwrap_or_else(|| {
+            panic!(
+                "{PREREG_FILE} §2: no well-formed 64-hex digest after `{name}` — the stamp \
+                 sequence is not complete (§7 step 4a)"
+            )
+        });
+        assert_eq!(
+            got, want,
+            "{PREREG_FILE} §2 transcribes {name} as {got}, this code pins {want}"
+        );
+    }
+    let fork = hex_after(&prereg, "fork commit", 40).unwrap_or_else(|| {
+        panic!("{PREREG_FILE} §2: no well-formed 40-hex value after \"fork commit\"")
+    });
+    assert_eq!(
+        fork, FORK_PIN,
+        "{PREREG_FILE} §2 names fork commit {fork}, this code pins {FORK_PIN}"
+    );
+
+    // PINNED.sha256: `commit <sha>` then two sha256sum lines, repo-relative
+    // paths.
     let mut commit = None;
     let mut gen_sha = None;
     let mut burn_sha = None;
@@ -368,19 +399,32 @@ fn check_stamp_pins(t: &mut Tee) {
         .unwrap_or_else(|| panic!("{PINNED_FILE}: no `commit <sha>` line (§7 step 4d format)"));
     let gen_sha = gen_sha.unwrap_or_else(|| panic!("{PINNED_FILE}: no line for {GEN_SRC_PATH}"));
     let burn_sha = burn_sha.unwrap_or_else(|| panic!("{PINNED_FILE}: no line for {BURN_SH_PATH}"));
+    for (what, v, len) in [
+        ("commit", &commit, 40usize),
+        (GEN_SRC_PATH, &gen_sha, 64),
+        (BURN_SH_PATH, &burn_sha, 64),
+    ] {
+        assert!(
+            v.len() == len && v.chars().all(|c| c.is_ascii_hexdigit()),
+            "{PINNED_FILE}: {what} value {v:?} is not a well-formed {len}-hex digest"
+        );
+    }
 
-    // §7's transcription of the same three values.
+    // §7's transcription of the same three values. Human-readable, never a
+    // second source (§7 step 4e) — so it must agree exactly.
     let want_commit = hex_after(&prereg, "frozen commit", 40).unwrap_or_else(|| {
-        panic!("{PREREG_FILE} §7: no 40-hex value after \"frozen commit\" — transcription missing")
+        panic!(
+            "{PREREG_FILE} §7: no well-formed 40-hex value after \"frozen commit\" — the stamp \
+             sequence is not complete (§7 step 4e)"
+        )
     });
     let want_gen = hex_after(&prereg, "`step5_calibration.rs` sha256", 64).unwrap_or_else(|| {
-        panic!("{PREREG_FILE} §7: no 64-hex value after \"`step5_calibration.rs` sha256\"")
+        panic!("{PREREG_FILE} §7: no well-formed 64-hex value for step5_calibration.rs")
     });
     let want_burn =
         hex_after(&prereg, "`step5_calibration_burn.sh` sha256", 64).unwrap_or_else(|| {
-            panic!("{PREREG_FILE} §7: no 64-hex value after \"`step5_calibration_burn.sh` sha256\"")
+            panic!("{PREREG_FILE} §7: no well-formed 64-hex value for step5_calibration_burn.sh")
         });
-
     for (what, a, b) in [
         ("frozen commit", &want_commit, &commit),
         ("step5_calibration.rs sha256", &want_gen, &gen_sha),
@@ -392,14 +436,14 @@ fn check_stamp_pins(t: &mut Tee) {
              transcription and the authoritative pin disagree (§7 step 4e)"
         );
     }
-    say!(t, "pins    : §7 transcription == {PINNED_FILE} : PASS");
+    say!(
+        t,
+        "pins    : §2 five judge digests + fork commit == code : PASS"
+    );
+    say!(t, "          §7 three values == {PINNED_FILE} : PASS");
     say!(t, "          frozen commit {commit}");
     say!(t, "          {GEN_SRC_PATH} {gen_sha}");
     say!(t, "          {BURN_SH_PATH} {burn_sha}");
-    say!(
-        t,
-        "          no stamp placeholder left in either file : PASS"
-    );
 }
 
 /// §7 step 4: no arm file exists before the stamp. Enforced here rather
@@ -970,9 +1014,31 @@ fn check_judge_runtime(t: &mut Tee) {
         "{BUILD_FORK_SH} pins fork commit {pin}, this code pins {FORK_PIN} — the two records \
          disagree, KILL (§7)"
     );
+    // The fork commit is a CONSTRAINT, not a recording (§2): the script's
+    // PIN, this code's constant and the CHECKED-OUT fork must all agree.
+    // Two records agreeing about a third thing says nothing about the third
+    // thing.
+    let head = std::process::Command::new("git")
+        .args(["-C", "fork-build/llama.cpp", "rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| {
+            panic!(
+                "cannot read fork-build/llama.cpp HEAD — the judge's own source is \
+                 unverifiable, KILL (§7)"
+            )
+        });
+    assert_eq!(
+        head, FORK_PIN,
+        "the built fork is checked out at {head}, the pin is {FORK_PIN} — KILL (§7): the judge \
+         was built from other source"
+    );
     say!(
         t,
-        "judge   : {JUDGE_DIR} · fork {pin} (from {BUILD_FORK_SH} PIN=)"
+        "judge   : {JUDGE_DIR} · fork commit {pin} — {BUILD_FORK_SH} PIN, the code constant and \
+         the checked-out fork all agree"
     );
     for (name, want) in JUDGE_FILES {
         let path = dir.join(name).to_string_lossy().into_owned();
