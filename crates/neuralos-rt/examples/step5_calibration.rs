@@ -79,8 +79,9 @@ const SHA256SUMS: &str = "evidence/step5-calibration/SHA256SUMS";
 /// stamp: three lines, `commit <sha>` then two sha256sum lines. It is the
 /// AUTHORITATIVE copy; §7's transcription is human-readable only.
 const PINNED_FILE: &str = "evidence/step5-calibration/generator/PINNED.sha256";
-/// The stamp gate parses ten fields: seven judge digests, the fork commit,
-/// and §7's three. All seven judge files are pinned in code and all seven
+/// The stamp gate parses ELEVEN fields: §2's seven judge digests and its
+/// fork commit, then §7's frozen commit and its two generator digests
+/// (7 + 1 + 1 + 2). All seven judge files are pinned in code and all seven
 /// are transcribed in §2 — the front-end binary is a thin shell over the
 /// shared objects that do the inference, so a subset enforces nothing.
 const PREREG_JUDGE_FILES: [&str; 7] = [
@@ -336,8 +337,8 @@ fn hex_after(text: &str, anchor: &str, len: usize) -> Option<String> {
     None
 }
 
-/// §7 step 4, enforced not narrated. The check reads FIELDS, never
-/// placeholder tokens: the rule text itself quotes those tokens, so a
+/// §7 step 4, enforced not narrated. The check reads all ELEVEN FIELDS,
+/// never placeholder tokens: the rule text itself quotes those tokens, so a
 /// token scan can never clear once the document describes its own rule
 /// (reviewer Q1). Every pinned value must be a well-formed digest, §2's
 /// transcription must equal what this code pins, and §7's three must
