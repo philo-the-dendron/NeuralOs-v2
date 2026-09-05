@@ -1,8 +1,8 @@
 //! Step-5 CALIBRATION — the lesion/graft positive control
-//! (`evidence/step5-calibration/PREREG.md` v2 is the spec; this file is
-//! its instrument).
+//! (`evidence/step5-calibration/PREREG.md` is the spec — its current draft;
+//! this file is its instrument).
 //!
-//! The question (PREREG §1): could the frozen step-5 readout have seen a
+//! The question (§1): could the frozen step-5 readout have seen a
 //! STRUCTURED, function-bearing change in the surgery window, if one had
 //! been there? Eight arm files go through the SAME splice machinery as
 //! every step-5 arm, each against its own dose-matched null families:
@@ -17,21 +17,31 @@
 //!   pipeline. 0 changed cells, sha ≡ base: the contamination tripwire.
 //!
 //! Null families (§3): **SCAT** shuffles the arm's diff over the whole
-//! 512×512 window (step 5's own construction); **LOCAL** shuffles it
+//! 512×512 window (step 5's own null construction); **LOCAL** shuffles it
 //! inside the arm's own 128×512 block and embeds it there, separating
-//! structure from concentration. Grafts get both — LOCAL is their primary
-//! band, SCAT is reported alongside. Lesions get SCAT only: a lesion zeroes
-//! every nonzero cell of its block, so a local null IS the lesion (§3).
+//! structure from concentration. Grafts get both — LOCAL is the band §6
+//! decides on, SCAT rides in the verdict string. Lesions get SCAT only: a
+//! lesion zeroes every nonzero cell of its block, so a local null IS the
+//! lesion (§3).
 //!
 //! Two modes, and the split is the point:
 //!
-//! - `--measure` WRITES NOTHING. It decodes the base window and the three
-//!   graft sources and prints every arm file's changed-cell count, full
-//!   per-class composition, census-predicted dose and the §4 ±5% sanity
-//!   check. Its output fills §4; the stamp waits on that table.
+//! - `--measure` writes nothing to `models/`. It decodes the base window
+//!   and the three graft sources, prints every arm file's changed-cell
+//!   count and full per-class composition, and applies the §4 reader
+//!   checks — the ones that can only fire on a broken reader. Its stdout
+//!   is teed to `measure.log` and sha-pinned in `SHA256SUMS`; §4 is filled
+//!   from that log, never from a transcription.
 //! - `--generate` writes the eight arm files, their null families and
-//!   `arms.txt`. It REFUSES while §10 reads `_unstamped_` — the stamp is a
-//!   mechanical precondition here, not an operator convention (§7 step 4).
+//!   `arms.txt`, teeing to `generate.log` so a splice panic is on record.
+//!   It REFUSES while §10 reads `_unstamped_` — the stamp is a mechanical
+//!   precondition here, not an operator convention (§7 step 4).
+//!
+//! The §4 checks are deliberately NOT a dose band: under independence any
+//! class mix gives 41,580–44,760 changed graft cells, so a ±5% band could
+//! only fire on real correlation between blk.0 and blk.k — a true fact
+//! about the model, not a reader fault (reviewer B10). The measured graft
+//! count is reported against that interval as a RESULT.
 //!
 //! Seeds come from `evidence/step5-calibration/seeds.txt` by decade (§7:
 //! SCAT 301–370, LOCAL 371–400), first five per family, the rest reserved
@@ -51,31 +61,40 @@ use neuralos_rt::harness::{
 use neuralos_rt::{GgufFile, GGML_TYPE_Q2_0};
 use neuralos_snn::Trit;
 use std::collections::BTreeMap;
+use std::io::Write;
 
 const BASE: &str = "models/Ternary-Bonsai-4B-Q2_0.gguf";
 /// PREP.md pin, re-verified before `--measure` and before `--generate`
-/// (PREREG §2; a mismatch is a §7 kill criterion).
+/// (§2; a mismatch is a §7 kill criterion).
 const BASE_SHA: &str = "4e0bf8b737b0431552f8c2c97695ab7c0cb214c94bcdeb4f5f267e67ddf28b8b";
+const EVIDENCE_DIR: &str = "evidence/step5-calibration";
 const PREREG_FILE: &str = "evidence/step5-calibration/PREREG.md";
 const SEEDS_FILE: &str = "evidence/step5-calibration/seeds.txt";
 const ARMS_FILE: &str = "evidence/step5-calibration/arms.txt";
+const MEASURE_LOG: &str = "evidence/step5-calibration/measure.log";
+const GENERATE_LOG: &str = "evidence/step5-calibration/generate.log";
+const SHA256SUMS: &str = "evidence/step5-calibration/SHA256SUMS";
 
-/// §4 sanity check: every measured dose within ±5% of its census
-/// prediction, IDENTITY exactly 0. A miss means the wrong tensor, layout
-/// or window was read — kill (§7).
-const DOSE_TOLERANCE: f64 = 0.05;
-/// Five per family, no escalation (§3: both metrics are one-sided, more
+/// The banked window census (§2/§4, evidence/r4-baselines/loop_run2.log),
+/// in `harness::tix` order: −1 · 0 · +1. The four head blocks must decode
+/// to exactly this sum — a check that can only fire on a broken reader.
+const WINDOW_CENSUS: [u64; 3] = [83_253, 95_802, 83_089];
+/// §4 independence interval for a graft's changed-cell count: reported as
+/// a RESULT, never a gate. Below it is measured correlation between the
+/// layers and goes to §8.
+const GRAFT_INDEPENDENCE: (u64, u64) = (41_580, 44_760);
+/// Five per family, no escalation (§3: both metrics are one-sided, so more
 /// nulls could only demote a band).
 const NULLS_PER_FAMILY: usize = 5;
 /// 4B head width: 4096 output rows / 32 heads.
 const HEAD_ROWS: usize = 128;
-/// §7 seed decades, in order: 10 slots of 10, first 301–310, last 391–400.
+/// §7 seed decades: 10 slots of 10, first 301–310, last 391–400.
 const SEED_SLOTS: usize = 10;
 const SEED_BASE: u64 = 301;
 
-/// Graft sources, in §7 seed order. `&'static str` because
-/// `ExperimentParams::tensor` is one: the three layers are pre-registered
-/// constants, so no tensor name is ever built at run time.
+/// Graft sources, in §7 seed order. A const table, not a runtime format:
+/// `ExperimentParams::tensor` is `&'static str` and the three layers are
+/// pre-registered constants (§7 step 2, reviewer N6).
 const GRAFT_LAYERS: [(usize, &str); 3] = [
     (1, "blk.1.attn_q.weight"),
     (18, "blk.18.attn_q.weight"),
@@ -86,79 +105,140 @@ const LESION_HEADS: [usize; 4] = [0, 1, 2, 3];
 /// Trit bucket names for composition lines (index = `harness::tix`).
 const TNAME: [&str; 3] = ["-1", "0", "+1"];
 
-/// Which dose-matched null construction a family uses (§3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Family {
-    /// Whole-window shuffle — step 5's own null.
-    Scat,
-    /// Shuffle inside the arm's own 128×512 block, embedded there.
-    Local,
+/// Stdout, teed to a log on disk line by line, with the log's sha written
+/// to `SHA256SUMS` when the run ends — including when it ends in a panic,
+/// so a splice failure is on record (§7 step 3).
+struct Tee {
+    file: std::fs::File,
+    path: &'static str,
 }
 
-impl Family {
-    fn label(self) -> &'static str {
-        match self {
-            Family::Scat => "scat",
-            Family::Local => "local",
+impl Tee {
+    fn new(path: &'static str) -> Self {
+        std::fs::create_dir_all(EVIDENCE_DIR)
+            .unwrap_or_else(|e| panic!("cannot create {EVIDENCE_DIR}: {e}"));
+        let file =
+            std::fs::File::create(path).unwrap_or_else(|e| panic!("cannot write {path}: {e}"));
+        Self { file, path }
+    }
+    fn say(&mut self, line: &str) {
+        println!("{line}");
+        let _ = writeln!(self.file, "{line}");
+        let _ = self.file.flush();
+    }
+}
+
+impl Drop for Tee {
+    fn drop(&mut self) {
+        // Never panic here: this also runs while unwinding from a §7 kill.
+        let _ = self.file.flush();
+        match sha256_try(self.path) {
+            Some(sha) => update_sha256sums(self.path, &sha),
+            None => eprintln!("WARNING: could not sha {} for {SHA256SUMS}", self.path),
         }
     }
 }
 
-/// One arm file: its name, its patched window, its census prediction, and
-/// the seed slot of each null family it carries (§7 decade order).
-struct Arm {
-    name: String,
-    patch: Vec<Trit>,
-    /// Census-predicted changed cells (§4). IDENTITY predicts exactly 0.
-    predicted: f64,
-    /// (family, seed slot) — LESION: SCAT only. GRAFT: SCAT + LOCAL.
-    /// IDENTITY: none (it is a tripwire, not a judged comparison).
-    families: Vec<(Family, usize)>,
-    /// Is this the IDENTITY tripwire (exact-zero dose, sha ≡ base)?
-    identity: bool,
+macro_rules! say {
+    ($t:expr, $($arg:tt)*) => { $t.say(&format!($($arg)*)) };
 }
 
-/// sha of a file through the system tool — the `hybrid_invivo` pattern
-/// verbatim (every pin of record was produced by `sha256sum`).
-fn sha256_of(f: &str) -> String {
+/// sha of a file through the system tool — the `hybrid_invivo` pattern.
+/// `None` when the tool fails (missing file, bad exit): the callers that
+/// must be loud assert on it, the `Drop` path warns instead of panicking.
+fn sha256_try(f: &str) -> Option<String> {
     let o = std::process::Command::new("sha256sum")
         .arg(f)
         .output()
+        .ok()?;
+    if !o.status.success() {
+        return None;
+    }
+    let sha = String::from_utf8_lossy(&o.stdout)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    (sha.len() == 64).then_some(sha)
+}
+
+/// sha256 of an in-memory buffer through the same system tool. The decoded
+/// block is serialized one byte per trit (`harness::tix`: 0 = −1, 1 = 0,
+/// 2 = +1), so the digest identifies the DECODED content, independent of
+/// q2_0 packing and of where in the file it came from.
+fn sha256_of_bytes(data: &[u8]) -> String {
+    use std::process::{Command, Stdio};
+    let mut child = Command::new("sha256sum")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
         .expect("sha256sum runs");
-    // A missing file makes sha256sum exit nonzero with empty stdout; the
-    // `hybrid_invivo` form would return "" and the caller would report a
-    // drifted base. Fail on the real cause instead.
+    child
+        .stdin
+        .take()
+        .expect("stdin piped")
+        .write_all(data)
+        .expect("write to sha256sum");
+    let o = child.wait_with_output().expect("sha256sum completes");
     assert!(
         o.status.success(),
-        "sha256sum {f} failed ({}): {}",
-        o.status,
-        String::from_utf8_lossy(&o.stderr).trim()
+        "sha256sum over a buffer failed: {}",
+        o.status
     );
     let sha = String::from_utf8_lossy(&o.stdout)
         .split_whitespace()
         .next()
         .unwrap_or_default()
         .to_string();
-    assert_eq!(sha.len(), 64, "sha256sum {f}: unexpected output {sha:?}");
+    assert_eq!(sha.len(), 64, "sha256sum: unexpected output {sha:?}");
     sha
 }
 
-/// PREREG §2: the base is re-verified against the PREP.md pin BEFORE it is
-/// decoded, in both modes. A drifted base voids everything downstream (§7).
-fn verify_base_sha() {
+/// Trits as one byte each, in `harness::tix` order — the digest input above.
+fn trit_bytes(cells: &[Trit]) -> Vec<u8> {
+    cells.iter().map(|t| tix(*t) as u8).collect()
+}
+
+/// The loud form: a missing file must never read as a drifted base.
+fn sha256_of(f: &str) -> String {
+    sha256_try(f).unwrap_or_else(|| panic!("sha256sum {f} failed — file missing or unreadable?"))
+}
+
+/// Rewrite `SHA256SUMS` with `path`'s line replaced (or added), other lines
+/// kept, sorted by name. Best-effort: it runs from `Drop`.
+fn update_sha256sums(path: &str, sha: &str) {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    let mut lines: Vec<String> = std::fs::read_to_string(SHA256SUMS)
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter(|l| l.split_whitespace().nth(1) != Some(name))
+        .map(str::to_string)
+        .collect();
+    lines.push(format!("{sha}  {name}"));
+    lines.sort_by_key(|l| l.split_whitespace().nth(1).unwrap_or("").to_string());
+    let mut text = lines.join("\n");
+    text.push('\n');
+    if let Err(e) = std::fs::write(SHA256SUMS, text) {
+        eprintln!("WARNING: cannot write {SHA256SUMS}: {e}");
+    }
+}
+
+/// §2: the base is re-verified against the PREP.md pin BEFORE it is
+/// decoded, in both modes. A drifted base is a §7 kill.
+fn verify_base_sha(t: &mut Tee) {
     let sha = sha256_of(BASE);
     assert_eq!(
         sha, BASE_SHA,
         "base {BASE} sha {sha} != §2 pin {BASE_SHA} — KILL (§7): the base drifted"
     );
-    println!("base    : {BASE}");
-    println!("          sha {sha} == §2 pin : PASS");
+    say!(t, "base    : {BASE}");
+    say!(t, "          sha {sha} == §2 pin : PASS");
 }
 
-/// PREREG §7 step 4: no arm file exists before the stamp. Enforced here
-/// rather than trusted to the operator — `--generate` is the irreversible
-/// half of this tool.
-fn assert_stamped() {
+/// §7 step 4: no arm file exists before the stamp. Enforced here rather
+/// than trusted to the operator — `--generate` is the irreversible half.
+fn assert_stamped(t: &mut Tee) {
     let text = std::fs::read_to_string(PREREG_FILE)
         .unwrap_or_else(|e| panic!("cannot read {PREREG_FILE}: {e}"));
     let stamp = text
@@ -171,14 +251,30 @@ fn assert_stamped() {
         "{PREREG_FILE} §10 is UNSTAMPED — refusing to generate arm files \
          (§7 step 4: the principal's stamp precedes --generate)"
     );
-    println!("stamp   : {PREREG_FILE} §10 carries a stamp : PASS");
+    say!(t, "stamp   : {PREREG_FILE} §10 carries a stamp : PASS");
 }
 
-/// Confirm every graft source carries the host tensor's exact q2_0 layout
-/// BEFORE a single byte of it is read (§3; a mismatch is a §7 kill
-/// criterion). Loud on any difference — never a silent skip, never a
-/// reshape.
-fn assert_graft_layouts(p: &ExperimentParams) {
+/// A graft source as the GGUF itself reports it: the tensor name resolved
+/// from the container's own tensor list (never the const-table string),
+/// its data offset, and — filled once the window is decoded — the sha of
+/// its 128×512 source block. Dose cannot tell blk.17 from blk.18 (the
+/// three layers land within 0.45% of each other), so provenance is
+/// recorded and the three block shas are asserted pairwise distinct
+/// (§4, reviewer D5).
+struct GraftSrc {
+    k: usize,
+    /// Resolved from `info.name`, then asserted equal to the const table.
+    resolved: String,
+    offset: u64,
+    block_sha: String,
+    census: [u64; 3],
+}
+
+/// §4 GRAFT reader check, part one: every graft source carries the host
+/// tensor's exact q2_0 layout, confirmed BEFORE a byte of it is read. Any
+/// difference is a §7 kill. Returns each source's resolved name and data
+/// offset, as the container reports them.
+fn assert_graft_layouts(t: &mut Tee, p: &ExperimentParams) -> Vec<(usize, String, u64)> {
     let buf = std::fs::read(BASE).unwrap_or_else(|e| panic!("cannot read {BASE}: {e}"));
     let f = GgufFile::parse(&buf).expect("GGUF container must parse");
     let find = |name: &str| {
@@ -189,27 +285,29 @@ fn assert_graft_layouts(p: &ExperimentParams) {
     };
     let host = find(p.tensor);
     assert_eq!(host.ty, GGML_TYPE_Q2_0, "host tensor must be q2_0");
-    println!(
+    say!(
+        t,
         "layout  : host {} — ty q2_0 · dims {:?} · {} B",
         p.tensor,
         host.dims,
         p.tensor_bytes()
     );
+    let mut resolved = Vec::with_capacity(GRAFT_LAYERS.len());
     for (k, name) in GRAFT_LAYERS {
-        let t = find(name);
+        let info = find(name);
         assert_eq!(
-            t.ty, host.ty,
+            info.ty, host.ty,
             "graft source {name} is ggml type {} but host {} is {} (q2_0) — \
              layouts differ, KILL (§7), REFUSING to read it",
-            t.ty, p.tensor, host.ty
+            info.ty, p.tensor, host.ty
         );
         assert_eq!(
-            t.dims, host.dims,
+            info.dims, host.dims,
             "graft source {name} dims {:?} != host {} dims {:?} — \
              shapes differ, KILL (§7), REFUSING to read it",
-            t.dims, p.tensor, host.dims
+            info.dims, p.tensor, host.dims
         );
-        let data = f.tensor_data(t).expect("graft tensor window in bounds");
+        let data = f.tensor_data(info).expect("graft tensor window in bounds");
         assert_eq!(
             data.len(),
             p.tensor_bytes(),
@@ -218,12 +316,17 @@ fn assert_graft_layouts(p: &ExperimentParams) {
             data.len(),
             p.tensor_bytes()
         );
-        println!(
-            "          graft k={k} {name} — ty q2_0 · dims {:?} · {} B : MATCHES HOST",
-            t.dims,
-            data.len()
+        say!(
+            t,
+            "          graft k={k} {} — ty q2_0 · dims {:?} · {} B · data offset {} : MATCHES HOST",
+            info.name,
+            info.dims,
+            data.len(),
+            info.offset
         );
+        resolved.push((k, info.name.clone(), info.offset));
     }
+    resolved
 }
 
 /// Decode the §2 window (rows 0..512 × cols 0..512) of an arbitrary layer's
@@ -236,14 +339,12 @@ fn decode_layer_window(tensor: &'static str, p: &ExperimentParams) -> Vec<Trit> 
     decode_slice(BASE, &q)
 }
 
-/// Class mix (−1/0/+1 fractions) of a trit run.
-fn mix(cells: &[Trit]) -> [f64; 3] {
-    let mut c = [0u64; 3];
-    for t in cells {
+/// Census of a trit run in `harness::tix` order (−1 · 0 · +1).
+fn census(cells: &[Trit]) -> [u64; 3] {
+    cells.iter().fold([0u64; 3], |mut c, t| {
         c[tix(*t)] += 1;
-    }
-    let n = cells.len() as f64;
-    [c[0] as f64 / n, c[1] as f64 / n, c[2] as f64 / n]
+        c
+    })
 }
 
 /// LESION-h: head h's rows of the window, zeroed across all 512 input cols.
@@ -286,15 +387,286 @@ fn fmt_comp(classes: &BTreeMap<(usize, usize), u64>) -> String {
     }
     classes
         .iter()
-        .map(|((f, t), n)| format!("({}→{} : {n})", TNAME[*f], TNAME[*t]))
+        .map(|((f, to), n)| format!("({}→{} : {n})", TNAME[*f], TNAME[*to]))
         .collect::<Vec<_>>()
         .join(" ")
 }
 
-/// PREREG §7 seed decades: slot i is 301+10i … 310+10i. Selection is BY
-/// POSITION and the map is asserted — `harness::decade_for` cannot serve
-/// these (it asserts r ∈ 0..=4 and the 201–250 range), so this is the
-/// generator's own selector with its own range assert (reviewer N1).
+/// Which arm this is, and the block-scoped facts §4 checks about it.
+enum Kind {
+    /// head index; the block's own census, for the reported zero fraction
+    Lesion(usize, [u64; 3]),
+    /// the graft source, as the container reports it (§4 provenance)
+    Graft(GraftSrc),
+    Identity,
+}
+
+/// One arm file: its name, its patched window, its kind, and the seed slot
+/// of each null family it carries (§7 decade order).
+struct Arm {
+    name: String,
+    patch: Vec<Trit>,
+    kind: Kind,
+    /// (family, seed slot) — LESION: SCAT only. GRAFT: SCAT + LOCAL.
+    /// IDENTITY: none (a tripwire, not a banded comparison).
+    families: Vec<(Family, usize)>,
+}
+
+/// Which dose-matched null construction a family uses (§3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Family {
+    /// Whole-window shuffle — step 5's own null.
+    Scat,
+    /// Shuffle inside the arm's own 128×512 block, embedded there.
+    Local,
+}
+
+impl Family {
+    fn label(self) -> &'static str {
+        match self {
+            Family::Scat => "scat",
+            Family::Local => "local",
+        }
+    }
+}
+
+/// The eight arm files of §3, built in §7 seed-decade order. Built once and
+/// used by both modes — `--measure` and `--generate` must never disagree
+/// about what an arm IS.
+fn build_arms(base: &[Trit], p: &ExperimentParams, srcs: &[(usize, String, u64)]) -> Vec<Arm> {
+    let n = p.n;
+    let block = HEAD_ROWS * n;
+    let mut arms: Vec<Arm> = Vec::with_capacity(LESION_HEADS.len() + GRAFT_LAYERS.len() + 1);
+    for (i, h) in LESION_HEADS.into_iter().enumerate() {
+        arms.push(Arm {
+            name: format!("lesion-h{h}"),
+            patch: lesion_patch(base, h, n),
+            kind: Kind::Lesion(h, census(&base[h * block..(h + 1) * block])),
+            families: vec![(Family::Scat, i)],
+        });
+    }
+    for (i, (k, tensor)) in GRAFT_LAYERS.into_iter().enumerate() {
+        let src = decode_layer_window(tensor, p);
+        let (rk, resolved, offset) = srcs
+            .get(i)
+            .unwrap_or_else(|| panic!("graft provenance missing for k={k}"));
+        assert_eq!(*rk, k, "graft provenance out of order: {rk} != {k}");
+        assert_eq!(
+            resolved, tensor,
+            "graft k={k}: the container resolved {resolved:?}, the const table says {tensor:?} — \
+             KILL (§7)"
+        );
+        arms.push(Arm {
+            name: format!("graft-k{k}"),
+            kind: Kind::Graft(GraftSrc {
+                k,
+                resolved: resolved.clone(),
+                offset: *offset,
+                block_sha: sha256_of_bytes(&trit_bytes(&src[..block])),
+                census: census(&src[..block]),
+            }),
+            patch: graft_patch(base, &src, n),
+            families: vec![
+                (Family::Scat, LESION_HEADS.len() + i),
+                (Family::Local, LESION_HEADS.len() + GRAFT_LAYERS.len() + i),
+            ],
+        });
+    }
+    arms.push(Arm {
+        name: "identity".to_string(),
+        patch: base.to_vec(),
+        kind: Kind::Identity,
+        families: Vec::new(),
+    });
+    arms
+}
+
+/// §4 provenance (reviewer D5): the three graft source blocks must be three
+/// DIFFERENT blocks. Their doses land within 0.45% of each other, so the
+/// dose cannot tell blk.17 from blk.18 — only the decoded block's own
+/// digest can.
+fn assert_distinct_graft_blocks(t: &mut Tee, arms: &[Arm]) {
+    let mut seen: Vec<(usize, &str)> = Vec::new();
+    for arm in arms {
+        if let Kind::Graft(ref src) = arm.kind {
+            if let Some((other, _)) = seen.iter().find(|(_, sha)| *sha == src.block_sha) {
+                panic!(
+                    "graft blocks of blk.{} and blk.{} share sha {} — the same tensor was read \
+                     twice, KILL (§7)",
+                    other, src.k, src.block_sha
+                );
+            }
+            seen.push((src.k, &src.block_sha));
+        }
+    }
+    say!(
+        t,
+        "provenance: {} graft source blocks, shas pairwise distinct : PASS",
+        seen.len()
+    );
+}
+
+/// §4 placement check (reviewer D6): every changed cell of this arm lies in
+/// `[lo, hi)` of the row-major window and nothing outside it moved, so the
+/// arm's block IS the rows it claims. The census-sum identity cannot see
+/// this: it is invariant under a permutation of the four blocks.
+fn assert_placement(name: &str, base: &[Trit], patch: &[Trit], lo: usize, hi: usize) {
+    assert!(
+        hi <= base.len() && lo < hi,
+        "{name}: block [{lo}, {hi}) outside the window"
+    );
+    let outside = (0..base.len())
+        .filter(|i| !(lo..hi).contains(i))
+        .find(|&i| patch[i] != base[i]);
+    assert!(
+        outside.is_none(),
+        "{name}: cell {} changed outside block [{lo}, {hi}) — KILL (§7): wrong placement",
+        outside.unwrap_or_default()
+    );
+    let n = hi - lo;
+    let width = n / HEAD_ROWS; // cells per window row
+    assert_eq!(
+        width * HEAD_ROWS,
+        n,
+        "{name}: a block of {n} cells is not {HEAD_ROWS} whole rows"
+    );
+    assert_eq!(
+        lo % width,
+        0,
+        "{name}: block starts mid-row ({lo} is not a multiple of the row width {width})"
+    );
+    let (r0, r1) = (lo / width, hi / width);
+    assert_eq!(
+        r1 - r0,
+        HEAD_ROWS,
+        "{name}: block spans rows [{r0}, {r1}) = {} rows, not {HEAD_ROWS}",
+        r1 - r0
+    );
+}
+
+/// The §4 reader checks for one arm — the ones that can only fire on a
+/// broken reader. Every failure is a §7 kill. Returns the changed-cell
+/// count; the graft interval line is a RESULT, never a gate.
+fn check_arm(t: &mut Tee, arm: &Arm, base: &[Trit], block: usize) -> u64 {
+    let (changed, classes) = composition(base, &arm.patch);
+    say!(t, "{}: {changed} cells", arm.name);
+    say!(t, "    composition {}", fmt_comp(&classes));
+    match arm.kind {
+        Kind::Lesion(h, block_census) => {
+            let (lo, hi) = (h * block, (h + 1) * block);
+            // §4 placement (reviewer D6): the census-sum identity is
+            // invariant under a permutation of the four blocks, so prove
+            // block h IS window rows [128h, 128h+128) — every changed cell
+            // inside them, none outside.
+            assert_placement(&arm.name, base, &arm.patch, lo, hi);
+            let patched = &arm.patch[lo..hi];
+            assert_eq!(
+                patched.len(),
+                block,
+                "{}: block decodes to {} trits, not {block} — KILL (§7)",
+                arm.name,
+                patched.len()
+            );
+            assert!(
+                patched.iter().all(|c| *c == Trit::Zero),
+                "{}: patched block is not all-zero — KILL (§7)",
+                arm.name
+            );
+            let zero_frac = block_census[1] as f64 / block as f64;
+            say!(
+                t,
+                "    block census {block_census:?} of {block} · zero fraction {zero_frac:.4} \
+                 (measurement, not a gate) · patched block all-zero : PASS"
+            );
+        }
+        Kind::Graft(ref src) => {
+            let k = src.k;
+            assert_placement(&arm.name, base, &arm.patch, 0, block);
+            say!(
+                t,
+                "    provenance: {} · data offset {} · block sha {}",
+                src.resolved,
+                src.offset,
+                src.block_sha
+            );
+            let src_census = src.census;
+            let sum: u64 = src_census.iter().sum();
+            assert_eq!(
+                sum, block as u64,
+                "{}: blk.{k} block census sums to {sum}, not {block} — KILL (§7)",
+                arm.name
+            );
+            assert!(
+                changed > 0,
+                "{}: blk.{k} block is identical to blk.0's — the same tensor was read twice, \
+                 KILL (§7)",
+                arm.name
+            );
+            let (lo, hi) = GRAFT_INDEPENDENCE;
+            let where_ = if changed < lo {
+                "BELOW the interval — measured correlation between the layers, a RESULT for §8"
+            } else if changed > hi {
+                "ABOVE the interval — a RESULT for §8"
+            } else {
+                "inside the interval"
+            };
+            say!(
+                t,
+                "    blk.{k} block census {src_census:?} sums to {block} : PASS · changed {changed} \
+                 vs independence [{lo}, {hi}] : {where_}"
+            );
+        }
+        Kind::Identity => {
+            assert_eq!(
+                changed, 0,
+                "identity changed {changed} cells, not 0 — KILL (§7)"
+            );
+            say!(
+                t,
+                "    0 changed cells : PASS — the tripwire is transparent"
+            );
+        }
+    }
+    changed
+}
+
+/// LOCAL-family feasibility (§3): a block-local null must place the arm's
+/// whole diff inside the arm's own 128×512 block, drawing each class from
+/// that block's OWN src-class cells. `dose_matched_null` asserts the exact
+/// dose and panics if a pool runs short — but that panic would land
+/// mid-`--generate`, after gigabytes are written. Checked here too, in the
+/// mode that writes nothing.
+fn local_feasible(base_block: &[Trit], arm_block: &[Trit]) -> (bool, String) {
+    let mut demand = [0u64; 3];
+    let mut avail = [0u64; 3];
+    for (b, a) in base_block.iter().zip(arm_block.iter()) {
+        avail[tix(*b)] += 1;
+        if a != b {
+            demand[tix(*b)] += 1;
+        }
+    }
+    let ok = (0..3).all(|c| demand[c] <= avail[c]);
+    let detail = (0..3)
+        .map(|c| format!("{}: {}/{}", TNAME[c], demand[c], avail[c]))
+        .collect::<Vec<_>>()
+        .join(" · ");
+    (
+        ok,
+        format!(
+            "local pools (demand/available) {detail} : {}",
+            if ok {
+                "FEASIBLE"
+            } else {
+                "SHORT — LOCAL family impossible"
+            }
+        ),
+    )
+}
+
+/// §7 seed decades: slot i is 301+10i … 310+10i. Selection is BY POSITION
+/// and the map is asserted — `harness::decade_for` cannot serve these (it
+/// asserts r ∈ 0..=4 and the 201–250 range), so this is the generator's own
+/// selector with its own range assert (reviewer N1).
 fn decade(seeds: &[u64], slot: usize) -> Vec<u64> {
     assert!(
         slot < SEED_SLOTS,
@@ -339,184 +711,87 @@ fn load_seeds() -> Vec<u64> {
     seeds
 }
 
-/// The eight arm files of §3, built in §7 seed-decade order, with their
-/// census predictions (§4). Built once and used by both modes —
-/// `--measure` and `--generate` must never disagree about what an arm IS.
-///
-/// Predictions: a LESION zeroes its block, so its dose is the window's
-/// nonzero fraction × the block (§4's `0.6345 × 65,536` form). A GRAFT
-/// overwrites its block with another layer's, so its dose is
-/// `block × (1 − Σ_i p_i·q_i)` over the two blocks' ACTUAL class mixes
-/// (§4's `1 − Σ p_i²` is that formula when the mixes coincide).
-fn build_arms(base: &[Trit], p: &ExperimentParams) -> Vec<Arm> {
-    let n = p.n;
-    let block = HEAD_ROWS * n;
-    let window_mix = mix(base);
-    let mut arms: Vec<Arm> = Vec::with_capacity(LESION_HEADS.len() + GRAFT_LAYERS.len() + 1);
-
-    for (i, h) in LESION_HEADS.into_iter().enumerate() {
-        arms.push(Arm {
-            name: format!("lesion-h{h}"),
-            patch: lesion_patch(base, h, n),
-            predicted: (1.0 - window_mix[1]) * block as f64,
-            families: vec![(Family::Scat, i)],
-            identity: false,
-        });
-    }
-    let base_block_mix = mix(&base[..block]);
-    for (i, (k, tensor)) in GRAFT_LAYERS.into_iter().enumerate() {
-        let src = decode_layer_window(tensor, p);
-        let src_mix = mix(&src[..block]);
-        let same: f64 = (0..3).map(|c| base_block_mix[c] * src_mix[c]).sum();
-        arms.push(Arm {
-            name: format!("graft-k{k}"),
-            patch: graft_patch(base, &src, n),
-            predicted: (1.0 - same) * block as f64,
-            families: vec![
-                (Family::Scat, LESION_HEADS.len() + i),
-                (Family::Local, LESION_HEADS.len() + GRAFT_LAYERS.len() + i),
-            ],
-            identity: false,
-        });
-    }
-    arms.push(Arm {
-        name: "identity".to_string(),
-        patch: base.to_vec(),
-        predicted: 0.0,
-        families: Vec::new(),
-        identity: true,
-    });
-    arms
-}
-
-/// LOCAL-family feasibility (§3): a block-local null must place the arm's
-/// whole diff inside the arm's own 128×512 block, drawing each class from
-/// that block's OWN src-class cells. `dose_matched_null` asserts the exact
-/// dose and panics if a pool runs short — but that panic would land
-/// mid-`--generate`, after gigabytes are written. Checked here instead, in
-/// the mode that writes nothing.
-fn local_feasible(base_block: &[Trit], arm_block: &[Trit]) -> (bool, String) {
-    let mut demand = [0u64; 3];
-    let mut avail = [0u64; 3];
-    for (b, a) in base_block.iter().zip(arm_block.iter()) {
-        avail[tix(*b)] += 1;
-        if a != b {
-            demand[tix(*b)] += 1;
+/// The §4 window check: the four head blocks decode to exactly the banked
+/// census. It can only fire on a broken reader — a wrong tensor, a wrong
+/// window, a wrong stride.
+fn check_window(t: &mut Tee, base: &[Trit], block: usize) {
+    let mut sum = [0u64; 3];
+    for h in LESION_HEADS {
+        let c = census(&base[h * block..(h + 1) * block]);
+        let n: u64 = c.iter().sum();
+        assert_eq!(
+            n, block as u64,
+            "head {h} block decodes to {n} trits, not {block} — KILL (§7)"
+        );
+        say!(
+            t,
+            "          head {h}: census {c:?} · zero fraction {:.4}",
+            c[1] as f64 / block as f64
+        );
+        for (s, v) in sum.iter_mut().zip(c) {
+            *s += v;
         }
     }
-    let ok = (0..3).all(|c| demand[c] <= avail[c]);
-    let detail = (0..3)
-        .map(|c| format!("{}: {}/{}", TNAME[c], demand[c], avail[c]))
-        .collect::<Vec<_>>()
-        .join(" · ");
-    (
-        ok,
-        format!(
-            "local pools (demand/available) {detail} : {}",
-            if ok {
-                "FEASIBLE"
-            } else {
-                "SHORT — LOCAL family impossible"
-            }
-        ),
-    )
+    assert_eq!(
+        sum, WINDOW_CENSUS,
+        "the four head blocks sum to {sum:?}, not the banked window census {WINDOW_CENSUS:?} — \
+         KILL (§7): the reader is not reading the window of record"
+    );
+    say!(
+        t,
+        "          heads sum to {sum:?} == banked window census : PASS"
+    );
 }
 
-/// §4 sanity check: IDENTITY must measure exactly 0; every other arm must
-/// land within ±5% of its census prediction. Returns (ok, rendered check).
-fn sanity(measured: u64, predicted: f64, identity: bool) -> (bool, String) {
-    if identity {
-        let ok = measured == 0;
-        return (
-            ok,
-            format!(
-                "predicted 0 · {}",
-                if ok {
-                    "EXACT : PASS"
-                } else {
-                    "NONZERO : KILL (§7)"
-                }
-            ),
-        );
-    }
-    let dev = (measured as f64 - predicted) / predicted;
-    let ok = dev.abs() <= DOSE_TOLERANCE;
-    (
-        ok,
-        format!(
-            "predicted {predicted:.0} · dev {:+.2}% · {}",
-            dev * 100.0,
-            if ok {
-                "within ±5% : PASS"
-            } else {
-                "outside ±5% : KILL (§7)"
-            }
-        ),
-    )
-}
-
-/// `--measure` — dose accounting for PREREG §4. Writes nothing.
+/// `--measure` — the §4 reader checks and dose accounting. Writes nothing
+/// to `models/`; tees to `measure.log`.
 fn measure() {
+    let mut t = Tee::new(MEASURE_LOG);
     let p = ExperimentParams::default();
     let block = HEAD_ROWS * p.n;
-    println!("=== step-5 calibration: --measure (PREREG §4 dose accounting; WRITES NOTHING) ===");
-    verify_base_sha();
-    assert_graft_layouts(&p);
+    say!(
+        t,
+        "=== step-5 calibration: --measure (PREREG §4 reader checks; writes nothing to models/) ==="
+    );
+    verify_base_sha(&mut t);
+    let srcs = assert_graft_layouts(&mut t, &p);
     let base = decode_slice(BASE, &p);
-    let census = base.iter().fold([0u64; 3], |mut c, t| {
-        c[tix(*t)] += 1;
-        c
-    });
-    println!(
-        "window  : {} rows 0..{} × cols 0..{} — census (-1/0/+1) {census:?} of {} cells · nonzero {:.4}",
+    say!(
+        t,
+        "window  : {} rows 0..{} × cols 0..{} — {} cells",
         p.tensor,
         p.n,
         p.n,
-        base.len(),
-        1.0 - census[1] as f64 / base.len() as f64
+        base.len()
     );
-    println!(
-        "sanity  : §4 check is ±{:.0}% of the census prediction (IDENTITY exactly 0)\n",
-        DOSE_TOLERANCE * 100.0
-    );
+    check_window(&mut t, &base, block);
+    say!(t, "");
 
-    let arms = build_arms(&base, &p);
-    let mut rows: Vec<(String, u64, String, String, bool)> = Vec::with_capacity(arms.len());
+    let arms = build_arms(&base, &p, &srcs);
+    assert_distinct_graft_blocks(&mut t, &arms);
+    let mut rows: Vec<(String, u64, String)> = Vec::with_capacity(arms.len());
     for arm in &arms {
-        let (cells, classes) = composition(&base, &arm.patch);
-        let (ok, check) = sanity(cells, arm.predicted, arm.identity);
-        let fams: Vec<&str> = arm.families.iter().map(|(f, _)| f.label()).collect();
-        println!(
-            "{}: {cells} cells · {check} · families [{}]",
-            arm.name,
-            fams.join(", ")
-        );
-        println!("    composition {}", fmt_comp(&classes));
+        let changed = check_arm(&mut t, arm, &base, block);
         if arm.families.iter().any(|(f, _)| *f == Family::Local) {
             let (feasible, detail) = local_feasible(&base[..block], &arm.patch[..block]);
-            println!("    {detail}");
+            say!(t, "    {detail}");
             assert!(
                 feasible,
-                "{}: the LOCAL family cannot be built inside the block — spec/instrument \
-                 disagreement, KILL before any write",
+                "{}: the LOCAL family cannot be built inside the block — KILL before any write",
                 arm.name
             );
         }
-        rows.push((
-            arm.name.clone(),
-            cells,
-            format!("{:.0}", arm.predicted),
-            fmt_comp(&classes),
-            ok,
-        ));
+        let (_, classes) = composition(&base, &arm.patch);
+        rows.push((arm.name.clone(), changed, fmt_comp(&classes)));
     }
 
-    // The §4 table, ready to paste (the document is filled from this run,
-    // never from a recollection of it).
-    println!("\n--- PREREG §4 table ---");
-    println!("| Arm | predicted | measured | composition (from→to : n) |");
-    println!("|---|---|---|---|");
-    for (name, cells, pred, comp, _) in &rows {
+    // The §4 table, ready to paste — filled from this log, never from a
+    // recollection of it (§7 step 3).
+    say!(t, "");
+    say!(t, "--- PREREG §4 table ---");
+    say!(t, "| Arm | measured | composition (from→to : n) |");
+    say!(t, "|---|---|---|");
+    for (name, changed, comp) in &rows {
         let label = if let Some(h) = name.strip_prefix("lesion-h") {
             format!("LESION-{h}")
         } else if let Some(k) = name.strip_prefix("graft-k") {
@@ -524,59 +799,55 @@ fn measure() {
         } else {
             name.to_uppercase()
         };
-        println!("| {label} | {pred} | {cells} | {comp} |");
+        say!(t, "| {label} | {changed} | {comp} |");
     }
-    let failed: Vec<&str> = rows.iter().filter(|r| !r.4).map(|r| r.0.as_str()).collect();
-    if failed.is_empty() {
-        println!(
-            "\nsanity check: {}/{} arms PASS — no §7 kill criterion fired",
-            rows.len(),
-            rows.len()
-        );
-    } else {
-        println!("\nsanity check: KILL (§7) — {failed:?} outside their prediction");
-    }
-    println!("\nmeasure done — nothing written. §4 is filled from this output, then the stamp.");
+    say!(t, "");
+    say!(
+        t,
+        "reader checks: {} arms PASS — no §4 check fired, no §7 kill",
+        rows.len()
+    );
+    say!(
+        t,
+        "measure done — nothing written under models/. Log: {MEASURE_LOG}, sha pinned in {SHA256SUMS}."
+    );
 }
 
 /// `--generate` — the eight arm files, their null families, and arms.txt.
-/// Refuses while §10 is unstamped.
+/// Refuses while §10 is unstamped; tees to `generate.log`.
 fn generate() {
+    let mut t = Tee::new(GENERATE_LOG);
     let p = ExperimentParams::default();
     let block = HEAD_ROWS * p.n;
-    println!("=== step-5 calibration: --generate (PREREG §7 step 5) ===");
-    verify_base_sha();
-    assert_stamped();
-    assert_graft_layouts(&p);
+    say!(
+        t,
+        "=== step-5 calibration: --generate (PREREG §7 step 5) ==="
+    );
+    verify_base_sha(&mut t);
+    assert_stamped(&mut t);
+    let srcs = assert_graft_layouts(&mut t, &p);
     let base = decode_slice(BASE, &p);
+    check_window(&mut t, &base, block);
     let seeds = load_seeds();
-    let arms = build_arms(&base, &p);
+    let arms = build_arms(&base, &p, &srcs);
+    assert_distinct_graft_blocks(&mut t, &arms);
 
     let mut manifest: Vec<String> = Vec::with_capacity(arms.len());
     for arm in &arms {
-        let (cells, classes) = composition(&base, &arm.patch);
-        let (ok, check) = sanity(cells, arm.predicted, arm.identity);
-        assert!(
-            ok,
-            "{}: {cells} cells — {check}; §7 kill criterion, nothing is written",
-            arm.name
-        );
+        let changed = check_arm(&mut t, arm, &base, block);
         let out = format!("models/cal-{}.gguf", arm.name);
         assert_unbanked(&out);
         splice_and_verify(BASE, &out, &arm.patch, Some(&base), &p);
-        println!(
-            "{}: {cells} cells · {} · S2 clean → {out}",
-            arm.name,
-            fmt_comp(&classes)
-        );
-        if arm.identity {
+        say!(t, "    S2 clean → {out}");
+        if matches!(arm.kind, Kind::Identity) {
             // §7 kill criterion: the tripwire's file must BE the base.
             let (sha, base_sha) = (sha256_of(&out), sha256_of(BASE));
             assert_eq!(
                 sha, base_sha,
-                "identity export sha {sha} != base {base_sha} — KILL (§7): the pipeline is not transparent"
+                "identity export sha {sha} != base {base_sha} — KILL (§7): \
+                 the pipeline is not transparent"
             );
-            println!("  identity: sha == base ({base_sha:.16}…) : PASS");
+            say!(t, "    identity sha == base ({base_sha:.16}…) : PASS");
         }
 
         let mut fams: Vec<String> = Vec::new();
@@ -597,16 +868,17 @@ fn generate() {
                 let nout = format!("models/cal-{}-{}-s{seed}.gguf", arm.name, family.label());
                 assert_unbanked(&nout);
                 splice_and_verify(BASE, &nout, &null, Some(&base), &p);
-                let changed = null.iter().zip(base.iter()).filter(|(a, b)| a != b).count() as u64;
+                let n = null.iter().zip(base.iter()).filter(|(a, b)| a != b).count() as u64;
                 assert_eq!(
+                    n,
                     changed,
-                    cells,
-                    "{} {} s{seed}: dose {changed} != arm {cells}",
+                    "{} {} s{seed}: dose {n} != arm {changed}",
                     arm.name,
                     family.label()
                 );
-                println!(
-                    "  {} s{seed}: {changed} cells (exact dose) · S2 clean → {nout}",
+                say!(
+                    t,
+                    "    {} s{seed}: {n} cells (exact dose) · S2 clean → {nout}",
                     family.label()
                 );
             }
@@ -630,9 +902,11 @@ fn generate() {
         text.push('\n');
     }
     std::fs::write(ARMS_FILE, &text).unwrap_or_else(|e| panic!("cannot write {ARMS_FILE}: {e}"));
-    println!(
-        "\narms.txt: {} arm(s) → {ARMS_FILE}\ngenerate done — judge chain next (§7 step 6).",
-        manifest.len()
+    say!(t, "");
+    say!(t, "arms.txt: {} arm(s) → {ARMS_FILE}", manifest.len());
+    say!(
+        t,
+        "generate done — judge chain next (§7 step 6). Log: {GENERATE_LOG}, sha in {SHA256SUMS}."
     );
 }
 
