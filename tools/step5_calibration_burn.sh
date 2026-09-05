@@ -107,8 +107,11 @@ require_mount() { # $1 = what is about to happen
   fi
   local b f
   b=$(avail_bytes "$NULL_DIR"); f=$(gib "$b")
-  if awk -v f="$f" 'BEGIN{exit !(f<106)}'; then
-    say "STOP: $NULL_DIR has ${f} GiB free, under the 106 GiB the null set needs, before $1"
+  # 105.1 GiB of nulls plus the 20 GiB floor, which is never reclaimed on a
+  # keep disk: at 106 the floor would trip around the 86th null.
+  if awk -v f="$f" 'BEGIN{exit !(f<126)}'; then
+    say "STOP: $NULL_DIR has ${f} GiB free, under the 126 GiB the kept null set needs"
+    say "      (105.1 GiB of nulls + the ${MIN_FREE_GIB} GiB floor), before $1"
     exit 3
   fi
 }
@@ -125,33 +128,53 @@ if [ -n "$NULL_DIR" ]; then
     exit 2
   fi
   NB=$(avail_bytes "$NULL_DIR")
-  if awk -v b="$NB" 'BEGIN{exit !(b >= 113816633344)}'; then
+  # 126 GiB: 105 × 1.0011 GiB of nulls = 105.1, plus the 20 GiB floor that
+  # a keep disk never reclaims.
+  if awk -v b="$NB" 'BEGIN{exit !(b >= 135291469824)}'; then
     KEEP_NULLS=1
   else
-    echo "REFUSING: CAL_NULL_DIR $NULL_DIR has $(gib "$NB") GiB free, under the 106 GiB the" >&2
-    echo "full null set needs (105 × 1.0011 GiB = 105.1 GiB plus headroom). Unset it to run" >&2
-    echo "the delete-after-pin path instead." >&2
+    echo "REFUSING: CAL_NULL_DIR $NULL_DIR has $(gib "$NB") GiB free, under the 126 GiB a kept" >&2
+    echo "null set needs (105.1 GiB of nulls + the ${MIN_FREE_GIB} GiB floor, never reclaimed)." >&2
+    echo "Unset it to run the delete-after-pin path instead." >&2
     exit 2
   fi
 fi
 
 # The regeneration recipe is frozen BY CONTENT beside the evidence, so it
 # survives a branch rewrite or a deleted work/* branch: git reachability is
-# not what makes a deleted null provable, these bytes are.
+# not what makes a deleted null provable, these bytes are. The copies come
+# from the COMMIT, never from the working tree, so what is frozen is what
+# BURN.log names — and each copy's digest is asserted against the recorded
+# one before the first arm runs.
 FROZEN_AT=$(date -Is)
+FROZEN_COMMIT=$(git rev-parse HEAD)
 mkdir -p "$EV/generator"
-cp "$GEN_SRC" "$EV/generator/$(basename "$GEN_SRC")"
-cp "$SELF" "$EV/generator/$(basename "$SELF")"
+: > "$EV/generator/SHA256SUMS"
+for f in "$GEN_SRC" "$SELF"; do
+  bn=$(basename "$f")
+  want=$(git show "$FROZEN_COMMIT:$f" | sha256sum | cut -d' ' -f1)
+  git show "$FROZEN_COMMIT:$f" > "$EV/generator/$bn"
+  got=$(sha256sum "$EV/generator/$bn" | cut -d' ' -f1)
+  if [ "$want" != "$got" ]; then
+    echo "REFUSING: frozen copy of $bn is $got, the commit says $want" >&2
+    exit 2
+  fi
+  echo "$got  $bn" >> "$EV/generator/SHA256SUMS"
+done
+GEN_SRC_SHA=$(git show "$FROZEN_COMMIT:$GEN_SRC" | sha256sum | cut -d' ' -f1)
+SELF_SHA=$(git show "$FROZEN_COMMIT:$SELF" | sha256sum | cut -d' ' -f1)
 
 START=$(date +%s)
 {
   echo "=== step-5 calibration burn — $(date -Is) ==="
-  echo "commit    : $(git rev-parse HEAD)   (a commit, never a ref name)"
+  echo "commit    : $FROZEN_COMMIT   (a commit, never a ref name)"
   echo "gen src   : $GEN_SRC"
-  echo "gen srcsha: $(sha256sum "$GEN_SRC" | cut -d' ' -f1)"
+  echo "gen srcsha: $GEN_SRC_SHA"
   echo "script    : $SELF"
-  echo "scriptsha : $(sha256sum "$SELF" | cut -d' ' -f1)"
-  echo "frozen-at : $FROZEN_AT — verbatim copies in $EV/generator/"
+  echo "scriptsha : $SELF_SHA"
+  echo "frozen-at : $FROZEN_AT — copies extracted from the commit into $EV/generator/,"
+  echo "            digests asserted, listed in $EV/generator/SHA256SUMS (commit them with"
+  echo "            the burn evidence)"
   echo "generator : $CAL_GENERATE"
   echo "gen binsha: $(sha256sum "$CAL_GENERATE" | cut -d' ' -f1)"
   echo "judge     : $JUDGE"
@@ -165,7 +188,7 @@ START=$(date +%s)
   echo "cap       : ${CAP_HOURS} h — a cap stop is VOID (INCOMPLETE)"
   echo "min free  : ${MIN_FREE_GIB} GiB on the receiving filesystem, before every write"
   echo ""
-  echo "DOCTRINE, from the first null deletion until this branch merges:"
+  echo "DOCTRINE, from THIS MOMENT (burn start, both paths) until this branch merges:"
   echo "  the generator commit above is FROZEN. No rewrite of work/step5-calibration,"
   echo "  --force-with-lease suspended, a red commit is fixed by a NEW commit on top."
   echo "  A rewritten history would orphan the recipe that makes a deleted null provable."
