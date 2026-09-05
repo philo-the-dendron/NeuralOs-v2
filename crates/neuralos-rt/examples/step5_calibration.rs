@@ -58,6 +58,7 @@
 use neuralos_rt::harness::{
     assert_unbanked, decode_slice, dose_matched_null, splice_and_verify, tix, ExperimentParams,
 };
+use neuralos_rt::judge::{parse_dump_file, step5_base_knife_edges, THETA};
 use neuralos_rt::{GgufFile, GGML_TYPE_Q2_0};
 use neuralos_snn::Trit;
 use std::collections::BTreeMap;
@@ -74,6 +75,10 @@ const ARMS_FILE: &str = "evidence/step5-calibration/arms.txt";
 const MEASURE_LOG: &str = "evidence/step5-calibration/measure.log";
 const GENERATE_LOG: &str = "evidence/step5-calibration/generate.log";
 const SHA256SUMS: &str = "evidence/step5-calibration/SHA256SUMS";
+/// The banked base judge dumps — the same legs `step5_aggregate` reads as
+/// the base side (its `base_dir` default). M3 is defined over THEIR
+/// knife-edge steps, so they are read here, before any arm exists.
+const BASE_JUDGE_DIRS: [&str; 2] = ["evidence/session-f-judge", "../../evidence/session-f-judge"];
 
 /// The banked window census (§2/§4, evidence/r4-baselines/loop_run2.log),
 /// in `harness::tix` order: −1 · 0 · +1. The four head blocks must decode
@@ -95,10 +100,16 @@ const SEED_BASE: u64 = 301;
 /// Graft sources, in §7 seed order. A const table, not a runtime format:
 /// `ExperimentParams::tensor` is `&'static str` and the three layers are
 /// pre-registered constants (§7 step 2, reviewer N6).
-const GRAFT_LAYERS: [(usize, &str); 3] = [
-    (1, "blk.1.attn_q.weight"),
-    (18, "blk.18.attn_q.weight"),
-    (35, "blk.35.attn_q.weight"),
+/// `(layer k, tensor name, head block h)`. The three grafts land on THREE
+/// DIFFERENT head blocks: one footprint for all three would give them
+/// every base-block-specific insensitivity in common, so a failure to
+/// separate could be a property of block 0 rather than of the readout.
+/// Rotating decorrelates them and costs nothing (cross-family reviewer,
+/// adopted 2026-09-05).
+const GRAFT_LAYERS: [(usize, &str, usize); 3] = [
+    (1, "blk.1.attn_q.weight", 0),
+    (18, "blk.18.attn_q.weight", 1),
+    (35, "blk.35.attn_q.weight", 2),
 ];
 const LESION_HEADS: [usize; 4] = [0, 1, 2, 3];
 
@@ -263,6 +274,8 @@ fn assert_stamped(t: &mut Tee) {
 /// (§4, reviewer D5).
 struct GraftSrc {
     k: usize,
+    /// The head block this graft lands on (§3 rotation).
+    h: usize,
     /// Resolved from `info.name`, then asserted equal to the const table.
     resolved: String,
     offset: u64,
@@ -293,7 +306,7 @@ fn assert_graft_layouts(t: &mut Tee, p: &ExperimentParams) -> Vec<(usize, String
         p.tensor_bytes()
     );
     let mut resolved = Vec::with_capacity(GRAFT_LAYERS.len());
-    for (k, name) in GRAFT_LAYERS {
+    for (k, name, _) in GRAFT_LAYERS {
         let info = find(name);
         assert_eq!(
             info.ty, host.ty,
@@ -359,12 +372,15 @@ fn lesion_patch(base: &[Trit], h: usize, n: usize) -> Vec<Trit> {
     out
 }
 
-/// GRAFT-k: the window's first head rows replaced by layer k's same rows.
-fn graft_patch(base: &[Trit], src: &[Trit], n: usize) -> Vec<Trit> {
+/// GRAFT-k on head block h: the window's rows [128h, 128h+128) replaced by
+/// the SAME rows of layer k — same footprint on both sides, so the graft is
+/// that head's q-projection swapped for another layer's, not a shifted copy.
+fn graft_patch(base: &[Trit], src: &[Trit], n: usize, h: usize) -> Vec<Trit> {
     assert_eq!(base.len(), src.len(), "graft source window size mismatch");
     let mut out = base.to_vec();
-    let cells = HEAD_ROWS * n;
-    out[..cells].copy_from_slice(&src[..cells]);
+    let (lo, hi) = (h * HEAD_ROWS * n, (h + 1) * HEAD_ROWS * n);
+    assert!(hi <= out.len(), "graft head {h} outside the {n}×{n} window");
+    out[lo..hi].copy_from_slice(&src[lo..hi]);
     out
 }
 
@@ -390,6 +406,18 @@ fn fmt_comp(classes: &BTreeMap<(usize, usize), u64>) -> String {
         .map(|((f, to), n)| format!("({}→{} : {n})", TNAME[*f], TNAME[*to]))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+impl Arm {
+    /// The window range this arm touches: its own head block, or the whole
+    /// window for the tripwire (which touches nothing).
+    fn block_bounds(&self, block: usize) -> (usize, usize) {
+        match self.kind {
+            Kind::Lesion(h, _) => (h * block, (h + 1) * block),
+            Kind::Graft(ref src) => (src.h * block, (src.h + 1) * block),
+            Kind::Identity => (0, block),
+        }
+    }
 }
 
 /// Which arm this is, and the block-scoped facts §4 checks about it.
@@ -451,8 +479,9 @@ fn build_arms(base: &[Trit], p: &ExperimentParams, srcs: &[(usize, String, u64)]
             primary: Some(Family::Scat),
         });
     }
-    for (i, (k, tensor)) in GRAFT_LAYERS.into_iter().enumerate() {
+    for (i, (k, tensor, h)) in GRAFT_LAYERS.into_iter().enumerate() {
         let src = decode_layer_window(tensor, p);
+        let (lo, hi) = (h * block, (h + 1) * block);
         let (rk, resolved, offset) = srcs
             .get(i)
             .unwrap_or_else(|| panic!("graft provenance missing for k={k}"));
@@ -466,12 +495,13 @@ fn build_arms(base: &[Trit], p: &ExperimentParams, srcs: &[(usize, String, u64)]
             name: format!("graft-k{k}"),
             kind: Kind::Graft(GraftSrc {
                 k,
+                h,
                 resolved: resolved.clone(),
                 offset: *offset,
-                block_sha: sha256_of_bytes(&trit_bytes(&src[..block])),
-                census: census(&src[..block]),
+                block_sha: sha256_of_bytes(&trit_bytes(&src[lo..hi])),
+                census: census(&src[lo..hi]),
             }),
-            patch: graft_patch(base, &src, n),
+            patch: graft_patch(base, &src, n, h),
             families: vec![
                 (Family::Scat, LESION_HEADS.len() + i),
                 (Family::Local, LESION_HEADS.len() + GRAFT_LAYERS.len() + i),
@@ -589,11 +619,15 @@ fn check_arm(t: &mut Tee, arm: &Arm, base: &[Trit], block: usize) -> u64 {
         }
         Kind::Graft(ref src) => {
             let k = src.k;
-            assert_placement(&arm.name, base, &arm.patch, 0, block);
+            let (lo, hi) = (src.h * block, (src.h + 1) * block);
+            assert_placement(&arm.name, base, &arm.patch, lo, hi);
             say!(
                 t,
-                "    provenance: {} · data offset {} · block sha {}",
+                "    provenance: {} · head block {} (rows {}..{}) · data offset {} · block sha {}",
                 src.resolved,
+                src.h,
+                src.h * HEAD_ROWS,
+                (src.h + 1) * HEAD_ROWS,
                 src.offset,
                 src.block_sha
             );
@@ -719,6 +753,48 @@ fn load_seeds() -> Vec<u64> {
     seeds
 }
 
+/// §4 reader check: M3 is defined only over the BASE knife-edge steps
+/// (base margin < θ), so a base carrying none makes SEPARATED unreachable
+/// a priori — for every arm, before anything is generated. Counted here,
+/// per prompt and in total, from the banked base dumps, with each log's
+/// sha printed so the count is traceable to a file of record.
+fn check_base_knife_edges(t: &mut Tee) {
+    let dir = BASE_JUDGE_DIRS
+        .iter()
+        .find(|d| std::path::Path::new(d).join("p0_run1.err").exists())
+        .unwrap_or_else(|| {
+            panic!("banked base judge dumps not found in {BASE_JUDGE_DIRS:?} — M3 has no base")
+        });
+    say!(t, "knife   : base dumps {dir} · θ = {THETA}");
+    let mut total = 0usize;
+    for prompt in 0..5 {
+        let path = format!("{dir}/p{prompt}_run1.err");
+        let sha = sha256_of(&path);
+        let dump = parse_dump_file(&path);
+        let n = step5_base_knife_edges(&dump).unwrap_or_else(|| {
+            panic!(
+                "{path}: a dump step carries fewer than two values — M3 is UNDEFINED on this \
+                 base, not zero. KILL (§7)"
+            )
+        });
+        say!(
+            t,
+            "          p{prompt}: {n} knife-edge steps of {} · sha {sha}",
+            dump.len()
+        );
+        total += n;
+    }
+    assert!(
+        total > 0,
+        "the banked base carries 0 knife-edge steps at θ = {THETA} — M3 can never fire, so \
+         SEPARATED is unreachable for every arm. KILL (§7) before any file is generated"
+    );
+    say!(
+        t,
+        "          total {total} knife-edge steps : PASS (M3 has a set to measure on)"
+    );
+}
+
 /// The §4 window check: the four head blocks decode to exactly the banked
 /// census. It can only fire on a broken reader — a wrong tensor, a wrong
 /// window, a wrong stride.
@@ -773,6 +849,7 @@ fn measure() {
         base.len()
     );
     check_window(&mut t, &base, block);
+    check_base_knife_edges(&mut t);
     say!(t, "");
 
     let arms = build_arms(&base, &p, &srcs);
@@ -781,7 +858,8 @@ fn measure() {
     for arm in &arms {
         let changed = check_arm(&mut t, arm, &base, block);
         if arm.families.iter().any(|(f, _)| *f == Family::Local) {
-            let (feasible, detail) = local_feasible(&base[..block], &arm.patch[..block]);
+            let (lo, hi) = arm.block_bounds(block);
+            let (feasible, detail) = local_feasible(&base[lo..hi], &arm.patch[lo..hi]);
             say!(t, "    {detail}");
             assert!(
                 feasible,
@@ -866,10 +944,13 @@ fn generate() {
                     Family::Local => {
                         // Shuffle inside the arm's own 128×512 block, then
                         // embed at that block: same count, same composition,
-                        // positions random INSIDE the footprint (§3).
-                        let shuffled = dose_matched_null(&base[..block], &arm.patch[..block], seed);
+                        // positions random INSIDE the footprint (§3). The
+                        // block is the arm's own, which now differs per
+                        // graft (§3 rotation).
+                        let (lo, hi) = arm.block_bounds(block);
+                        let shuffled = dose_matched_null(&base[lo..hi], &arm.patch[lo..hi], seed);
                         let mut full = base.clone();
-                        full[..block].copy_from_slice(&shuffled);
+                        full[lo..hi].copy_from_slice(&shuffled);
                         full
                     }
                 };

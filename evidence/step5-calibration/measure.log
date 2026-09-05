@@ -11,6 +11,13 @@ window  : blk.0.attn_q.weight rows 0..512 × cols 0..512 — 262144 cells
           head 2: census [20616, 23987, 20933] · zero fraction 0.3660
           head 3: census [21007, 23533, 20996] · zero fraction 0.3591
           heads sum to [83253, 95802, 83089] == banked window census : PASS
+knife   : base dumps evidence/session-f-judge · θ = 0.05
+          p0: 0 knife-edge steps of 12 · sha e18d6a33a384ab0eecd66f0ae09e9bb7329f17d494d5d05b5958ea92ed7dc411
+          p1: 0 knife-edge steps of 12 · sha a0de5683dd2212bf5d0c871919f601b710c956c1a1b448128a3de1207d6f8f97
+          p2: 0 knife-edge steps of 12 · sha d1e63d75db923338d993792e47a9badb7c64179b73651425749c3131256d5d1f
+          p3: 2 knife-edge steps of 12 · sha d92f9ae62573575d6ba93e5d32e811b1cb096ec533e979aa67ff10df11fb4adf
+          p4: 1 knife-edge steps of 12 · sha fb73a0ac68c4fda7b3c3a119800dd8fa10af0ae68a15929c32888bbd0256fa16
+          total 3 knife-edge steps : PASS (M3 has a set to measure on)
 
 provenance: 3 graft source blocks, shas pairwise distinct : PASS
 lesion-h0: 42213 cells
@@ -27,19 +34,19 @@ lesion-h3: 42003 cells
     block census [21007, 23533, 20996] of 65536 · zero fraction 0.3591 (measurement, not a gate) · patched block all-zero : PASS
 graft-k1: 43586 cells
     composition (-1→0 : 7479) (-1→+1 : 6936) (0→-1 : 7551) (0→+1 : 7290) (+1→-1 : 6761) (+1→0 : 7569)
-    provenance: blk.1.attn_q.weight · data offset 133467360 · block sha 402c4a1c7cc2577e50dc6e1edaf8e70593f431890c7230f7dbfae6522865ca1c
+    provenance: blk.1.attn_q.weight · head block 0 (rows 0..128) · data offset 133467360 · block sha 402c4a1c7cc2577e50dc6e1edaf8e70593f431890c7230f7dbfae6522865ca1c
     blk.1 block census [21088, 23530, 20918] sums to 65536 : PASS · changed 43586 vs independence [41580, 44760] : inside the interval
     local pools (demand/available) -1: 14415/21191 · 0: 14841/23323 · +1: 14330/21022 : FEASIBLE
-graft-k18: 43388 cells
-    composition (-1→0 : 7887) (-1→+1 : 6627) (0→-1 : 7288) (0→+1 : 7358) (+1→-1 : 6539) (+1→0 : 7689)
-    provenance: blk.18.attn_q.weight · data offset 589574368 · block sha bfbf655c6d4b4d61aa3e17210663a3c308162de3cb8dc66c69463afb67429c58
-    blk.18 block census [20504, 24253, 20779] sums to 65536 : PASS · changed 43388 vs independence [41580, 44760] : inside the interval
-    local pools (demand/available) -1: 14514/21191 · 0: 14646/23323 · +1: 14228/21022 : FEASIBLE
-graft-k35: 43424 cells
-    composition (-1→0 : 7559) (-1→+1 : 6806) (0→-1 : 7395) (0→+1 : 7493) (+1→-1 : 6798) (+1→0 : 7373)
-    provenance: blk.35.attn_q.weight · data offset 1045681376 · block sha c84818e896a67ed5593b99ab2d0db74bd735a325e4efc300da99cda3d6fec6e4
-    blk.35 block census [21019, 23367, 21150] sums to 65536 : PASS · changed 43424 vs independence [41580, 44760] : inside the interval
-    local pools (demand/available) -1: 14365/21191 · 0: 14888/23323 · +1: 14171/21022 : FEASIBLE
+graft-k18: 43526 cells
+    composition (-1→0 : 7500) (-1→+1 : 6477) (0→-1 : 7946) (0→+1 : 7903) (+1→-1 : 6407) (+1→0 : 7293)
+    provenance: blk.18.attn_q.weight · head block 1 (rows 128..256) · data offset 589574368 · block sha 4384a9b4c16099e101a2158e57d8bb8afb28553d59fc400f1ffaddf4ae1a25c4
+    blk.18 block census [20815, 23903, 20818] sums to 65536 : PASS · changed 43526 vs independence [41580, 44760] : inside the interval
+    local pools (demand/available) -1: 13977/20439 · 0: 15849/24959 · +1: 13700/20138 : FEASIBLE
+graft-k35: 43568 cells
+    composition (-1→0 : 7594) (-1→+1 : 6561) (0→-1 : 7609) (0→+1 : 7410) (+1→-1 : 6689) (+1→0 : 7705)
+    provenance: blk.35.attn_q.weight · head block 2 (rows 256..384) · data offset 1045681376 · block sha 5bd5547b280e2a128bbb8756df177bb0b0cd27fa3e391745b2f1ceda4f7e2c4a
+    blk.35 block census [20759, 24267, 20510] sums to 65536 : PASS · changed 43568 vs independence [41580, 44760] : inside the interval
+    local pools (demand/available) -1: 14155/20616 · 0: 15019/23987 · +1: 14394/20933 : FEASIBLE
 identity: 0 cells
     composition (none)
     0 changed cells : PASS — the tripwire is transparent
@@ -52,8 +59,8 @@ identity: 0 cells
 | LESION-2 | 41549 | (-1→0 : 20616) (+1→0 : 20933) |
 | LESION-3 | 42003 | (-1→0 : 21007) (+1→0 : 20996) |
 | GRAFT-1 | 43586 | (-1→0 : 7479) (-1→+1 : 6936) (0→-1 : 7551) (0→+1 : 7290) (+1→-1 : 6761) (+1→0 : 7569) |
-| GRAFT-18 | 43388 | (-1→0 : 7887) (-1→+1 : 6627) (0→-1 : 7288) (0→+1 : 7358) (+1→-1 : 6539) (+1→0 : 7689) |
-| GRAFT-35 | 43424 | (-1→0 : 7559) (-1→+1 : 6806) (0→-1 : 7395) (0→+1 : 7493) (+1→-1 : 6798) (+1→0 : 7373) |
+| GRAFT-18 | 43526 | (-1→0 : 7500) (-1→+1 : 6477) (0→-1 : 7946) (0→+1 : 7903) (+1→-1 : 6407) (+1→0 : 7293) |
+| GRAFT-35 | 43568 | (-1→0 : 7594) (-1→+1 : 6561) (0→-1 : 7609) (0→+1 : 7410) (+1→-1 : 6689) (+1→0 : 7705) |
 | IDENTITY | 0 | (none) |
 
 reader checks: 8 arms PASS — no §4 check fired, no §7 kill

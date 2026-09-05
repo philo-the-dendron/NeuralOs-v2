@@ -416,6 +416,25 @@ pub fn step5_max_margin_delta(base: &Dump, cand: &Dump) -> Option<f64> {
     max
 }
 
+/// How many BASE knife-edge steps a dump carries — the exact set
+/// [`step5_max_margin_delta`] iterates (`step_margin < THETA`), with the
+/// same short-circuit: `None` when some step carries fewer than two
+/// values, because M3 is then undefined for that dump rather than zero.
+///
+/// M3 is defined only over these steps, so a base with none makes
+/// SEPARATED unreachable a priori — knowable before any arm is generated
+/// (PREREG §4 reader check).
+#[must_use]
+pub fn step5_base_knife_edges(base: &Dump) -> Option<usize> {
+    let mut n = 0;
+    for step in base.values() {
+        if step_margin(step)? < THETA {
+            n += 1;
+        }
+    }
+    Some(n)
+}
+
 /// One judged file's readout across the frozen five.
 #[derive(Debug, Default, Clone)]
 pub struct Step5FileReadout {
@@ -601,6 +620,35 @@ pub fn poscontrol_verdict(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The knife-edge counter walks exactly the set M3 walks: same
+    /// threshold, same short-circuit. Pinned on constructed dumps so the
+    /// agreement is a property of the code, not of one banked file.
+    #[test]
+    fn knife_edge_count_matches_the_m3_set() {
+        let step = |a: f64, b: f64| vec![(1u32, a), (2u32, b)];
+        let mut base: Dump = Dump::new();
+        base.insert(0, step(1.0, 0.99)); // margin 0.01 — knife
+        base.insert(1, step(1.0, 0.90)); // margin 0.10 — not
+        base.insert(2, step(1.0, 0.96)); // margin 0.04 — knife
+        assert_eq!(step5_base_knife_edges(&base), Some(2));
+
+        // A candidate that moves only the two knife steps: M3 sees them.
+        let mut cand: Dump = Dump::new();
+        cand.insert(0, step(1.0, 0.50));
+        cand.insert(1, step(1.0, 0.90));
+        cand.insert(2, step(1.0, 0.96));
+        let d = step5_max_margin_delta(&base, &cand).expect("both dumps measurable");
+        assert!(
+            (d - 0.49).abs() < 1e-9,
+            "max |Δmargin| over knife steps, got {d}"
+        );
+
+        // A step with fewer than two values makes both undefined, not zero.
+        base.insert(3, vec![(1u32, 1.0)]);
+        assert_eq!(step5_base_knife_edges(&base), None);
+        assert_eq!(step5_max_margin_delta(&base, &cand), None);
+    }
 
     /// PREREG §6 by EXHAUSTIVE enumeration, not by examples (§7 step 2,
     /// reviewer S11). Every tuple of the declared space — Lj ≤ 4,
