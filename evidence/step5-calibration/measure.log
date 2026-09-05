@@ -18,20 +18,35 @@ knife   : base dumps evidence/session-f-judge · θ = 0.05
           p3: 2 knife-edge steps of 12 · sha d92f9ae62573575d6ba93e5d32e811b1cb096ec533e979aa67ff10df11fb4adf
           p4: 1 knife-edge steps of 12 · sha fb73a0ac68c4fda7b3c3a119800dd8fa10af0ae68a15929c32888bbd0256fa16
           total 3 knife-edge steps : PASS (M3 has a set to measure on)
+judge   : fork-build/llama.cpp/build/bin · fork 9ca265a57f85f2117942490f421f64a226dd9847 (from tools/build_fork.sh PIN=)
+          llama-completion · sha 45c3213681383dc7f5f54bd0b16585c769e3c00450fbc987c250b96214de6246 : PINNED
+          libllama-completion-impl.so · sha 64a1e1848ca747d2ac369a8d93f6a0f46ac7317796683d8c54df3f97bbd32886 : PINNED
+          libllama-common.so · sha 911ad4a6548fbae453652df30692154eb3100d068eed35207c5e264c25f2dff3 : PINNED
+          libllama.so · sha 9f2d10aca3e3e3080650f80624db503459e77e0a889f30f262536b65f79e6ab6 : PINNED
+          libggml.so · sha ea7f9fd250bc72879a765a0a6156816776a4f570253064fedc446b3cdb7ad63a : PINNED
+          libggml-base.so · sha 123cbdcd73c0ed5b91f67f593d0a8e2a533113bdb8c2b4e33645ceb88362071d : PINNED
+          libggml-cpu.so · sha 3e1e166ce399d9e20032deed5e4f3fae3ad7b513a1ad689e906c93f8e9d1bc0a : PINNED
+          7 files pinned (driver + 5 shared objects + the dump-patched impl) : PASS
+seeds   : 140 entries, 14 decades starting [301, 311, 321, 331, 341, 351, 361, 371, 381, 391, 401, 411, 421, 431] : PASS
+cap     : one burn window, ≤ 9 h judge wall-time; a cap stop is VOID (INCOMPLETE)
 
 provenance: 3 graft source blocks, shas pairwise distinct : PASS
 lesion-h0: 42213 cells
     composition (-1→0 : 21191) (+1→0 : 21022)
     block census [21191, 23323, 21022] of 65536 · zero fraction 0.3559 (measurement, not a gate) · patched block all-zero : PASS
+    mid pools (demand/available) -1: 21191/41630 · 0: 0/48282 · +1: 21022/41160 : FEASIBLE
 lesion-h1: 40577 cells
     composition (-1→0 : 20439) (+1→0 : 20138)
     block census [20439, 24959, 20138] of 65536 · zero fraction 0.3808 (measurement, not a gate) · patched block all-zero : PASS
+    mid pools (demand/available) -1: 20439/41630 · 0: 0/48282 · +1: 20138/41160 : FEASIBLE
 lesion-h2: 41549 cells
     composition (-1→0 : 20616) (+1→0 : 20933)
     block census [20616, 23987, 20933] of 65536 · zero fraction 0.3660 (measurement, not a gate) · patched block all-zero : PASS
+    mid pools (demand/available) -1: 20616/41623 · 0: 0/47520 · +1: 20933/41929 : FEASIBLE
 lesion-h3: 42003 cells
     composition (-1→0 : 21007) (+1→0 : 20996)
     block census [21007, 23533, 20996] of 65536 · zero fraction 0.3591 (measurement, not a gate) · patched block all-zero : PASS
+    mid pools (demand/available) -1: 21007/41623 · 0: 0/47520 · +1: 20996/41929 : FEASIBLE
 graft-k1: 43586 cells
     composition (-1→0 : 7479) (-1→+1 : 6936) (0→-1 : 7551) (0→+1 : 7290) (+1→-1 : 6761) (+1→0 : 7569)
     provenance: blk.1.attn_q.weight · head block 0 (rows 0..128) · data offset 133467360 · block sha 402c4a1c7cc2577e50dc6e1edaf8e70593f431890c7230f7dbfae6522865ca1c
@@ -64,4 +79,6 @@ identity: 0 cells
 | IDENTITY | 0 | (none) |
 
 reader checks: 8 arms PASS — no §4 check fired, no §7 kill
+run totals: 8 double-run files (16) + 105 nulls = 121 judge files · 4.0–8.1 h at 2–4 min per file · cap 9 h
+disk: 113 gguf if kept at once (113.1 GiB); arm-by-arm peak is 8 arm files + one arm's 15 nulls = 23.0 GiB (§7 burn script)
 measure done — nothing written under models/. Log: evidence/step5-calibration/measure.log, sha pinned in evidence/step5-calibration/SHA256SUMS.
