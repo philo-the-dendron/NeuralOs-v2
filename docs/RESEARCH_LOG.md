@@ -1010,8 +1010,9 @@ through thirty-three drafts, twenty-one reviewer passes and six
 stamp-time reads, stamped by philo against a frozen generator commit,
 and burned in one 6.23 h window against a 9 h cap: eight arm files —
 four cut heads, three grafts on three different heads, one identity
-tripwire — and 105 dose-matched nulls, 121 judge files, exit 0, no void
-and no re-run.
+tripwire — and 105 dose-matched nulls: 113 judge files, 121 judge runs
+(the eight arm files double-run, the 105 nulls single-run), exit 0, no
+void and no re-run.
 
 **The verdict is UNINFORMATIVE**, by §6 rule 6, applied once to the
 single run: `Ls=0 Lj=4 Lq=0 Lmid=0 · Gs=0 Gj=3 Gq=0 Gscat=1`. What §1
