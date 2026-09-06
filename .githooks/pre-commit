@@ -10,8 +10,8 @@
 #   (a) no personal string in the ADDED lines of the staged diff. The
 #       pattern is a home-directory shape plus the personal list; it names
 #       no username, because a username in this tracked file would itself
-#       be the leak. Same pattern as the `home-paths` CI job, kept in sync
-#       by hand.
+#       be the leak. The pattern is the one line of `.githooks/personal-pattern`,
+#       read by both hooks and both CI files (one record, no hand sync).
 #   (b) the author email equals the clone's declared pseudonymous address
 #       (`neuralos.author-email`, local config, never tracked). Unset means
 #       the wall was half-installed: refuse and print the install line.
@@ -26,7 +26,11 @@
 # the CI job is the second wall.
 set -u
 
-pattern='/home/[A-Za-z0-9_.-]+/|\bdenis\b|\bimac\b|192\.168\.|ed25[5]19|10\.66\.'
+pattern=$(cat "$(git rev-parse --show-toplevel)/.githooks/personal-pattern" 2>/dev/null || true)
+if [ -z "$pattern" ]; then
+  echo "pre-commit: .githooks/personal-pattern is missing or empty; refusing rather than scanning with an empty pattern" >&2
+  exit 1
+fi
 
 # (a) staged diff, added lines only, file headers excluded
 hits=$(git diff --cached --unified=0 --no-color \

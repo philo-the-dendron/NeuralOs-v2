@@ -209,8 +209,8 @@ jobs:
   # class from growing: any added line in base..head that matches the
   # pattern fails the PR. The pattern names a home directory shape and the
   # personal list, never a username: a username in this file would itself
-  # be the leak. Same pattern as .githooks/pre-commit, kept in sync by
-  # hand. pull_request only, like per-commit. Proven by a falsifier branch
+  # be the leak. The pattern is the one line of .githooks/personal-pattern,
+  # read here and by both hooks (one record). pull_request only, like per-commit. Proven by a falsifier branch
   # the day it landed (red log excerpt in PR #9).
   home-paths:
     name: no home path in added lines
@@ -228,7 +228,8 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           git fetch --no-tags --quiet origin "$base" "$head" || true
-          pattern='/home/[A-Za-z0-9_.-]+/|\bdenis\b|\bimac\b|192\.168\.|ed25[5]19|10\.66\.'
+          pattern=$(cat .githooks/personal-pattern)
+          test -n "$pattern"
           hits=$(git diff "$base".."$head" --unified=0 --no-color \
                  | grep -E '^\+' | grep -v -E '^\+\+\+ ' \
                  | grep -E -i "$pattern" || true)
