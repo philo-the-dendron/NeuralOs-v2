@@ -1,0 +1,71 @@
+#!/bin/sh
+# NeuralOS v2 pre-commit wall. Added 2026-09-06 (ISA round-17) on philo's
+# word: "with real credential or personal information it would be much
+# much worse, and I don't understand why this kind of protection is not
+# there". Activated once per clone (AGENTS.md § Setup):
+#     git config core.hooksPath .githooks
+#     git config neuralos.author-email "$(git config user.email)"
+#
+# Three checks, in order; the first failure refuses the commit:
+#   (a) no personal string in the ADDED lines of the staged diff. The
+#       pattern is a home-directory shape plus the personal list; it names
+#       no username, because a username in this tracked file would itself
+#       be the leak. The pattern is the one line of `.githooks/personal-pattern`,
+#       read by both hooks and both CI files (one record, no hand sync).
+#   (b) the author email equals the clone's declared pseudonymous address
+#       (`neuralos.author-email`, local config, never tracked). Unset means
+#       the wall was half-installed: refuse and print the install line.
+#   (c) gitleaks on the staged diff when it is on PATH; when it is not,
+#       one line says so and the commit proceeds. Exit 1 from gitleaks is
+#       a finding and refuses; any other non-zero exit is a tool error,
+#       printed, not a refusal. Never installed by this repo.
+# Proven 2026-09-06 with a scratch file holding a fake AWS key id and a
+# home-path line: (a) refused it; (b) refused a commit made with
+# a foreign user.email; gitleaks was absent on that machine, so (c) is
+# verified only for the absent branch. `--no-verify` bypasses every hook;
+# the CI job is the second wall.
+set -u
+
+pattern=$(cat "$(git rev-parse --show-toplevel)/.githooks/personal-pattern" 2>/dev/null || true)
+if [ -z "$pattern" ]; then
+  echo "pre-commit: .githooks/personal-pattern is missing or empty; refusing rather than scanning with an empty pattern" >&2
+  exit 1
+fi
+
+# (a) staged diff, added lines only, file headers excluded
+hits=$(git diff --cached --unified=0 --no-color \
+       | grep -E '^\+' | grep -v -E '^\+\+\+ ' \
+       | grep -E -i "$pattern" || true)
+if [ -n "$hits" ]; then
+  echo "pre-commit: personal string in added lines, commit refused:" >&2
+  echo "$hits" >&2
+  exit 1
+fi
+
+# (b) author email
+expected=$(git config --get neuralos.author-email || true)
+if [ -z "$expected" ]; then
+  echo "pre-commit: neuralos.author-email is unset; run:" >&2
+  echo '    git config neuralos.author-email "$(git config user.email)"' >&2
+  exit 1
+fi
+author=$(git var GIT_AUTHOR_IDENT | sed -n 's/.*<\([^>]*\)>.*/\1/p')
+if [ "$author" != "$expected" ]; then
+  echo "pre-commit: author email <$author> is not the declared address, commit refused" >&2
+  exit 1
+fi
+
+# (c) gitleaks, optional
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --no-banner --redact
+  rc=$?
+  if [ "$rc" -eq 1 ]; then
+    echo "pre-commit: gitleaks found a secret in the staged diff, commit refused" >&2
+    exit 1
+  elif [ "$rc" -ne 0 ]; then
+    echo "pre-commit: gitleaks exited $rc (tool error, not a finding); continuing" >&2
+  fi
+else
+  echo "pre-commit: gitleaks not on PATH, secret scan skipped (pattern checks ran)" >&2
+fi
+exit 0

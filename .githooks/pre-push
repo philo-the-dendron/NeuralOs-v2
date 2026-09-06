@@ -1,0 +1,94 @@
+#!/bin/sh
+# NeuralOS v2 pre-push wall. Added 2026-09-06 (ISA round-17), activated
+# with `git config core.hooksPath .githooks` (AGENTS.md § Setup). Git
+# calls it as `pre-push <remote-name> <remote-url>` with one line per ref
+# on stdin: `<local ref> <local sha> <remote ref> <remote sha>`.
+#
+# Checks, per ref being pushed; the first failure refuses the whole push:
+#   (d) toward a github.com URL only `refs/heads/main` and `refs/tags/*`
+#       may travel (AGENTS.md § Remotes: "no branch on github, github is
+#       a mirror"). Deletions are allowed (they remove, never add).
+#   (a) no personal string in the ADDED lines of any commit in the range
+#       the push adds (the one line of `.githooks/personal-pattern`).
+#   (b) every commit in the range carries the declared author address.
+#   (c) gitleaks over the range when it is on PATH; one line and continue
+#       when it is not.
+# The range is <remote sha>..<local sha>; for a new remote ref it is every
+# commit the remotes do not already have. Proven 2026-09-06: a --dry-run
+# push of a work branch toward the github remote was refused by (d), and
+# the hook fed the range of b4a9b7d (a banked-evidence commit that added
+# 16 home-path lines) refused it by (a).
+# `--no-verify` bypasses it; the Gitea CI job is the second wall.
+set -u
+remote_name="$1"; remote_url="$2"
+pattern=$(cat "$(git rev-parse --show-toplevel)/.githooks/personal-pattern" 2>/dev/null || true)
+if [ -z "$pattern" ]; then
+  echo "pre-push: .githooks/personal-pattern is missing or empty; refusing rather than scanning with an empty pattern" >&2
+  exit 1
+fi
+zero=0000000000000000000000000000000000000000
+expected=$(git config --get neuralos.author-email || true)
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "$local_ref" ] && continue
+  [ "$local_sha" = "$zero" ] && continue          # deletion
+
+  case "$remote_url" in
+    *github.com*)
+      case "$remote_ref" in
+        refs/heads/main|refs/tags/*) ;;
+        *) echo "pre-push: refused: $remote_ref toward $remote_name ($remote_url); GitHub carries main and tags only" >&2
+           exit 1 ;;
+      esac ;;
+  esac
+
+  if [ "$remote_sha" = "$zero" ]; then
+    range="$local_sha --not --remotes"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+  # shellcheck disable=SC2086
+  commits=$(git rev-list $range)
+  [ -z "$commits" ] && continue
+
+  # (a)
+  # shellcheck disable=SC2086
+  hits=$(git log -p --unified=0 --no-color --format='commit %h' $range \
+         | grep -E '^(\+|commit )' | grep -v -E '^\+\+\+ ' \
+         | grep -E -i "$pattern" || true)
+  if [ -n "$hits" ]; then
+    echo "pre-push: personal string in added lines of $range, push refused:" >&2
+    echo "$hits" >&2
+    exit 1
+  fi
+
+  # (b)
+  if [ -z "$expected" ]; then
+    echo "pre-push: neuralos.author-email is unset; run:" >&2
+    echo '    git config neuralos.author-email "$(git config user.email)"' >&2
+    exit 1
+  fi
+  # shellcheck disable=SC2086
+  bad=$(git log --format='%h %ae' $range | awk -v e="$expected" '$2 != e')
+  if [ -n "$bad" ]; then
+    echo "pre-push: commits with an undeclared author address, push refused:" >&2
+    echo "$bad" >&2
+    exit 1
+  fi
+
+  # (c)
+  if command -v gitleaks >/dev/null 2>&1; then
+    if [ "$remote_sha" = "$zero" ]; then opts="$local_sha"; else opts="$remote_sha..$local_sha"; fi
+    gitleaks detect --no-banner --redact --log-opts="$opts"
+    rc=$?
+    if [ "$rc" -eq 1 ]; then
+      echo "pre-push: gitleaks found a secret in $range, push refused" >&2
+      exit 1
+    elif [ "$rc" -ne 0 ]; then
+      echo "pre-push: gitleaks exited $rc (tool error, not a finding); continuing" >&2
+    fi
+  else
+    echo "pre-push: gitleaks not on PATH, secret scan skipped (pattern checks ran)" >&2
+  fi
+done
+exit 0

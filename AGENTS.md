@@ -67,10 +67,12 @@ MSRV — don't bump without checking).
 
 ```bash
 # Quality gates. `.gitea/workflows/ci.yml` IS THE GATE (origin is Gitea);
-# `.github/workflows/ci.yml` mirrors it as a second opinion. The two files
-# differ in exactly two ways: the `uses:` form (Gitea needs full URLs), and
-# a 13-line explanatory header on the Gitea file. Nothing else — any third
-# difference is drift, and one of them has stopped being a mirror.
+# `.github/workflows/ci.yml` is the same file run on GitHub, where only
+# `main` ever arrives (§ Remotes), so it is the one off-box build and never
+# a gate. The two files differ in exactly two ways: the `uses:` form (Gitea
+# needs full URLs), and the explanatory header on the Gitea file. Nothing
+# else — any third difference is drift, and one of them has stopped being
+# a mirror.
 cargo fmt    --all -- --check                    # formatting gate (2026-09-02): rustfmt under the pinned toolchain, default config
 cargo check  --workspace --all-targets
 cargo test   --workspace                          # offline; 307 executed green (3 app, 208 snn, 96 rt) + 5 rt model-gated #[ignore]
@@ -114,16 +116,71 @@ is only worth the multi-minute link when you want real smoothness.
 - `neuralos-app`: no features (candle/summarizer code was deleted at
   the `v0.1-summarizer-demo` tag — the app is the SNN visualizer now).
 
+## Setup (one time per clone)
+
+The repo ships a git-level wall in `.githooks/` (pre-commit, pre-push;
+added 2026-09-06, ISA round-17, on philo's word: "with real credential
+or personal information it would be much much worse"). Git does not
+run tracked hooks by itself; activate them once per clone:
+
+    git config core.hooksPath .githooks
+    git config neuralos.author-email "$(git config user.email)"
+
+The second line records the pseudonymous author address the hooks
+enforce; it lives in the clone's own config, never in a tracked file.
+What the hooks refuse, and how they were proven, is in the header of
+each hook file. `gitleaks` is optional: when it is on PATH the hooks
+run it too, when it is not they say so in one line and continue.
+
 ## Remotes (push carefully)
 
-`origin` has **two push URLs**: Gitea (`Caramoussin/NeuralOs-v2`,
-canonical) and the GitHub mirror (`philo-the-dendron/NeuralOs-v2`). A
-normal `git push origin main` hits both. If Gitea has commits you don't
-(e.g. a web edit), **rebase, never force-push Gitea `main`** (the one
-`work/*` exception, with a lease, is in § Session protocol). The GitHub
-mirror is the only bare-force target, and only when it has desynced
-pre-rebase history — get explicit OK first, and set its `main mirror`
-ruleset to Disabled for the push, then back to Active.
+Gitea is canonical and the only gate. GitHub is a mirror, and philo's
+meaning of the word is the rule: "no branch on github, github is a
+mirror." It carries `main` and Gitea's tags, nothing else; no branch,
+PR, or CI run exists there except on `main`. `origin` pushes to Gitea
+alone. The mirror is written only after a Gitea merge, by the
+procedure in § Merge procedure, and the release binaries live on the
+Gitea release.
+Rule stated by philo 2026-09-06. History, one sentence: the two-URL
+fan-out (`origin` pushing Gitea and GitHub together) was documented as
+normal from the first AGENTS.md (2026-08-07), and no file carried the
+rule until 2026-09-06; the four days of fan-out before it (twelve work
+branches and 44 workflow runs on GitHub) were cleaned the same day
+(ISA round-17, phase A).
+
+Gitea is `Caramoussin/NeuralOs-v2` (remote `origin`, one push URL);
+GitHub is `philo-the-dendron/NeuralOs-v2` (remote `github`). The
+`github` remote is written by § Merge procedure and by nothing else:
+never `git push github <branch>`, never `--tags` (pushes local tags;
+three scratch tags leaked that way on 2026-09-06 and were deleted the
+same minute), never `--mirror`. The pre-push hook refuses any ref
+other than `main` and tags toward a github.com URL. If Gitea has
+commits you don't (e.g. a web edit), **rebase, never force-push Gitea
+`main`** (the one `work/*` exception, with a lease, is in § Session
+protocol). GitHub is the only bare-force target, and only when it has
+desynced pre-rebase history — get explicit OK first, and set its
+`main mirror` ruleset to Disabled for the push, then back to Active.
+
+### Merge procedure
+
+The merge is one HTTP call on Gitea, so the laptop's `main` is stale
+right after it; the sync pushes Gitea's refs, never local ones:
+
+    bun ~/.claude/LIFEOS/TOOLS/Gitea.ts merge Caramoussin/NeuralOs-v2 <pr>
+    git fetch origin main '+refs/tags/*:refs/remotes/origin/tags/*'
+    git push github origin/main:refs/heads/main
+    git push github 'refs/remotes/origin/tags/*:refs/tags/*'
+
+Done when `git ls-remote origin main` and `git ls-remote github main`
+print the same hash AND `diff <(git ls-remote --tags origin)
+<(git ls-remote --tags github)` is empty. Not `git push github main`
+(pushes the stale local branch and reports up-to-date); not `--tags`.
+Two commands, not one compound with the merge, until the compound is
+measured under the permission classifier. Then delete the branch,
+locally and on Gitea. The tag step's falsifier (a local scratch tag
+absent from a `--dry-run` of the tag push, present in a `--dry-run` of
+`--tags`) ran 2026-09-06; the whole procedure counts as verified once
+it has synced one real merge (PR #9 is that run).
 
 ## Published crate
 
@@ -262,9 +319,9 @@ claims, reopening frozen records.
   (trigger widened to `**`). **The Gitea run is the gate** —
   `.gitea/workflows/ci.yml` on org runner `cp-desktop` (Caramoussin
   org scope, self-hosted, docker, capped `--cpus=3 --memory=8g`).
-  The GitHub mirror's run is a second opinion and never blocks a
-  merge; do not wait on it, and do not treat its red as a gate.
-  Merge to main requires branch-CI green +
+  GitHub runs the same workflow on `main` only, after § Merge
+  procedure: the one off-box build, never a gate, never a branch run
+  (§ Remotes, 2026-09-06). Merge to main requires branch-CI green +
   review passed — mechanical conditions, no discretion, the builder
   may merge on them. Local green is one machine's opinion; CI on the
   pushed ref is the gate. **Every commit on the branch is green on its
@@ -283,9 +340,9 @@ claims, reopening frozen records.
   green and an up-to-date branch, and only the principal may merge
   (the public branch endpoint shows `protected`, the three contexts and
   `required_approvals: 0`; the admin and merge-list facts are readable
-  only with the owner's token). The GitHub mirror carries one ruleset
-  on its default branch only (block force pushes, restrict deletions),
-  so `work/*` there has no guard beyond the lease. The merger reads
+  only with the owner's token). GitHub carries one ruleset on its
+  default branch only (block force pushes, restrict deletions); no
+  `work/*` exists there since 2026-09-06 (§ Remotes). The merger reads
   that job's log; a local loop over `git rev-list main..HEAD` in a
   scratch worktree with its own target dir is still how a builder finds
   red before pushing, and it is the clean-build proof (the job builds
@@ -310,7 +367,6 @@ claims, reopening frozen records.
 
       git push git@gitea.com:Caramoussin/NeuralOs-v2.git \
           --force-with-lease --force-if-includes work/<name>
-      git push github --force-with-lease --force-if-includes work/<name>
 
   Why both flags: `--force-with-lease` alone compares against the
   remote-tracking ref, and any fetch in between (the per-commit loop,
@@ -322,11 +378,14 @@ claims, reopening frozen records.
   git-push(1) makes the second flag a no-op in that combination, and
   the explicit form is only as safe as where the SHA came from (from
   the note in step 2, never `git rev-parse origin/work/<name>`). Why
-  the host is named: `origin` fans out to two push URLs, and a lease
-  can pass on one host and fail on the other, leaving a rewrite that
-  happened but reported failure; hit Gitea alone, then bring the
-  mirror up as its own step. (Soushi, PR #7, both measured in scratch
-  repos on git 2.43.) Order of operations, each step checkable:
+  the host is named: when this rule was written (PR #7) `origin`
+  fanned out to two push URLs, and a lease could pass on one host and
+  fail on the other, leaving a rewrite that happened but reported
+  failure. Since 2026-09-06 `origin` is Gitea alone and no work branch
+  exists on GitHub (§ Remotes), so there is no second push; naming the
+  host keeps the rewrite explicit anyway. (Soushi, PR #7, both flags
+  measured in scratch repos on git 2.43.) Order of operations, each
+  step checkable:
   (1) rewrite only when the newest event on the PR is your own — if
   the reviewer spoke last, answer first; (2) post the note BEFORE the
   push — old head, new head, which commit was red and why — because
