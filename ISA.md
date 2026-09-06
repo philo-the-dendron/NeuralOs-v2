@@ -6825,10 +6825,16 @@ exception is graft-k18's LOCAL family at 5.9756, driven by s384
 (5.9756) and s382 (5.9283). The seven arm values span 0.0092 to 4.2595;
 lesion arms h0..h3 read 0.0092, 0.6945, 4.1705, 0.0174. Measured with
 `step5_max_margin_delta` at `c27084c` over `p*_run1.{log,err}`. The
-reviewer's independent parser found the same phenomenon and stated the
-interval as 4.2024–4.2596; that interval is superseded by this
-measurement. RULED: accepted as MEASUREMENT of the frozen instrument on
-this run; no interpretation in the record. The first follow-up
+reviewer re-ran `step5_max_margin_delta` itself and its own independent
+parser agrees with the library function to four decimals on all
+fourteen families and all seven arm values: the two instruments never
+disagreed. The interval the reviewer first quoted, 4.2024–4.2596, was a
+misreading of its own correct table — 4.2024 is lesion-h3's MID maximum,
+a member of the set rather than its minimum, and 4.2596 appears in
+neither output. The library function is the instrument of record; the
+parser is what verified every band in this run. RULED: accepted as
+MEASUREMENT of the frozen instrument on this run; no interpretation in
+the record. The first follow-up
 question, if philo opens one, is whether ≈4.2 is a bound of the margin
 computation itself.
 
@@ -6863,10 +6869,12 @@ filled in. No diff exists under `paper/`.
 > graft arms through the same splice machinery, each against its own
 > dose-matched null families, judged by the same frozen five prompts. The
 > readout separated 0 of 4 cut heads from the same damage scattered,
-> below the pre-registered 3/4 bar, and 0 of 3 grafts separated against
-> their primary families; not promoted. The verdict is UNINFORMATIVE by
-> the rule fixed before the data. This limitation therefore stands as
-> written: the null continues to license exactly one claim — the changes
+> below the pre-registered 3/4 bar; at this dose in this window the
+> evidence does not clear the pre-registered bar. 0 of 3 grafts
+> separated against their primary families; not promoted. The verdict is
+> UNINFORMATIVE by the rule fixed before the data. This limitation
+> therefore stands as written: the null continues to license exactly one
+> claim — the changes
 > do not exceed equal-dose random perturbation under this protocol — and
 > no claim about the internal magnitude of adaptation effects. Step 8
 > stays closed until a new instrument exists.

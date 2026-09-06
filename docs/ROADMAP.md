@@ -118,9 +118,10 @@ displace substrate + lab bench + gated research.
    not clear the pre-registered bar. The paper's "uncalibrated
    instrument" limitation therefore stays as written, and step 8 stays
    CLOSED until a new instrument exists.
-5. **ESP32-C3 bring-up — BOARD BOUGHT, ARRIVES 2026-09-08.** Decided
-   2026-08-22 ("purchase within 1–2 weeks"), reported bought 2026-09-02
-   (philo). It gates its own step and, via GUARD 3, gates outreach
+5. **ESP32-C3 bring-up — BOARD BOUGHT, ARRIVES 2026-09-08 (philo,
+   reported 2026-09-02).** Decided 2026-08-22 ("purchase within 1–2
+   weeks"); both the purchase and the arrival date come from that one
+   report. It gates its own step and, via GUARD 3, gates outreach
    together with the `.nir` exporter. Still the longest pole on the
    board; from arrival it becomes a session rather than a purchase.
 6. Lock-free ports (A-extension targets only — re-scoped above) — the
