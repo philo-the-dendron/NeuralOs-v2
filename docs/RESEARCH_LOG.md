@@ -1000,3 +1000,51 @@ arms on this corpus buy little. The instrument's mechanical parity is
 proven and the DOMAIN covariate arm ran; what is missing is a corpus
 long enough to make replicates independent, and the positive control
 that would say whether a negative here means anything at all.
+
+### Step-5 calibration — the lesion/graft positive control (2026-09-05/06, result: UNINFORMATIVE)
+
+**The control the paper's own limitation names has run.** `limitations.tex`
+says calibration "precedes any future interpretation and is named as the
+first arm of the follow-on readout benchmark". It was pre-registered
+through thirty-three drafts, twenty-one reviewer passes and six
+stamp-time reads, stamped by philo against a frozen generator commit,
+and burned in one 6.23 h window against a 9 h cap: eight arm files —
+four cut heads, three grafts on three different heads, one identity
+tripwire — and 105 dose-matched nulls, 121 judge files, exit 0, no void
+and no re-run.
+
+**The verdict is UNINFORMATIVE**, by §6 rule 6, applied once to the
+single run: `Ls=0 Lj=4 Lq=0 Lmid=0 · Gs=0 Gj=3 Gq=0 Gscat=1`. What §1
+wrote for that outcome before the data, quoted: *"the readout separated
+{Ls} of {Lj} cut heads from the same damage scattered, below the 3/4
+bar; at this dose in this window the evidence does not clear the
+pre-registered bar"*; the limitation stands as written; the step-5
+negative keeps exactly the one claim the paper gives it; step 8 is
+closed until a new instrument exists. Nothing here is attributed to
+dose, window fraction, prompt scope or the shape of the metric — §1's
+pre-commitment (cross-family finding X7) forbids that until a follow-up
+varies one factor and shows the verdict move, and §8 named those
+factors as limits of scope before the run.
+
+**Three measurements, as measurements.** M3 fired once in the run:
+graft-k18 against its five-member SCAT family, the band that printed
+SEPARATED. Lesion arms fired M3 in none of four. M2 fired for three of
+the four cut heads and not for the fourth. — That single SEPARATED is
+the artifact §5 predicted: the arm clears its five-member family's max
+by 0.7% (4.2595 against 4.2300) while against its ten-member primary
+family neither conjunct fires at all, family max 5.9756. §5 said a
+smaller family lowers the M3 max and biases toward the positive
+verdict, which is why reported families were kept out of the verdict
+rule; the run's own data confirmed the prediction, and that is the
+strongest evidence here that the ten-file primary rule was right. —
+Across 13 of 14 null families the family max sits between 4.1815 and
+4.2590, a spread of 0.0775, regardless of family type, size or arm; the
+one exception is 5.9756. The seven arm values span 0.0092 to 4.2595,
+with lesion arms at 0.0092, 0.6945, 4.1705 and 0.0174.
+
+**The question that leaves.** Thirteen families of different types and
+sizes, built from different arms, produced a maximum inside a band
+0.0775 wide. Is ≈4.2 a property of these files, or a bound of the
+margin computation itself? The 105 nulls are kept on disk and pinned by
+sha, so re-scoring them under a different corroboration rule costs no
+judge time. That is a question for philo to open or leave, not a plan.
