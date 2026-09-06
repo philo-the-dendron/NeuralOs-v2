@@ -7033,6 +7033,14 @@ not with `--no-verify`: GitHub `main` = Gitea `main` = 4c15000, tag
 lists identical. The procedure is verified; the wall is amended in the
 fix PR that carries this addendum.
 
+Trust boundary, written down so the next reader does not take rule (b)
+for a guard on the mirror: the check trusts origin's history as already
+vetted, so a commit that reached Gitea past the hooks (`--no-verify`, a
+web edit, a merged contribution) is republished by the sync unchecked.
+That is correct, the sync republishes what Gitea already shows in
+public; the guards on what reaches Gitea are the hooks on the way there
+and the `home-paths` CI job. (Adjudicator's note on PR #11, accepted.)
+
 ### Guards
 
 GUARD 1 honored: appended only; `head:` and `updated:` refreshed under
