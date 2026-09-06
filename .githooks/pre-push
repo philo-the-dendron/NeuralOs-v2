@@ -10,7 +10,8 @@
 #       a mirror"). Deletions are allowed (they remove, never add).
 #   (a) no personal string in the ADDED lines of any commit in the range
 #       the push adds (the one line of `.githooks/personal-pattern`).
-#   (b) every commit in the range carries the declared author address.
+#   (b) every commit the push introduces (not already on origin) carries
+#       the declared author address; see the note at the check.
 #   (c) gitleaks over the range when it is on PATH; one line and continue
 #       when it is not.
 # The range is <remote sha>..<local sha>; for a new remote ref it is every
@@ -69,7 +70,15 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     exit 1
   fi
   # shellcheck disable=SC2086
-  bad=$(git log --format='%h %ae' $range | awk -v e="$expected" '$2 != e')
+  # Only commits this laptop introduces are checked: those not already
+  # reachable from any origin ref. Commits that origin already holds were
+  # checked when first pushed, or were made by the forge (its merge
+  # commits and web edits carry a noreply address) or by a contributor
+  # whose PR was merged there; the mirror sync republishes them, it does
+  # not author them. Found 2026-09-06 when the first version of this
+  # check refused the very sync that followed PR #9's merge (ISA round-17).
+  bad=$(git log --format='%h %ae' $range --not --glob='refs/remotes/origin/*' \
+        | awk -v e="$expected" '$2 != e')
   if [ -n "$bad" ]; then
     echo "pre-push: commits with an undeclared author address, push refused:" >&2
     echo "$bad" >&2
