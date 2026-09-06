@@ -4,7 +4,7 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@44d45e3 · PR #5 merged (per-commit CI job, round-15), mirror in sync, no open PRs, no branches but main · open(principal): branch protection on main naming the per-commit check; the force-push-on-work/* question · next-work: ROADMAP § Practical next moves"
+head: "main@44d45e3 · work/step5-calibration ahead by the step-5 calibration arc (stamp d32cd78, evidence c0f404f, record round-16), unpushed, no PR yet · open(session): philo rules the limitations.tex wording proposed in round-16; AE5 aggregator print waits on a re-stamp · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
 updated: 2026-09-02T21:40:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
@@ -6723,3 +6723,167 @@ live-state exception permits). GUARD 2 untouched. GUARD 3 untouched.
 per-commit rule): AGENTS.md § Session protocol is the only prose that
 stated the old mechanism; § Commands' header comment about the two
 workflow files is still true.
+
+## Amendment (round-16 — the step-5 calibration burn, verdict UNINFORMATIVE — 2026-09-06)
+
+Session shape: builder `neuralos-v2-00` (writes, commits locally, never
+pushes), reviewer `neuralos-v2-33` read-only, adjudicator `claude-e9`
+(the DA, star topology, rules every finding at source), philo stamping.
+The pre-registration was stamped twice: the first stamp at 17:12 EDT
+named frozen commit `6b3eab0` and authorised nothing that ran, because
+two further defects were found in the burn script before launch; the
+second stamp at 17:27 EDT, written at 17:46, names `c27084c` and is the
+one the run carries. Both are on record in PREREG §9/§10.
+
+### What landed
+
+- `d32cd78` — **the stamp**, §10 only, philo's sentence verbatim.
+- `c0f404f` — **the burn evidence**: 113 judge outdirs, `BURN.log`,
+  `nulls.SHA256SUMS` (105 lines), `arms.txt`, and the generator frozen
+  by content in `evidence/step5-calibration/generator/`.
+- this commit — **the record**: this amendment, the RESEARCH_LOG entry,
+  ROADMAP item 5.
+
+### The verdict, as the aggregator printed it
+
+```
+verdict: UNINFORMATIVE (graft: 0/3 vs LOCAL, 1/3 vs SCAT · lesion: 0/4 vs SCAT, 0/4 vs MID)
+counts : Ls=0 Lj=4 Lq=0 Lmid=0 · Gs=0 Gj=3 Gq=0 Gscat=1
+m2-only: lesions 3/4 · grafts 0/3 fired M2 against their primary
+rule   : §6 rule 6
+```
+
+### The §6 walk
+
+Lj = 4 and Gj = 3, so rule 1 (denominator floor) is false. Lq = 0, so
+rule 2 (INERT) is false. Gq = 0, so rule 3 (graft leg INERT) is false.
+Ls/Lj = 0/4 is below the 3/4 bar, so rules 4 (CALIBRATED) and 5
+(DAMAGE-ONLY) are false. Rule 6 fires: **UNINFORMATIVE**. The rule was
+fixed before the data and applied once, to the single run.
+
+### Protocol facts, each verified in `evidence/step5-calibration/`
+
+- 6.23 h elapsed against a 9 h cap; exit 0.
+- 382-line `BURN.log` with zero `STOP`, zero `REFUSING`, zero `VOID arm`
+  and no re-run.
+- Primary families exactly ten (four lesion SCAT ×10, three graft LOCAL
+  ×10), reported families exactly five (four lesion MID ×5, three graft
+  SCAT ×5): 105 nulls, all 105 pinned in `nulls.SHA256SUMS`.
+- All 105 seeds lie inside the 140 pre-committed in `seeds.txt`; zero
+  outside.
+- All 113 outdirs carry `SHA256SUMS`.
+- All eight double-run arm files: `run1 == run2` byte-for-byte on all
+  five prompts, zero mismatches.
+- IDENTITY: byte-identical to the banked base on all five prompts, zero
+  flips. No contamination.
+
+### The fourteen family maxima
+
+Max |Δmargin| over the base's knife-edge steps, per null family,
+measured with `judge::step5_max_margin_delta` at `c27084c`:
+
+| family | max | | family | max |
+|---|---|---|---|---|
+| graft-k1 LOCAL (10) | 4.181500 | | graft-k18 SCAT (5) | 4.230000 |
+| lesion-h3 MID (5) | 4.202400 | | lesion-h0 SCAT (10) | 4.234500 |
+| lesion-h0 MID (5) | 4.210900 | | lesion-h1 MID (5) | 4.237400 |
+| lesion-h3 SCAT (10) | 4.213200 | | graft-k35 SCAT (5) | 4.239600 |
+| lesion-h2 MID (5) | 4.216400 | | lesion-h2 SCAT (10) | 4.247000 |
+| graft-k1 SCAT (5) | 4.218200 | | lesion-h1 SCAT (10) | 4.259000 |
+| graft-k35 LOCAL (10) | 4.229500 | | graft-k18 LOCAL (10) | 5.975600 |
+
+Arm values: lesion h0..h3 = 0.0092, 0.6945, 4.1705, 0.0174; graft k1 =
+0.0502, k18 = 4.2595, k35 = 4.0614.
+
+### Reviewer findings, ruled
+
+**AE1 (BLOCKING, against the adjudicator's and builder's summary, not
+the run).** "M3 fired nowhere" is false. M3 fired once: graft-k18
+against its SCAT family; SEPARATED is M2 ∧ M3 by §5 and that band
+printed SEPARATED. The aggregator prints only `m3: compared` and never
+fired/not; the summary was inferred from the print. Verdict unaffected,
+the band is reported-only. RULED: accepted; the correct statement is
+"lesions fired M3 in none of four; the run fired it once, on a
+reported-only band".
+
+**AE2 (SHOULD).** The run's single SEPARATED is the §5 small-family
+artifact, visible in the data: graft-k18's arm value clears its
+five-member SCAT family's max by 0.7% (4.2595 against 4.2300,
+difference 0.0295), while against its ten-member primary LOCAL family
+neither conjunct fires — M2 false and M3 false, family max 5.9756 — so
+that band is NULL-CONSISTENT on both legs. §5 pre-registered exactly
+this ("a smaller family lowers the M3 max and biases toward the
+positive verdict"), which is why reported families stay out of §6.
+RULED: accepted; recorded as the design's prediction confirmed by its
+own data, the strongest evidence in the run that the ten-file primary
+rule was right.
+
+**AE3 (SHOULD).** Across 13 of 14 null families, the family max
+|Δmargin| at the base's three knife-edge steps lies between 4.1815 and
+4.2590 (spread 0.0775), regardless of family type, size or arm. The
+exception is graft-k18's LOCAL family at 5.9756, driven by s384
+(5.9756) and s382 (5.9283). The seven arm values span 0.0092 to 4.2595;
+lesion arms h0..h3 read 0.0092, 0.6945, 4.1705, 0.0174. Measured with
+`step5_max_margin_delta` at `c27084c` over `p*_run1.{log,err}`. The
+reviewer re-ran `step5_max_margin_delta` itself and its own independent
+parser agrees with the library function to four decimals on all
+fourteen families and all seven arm values: the two instruments never
+disagreed. The interval the reviewer first quoted, 4.2024–4.2596, was a
+misreading of its own correct table — 4.2024 is lesion-h3's MID maximum,
+a member of the set rather than its minimum, and 4.2596 appears in
+neither output. The library function is the instrument of record; the
+parser is what verified every band in this run. RULED: accepted as
+MEASUREMENT of the frozen instrument on this run; no interpretation in
+the record. The first follow-up
+question, if philo opens one, is whether ≈4.2 is a bound of the margin
+computation itself.
+
+**AE4 (SHOULD).** The builder's proposed §8 sentence: the first clause
+("the readout partitioned destinations for three of four cut heads") is
+exact — M2 fired for h1, h2, h3 and not h0. The second clause ("the
+margin half of the conjunction had three base steps to fire on"),
+joined by a semicolon, reads as the reason M3 did not fire: attribution
+to prompt scope, forbidden by X7 without a follow-up that varies that
+factor. It is also unsupported here twice over: M3 did fire once on
+those same three steps, and the lesion M3 values against maxima near
+4.2 are not near misses for three of the four. RULED: the adjudicator's
+earlier acceptance is REVERSED; the first clause may stand as fact, the
+second does not enter the record; no replacement wording, philo rules
+it.
+
+**AE5 (NOTE).** The aggregator records that M3 was compared, never what
+it returned; no output line distinguishes an M2-only MIXED from an
+M3-only MIXED, and the run's single M3 firing is invisible in the
+print. That is what produced AE1. RULED: accepted as a tool gap — one
+line per band naming which conjunct fired. It is a change to a pinned
+file, so it is a re-stamp question and waits for a later revision. It
+is recorded, not done.
+
+### Proposed wording for limitations.tex (philo rules; file untouched)
+
+Built from PREREG §1's UNINFORMATIVE licence with this run's numbers
+filled in. No diff exists under `paper/`.
+
+> The positive control this paragraph names has since run, pre-registered
+> and stamped (`evidence/step5-calibration/`): four lesion arms and three
+> graft arms through the same splice machinery, each against its own
+> dose-matched null families, judged by the same frozen five prompts. The
+> readout separated 0 of 4 cut heads from the same damage scattered,
+> below the pre-registered 3/4 bar; at this dose in this window the
+> evidence does not clear the pre-registered bar. 0 of 3 grafts
+> separated against their primary families; not promoted. The verdict is
+> UNINFORMATIVE by the rule fixed before the data. This limitation
+> therefore stands as written: the null continues to license exactly one
+> claim — the changes
+> do not exceed equal-dose random perturbation under this protocol — and
+> no claim about the internal magnitude of adaptation effects. Step 8
+> stays closed until a new instrument exists.
+
+### Guards
+
+GUARD 1 honored: appended only; the frontmatter `head:` line refreshed
+under the live-state exception. GUARD 2 untouched — no frozen verdict
+edited, Branch B not re-litigated. GUARD 3 untouched — no outreach; the
+board is bought and the exporter is unchanged. `evidence/` untouched by
+this commit: the burn evidence landed at `c0f404f` and nothing here
+edits it. `paper/` untouched.

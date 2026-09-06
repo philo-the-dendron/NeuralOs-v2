@@ -1,0 +1,382 @@
+=== step-5 calibration burn — 2026-09-05T17:47:18-04:00 ===
+commit    : c27084ccbdf330e29542fed8995e10fe5358df47   (a commit, never a ref name)
+gen src   : crates/neuralos-rt/examples/step5_calibration.rs
+gen srcsha: 3fcc1a2fa918d6d628fadf42cd42621b821cbc2c3a7e87a32c449a4f19535040
+script    : tools/step5_calibration_burn.sh
+scriptsha : 003875825fc88b31cf2e084f9f65ac3ed21d407dc8e09a1534be899bc94eb423
+frozen-at : 2026-09-05T17:47:18-04:00 — copies extracted from the commit into evidence/step5-calibration/generator/,
+            digests asserted against evidence/step5-calibration/generator/PINNED.sha256 (written at stamp time), listed in
+            evidence/step5-calibration/generator/SHA256SUMS (commit them with the burn evidence)
+generator : target/release/examples/step5_calibration
+gen binsha: 40d914edededf7bbc7089d3539d83e8bac73daaf271a1ff7d17f013cec15746c
+judge     : tools/run_prompts.sh
+models    : models
+evidence  : evidence/step5-calibration
+nulls     : KEPT on an external mount (fstype exfat,
+            device 2081, 2332.2 GiB free) — path from CAL_NULL_DIR
+cap       : 9 h — a cap stop is VOID (INCOMPLETE)
+min free  : 20 GiB on the receiving filesystem, before every write
+
+DOCTRINE, from THIS MOMENT (burn start, both paths) until this branch merges:
+  the generator commit above is FROZEN. No rewrite of work/step5-calibration,
+  --force-with-lease suspended, a red commit is fixed by a NEW commit on top.
+  A rewritten history would orphan the recipe that makes a deleted null provable.
+
+--- arm lesion-h0 · free 90.4 GiB · elapsed 0.00 h · families [scat mid] ---
+generate: lesion-h0
+judge   : cal-lesion-h0.gguf → evidence/step5-calibration/burn/cal-lesion-h0 (double)
+judge   : cal-lesion-h0-scat-s301.gguf → evidence/step5-calibration/burn/cal-lesion-h0-scat-s301 (single)
+moved   : cal-lesion-h0-scat-s301.gguf → the external mount (device 2081)
+pinned  : 428a325225f1b9012935fa13dba1326af38f52ef214f6b28bea7607b9fc8c9f2  cal-lesion-h0-scat-s301.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-scat-s302.gguf → evidence/step5-calibration/burn/cal-lesion-h0-scat-s302 (single)
+moved   : cal-lesion-h0-scat-s302.gguf → the external mount (device 2081)
+pinned  : 711d508cb7780ad801262a04102414fe2135d59ff53b4a77af0e3e7f524e6566  cal-lesion-h0-scat-s302.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-scat-s303.gguf → evidence/step5-calibration/burn/cal-lesion-h0-scat-s303 (single)
+moved   : cal-lesion-h0-scat-s303.gguf → the external mount (device 2081)
+pinned  : 8cc4cee8704153cb8f492663362b8fa8909386a62ddbd752b7066e8c44a0e4b4  cal-lesion-h0-scat-s303.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-scat-s304.gguf → evidence/step5-calibration/burn/cal-lesion-h0-scat-s304 (single)
+moved   : cal-lesion-h0-scat-s304.gguf → the external mount (device 2081)
+pinned  : c64930035011720ca47b513b9c4ce499f4eaa33f56650ea0e59bb10e989df459  cal-lesion-h0-scat-s304.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-scat-s305.gguf → evidence/step5-calibration/burn/cal-lesion-h0-scat-s305 (single)
+moved   : cal-lesion-h0-scat-s305.gguf → the external mount (device 2081)
+pinned  : 2f070c8c92f9a7742f9242cbaf1b7f16179d77569fc3e6a6e24324b46af72270  cal-lesion-h0-scat-s305.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-scat-s306.gguf → evidence/step5-calibration/burn/cal-lesion-h0-scat-s306 (single)
+moved   : cal-lesion-h0-scat-s306.gguf → the external mount (device 2081)
+pinned  : 95fcfe89d88ce853f7ba375bd53d3d1365f810e685fd58370305d557445622b5  cal-lesion-h0-scat-s306.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-scat-s307.gguf → evidence/step5-calibration/burn/cal-lesion-h0-scat-s307 (single)
+moved   : cal-lesion-h0-scat-s307.gguf → the external mount (device 2081)
+pinned  : 22a8ac7b876471ab1995da26eedef4a67a093b251cd5f83f27f3313b0671b67f  cal-lesion-h0-scat-s307.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-scat-s308.gguf → evidence/step5-calibration/burn/cal-lesion-h0-scat-s308 (single)
+moved   : cal-lesion-h0-scat-s308.gguf → the external mount (device 2081)
+pinned  : 5e6295dd10dd2c4e947132d8a45f064e717fdb4e571b7136d0bb245dc48fb1e6  cal-lesion-h0-scat-s308.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-scat-s309.gguf → evidence/step5-calibration/burn/cal-lesion-h0-scat-s309 (single)
+moved   : cal-lesion-h0-scat-s309.gguf → the external mount (device 2081)
+pinned  : aa3497eb53966d2d38d87a3c2046ec7c3c2363e66c58b15ccca8e6d525ac4b9e  cal-lesion-h0-scat-s309.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-scat-s310.gguf → evidence/step5-calibration/burn/cal-lesion-h0-scat-s310 (single)
+moved   : cal-lesion-h0-scat-s310.gguf → the external mount (device 2081)
+pinned  : 5dcacf262f25cb922cfb9a5700b782778d93d6d150e13514712beab7319daa51  cal-lesion-h0-scat-s310.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-mid-s401.gguf → evidence/step5-calibration/burn/cal-lesion-h0-mid-s401 (single)
+moved   : cal-lesion-h0-mid-s401.gguf → the external mount (device 2081)
+pinned  : 8b1645207a66cc10f374c6891b07ce43e748977254cd090afa0e06d036e089b8  cal-lesion-h0-mid-s401.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-mid-s402.gguf → evidence/step5-calibration/burn/cal-lesion-h0-mid-s402 (single)
+moved   : cal-lesion-h0-mid-s402.gguf → the external mount (device 2081)
+pinned  : 529489773232e93018802288cd8aed49d220c494e0aa38136d63b097e6c64d62  cal-lesion-h0-mid-s402.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-mid-s403.gguf → evidence/step5-calibration/burn/cal-lesion-h0-mid-s403 (single)
+moved   : cal-lesion-h0-mid-s403.gguf → the external mount (device 2081)
+pinned  : da02dcea502f4d14495ec3d0fd9bf9621f0309b646f519af4b04c7f02276846b  cal-lesion-h0-mid-s403.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-mid-s404.gguf → evidence/step5-calibration/burn/cal-lesion-h0-mid-s404 (single)
+moved   : cal-lesion-h0-mid-s404.gguf → the external mount (device 2081)
+pinned  : ffe335fd6caee9fe38bac07bd3d60349ba7e0aa5fcd1683fb66eb8e5afb9f17f  cal-lesion-h0-mid-s404.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h0-mid-s405.gguf → evidence/step5-calibration/burn/cal-lesion-h0-mid-s405 (single)
+moved   : cal-lesion-h0-mid-s405.gguf → the external mount (device 2081)
+pinned  : a462768feaa141c572811e58ceeb22da64c095d2279bd99e515a56c9babed8d1  cal-lesion-h0-mid-s405.gguf — judged, pinned, KEPT on the external mount
+arm lesion-h0: done · free 89.4 GiB · elapsed 0.84 h
+
+--- arm lesion-h1 · free 89.4 GiB · elapsed 0.84 h · families [scat mid] ---
+generate: lesion-h1
+judge   : cal-lesion-h1.gguf → evidence/step5-calibration/burn/cal-lesion-h1 (double)
+judge   : cal-lesion-h1-scat-s311.gguf → evidence/step5-calibration/burn/cal-lesion-h1-scat-s311 (single)
+moved   : cal-lesion-h1-scat-s311.gguf → the external mount (device 2081)
+pinned  : fecea94060e8c487574a40a4b5e2d47c91af99bbba9cc556a451dcbc59f08fa3  cal-lesion-h1-scat-s311.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-scat-s312.gguf → evidence/step5-calibration/burn/cal-lesion-h1-scat-s312 (single)
+moved   : cal-lesion-h1-scat-s312.gguf → the external mount (device 2081)
+pinned  : 4984a3ae3fb552b4dfcc3d53e857f5de96fabbafc85c8a9dda8a339575f38bfa  cal-lesion-h1-scat-s312.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-scat-s313.gguf → evidence/step5-calibration/burn/cal-lesion-h1-scat-s313 (single)
+moved   : cal-lesion-h1-scat-s313.gguf → the external mount (device 2081)
+pinned  : 9f18080b5c27c0c719c154719a2e169540eab017eab508f6080cc4e517752e72  cal-lesion-h1-scat-s313.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-scat-s314.gguf → evidence/step5-calibration/burn/cal-lesion-h1-scat-s314 (single)
+moved   : cal-lesion-h1-scat-s314.gguf → the external mount (device 2081)
+pinned  : 371279c9fe606a9ecfaa98ef64cc451f3f4fae3d5c37c9fd8d99cf359f973d76  cal-lesion-h1-scat-s314.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-scat-s315.gguf → evidence/step5-calibration/burn/cal-lesion-h1-scat-s315 (single)
+moved   : cal-lesion-h1-scat-s315.gguf → the external mount (device 2081)
+pinned  : 61ab4cb9c3fb20463df31cd2b30d37b4e70db6ef635b3a81ccb3870fe8e22682  cal-lesion-h1-scat-s315.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-scat-s316.gguf → evidence/step5-calibration/burn/cal-lesion-h1-scat-s316 (single)
+moved   : cal-lesion-h1-scat-s316.gguf → the external mount (device 2081)
+pinned  : 086fea90c8b6010665de4365fd4fde7502bd6bfab7b1f6a02c08c4ee25005ac6  cal-lesion-h1-scat-s316.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-scat-s317.gguf → evidence/step5-calibration/burn/cal-lesion-h1-scat-s317 (single)
+moved   : cal-lesion-h1-scat-s317.gguf → the external mount (device 2081)
+pinned  : b825597df100c07d17bebcf90e03e1fd45d76cb1b8159361a6fdd51eab362247  cal-lesion-h1-scat-s317.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-scat-s318.gguf → evidence/step5-calibration/burn/cal-lesion-h1-scat-s318 (single)
+moved   : cal-lesion-h1-scat-s318.gguf → the external mount (device 2081)
+pinned  : 71a2fe1b8c75f8c2ed3d16ec118f0164585f715e1d5088de85db350b7e350246  cal-lesion-h1-scat-s318.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-scat-s319.gguf → evidence/step5-calibration/burn/cal-lesion-h1-scat-s319 (single)
+moved   : cal-lesion-h1-scat-s319.gguf → the external mount (device 2081)
+pinned  : 5dc15f3b50f8e966874244b4887b15207fb03a2e21c71a80a4b5646e9eb7623e  cal-lesion-h1-scat-s319.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-scat-s320.gguf → evidence/step5-calibration/burn/cal-lesion-h1-scat-s320 (single)
+moved   : cal-lesion-h1-scat-s320.gguf → the external mount (device 2081)
+pinned  : 888d6ceae727477c29ed141b682466521f181650062472a6b8e064bf89fc491c  cal-lesion-h1-scat-s320.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-mid-s411.gguf → evidence/step5-calibration/burn/cal-lesion-h1-mid-s411 (single)
+moved   : cal-lesion-h1-mid-s411.gguf → the external mount (device 2081)
+pinned  : cd17781fa92fe9dfeae8841bc87fdfdd495b0063f96b011c1c53f358819fab99  cal-lesion-h1-mid-s411.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-mid-s412.gguf → evidence/step5-calibration/burn/cal-lesion-h1-mid-s412 (single)
+moved   : cal-lesion-h1-mid-s412.gguf → the external mount (device 2081)
+pinned  : 51f7e1740eaa4398efa4c9a2241f35ea14113d0b0df435efd0ac9a869198daab  cal-lesion-h1-mid-s412.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-mid-s413.gguf → evidence/step5-calibration/burn/cal-lesion-h1-mid-s413 (single)
+moved   : cal-lesion-h1-mid-s413.gguf → the external mount (device 2081)
+pinned  : 80a9505d310041799df96cddf2128946f1ad23f055c547de2a327d21e73105be  cal-lesion-h1-mid-s413.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-mid-s414.gguf → evidence/step5-calibration/burn/cal-lesion-h1-mid-s414 (single)
+moved   : cal-lesion-h1-mid-s414.gguf → the external mount (device 2081)
+pinned  : 79e09c7444a4bcad1a3f176437db0bb798a57b4d9cb94dd2a6de5c71a980be3e  cal-lesion-h1-mid-s414.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h1-mid-s415.gguf → evidence/step5-calibration/burn/cal-lesion-h1-mid-s415 (single)
+moved   : cal-lesion-h1-mid-s415.gguf → the external mount (device 2081)
+pinned  : 6fed894672b16ef6b14a6107b06bca354974770f44366eb3d35b1a02cb7166fd  cal-lesion-h1-mid-s415.gguf — judged, pinned, KEPT on the external mount
+arm lesion-h1: done · free 88.4 GiB · elapsed 1.65 h
+
+--- arm lesion-h2 · free 88.4 GiB · elapsed 1.65 h · families [scat mid] ---
+generate: lesion-h2
+judge   : cal-lesion-h2.gguf → evidence/step5-calibration/burn/cal-lesion-h2 (double)
+judge   : cal-lesion-h2-scat-s321.gguf → evidence/step5-calibration/burn/cal-lesion-h2-scat-s321 (single)
+moved   : cal-lesion-h2-scat-s321.gguf → the external mount (device 2081)
+pinned  : 3e487e03a7e71fdeeb2e5b4a69440cd556b4caf44932d2884222cea68aea6a59  cal-lesion-h2-scat-s321.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-scat-s322.gguf → evidence/step5-calibration/burn/cal-lesion-h2-scat-s322 (single)
+moved   : cal-lesion-h2-scat-s322.gguf → the external mount (device 2081)
+pinned  : e800b18cf4b80df889333611ecda85d3ad3a14030c650b4d4c0d3b841685dab8  cal-lesion-h2-scat-s322.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-scat-s323.gguf → evidence/step5-calibration/burn/cal-lesion-h2-scat-s323 (single)
+moved   : cal-lesion-h2-scat-s323.gguf → the external mount (device 2081)
+pinned  : 2505ca6bd85727ccadeca751ec483b360364f1dce1afb6624781d0a242aa22a4  cal-lesion-h2-scat-s323.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-scat-s324.gguf → evidence/step5-calibration/burn/cal-lesion-h2-scat-s324 (single)
+moved   : cal-lesion-h2-scat-s324.gguf → the external mount (device 2081)
+pinned  : 9053eb2883b0838d9f152c4f6f85b55d04aa1121aca961099ef5d77f9fcf2b5b  cal-lesion-h2-scat-s324.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-scat-s325.gguf → evidence/step5-calibration/burn/cal-lesion-h2-scat-s325 (single)
+moved   : cal-lesion-h2-scat-s325.gguf → the external mount (device 2081)
+pinned  : 5917819cf939fabbd8a3cb6b93cc6aeea3a434c0f574bdef7f73759c4576fdb4  cal-lesion-h2-scat-s325.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-scat-s326.gguf → evidence/step5-calibration/burn/cal-lesion-h2-scat-s326 (single)
+moved   : cal-lesion-h2-scat-s326.gguf → the external mount (device 2081)
+pinned  : ac86d7728ffb3186e42533c27ace61ead8019361c87fc07fc7fe8d380acec439  cal-lesion-h2-scat-s326.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-scat-s327.gguf → evidence/step5-calibration/burn/cal-lesion-h2-scat-s327 (single)
+moved   : cal-lesion-h2-scat-s327.gguf → the external mount (device 2081)
+pinned  : 904463f943a4783351eb891f17fa265edd8734c9a775755072ecead3d06ff12a  cal-lesion-h2-scat-s327.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-scat-s328.gguf → evidence/step5-calibration/burn/cal-lesion-h2-scat-s328 (single)
+moved   : cal-lesion-h2-scat-s328.gguf → the external mount (device 2081)
+pinned  : be78543e932cdceeb3552c4b7bba5577976d21c76a8ddf5bc2defe4741a568f3  cal-lesion-h2-scat-s328.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-scat-s329.gguf → evidence/step5-calibration/burn/cal-lesion-h2-scat-s329 (single)
+moved   : cal-lesion-h2-scat-s329.gguf → the external mount (device 2081)
+pinned  : 5830ac508ae59629022b5f825cb9a249a4673c3b9440fee0d1dd7ef5263b56b6  cal-lesion-h2-scat-s329.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-scat-s330.gguf → evidence/step5-calibration/burn/cal-lesion-h2-scat-s330 (single)
+moved   : cal-lesion-h2-scat-s330.gguf → the external mount (device 2081)
+pinned  : 0e119055d770d000343dc606a71d024b98818e6cac12067b0eea5a4ccc42a597  cal-lesion-h2-scat-s330.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-mid-s421.gguf → evidence/step5-calibration/burn/cal-lesion-h2-mid-s421 (single)
+moved   : cal-lesion-h2-mid-s421.gguf → the external mount (device 2081)
+pinned  : b9b475f1212820bbd8b6b2eb033d612a71f6863a413c25a6ea79c16917aee088  cal-lesion-h2-mid-s421.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-mid-s422.gguf → evidence/step5-calibration/burn/cal-lesion-h2-mid-s422 (single)
+moved   : cal-lesion-h2-mid-s422.gguf → the external mount (device 2081)
+pinned  : 3073c60005859e4432f061c2960ffda46441a062bbfcc3bc92bd8f0d2740fcab  cal-lesion-h2-mid-s422.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-mid-s423.gguf → evidence/step5-calibration/burn/cal-lesion-h2-mid-s423 (single)
+moved   : cal-lesion-h2-mid-s423.gguf → the external mount (device 2081)
+pinned  : b457625d517928a00b187a06ee99892313a6f4502a4abf00087ef815d2d9ba75  cal-lesion-h2-mid-s423.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-mid-s424.gguf → evidence/step5-calibration/burn/cal-lesion-h2-mid-s424 (single)
+moved   : cal-lesion-h2-mid-s424.gguf → the external mount (device 2081)
+pinned  : 6ea92d95a8f4fd5d1ab41847c966f6ddc274d7cd77a41246d59530cbd09ac5db  cal-lesion-h2-mid-s424.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h2-mid-s425.gguf → evidence/step5-calibration/burn/cal-lesion-h2-mid-s425 (single)
+moved   : cal-lesion-h2-mid-s425.gguf → the external mount (device 2081)
+pinned  : 0f7f3f6c964db3fe614d2a1ec526056d3163bf7f57094d2877bf44453decb877  cal-lesion-h2-mid-s425.gguf — judged, pinned, KEPT on the external mount
+arm lesion-h2: done · free 87.4 GiB · elapsed 2.49 h
+
+--- arm lesion-h3 · free 87.4 GiB · elapsed 2.49 h · families [scat mid] ---
+generate: lesion-h3
+judge   : cal-lesion-h3.gguf → evidence/step5-calibration/burn/cal-lesion-h3 (double)
+judge   : cal-lesion-h3-scat-s331.gguf → evidence/step5-calibration/burn/cal-lesion-h3-scat-s331 (single)
+moved   : cal-lesion-h3-scat-s331.gguf → the external mount (device 2081)
+pinned  : 74ff3e42d2efe16d9693cd77d9fa6e29c116ca3a7a1eea8aefe3bb770e13990b  cal-lesion-h3-scat-s331.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-scat-s332.gguf → evidence/step5-calibration/burn/cal-lesion-h3-scat-s332 (single)
+moved   : cal-lesion-h3-scat-s332.gguf → the external mount (device 2081)
+pinned  : 703d489e65038b5048f4277e61e7ed06e8bac3d3afdb8b0f8b99ef9e80562470  cal-lesion-h3-scat-s332.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-scat-s333.gguf → evidence/step5-calibration/burn/cal-lesion-h3-scat-s333 (single)
+moved   : cal-lesion-h3-scat-s333.gguf → the external mount (device 2081)
+pinned  : 2231be79374761a2c011c55105f4c5cf6c7e419e5e300122733d176fe681951e  cal-lesion-h3-scat-s333.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-scat-s334.gguf → evidence/step5-calibration/burn/cal-lesion-h3-scat-s334 (single)
+moved   : cal-lesion-h3-scat-s334.gguf → the external mount (device 2081)
+pinned  : 682ad96d73fb07ee5260f35848e970b3ccb2c82d6512b1640d9d6eadaff72778  cal-lesion-h3-scat-s334.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-scat-s335.gguf → evidence/step5-calibration/burn/cal-lesion-h3-scat-s335 (single)
+moved   : cal-lesion-h3-scat-s335.gguf → the external mount (device 2081)
+pinned  : b069048039ce328432c5c432f21d1e4b0bb8b07b39f624b15bf2064f5297913c  cal-lesion-h3-scat-s335.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-scat-s336.gguf → evidence/step5-calibration/burn/cal-lesion-h3-scat-s336 (single)
+moved   : cal-lesion-h3-scat-s336.gguf → the external mount (device 2081)
+pinned  : 7434b9724a2589a9857955f3445d902da72b12116632dbd28c893864bb1618ba  cal-lesion-h3-scat-s336.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-scat-s337.gguf → evidence/step5-calibration/burn/cal-lesion-h3-scat-s337 (single)
+moved   : cal-lesion-h3-scat-s337.gguf → the external mount (device 2081)
+pinned  : e965421513dec47870bcfedf9c3132baad4b13d8d4196ec236b402ab3ead5810  cal-lesion-h3-scat-s337.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-scat-s338.gguf → evidence/step5-calibration/burn/cal-lesion-h3-scat-s338 (single)
+moved   : cal-lesion-h3-scat-s338.gguf → the external mount (device 2081)
+pinned  : 3fba13fedb4424c473f5b4dab702fdcc4f92a31a214c3d672b4d9e7fe0a8a420  cal-lesion-h3-scat-s338.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-scat-s339.gguf → evidence/step5-calibration/burn/cal-lesion-h3-scat-s339 (single)
+moved   : cal-lesion-h3-scat-s339.gguf → the external mount (device 2081)
+pinned  : 44b108045e4faed08e22e357d0ca6c4764c17ceb2824cf6ee7e7a569968b2871  cal-lesion-h3-scat-s339.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-scat-s340.gguf → evidence/step5-calibration/burn/cal-lesion-h3-scat-s340 (single)
+moved   : cal-lesion-h3-scat-s340.gguf → the external mount (device 2081)
+pinned  : 090bb836c73e7d1a24f9f745f2d579edcfff6ba1637fd8046917f75b20b6fb61  cal-lesion-h3-scat-s340.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-mid-s431.gguf → evidence/step5-calibration/burn/cal-lesion-h3-mid-s431 (single)
+moved   : cal-lesion-h3-mid-s431.gguf → the external mount (device 2081)
+pinned  : 2631cc31fd048a6a59b5fc2bbb07b553457967f8b233fed3509d87a3a31e9da3  cal-lesion-h3-mid-s431.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-mid-s432.gguf → evidence/step5-calibration/burn/cal-lesion-h3-mid-s432 (single)
+moved   : cal-lesion-h3-mid-s432.gguf → the external mount (device 2081)
+pinned  : 78bc0160b17ea633d44df04e83ebbd2f9a3c5d07a7680d670dda9dce3aa599fe  cal-lesion-h3-mid-s432.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-mid-s433.gguf → evidence/step5-calibration/burn/cal-lesion-h3-mid-s433 (single)
+moved   : cal-lesion-h3-mid-s433.gguf → the external mount (device 2081)
+pinned  : 6072513397366ddb319b34dddd0b66194d195019ecb24a686c386bc566b0b995  cal-lesion-h3-mid-s433.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-mid-s434.gguf → evidence/step5-calibration/burn/cal-lesion-h3-mid-s434 (single)
+moved   : cal-lesion-h3-mid-s434.gguf → the external mount (device 2081)
+pinned  : 333913af9e8d34eb6eed46ed541315b892d5210bf74ee3d91ceb37f9e6507120  cal-lesion-h3-mid-s434.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-lesion-h3-mid-s435.gguf → evidence/step5-calibration/burn/cal-lesion-h3-mid-s435 (single)
+moved   : cal-lesion-h3-mid-s435.gguf → the external mount (device 2081)
+pinned  : f0e6f63ef486d2b0e2e6d267198f2a565fa0f1f183b54e961e16b18b9a48d86d  cal-lesion-h3-mid-s435.gguf — judged, pinned, KEPT on the external mount
+arm lesion-h3: done · free 86.4 GiB · elapsed 3.34 h
+
+--- arm graft-k1 · free 86.4 GiB · elapsed 3.34 h · families [scat local] ---
+generate: graft-k1
+judge   : cal-graft-k1.gguf → evidence/step5-calibration/burn/cal-graft-k1 (double)
+judge   : cal-graft-k1-scat-s341.gguf → evidence/step5-calibration/burn/cal-graft-k1-scat-s341 (single)
+moved   : cal-graft-k1-scat-s341.gguf → the external mount (device 2081)
+pinned  : 6645b7041ac1029dc9c78365a006e0bb755a736d7e85e2775c538e849c2ef5f6  cal-graft-k1-scat-s341.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-scat-s342.gguf → evidence/step5-calibration/burn/cal-graft-k1-scat-s342 (single)
+moved   : cal-graft-k1-scat-s342.gguf → the external mount (device 2081)
+pinned  : 6b8b7ab77772b302ef09d58c78493362b3ed6e99f90000a33d0be7e658137308  cal-graft-k1-scat-s342.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-scat-s343.gguf → evidence/step5-calibration/burn/cal-graft-k1-scat-s343 (single)
+moved   : cal-graft-k1-scat-s343.gguf → the external mount (device 2081)
+pinned  : 521dad409af7e815f6fb0847b81ca6fc2edc2515d8ebd484edc05284f1bdd256  cal-graft-k1-scat-s343.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-scat-s344.gguf → evidence/step5-calibration/burn/cal-graft-k1-scat-s344 (single)
+moved   : cal-graft-k1-scat-s344.gguf → the external mount (device 2081)
+pinned  : 242bfee05d8261ce3cbfd7673283eb5e6d9a4442f3cdf4aec88524b6b91ddc05  cal-graft-k1-scat-s344.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-scat-s345.gguf → evidence/step5-calibration/burn/cal-graft-k1-scat-s345 (single)
+moved   : cal-graft-k1-scat-s345.gguf → the external mount (device 2081)
+pinned  : 82ca99f84d427b3b1a1f2753b1cdd577a9bd2d7832d6347e555f4844540395cd  cal-graft-k1-scat-s345.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-local-s371.gguf → evidence/step5-calibration/burn/cal-graft-k1-local-s371 (single)
+moved   : cal-graft-k1-local-s371.gguf → the external mount (device 2081)
+pinned  : b280289d96bf414d9d533786f7e5a5f64c94852b40d49b9968a2fd271814ad9d  cal-graft-k1-local-s371.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-local-s372.gguf → evidence/step5-calibration/burn/cal-graft-k1-local-s372 (single)
+moved   : cal-graft-k1-local-s372.gguf → the external mount (device 2081)
+pinned  : 73cc282f1c23e4f74b1dac592a2997873849f69c451725b12d604c750d3d253a  cal-graft-k1-local-s372.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-local-s373.gguf → evidence/step5-calibration/burn/cal-graft-k1-local-s373 (single)
+moved   : cal-graft-k1-local-s373.gguf → the external mount (device 2081)
+pinned  : 0f906b1ccb2d85ec9e115c772c69d762bb9390b757cd615fbc8293dce599ce9a  cal-graft-k1-local-s373.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-local-s374.gguf → evidence/step5-calibration/burn/cal-graft-k1-local-s374 (single)
+moved   : cal-graft-k1-local-s374.gguf → the external mount (device 2081)
+pinned  : a9f6d28114601d29b4f675b7466c77e1d1fcc5c4377ef5d8326ea0f361d98bf0  cal-graft-k1-local-s374.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-local-s375.gguf → evidence/step5-calibration/burn/cal-graft-k1-local-s375 (single)
+moved   : cal-graft-k1-local-s375.gguf → the external mount (device 2081)
+pinned  : 6cb918772889ecc5b0832a0a22697fedd43d3d634c65b53bdbc006ea520dbd38  cal-graft-k1-local-s375.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-local-s376.gguf → evidence/step5-calibration/burn/cal-graft-k1-local-s376 (single)
+moved   : cal-graft-k1-local-s376.gguf → the external mount (device 2081)
+pinned  : 48beca2e48d62b2cbf482185d8e21f44064f11fb076e136358375dae45acefa2  cal-graft-k1-local-s376.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-local-s377.gguf → evidence/step5-calibration/burn/cal-graft-k1-local-s377 (single)
+moved   : cal-graft-k1-local-s377.gguf → the external mount (device 2081)
+pinned  : 925f6953aa240b9bb40212df89da26f360d46153d119fa8db85a0edc8f57513c  cal-graft-k1-local-s377.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-local-s378.gguf → evidence/step5-calibration/burn/cal-graft-k1-local-s378 (single)
+moved   : cal-graft-k1-local-s378.gguf → the external mount (device 2081)
+pinned  : ba53b36123abf84753f53ee7f1333066ace7663bc3bddb8c48b31f414943076d  cal-graft-k1-local-s378.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-local-s379.gguf → evidence/step5-calibration/burn/cal-graft-k1-local-s379 (single)
+moved   : cal-graft-k1-local-s379.gguf → the external mount (device 2081)
+pinned  : 6ac518420889cc96d5f5145a4304ded3a2f051076c484fe83c2a4f064a0ea91e  cal-graft-k1-local-s379.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k1-local-s380.gguf → evidence/step5-calibration/burn/cal-graft-k1-local-s380 (single)
+moved   : cal-graft-k1-local-s380.gguf → the external mount (device 2081)
+pinned  : 60ce350d8335c422c2de702c8f9c328a3faec8dddf746c1ed8fe2e8b78e456e1  cal-graft-k1-local-s380.gguf — judged, pinned, KEPT on the external mount
+arm graft-k1: done · free 85.4 GiB · elapsed 4.20 h
+
+--- arm graft-k18 · free 85.4 GiB · elapsed 4.20 h · families [scat local] ---
+generate: graft-k18
+judge   : cal-graft-k18.gguf → evidence/step5-calibration/burn/cal-graft-k18 (double)
+judge   : cal-graft-k18-scat-s351.gguf → evidence/step5-calibration/burn/cal-graft-k18-scat-s351 (single)
+moved   : cal-graft-k18-scat-s351.gguf → the external mount (device 2081)
+pinned  : 92fe77aa51174d6c0e44783baa5406d72924ed89e4dcd2de87f913486fdff3de  cal-graft-k18-scat-s351.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-scat-s352.gguf → evidence/step5-calibration/burn/cal-graft-k18-scat-s352 (single)
+moved   : cal-graft-k18-scat-s352.gguf → the external mount (device 2081)
+pinned  : 157e0e8f8131eaf75ae11ad184ec4e67bed1e0713cf1cc71bdc01bcfca17b5a1  cal-graft-k18-scat-s352.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-scat-s353.gguf → evidence/step5-calibration/burn/cal-graft-k18-scat-s353 (single)
+moved   : cal-graft-k18-scat-s353.gguf → the external mount (device 2081)
+pinned  : 5df889f2df623cdd41abe28bee2984de9798dfa155b896a862696aba0778b0a1  cal-graft-k18-scat-s353.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-scat-s354.gguf → evidence/step5-calibration/burn/cal-graft-k18-scat-s354 (single)
+moved   : cal-graft-k18-scat-s354.gguf → the external mount (device 2081)
+pinned  : 34123b905a1039c70f00beff70b1abce3a7132719747531ef85cbe4b33e83104  cal-graft-k18-scat-s354.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-scat-s355.gguf → evidence/step5-calibration/burn/cal-graft-k18-scat-s355 (single)
+moved   : cal-graft-k18-scat-s355.gguf → the external mount (device 2081)
+pinned  : d99eb3c7e97f82721219642f8b29dadb8a170fad72c7e1322884a8d2bac3686a  cal-graft-k18-scat-s355.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-local-s381.gguf → evidence/step5-calibration/burn/cal-graft-k18-local-s381 (single)
+moved   : cal-graft-k18-local-s381.gguf → the external mount (device 2081)
+pinned  : dfaaed2cf8443c38ab5df1d1056b2f1a035e05aabea959ab3684e2a5097533cb  cal-graft-k18-local-s381.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-local-s382.gguf → evidence/step5-calibration/burn/cal-graft-k18-local-s382 (single)
+moved   : cal-graft-k18-local-s382.gguf → the external mount (device 2081)
+pinned  : 37edd7bf41392474d1bcdf3da438ed046a811db3bb33e81b0537a2f87c1137f8  cal-graft-k18-local-s382.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-local-s383.gguf → evidence/step5-calibration/burn/cal-graft-k18-local-s383 (single)
+moved   : cal-graft-k18-local-s383.gguf → the external mount (device 2081)
+pinned  : cd395ab5f196a7a91ca629ff54077720894cf30acd83e4c00464f98b925f73b8  cal-graft-k18-local-s383.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-local-s384.gguf → evidence/step5-calibration/burn/cal-graft-k18-local-s384 (single)
+moved   : cal-graft-k18-local-s384.gguf → the external mount (device 2081)
+pinned  : f628f186d2d429b7a7605fe93ff7c54659a8ba2f60ae9fe65f1a5a8389178ded  cal-graft-k18-local-s384.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-local-s385.gguf → evidence/step5-calibration/burn/cal-graft-k18-local-s385 (single)
+moved   : cal-graft-k18-local-s385.gguf → the external mount (device 2081)
+pinned  : 541af734e7076241fa5aaeaf02904ddf7490426323a5317ca970d815c703dbc4  cal-graft-k18-local-s385.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-local-s386.gguf → evidence/step5-calibration/burn/cal-graft-k18-local-s386 (single)
+moved   : cal-graft-k18-local-s386.gguf → the external mount (device 2081)
+pinned  : 9ec634d9b65ef54cd251584adc5b2a0370484192927980a8c00aa5c2e78ba6ee  cal-graft-k18-local-s386.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-local-s387.gguf → evidence/step5-calibration/burn/cal-graft-k18-local-s387 (single)
+moved   : cal-graft-k18-local-s387.gguf → the external mount (device 2081)
+pinned  : c2819702a158e75885bb677c3340d81fb6a005813a97633ec69a4616cf8bea02  cal-graft-k18-local-s387.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-local-s388.gguf → evidence/step5-calibration/burn/cal-graft-k18-local-s388 (single)
+moved   : cal-graft-k18-local-s388.gguf → the external mount (device 2081)
+pinned  : cd1f36a3153bf6863d4ab17ac0e54222046c717aca9922e34551af1a9279078c  cal-graft-k18-local-s388.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-local-s389.gguf → evidence/step5-calibration/burn/cal-graft-k18-local-s389 (single)
+moved   : cal-graft-k18-local-s389.gguf → the external mount (device 2081)
+pinned  : 4a920c3085f7b67a7c44da9ab8f12c84195ee31f407c2a77e8d31ecb67e91e00  cal-graft-k18-local-s389.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k18-local-s390.gguf → evidence/step5-calibration/burn/cal-graft-k18-local-s390 (single)
+moved   : cal-graft-k18-local-s390.gguf → the external mount (device 2081)
+pinned  : cd7134193a1850785dacac059892257d626ffa600d067d53feb2714d5eaee6d8  cal-graft-k18-local-s390.gguf — judged, pinned, KEPT on the external mount
+arm graft-k18: done · free 82.0 GiB · elapsed 5.30 h
+
+--- arm graft-k35 · free 82.0 GiB · elapsed 5.30 h · families [scat local] ---
+generate: graft-k35
+judge   : cal-graft-k35.gguf → evidence/step5-calibration/burn/cal-graft-k35 (double)
+judge   : cal-graft-k35-scat-s361.gguf → evidence/step5-calibration/burn/cal-graft-k35-scat-s361 (single)
+moved   : cal-graft-k35-scat-s361.gguf → the external mount (device 2081)
+pinned  : ac0a16831595f66909a42cf11f4f71a72837b25d8820789c284db507396e8df9  cal-graft-k35-scat-s361.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-scat-s362.gguf → evidence/step5-calibration/burn/cal-graft-k35-scat-s362 (single)
+moved   : cal-graft-k35-scat-s362.gguf → the external mount (device 2081)
+pinned  : 899d156d1772f348b2bd8e5661772dfb3ab641ed4f1b58923827ac3de3d98af5  cal-graft-k35-scat-s362.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-scat-s363.gguf → evidence/step5-calibration/burn/cal-graft-k35-scat-s363 (single)
+moved   : cal-graft-k35-scat-s363.gguf → the external mount (device 2081)
+pinned  : 4fcddf00cae0866d204c1d75b9e10915f60ea5cba6e575dc594f2665c08ecacf  cal-graft-k35-scat-s363.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-scat-s364.gguf → evidence/step5-calibration/burn/cal-graft-k35-scat-s364 (single)
+moved   : cal-graft-k35-scat-s364.gguf → the external mount (device 2081)
+pinned  : bd65b4093db9bcc01d0ce135ba78f3ae2cfdaab7914d83d917fb4c12d74c8b3d  cal-graft-k35-scat-s364.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-scat-s365.gguf → evidence/step5-calibration/burn/cal-graft-k35-scat-s365 (single)
+moved   : cal-graft-k35-scat-s365.gguf → the external mount (device 2081)
+pinned  : 5ebab095d3eed64133a5d41a4794d22df6275850af9477985be1ed78289ddf8c  cal-graft-k35-scat-s365.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-local-s391.gguf → evidence/step5-calibration/burn/cal-graft-k35-local-s391 (single)
+moved   : cal-graft-k35-local-s391.gguf → the external mount (device 2081)
+pinned  : 941f99998a55e2e87684a45a3239eb58c697f9730641b3e4c330ba700f51d679  cal-graft-k35-local-s391.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-local-s392.gguf → evidence/step5-calibration/burn/cal-graft-k35-local-s392 (single)
+moved   : cal-graft-k35-local-s392.gguf → the external mount (device 2081)
+pinned  : 57af86cb593d0e55df7e429da582f6e7f089830dd6b58454d5caa06668b5109d  cal-graft-k35-local-s392.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-local-s393.gguf → evidence/step5-calibration/burn/cal-graft-k35-local-s393 (single)
+moved   : cal-graft-k35-local-s393.gguf → the external mount (device 2081)
+pinned  : f214dbe49b148aff161bd455d2b1cddfb955c02a1bcfca2607c55769fc122fac  cal-graft-k35-local-s393.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-local-s394.gguf → evidence/step5-calibration/burn/cal-graft-k35-local-s394 (single)
+moved   : cal-graft-k35-local-s394.gguf → the external mount (device 2081)
+pinned  : c54712cb4b2f59a2fbaf62f4354c1e1ee293de3ea58ad766c7fe294b1da31a1a  cal-graft-k35-local-s394.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-local-s395.gguf → evidence/step5-calibration/burn/cal-graft-k35-local-s395 (single)
+moved   : cal-graft-k35-local-s395.gguf → the external mount (device 2081)
+pinned  : 9c84db483e298bb1b4e4b2205227147df06dbf64a7c9d82fe9ebd6e1fa384504  cal-graft-k35-local-s395.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-local-s396.gguf → evidence/step5-calibration/burn/cal-graft-k35-local-s396 (single)
+moved   : cal-graft-k35-local-s396.gguf → the external mount (device 2081)
+pinned  : d203051141342e42de41e71afdd5955e8a202562d222abf18c4465d1ddced328  cal-graft-k35-local-s396.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-local-s397.gguf → evidence/step5-calibration/burn/cal-graft-k35-local-s397 (single)
+moved   : cal-graft-k35-local-s397.gguf → the external mount (device 2081)
+pinned  : 1cf82e224fb9f45b6ac694f8c93c2cf37636962fca4594cc88d00d732d82281f  cal-graft-k35-local-s397.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-local-s398.gguf → evidence/step5-calibration/burn/cal-graft-k35-local-s398 (single)
+moved   : cal-graft-k35-local-s398.gguf → the external mount (device 2081)
+pinned  : a8c4bb2bbc265412af6e0027a66c8de75b3f1eb1d34dee5a7a8074f78401af1f  cal-graft-k35-local-s398.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-local-s399.gguf → evidence/step5-calibration/burn/cal-graft-k35-local-s399 (single)
+moved   : cal-graft-k35-local-s399.gguf → the external mount (device 2081)
+pinned  : 40827268ae581016ebda69432ed24a21cd4e0e21a9ad29f742e2028a722e9449  cal-graft-k35-local-s399.gguf — judged, pinned, KEPT on the external mount
+judge   : cal-graft-k35-local-s400.gguf → evidence/step5-calibration/burn/cal-graft-k35-local-s400 (single)
+moved   : cal-graft-k35-local-s400.gguf → the external mount (device 2081)
+pinned  : 7b9b635f7ca3e31cc46db53692910c397f9a165c6ef27cbde61895e9b32a24f2  cal-graft-k35-local-s400.gguf — judged, pinned, KEPT on the external mount
+arm graft-k35: done · free 81.0 GiB · elapsed 6.14 h
+
+--- arm identity · free 81.0 GiB · elapsed 6.14 h · families [none] ---
+generate: identity
+judge   : cal-identity.gguf → evidence/step5-calibration/burn/cal-identity (double)
+nulls   : none for identity (the tripwire has no family) — nothing to pin, nothing to delete
+arm identity: done · free 80.0 GiB · elapsed 6.23 h
+
+burn done — 6.23 h elapsed. Aggregate with:
+  cargo run -p neuralos-rt --release --example step5_aggregate -- --poscontrol evidence/step5-calibration/burn

@@ -110,15 +110,20 @@ displace substrate + lab bench + gated research.
    PRE-REGISTRATION-UNDEFINED** (1/5 SEPARATED · 2 MIXED; Tier 3 not
    demonstrated, "rests evidenced" not claimed — ISA ruling +
    `evidence/step5-readout/`). Binding constraint is CORPUS LENGTH,
-   not replicate count. **Outstanding: the lesion/graft positive
-   control**, specified as this benchmark's first arm and never run —
-   until it does, a negative here licenses nothing (the council's own
-   claim), and the paper's "uncalibrated instrument" limitation stays
-   open.
-5. **ESP32-C3 bring-up — BOARD NOT ORDERED.** Decided 2026-08-22
-   ("purchase within 1–2 weeks"); no purchase recorded since. It gates
-   its own step and, via GUARD 3, gates outreach. Longest pole on the
-   board, and it is a purchase, not a session.
+   not replicate count. **The lesion/graft positive control RAN
+   2026-09-05, verdict UNINFORMATIVE** (PREREG §6 rule 6; Ls=0 of 4
+   lesions, Gs=0 of 3 grafts vs their primary families —
+   `evidence/step5-calibration/`, ISA round-16). It was this
+   benchmark's named first arm; it is no longer outstanding, and it did
+   not clear the pre-registered bar. The paper's "uncalibrated
+   instrument" limitation therefore stays as written, and step 8 stays
+   CLOSED until a new instrument exists.
+5. **ESP32-C3 bring-up — BOARD BOUGHT, ARRIVES 2026-09-08 (philo,
+   reported 2026-09-02).** Decided 2026-08-22 ("purchase within 1–2
+   weeks"); both the purchase and the arrival date come from that one
+   report. It gates its own step and, via GUARD 3, gates outreach
+   together with the `.nir` exporter. Still the longest pole on the
+   board; from arrival it becomes a session rather than a purchase.
 6. Lock-free ports (A-extension targets only — re-scoped above) — the
    last Phase-1 remainder; **SIMD hardening DONE 2026-08-31** (ISA § Close-out)
 7. Visualizer Phase-2 — the lab bench catches up to the substrate the

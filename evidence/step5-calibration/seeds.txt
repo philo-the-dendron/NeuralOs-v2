@@ -1,0 +1,159 @@
+# Step-5 CALIBRATION null-family seeds — pre-committed per PREREG §7.
+# One decade per arm file; the generator uses the first five at N=5 and
+# the last five only under pre-authorized escalation. Disjoint from
+# session-I (1–10) and step-5 (201–250) seeds. Never minted at run time.
+
+# LESION-0
+301
+302
+303
+304
+305
+306
+307
+308
+309
+310
+# LESION-1
+311
+312
+313
+314
+315
+316
+317
+318
+319
+320
+# LESION-2
+321
+322
+323
+324
+325
+326
+327
+328
+329
+330
+# LESION-3
+331
+332
+333
+334
+335
+336
+337
+338
+339
+340
+# GRAFT-1
+341
+342
+343
+344
+345
+346
+347
+348
+349
+350
+# GRAFT-18
+351
+352
+353
+354
+355
+356
+357
+358
+359
+360
+# GRAFT-35
+361
+362
+363
+364
+365
+366
+367
+368
+369
+370
+# LOCAL GRAFT-1
+371
+372
+373
+374
+375
+376
+377
+378
+379
+380
+# LOCAL GRAFT-18
+381
+382
+383
+384
+385
+386
+387
+388
+389
+390
+# LOCAL GRAFT-35
+391
+392
+393
+394
+395
+396
+397
+398
+399
+400
+# MID LESION-0 (reported family, first five used)
+401
+402
+403
+404
+405
+406
+407
+408
+409
+410
+# MID LESION-1
+411
+412
+413
+414
+415
+416
+417
+418
+419
+420
+# MID LESION-2
+421
+422
+423
+424
+425
+426
+427
+428
+429
+430
+# MID LESION-3
+431
+432
+433
+434
+435
+436
+437
+438
+439
+440

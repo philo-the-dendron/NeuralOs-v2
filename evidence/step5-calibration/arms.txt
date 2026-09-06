@@ -1,0 +1,13 @@
+# Step-5 calibration arm files — written by step5_calibration --generate --plan.
+# One line per arm: <arm-stem> [family …], in PREREG §7 decade order;
+# the family §6 decides on carries a trailing *. The tripwire has none.
+# Files are models/cal-<arm>.gguf and models/cal-<arm>-<family>-s<seed>.gguf.
+# The aggregator reads THIS file; no arm list is ever hardcoded (§7).
+lesion-h0 scat* mid
+lesion-h1 scat* mid
+lesion-h2 scat* mid
+lesion-h3 scat* mid
+graft-k1 scat local*
+graft-k18 scat local*
+graft-k35 scat local*
+identity

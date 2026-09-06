@@ -416,6 +416,25 @@ pub fn step5_max_margin_delta(base: &Dump, cand: &Dump) -> Option<f64> {
     max
 }
 
+/// How many BASE knife-edge steps a dump carries — the exact set
+/// [`step5_max_margin_delta`] iterates (`step_margin < THETA`), with the
+/// same short-circuit: `None` when some step carries fewer than two
+/// values, because M3 is then undefined for that dump rather than zero.
+///
+/// M3 is defined only over these steps, so a base with none makes
+/// SEPARATED unreachable a priori — knowable before any arm is generated
+/// (PREREG §4 reader check).
+#[must_use]
+pub fn step5_base_knife_edges(base: &Dump) -> Option<usize> {
+    let mut n = 0;
+    for step in base.values() {
+        if step_margin(step)? < THETA {
+            n += 1;
+        }
+    }
+    Some(n)
+}
+
 /// One judged file's readout across the frozen five.
 #[derive(Debug, Default, Clone)]
 pub struct Step5FileReadout {
@@ -485,9 +504,269 @@ pub fn step5_band(
     }
 }
 
+/// The five verdicts of the step-5 CALIBRATION positive control
+/// (`evidence/step5-calibration/PREREG.md` §1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PosControlVerdict {
+    /// A supermajority of judged files in BOTH arm classes separate from
+    /// their primary nulls.
+    Calibrated,
+    /// Lesions clear their bar, grafts do not: coherent damage is seen,
+    /// transplanted content is not.
+    DamageOnly,
+    /// Lesions below their bar.
+    Uninformative,
+    /// Three or more judged lesion files are quiet — the perturbation is
+    /// too small to register, and the control says nothing about the
+    /// readout.
+    Inert,
+    /// A denominator floor is unmet. Licenses nothing.
+    Void,
+}
+
+impl PosControlVerdict {
+    /// The §1 spelling, for the verdict string.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            PosControlVerdict::Calibrated => "CALIBRATED",
+            PosControlVerdict::DamageOnly => "DAMAGE-ONLY",
+            PosControlVerdict::Uninformative => "UNINFORMATIVE",
+            PosControlVerdict::Inert => "INERT",
+            PosControlVerdict::Void => "VOID",
+        }
+    }
+}
+
+/// A verdict and the §6 rule that decided it. The rule number is part of
+/// the output because §1's licence text is keyed on it: rule 3 (graft leg
+/// INERT) carries a substitution clause that rules 5 and 6 do not, while
+/// labelling the same two verdicts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PosControl {
+    pub verdict: PosControlVerdict,
+    /// 1..=6, the §6 rule that fired.
+    pub rule: u8,
+}
+
+/// The PREREG §6 verdict rule, mechanically.
+///
+/// `lj`/`gj` are judged (not voided) lesion/graft files, `ls`/`gs` those
+/// SEPARATED against their PRIMARY family (SCAT for lesions, LOCAL for
+/// grafts), `lq`/`gq` those QUIET (zero flips on all five prompts; QUIET
+/// counts as NULL-CONSISTENT, so it is never also counted in `ls`/`gs`).
+///
+/// 1. `lj < 3` or `gj < 2` → VOID (denominator floor)
+/// 2. else `lq >= 3` → INERT
+/// 3. else `gq >= 2` → graft leg INERT: DAMAGE-ONLY if the lesion bar is
+///    met, else UNINFORMATIVE (the §1 substitution rides on the rule)
+/// 4. else lesion bar and graft bar → CALIBRATED
+/// 5. else lesion bar → DAMAGE-ONLY
+/// 6. else → UNINFORMATIVE
+///
+/// The bars are FRACTIONS of the judged set (`ls/lj >= 3/4`,
+/// `gs/gj >= 2/3`), so a voided arm moves the denominator and not the
+/// bar: at `lj = 3` the lesion bar is 3/3, at `gj = 2` the graft bar is
+/// 2/2. Compared in integers (`ls·4 >= lj·3`, `gs·3 >= gj·2`) — no float
+/// rounding decides a verdict. Applied once, to the single run.
+///
+/// # Panics
+///
+/// If a separated + quiet count exceeds its judged count (a caller bug —
+/// the verdict would be meaningless).
+#[must_use]
+pub fn poscontrol_verdict(
+    lj: usize,
+    ls: usize,
+    lq: usize,
+    gj: usize,
+    gs: usize,
+    gq: usize,
+) -> PosControl {
+    assert!(
+        ls + lq <= lj,
+        "lesion counts: separated {ls} + quiet {lq} > judged {lj}"
+    );
+    assert!(
+        gs + gq <= gj,
+        "graft counts: separated {gs} + quiet {gq} > judged {gj}"
+    );
+    let out = |rule: u8, verdict: PosControlVerdict| PosControl { verdict, rule };
+    if lj < 3 || gj < 2 {
+        return out(1, PosControlVerdict::Void);
+    }
+    if lq >= 3 {
+        return out(2, PosControlVerdict::Inert);
+    }
+    let lesion_bar = ls * 4 >= lj * 3;
+    if gq >= 2 {
+        return out(
+            3,
+            if lesion_bar {
+                PosControlVerdict::DamageOnly
+            } else {
+                PosControlVerdict::Uninformative
+            },
+        );
+    }
+    let graft_bar = gs * 3 >= gj * 2;
+    match (lesion_bar, graft_bar) {
+        (true, true) => out(4, PosControlVerdict::Calibrated),
+        (true, false) => out(5, PosControlVerdict::DamageOnly),
+        (false, _) => out(6, PosControlVerdict::Uninformative),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The knife-edge counter walks exactly the set M3 walks: same
+    /// threshold, same short-circuit. Pinned on constructed dumps so the
+    /// agreement is a property of the code, not of one banked file.
+    #[test]
+    fn knife_edge_count_matches_the_m3_set() {
+        let step = |a: f64, b: f64| vec![(1u32, a), (2u32, b)];
+        let mut base: Dump = Dump::new();
+        base.insert(0, step(1.0, 0.99)); // margin 0.01 — knife
+        base.insert(1, step(1.0, 0.90)); // margin 0.10 — not
+        base.insert(2, step(1.0, 0.96)); // margin 0.04 — knife
+        assert_eq!(step5_base_knife_edges(&base), Some(2));
+
+        // A candidate that moves only the two knife steps: M3 sees them.
+        let mut cand: Dump = Dump::new();
+        cand.insert(0, step(1.0, 0.50));
+        cand.insert(1, step(1.0, 0.90));
+        cand.insert(2, step(1.0, 0.96));
+        let d = step5_max_margin_delta(&base, &cand).expect("both dumps measurable");
+        assert!(
+            (d - 0.49).abs() < 1e-9,
+            "max |Δmargin| over knife steps, got {d}"
+        );
+
+        // A step with fewer than two values makes both undefined, not zero.
+        base.insert(3, vec![(1u32, 1.0)]);
+        assert_eq!(step5_base_knife_edges(&base), None);
+        assert_eq!(step5_max_margin_delta(&base, &cand), None);
+    }
+
+    /// PREREG §6 by EXHAUSTIVE enumeration, not by examples (§7 step 2,
+    /// reviewer S11). Every tuple of the declared space — Lj ≤ 4,
+    /// Ls + Lq ≤ Lj, Gj ≤ 3, Gs + Gq ≤ Gj — is evaluated once, and the
+    /// per-verdict and per-rule totals are asserted against numbers
+    /// derived from the §6 text by a separate enumeration, never read off
+    /// this implementation. Totality and exclusivity come free from that:
+    /// 700 tuples in, 700 verdicts out, each from exactly one rule.
+    #[test]
+    fn poscontrol_verdict_exhausts_the_prereg_table() {
+        use PosControlVerdict::{Calibrated, DamageOnly, Inert, Uninformative, Void};
+        let mut verdicts = [0usize; 5]; // Calibrated, DamageOnly, Uninformative, Inert, Void
+        let mut rules = [0usize; 7]; // index = rule number, 0 unused
+        let mut tuples = 0usize;
+        for lj in 0..=4 {
+            for ls in 0..=lj {
+                for lq in 0..=(lj - ls) {
+                    for gj in 0..=3 {
+                        for gs in 0..=gj {
+                            for gq in 0..=(gj - gs) {
+                                tuples += 1;
+                                let got = poscontrol_verdict(lj, ls, lq, gj, gs, gq);
+                                assert!(
+                                    (1..=6).contains(&got.rule),
+                                    "Lj={lj} Ls={ls} Lq={lq} Gj={gj} Gs={gs} Gq={gq}: rule {} out of range",
+                                    got.rule
+                                );
+                                // The rule and the verdict must agree: the
+                                // rules that can produce each verdict are
+                                // fixed by §6.
+                                let allowed: &[u8] = match got.verdict {
+                                    Void => &[1],
+                                    Inert => &[2],
+                                    Calibrated => &[4],
+                                    DamageOnly => &[3, 5],
+                                    Uninformative => &[3, 6],
+                                };
+                                assert!(
+                                    allowed.contains(&got.rule),
+                                    "Lj={lj} Ls={ls} Lq={lq} Gj={gj} Gs={gs} Gq={gq}: \
+                                     {:?} cannot come from rule {}",
+                                    got.verdict,
+                                    got.rule
+                                );
+                                verdicts[match got.verdict {
+                                    Calibrated => 0,
+                                    DamageOnly => 1,
+                                    Uninformative => 2,
+                                    Inert => 3,
+                                    Void => 4,
+                                }] += 1;
+                                rules[got.rule as usize] += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(tuples, 700, "the declared tuple space is 700 tuples");
+        assert_eq!(
+            verdicts,
+            [16, 48, 272, 64, 300],
+            "per-verdict totals (CALIBRATED, DAMAGE-ONLY, UNINFORMATIVE, INERT, VOID)"
+        );
+        assert_eq!(
+            rules,
+            [0, 300, 64, 84, 16, 32, 204],
+            "per-rule totals, rules 1..=6"
+        );
+    }
+
+    /// The three edges §6 names in words, checked as words: the floors,
+    /// the unanimity denominators, and rule 3's ordering note (Gq ≥ 2
+    /// forces Gs/Gj ≤ 1/3, so it never changes a label).
+    #[test]
+    fn poscontrol_edges_named_in_the_text_hold() {
+        // Floors: one short on either side is VOID whatever else is true.
+        assert_eq!(
+            poscontrol_verdict(2, 2, 0, 3, 3, 0).verdict,
+            PosControlVerdict::Void
+        );
+        assert_eq!(
+            poscontrol_verdict(4, 4, 0, 1, 1, 0).verdict,
+            PosControlVerdict::Void
+        );
+        // Unanimity at the floors: 3/3 and 2/2 clear, 2/3 and 1/2 do not.
+        assert_eq!(
+            poscontrol_verdict(3, 3, 0, 2, 2, 0).verdict,
+            PosControlVerdict::Calibrated
+        );
+        assert_eq!(
+            poscontrol_verdict(3, 2, 0, 2, 2, 0).verdict,
+            PosControlVerdict::Uninformative
+        );
+        assert_eq!(
+            poscontrol_verdict(3, 3, 0, 2, 1, 0).verdict,
+            PosControlVerdict::DamageOnly
+        );
+        // Rule 3 relabels nothing: with Gq >= 2 the graft bar is already
+        // unreachable, so rules 5/6 would give the same verdict.
+        for (lj, ls) in [(4, 3), (4, 2), (3, 3), (3, 1)] {
+            for (gj, gq) in [(2, 2), (3, 2), (3, 3)] {
+                let with = poscontrol_verdict(lj, ls, 0, gj, 0, gq);
+                let without = poscontrol_verdict(lj, ls, 0, gj, 0, 0);
+                assert_eq!(with.rule, 3);
+                assert_eq!(
+                    with.verdict, without.verdict,
+                    "rule 3 changed the label at Lj={lj} Ls={ls} Gj={gj} Gq={gq}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "lesion counts")]
+    fn poscontrol_refuses_impossible_counts() {
+        let _ = poscontrol_verdict(3, 4, 0, 2, 2, 0);
+    }
 
     /// Verbatim banked line: evidence/r4-closeout/p0_base_run1.err
     /// step 0 (same line as the r4-baselines banking).

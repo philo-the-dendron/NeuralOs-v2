@@ -1,0 +1,36 @@
+=== step-5 calibration: --generate (PREREG §7) ===
+base    : models/Ternary-Bonsai-4B-Q2_0.gguf
+          sha 4e0bf8b737b0431552f8c2c97695ab7c0cb214c94bcdeb4f5f267e67ddf28b8b == §2 pin : PASS
+stamp   : evidence/step5-calibration/PREREG.md §10 carries a stamp : PASS
+pins    : §2 7 judge digests + fork commit == code : PASS
+          §7 three values == evidence/step5-calibration/generator/PINNED.sha256 : PASS
+          frozen commit c27084ccbdf330e29542fed8995e10fe5358df47
+          crates/neuralos-rt/examples/step5_calibration.rs 3fcc1a2fa918d6d628fadf42cd42621b821cbc2c3a7e87a32c449a4f19535040
+          tools/step5_calibration_burn.sh 003875825fc88b31cf2e084f9f65ac3ed21d407dc8e09a1534be899bc94eb423
+judge   : fork-build/llama.cpp/build/bin · fork commit 9ca265a57f85f2117942490f421f64a226dd9847 — tools/build_fork.sh PIN, the code constant and the checked-out fork all agree
+          llama-completion · sha 45c3213681383dc7f5f54bd0b16585c769e3c00450fbc987c250b96214de6246 : PINNED
+          libllama-completion-impl.so · sha 64a1e1848ca747d2ac369a8d93f6a0f46ac7317796683d8c54df3f97bbd32886 : PINNED
+          libllama-common.so · sha 911ad4a6548fbae453652df30692154eb3100d068eed35207c5e264c25f2dff3 : PINNED
+          libllama.so · sha 9f2d10aca3e3e3080650f80624db503459e77e0a889f30f262536b65f79e6ab6 : PINNED
+          libggml.so · sha ea7f9fd250bc72879a765a0a6156816776a4f570253064fedc446b3cdb7ad63a : PINNED
+          libggml-base.so · sha 123cbdcd73c0ed5b91f67f593d0a8e2a533113bdb8c2b4e33645ceb88362071d : PINNED
+          libggml-cpu.so · sha 3e1e166ce399d9e20032deed5e4f3fae3ad7b513a1ad689e906c93f8e9d1bc0a : PINNED
+          7 files pinned (driver + 5 shared objects + the dump-patched impl) : PASS
+cap     : one burn window, ≤ 9 h judge wall-time; a cap stop is VOID (INCOMPLETE)
+layout  : host blk.0.attn_q.weight — ty q2_0 · dims [2560, 4096] · 2785280 B
+          graft k=1 blk.1.attn_q.weight — ty q2_0 · dims [2560, 4096] · 2785280 B · data offset 133467360 : MATCHES HOST
+          graft k=18 blk.18.attn_q.weight — ty q2_0 · dims [2560, 4096] · 2785280 B · data offset 589574368 : MATCHES HOST
+          graft k=35 blk.35.attn_q.weight — ty q2_0 · dims [2560, 4096] · 2785280 B · data offset 1045681376 : MATCHES HOST
+          head 0: census [21191, 23323, 21022] · zero fraction 0.3559
+          head 1: census [20439, 24959, 20138] · zero fraction 0.3808
+          head 2: census [20616, 23987, 20933] · zero fraction 0.3660
+          head 3: census [21007, 23533, 20996] · zero fraction 0.3591
+          heads sum to [83253, 95802, 83089] == banked window census : PASS
+arm     : identity · planned as "identity"
+identity: 0 cells
+    composition (none)
+    0 changed cells : PASS — the tripwire is transparent
+    S2 clean → models/cal-identity.gguf
+    identity sha == base (4e0bf8b737b04315…) : PASS
+
+arm identity done — judge it, pin its nulls, delete them, then the next arm (§7).
