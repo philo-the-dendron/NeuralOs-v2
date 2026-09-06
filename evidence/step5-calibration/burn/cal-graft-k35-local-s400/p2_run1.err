@@ -1,0 +1,41 @@
+0.00.004.475 I llama_completion: llama backend init
+0.00.004.493 I llama_completion: load the model and apply lora adapter, if any
+0.00.004.534 I common_init_result: fitting params to device memory ...
+0.00.004.536 I common_init_result: (for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on)
+0.00.480.248 I common_params_fit_impl: projected to use 1397 MiB of host memory vs. 15413 MiB of total host memory
+0.00.742.676 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+0.00.968.048 W llama_context: n_ctx_seq (512) < n_ctx_train (32768) -- the full capacity of the model will not be utilized
+0.01.028.760 I common_init_from_params: warming up the model with an empty run - please wait ... (--no-warmup to disable)
+0.03.608.897 I llama_completion: llama threadpool init, n_threads = 4
+0.03.608.924 I 
+0.03.609.005 I system_info: n_threads = 4 (n_threads_batch = 4) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.03.609.005 I 
+0.03.609.076 I sampler seed: 42
+0.03.609.086 I sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = -1
+	top_k = 0, top_p = 1.000, min_p = 0.000, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+0.03.609.092 I sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> ?top-k -> ?typical -> ?top-p -> ?min-p -> ?xtc -> temp-ext -> dist 
+0.03.609.093 I generate: n_ctx = 512, n_batch = 2048, n_predict = 12, n_keep = 0
+0.03.609.093 I 
+NEURALOS_DUMP step=0 n_out=10: 4236:13,2490 198:10,2234 323:10,0181 11:9,7838 4743:9,6216 271:9,5531 825:9,3032 220:9,0894 3040:8,6697 8094:8,6665
+NEURALOS_DUMP step=1 n_out=10: 4743:13,2551 198:10,8275 323:10,3772 4236:10,2755 271:10,1120 8094:9,8898 11:9,8064 825:9,6258 8063:9,4127 11627:9,0219
+NEURALOS_DUMP step=2 n_out=10: 198:10,0336 13:10,0273 374:10,0227 271:9,9325 11:9,8745 5109:9,7936 18509:9,7240 323:9,6519 12396:9,2967 315:9,2895
+NEURALOS_DUMP step=3 n_out=10: 50364:9,8102 603:9,6766 16:9,5793 27856:9,5492 4082:9,4755 1782:9,3084 220:9,2693 52670:9,2572 785:9,2072 80185:9,1842
+NEURALOS_DUMP step=4 n_out=10: 8094:15,4458 8063:12,6037 1378:11,6168 4236:11,3986 11627:11,3110 825:11,1974 2326:11,1153 4743:10,7792 198:10,7588 11:10,6303
+NEURALOS_DUMP step=5 n_out=10: 8063:18,4741 11627:12,9177 8094:12,3990 198:12,2737 4236:12,0367 11:12,0259 2326:11,8971 1378:11,7987 825:11,6754 384:11,6359
+NEURALOS_DUMP step=6 n_out=10: 11627:19,0452 198:13,3223 2326:12,2596 825:12,1288 4236:11,9039 77876:11,7665 1378:11,6665 8063:11,3497 308:11,2669 11:11,1536
+NEURALOS_DUMP step=7 n_out=10: 5779:15,6843 198:14,2838 825:12,7958 271:12,7574 29235:12,6778 44214:12,5633 7168:12,3856 11627:12,2667 323:11,2579 11:11,0461
+NEURALOS_DUMP step=8 n_out=10: 198:14,8978 44214:14,7323 825:14,0473 271:13,3941 29235:12,9371 5779:11,1630 36655:10,7860 1378:10,6902 60659:10,6788 323:10,5473
+NEURALOS_DUMP step=9 n_out=10: 603:12,3504 1960:11,4408 16:10,8883 27856:10,8450 52670:10,6535 1782:10,4595 64:10,4394 34024:10,0674 50364:9,7820 19789:9,7026
+NEURALOS_DUMP step=10 n_out=10: 1378:17,0253 825:14,1083 4236:12,5151 2326:12,3022 3040:12,1443 198:12,0687 29235:11,6490 8063:11,6065 11627:11,6012 17073:11,5656
+NEURALOS_DUMP step=11 n_out=10: 2326:19,2721 1378:15,4179 825:15,1282 4236:13,8620 198:13,7963 3040:13,6590 4743:12,8514 8094:12,0462 8063:11,8059 26127:11,4399
+0.23.892.718 I common_perf_print:    sampling time =      29.21 ms
+0.23.892.773 I common_perf_print:    samplers time =      25.41 ms /    16 tokens
+0.23.892.780 I common_perf_print:        load time =    3013.57 ms
+0.23.892.783 I common_perf_print: prompt eval time =    4979.10 ms /     4 tokens ( 1244.77 ms per token,     0.80 tokens per second)
+0.23.892.785 I common_perf_print:        eval time =   15264.27 ms /    11 runs   ( 1387.66 ms per token,     0.72 tokens per second)
+0.23.892.786 I common_perf_print:       total time =   20283.89 ms /    15 tokens
+0.23.892.788 I common_perf_print: unaccounted time =      11.30 ms /   0.1 %      (total - sampling - prompt eval - eval) / (total)
+0.23.892.788 I common_perf_print:    graphs reused =         10
