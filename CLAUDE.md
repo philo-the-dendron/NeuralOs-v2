@@ -59,11 +59,18 @@ failure mode.
   ESP32-C3 board landing together gate outreach. Source: `ISA.md`
   § Decision (M1 step-4 amendment — the pure-Rust exporter ruling),
   the widened rule, artifact-named per B1b.
-- **Never force-push Gitea.** `origin` has two push URLs, so one
-  `git push origin main` hits Gitea (canonical) and the GitHub mirror
-  together. If Gitea is ahead, rebase. The mirror is the only
-  force-push target, and only with the principal's explicit OK.
-  Source: `AGENTS.md` § Remotes (push carefully).
+- **Never force-push Gitea, and no branch on GitHub.** Gitea is canonical
+  and the only gate. GitHub is a mirror, and philo's
+  meaning of the word is the rule: "no branch on github, github is a
+  mirror." It carries `main` and Gitea's tags, nothing else; no branch,
+  PR, or CI run exists there except on `main`. `origin` pushes to Gitea
+  alone. The mirror is written only after a Gitea merge, by the
+  procedure in § Merge procedure, and the release binaries live on the
+  Gitea release.
+  `origin` has one push URL since 2026-09-06. If Gitea is ahead,
+  rebase. GitHub is the only force-push target, and only with the
+  principal's explicit OK. Source: `AGENTS.md` § Remotes (push
+  carefully) and § Merge procedure.
 - **`evidence/` holds three species.** sha-pinned machine outputs are
   immutable and never edited. Frozen-by-marker human docs (PREREG.md)
   are immutable because the marker says so. Living orchestration docs
@@ -81,9 +88,9 @@ failure mode.
 ## Merging
 
 Work lands on `work/<name>` or `fix/<name>`; CI runs on the branch.
-**The Gitea run is the gate** (`.gitea/workflows/ci.yml`). The GitHub
-mirror's run is a second opinion that never blocks a merge: do not wait
-on it, do not treat its red as a gate. Merge to main requires branch-CI
+**The Gitea run is the gate** (`.gitea/workflows/ci.yml`). GitHub runs
+the same workflow on `main` only, after the sync in `AGENTS.md` § Merge
+procedure: the one off-box build, never a gate. Merge to main requires branch-CI
 green plus review passed, and every commit on the branch green on its
 own, proven by the `per-commit` CI job on the pull request, whose log the
 merger reads (source: `AGENTS.md` § Session protocol, Git discipline). Those are mechanical conditions
