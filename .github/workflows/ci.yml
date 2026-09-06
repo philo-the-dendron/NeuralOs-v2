@@ -200,3 +200,41 @@ jobs:
             echo "===== $c GREEN"
           done
           echo "== all $n commit(s) green on their own"
+
+  # No home path or personal string in ADDED lines (2026-09-06, ISA
+  # round-17). Banked logs on main carry 27 lines of `/home/<user>/...`
+  # from cargo "Compiling" output copied verbatim (15 files, 9 of them
+  # sha-pinned; left as they are, evidence is never edited); the burn
+  # script prints repo-relative paths since 2026-09-05. This job stops the
+  # class from growing: any added line in base..head that matches the
+  # pattern fails the PR. The pattern names a home directory shape and the
+  # personal list, never a username: a username in this file would itself
+  # be the leak. Same pattern as .githooks/pre-commit, kept in sync by
+  # hand. pull_request only, like per-commit. Proven by a falsifier branch
+  # the day it landed (red log excerpt in PR #9).
+  home-paths:
+    name: no home path in added lines
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: scan added lines base..head
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git fetch --no-tags --quiet origin "$base" "$head" || true
+          pattern='/home/[A-Za-z0-9_.-]+/|\bdenis\b|\bimac\b|192\.168\.|ed25[5]19|10\.66\.'
+          hits=$(git diff "$base".."$head" --unified=0 --no-color \
+                 | grep -E '^\+' | grep -v -E '^\+\+\+ ' \
+                 | grep -E -i "$pattern" || true)
+          if [ -n "$hits" ]; then
+            echo "personal string in added lines ($base..$head):"
+            echo "$hits"
+            exit 1
+          fi
+          echo "no personal string in added lines ($base..$head)"
