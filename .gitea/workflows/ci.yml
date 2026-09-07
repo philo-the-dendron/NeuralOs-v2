@@ -253,3 +253,25 @@ jobs:
             exit 1
           fi
           echo "no personal string in added lines ($base..$head)"
+
+  audit:
+    name: cargo audit (RustSec advisories)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+
+      - uses: https://github.com/dtolnay/rust-toolchain@stable
+
+      - uses: https://github.com/Swatinem/rust-cache@v2
+
+      # Tool default, nothing ignored: a vulnerability fails, an
+      # unmaintained or yanked crate prints a warning and passes. No
+      # audit.toml, so the log shows every advisory on every run. Added
+      # 2026-09-07; the five warnings that day were all in the Slint
+      # visualizer's font/SVG tree, none in neuralos-snn or neuralos-rt.
+      - name: cargo install cargo-audit
+        run: cargo install cargo-audit --locked --version 0.22.2
+
+      - name: cargo audit
+        run: cargo audit

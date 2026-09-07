@@ -70,6 +70,7 @@ cargo fmt --all -- --check
 cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+cargo audit                      # RustSec advisories; tool default, nothing ignored
 cargo build --no-default-features -p neuralos-snn
 PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # NIR HDF5 gate leg (vendored HDF5; cmake from .nirenv)
 ```
