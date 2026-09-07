@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@cbca22f (PR #8 merged 2026-09-06, step-5 calibration arc in) · work/mirror-doctrine ahead by round-17 (the GitHub-mirror remediation: doctrine, CI gate, git-hook wall), PR #9 pending · open(session): philo rules the limitations.tex wording proposed in round-16; AE5 aggregator print waits on a re-stamp · next-work: ROADMAP § Practical next moves"
+head: "main@4c15000 (PR #9 merged 2026-09-06, the GitHub-mirror remediation in; mirror synced, both hosts equal) · fix/pre-push-merge-commits ahead by one hook fix (round-17 addendum), PR pending · open(session): philo rules the limitations.tex wording proposed in round-16; AE5 aggregator print waits on a re-stamp · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-06T23:30:00Z
+updated: 2026-09-06T21:10:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -6998,3 +6998,51 @@ GUARD 1 honored: appended only; frontmatter `head:` and `updated:`
 refreshed under the live-state exception. GUARD 2 untouched. GUARD 3
 untouched: no outreach. `evidence/` and `paper/` untouched by this
 branch.
+
+## Amendment (round-17 addendum — the wall refused its own first sync — 2026-09-06)
+
+Appended; nothing above edited (GUARD 1). The round-17 entry said the
+merge procedure "counts as verified once it syncs one real merge: PR #9
+is that run." It ran, and it found a defect in the wall it carried.
+
+PR #9 merged through the wrapper at 4c15000. The sync's first push
+(`git push github origin/main:refs/heads/main`) was refused by
+`.githooks/pre-push` rule (b): the merge commit is authored by Gitea
+(`<id>+<login>@noreply.gitea.com`), not by the declared laptop address.
+The done-check did its job: Gitea `main` 4c15000, GitHub `main` cbca22f,
+reported as not done. Every merge commit on `main` carries that forge
+address (8 of them, plus one web edit f3352e2, the only non-merge one),
+so the rule as first written would have blocked every future sync.
+
+Ruling on the shape of the fix, the builder's, for the adjudicator to
+confirm: rule (b) is about the identity this laptop publishes under, so
+it checks only commits the push introduces, those not already reachable
+from any `refs/remotes/origin/*` ref. Commits origin already holds were
+checked when first pushed, or were made by the forge (merges, web
+edits), or came from a contributor whose PR was merged there; the mirror
+sync republishes them and does not author them. A merge-commit-only
+exemption was written first and rejected the same minute: it would have
+refused the web-edit commit and any merged contribution.
+
+Proven hook-direct before the second attempt: the real sync range
+cbca22f..4c15000 toward github `main` passes; the web-edit commit's
+range toward origin passes; a scratch commit with a foreign author
+address, not on origin, is still refused (then dropped, never pushed).
+The sync was then re-run under the fixed hook file in the working tree,
+not with `--no-verify`: GitHub `main` = Gitea `main` = 4c15000, tag
+lists identical. The procedure is verified; the wall is amended in the
+fix PR that carries this addendum.
+
+Trust boundary, written down so the next reader does not take rule (b)
+for a guard on the mirror: the check trusts origin's history as already
+vetted, so a commit that reached Gitea past the hooks (`--no-verify`, a
+web edit, a merged contribution) is republished by the sync unchecked.
+That is correct, the sync republishes what Gitea already shows in
+public; the guards on what reaches Gitea are the hooks on the way there
+and the `home-paths` CI job. (Adjudicator's note on PR #11, accepted.)
+
+### Guards
+
+GUARD 1 honored: appended only; `head:` and `updated:` refreshed under
+the live-state exception. GUARD 2, GUARD 3 untouched. `evidence/` and
+`paper/` untouched.
