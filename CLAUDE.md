@@ -1,3 +1,5 @@
+@AGENTS.md
+
 # NeuralOS v2
 
 `no_std`, i16 fixed-point spiking-neural-network library for RISC-V edge
