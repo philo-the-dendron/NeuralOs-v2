@@ -1,0 +1,9 @@
+#!/bin/sh
+# commit-msg: refuse the Claude-Session trailer and the claude.ai session
+# link. philo, 2026-09-06: never accepted; the link points at a private
+# session page and does not belong in a public history. Runs on this
+# laptop only, like the other hooks: it guards what leaves here first.
+if grep -q -i -E 'Claude-Session:|claude\.ai/code/session_' "$1"; then
+  echo "commit-msg: session trailer refused, remove it from the message" >&2
+  exit 1
+fi
