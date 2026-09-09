@@ -120,8 +120,8 @@ roadmap).
 1. **Feed the spine:** NIR import/export, SIMD hardening, lock-free
    ports — the original Phase-1 list.
 2. **QEMU `riscv64gc` proof of the `no_std` claim — DONE 2026-08-21**
-   (`evidence/qemu-riscv-gate/`); ESP32-C3 bring-up next (board
-   decided 2026-08-22 — merged-plan step 3, priority-gated).
+   (`evidence/qemu-riscv-gate/`); **ESP32-C3 bring-up DONE 2026-09-09**
+   (`evidence/esp32c3-bringup/`, one LIF neuron on real silicon).
 3. **Position publicly as Lava's spiritual successor**; cite the
    Neuromorphic-OS paper (arXiv:2603.26722), the Full-Integer-SNN
    paper (Deshpande et al., DCIS 2025), and NIR (Pedersen et al.,

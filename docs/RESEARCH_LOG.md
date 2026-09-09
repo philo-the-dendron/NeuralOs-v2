@@ -1049,3 +1049,20 @@ sizes, built from different arms, produced a maximum inside a band
 margin computation itself? The 105 nulls are kept on disk and pinned by
 sha, so re-scoring them under a different corroboration rule costs no
 judge time. That is a question for philo to open or leave, not a plan.
+
+### ESP32-C3 bring-up — first spike on silicon (2026-09-09)
+
+The board (a SuperMini, esp32c3 v0.4) arrived at 14:10 and blinked by
+15:00. Flashed step by step on philo's word. The first flash was
+refused by espflash: the round-18 image had no ESP-IDF app descriptor.
+Flashed past the check on purpose, the bundled ESP-IDF 5.5 bootloader
+refused to boot it, 132 resets in 15 s, which is the observation the
+fix rests on (two lines: the `esp-bootloader-esp-idf` crate and its
+macro). Then: 1,501 ns per neuron step on a 10,000-step burst, 147
+spikes in it, exactly the host's 14.7/s; first real-time spike at step
+56 against the host's 55, one loop step costing 1.0057 ms; 295 spikes
+in the next 20 s. The pre-board worry that the banner would go to the
+wrong serial path did not occur. Two captures lost the boot lines to
+port-sharing and a misplaced flush before the third got them; the
+capture tool carries both lessons. Record: `evidence/esp32c3-bringup/`,
+ISA round-19.

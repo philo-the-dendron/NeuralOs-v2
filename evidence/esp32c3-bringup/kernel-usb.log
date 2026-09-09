@@ -1,0 +1,527 @@
+2026-09-09T14:09:16 usb 1-1: new full-speed USB device number 6 using xhci_hcd
+2026-09-09T14:09:16 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:16 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:16 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:16 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:16 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:16 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:18 usb 1-1: USB disconnect, device number 6
+2026-09-09T14:09:19 usb 1-1: new full-speed USB device number 7 using xhci_hcd
+2026-09-09T14:09:19 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:19 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:19 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:19 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:19 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:19 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:21 usb 1-1: USB disconnect, device number 7
+2026-09-09T14:09:21 usb 1-1: new full-speed USB device number 8 using xhci_hcd
+2026-09-09T14:09:21 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:21 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:21 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:21 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:21 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:21 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:24 usb 1-1: USB disconnect, device number 8
+2026-09-09T14:09:24 usb 1-1: new full-speed USB device number 9 using xhci_hcd
+2026-09-09T14:09:24 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:24 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:24 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:24 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:24 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:24 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:26 usb 1-1: USB disconnect, device number 9
+2026-09-09T14:09:27 usb 1-1: new full-speed USB device number 10 using xhci_hcd
+2026-09-09T14:09:27 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:27 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:27 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:27 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:27 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:27 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:29 usb 1-1: USB disconnect, device number 10
+2026-09-09T14:09:29 usb 1-1: new full-speed USB device number 11 using xhci_hcd
+2026-09-09T14:09:29 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:29 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:29 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:29 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:29 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:29 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:32 usb 1-1: USB disconnect, device number 11
+2026-09-09T14:09:32 usb 1-1: new full-speed USB device number 12 using xhci_hcd
+2026-09-09T14:09:32 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:32 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:32 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:32 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:32 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:32 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:34 usb 1-1: USB disconnect, device number 12
+2026-09-09T14:09:35 usb 1-1: new full-speed USB device number 13 using xhci_hcd
+2026-09-09T14:09:35 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:35 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:35 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:35 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:35 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:35 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:37 usb 1-1: USB disconnect, device number 13
+2026-09-09T14:09:37 usb 1-1: new full-speed USB device number 14 using xhci_hcd
+2026-09-09T14:09:37 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:37 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:37 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:37 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:37 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:37 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:40 usb 1-1: USB disconnect, device number 14
+2026-09-09T14:09:40 usb 1-1: new full-speed USB device number 15 using xhci_hcd
+2026-09-09T14:09:40 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:40 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:40 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:40 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:40 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:40 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:42 usb 1-1: USB disconnect, device number 15
+2026-09-09T14:09:43 usb 1-1: new full-speed USB device number 16 using xhci_hcd
+2026-09-09T14:09:43 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:43 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:43 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:43 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:43 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:43 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:45 usb 1-1: USB disconnect, device number 16
+2026-09-09T14:09:45 usb 1-1: new full-speed USB device number 17 using xhci_hcd
+2026-09-09T14:09:45 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:45 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:45 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:45 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:45 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:45 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:48 usb 1-1: USB disconnect, device number 17
+2026-09-09T14:09:48 usb 1-1: new full-speed USB device number 18 using xhci_hcd
+2026-09-09T14:09:48 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:48 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:48 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:48 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:48 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:48 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:50 usb 1-1: USB disconnect, device number 18
+2026-09-09T14:09:51 usb 1-1: new full-speed USB device number 19 using xhci_hcd
+2026-09-09T14:09:51 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:51 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:51 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:51 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:51 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:51 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:53 usb 1-1: USB disconnect, device number 19
+2026-09-09T14:09:53 usb 1-1: new full-speed USB device number 20 using xhci_hcd
+2026-09-09T14:09:53 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:53 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:53 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:53 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:53 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:53 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:56 usb 1-1: USB disconnect, device number 20
+2026-09-09T14:09:56 usb 1-1: new full-speed USB device number 21 using xhci_hcd
+2026-09-09T14:09:56 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:56 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:56 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:56 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:56 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:56 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:09:58 usb 1-1: USB disconnect, device number 21
+2026-09-09T14:09:59 usb 1-1: new full-speed USB device number 22 using xhci_hcd
+2026-09-09T14:09:59 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:09:59 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:09:59 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:09:59 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:09:59 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:09:59 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:01 usb 1-1: USB disconnect, device number 22
+2026-09-09T14:10:01 usb 1-1: new full-speed USB device number 23 using xhci_hcd
+2026-09-09T14:10:01 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:01 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:01 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:01 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:01 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:01 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:04 usb 1-1: USB disconnect, device number 23
+2026-09-09T14:10:04 usb 1-1: new full-speed USB device number 24 using xhci_hcd
+2026-09-09T14:10:04 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:04 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:04 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:04 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:04 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:04 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:06 usb 1-1: USB disconnect, device number 24
+2026-09-09T14:10:06 usb 1-1: new full-speed USB device number 25 using xhci_hcd
+2026-09-09T14:10:07 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:07 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:07 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:07 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:07 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:07 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:09 usb 1-1: USB disconnect, device number 25
+2026-09-09T14:10:09 usb 1-1: new full-speed USB device number 26 using xhci_hcd
+2026-09-09T14:10:09 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:09 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:09 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:09 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:09 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:09 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:12 usb 1-1: USB disconnect, device number 26
+2026-09-09T14:10:12 usb 1-1: new full-speed USB device number 27 using xhci_hcd
+2026-09-09T14:10:12 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:12 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:12 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:12 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:12 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:12 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:14 usb 1-1: USB disconnect, device number 27
+2026-09-09T14:10:14 usb 1-1: new full-speed USB device number 28 using xhci_hcd
+2026-09-09T14:10:15 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:15 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:15 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:15 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:15 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:15 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:17 usb 1-1: USB disconnect, device number 28
+2026-09-09T14:10:17 usb 1-1: new full-speed USB device number 29 using xhci_hcd
+2026-09-09T14:10:17 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:17 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:17 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:17 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:17 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:17 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:20 usb 1-1: USB disconnect, device number 29
+2026-09-09T14:10:20 usb 1-1: new full-speed USB device number 30 using xhci_hcd
+2026-09-09T14:10:20 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:20 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:20 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:20 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:20 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:20 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:22 usb 1-1: USB disconnect, device number 30
+2026-09-09T14:10:22 usb 1-1: new full-speed USB device number 31 using xhci_hcd
+2026-09-09T14:10:23 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:23 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:23 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:23 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:23 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:23 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:25 usb 1-1: USB disconnect, device number 31
+2026-09-09T14:10:25 usb 1-1: new full-speed USB device number 32 using xhci_hcd
+2026-09-09T14:10:25 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:25 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:25 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:25 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:25 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:25 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:27 usb 1-1: USB disconnect, device number 32
+2026-09-09T14:10:28 usb 1-1: new full-speed USB device number 33 using xhci_hcd
+2026-09-09T14:10:28 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:28 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:28 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:28 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:28 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:28 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:30 usb 1-1: USB disconnect, device number 33
+2026-09-09T14:10:30 usb 1-1: new full-speed USB device number 34 using xhci_hcd
+2026-09-09T14:10:31 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:31 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:31 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:31 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:31 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:31 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:33 usb 1-1: USB disconnect, device number 34
+2026-09-09T14:10:33 usb 1-1: new full-speed USB device number 35 using xhci_hcd
+2026-09-09T14:10:33 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:33 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:33 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:33 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:33 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:33 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:35 usb 1-1: USB disconnect, device number 35
+2026-09-09T14:10:36 usb 1-1: new full-speed USB device number 36 using xhci_hcd
+2026-09-09T14:10:36 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:36 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:36 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:36 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:36 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:36 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:38 usb 1-1: USB disconnect, device number 36
+2026-09-09T14:10:38 usb 1-1: new full-speed USB device number 37 using xhci_hcd
+2026-09-09T14:10:39 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:39 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:39 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:39 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:39 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:39 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:41 usb 1-1: USB disconnect, device number 37
+2026-09-09T14:10:41 usb 1-1: new full-speed USB device number 38 using xhci_hcd
+2026-09-09T14:10:41 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:41 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:41 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:41 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:41 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:41 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:43 usb 1-1: USB disconnect, device number 38
+2026-09-09T14:10:44 usb 1-1: new full-speed USB device number 39 using xhci_hcd
+2026-09-09T14:10:44 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:44 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:44 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:44 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:44 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:44 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:46 usb 1-1: USB disconnect, device number 39
+2026-09-09T14:10:46 usb 1-1: new full-speed USB device number 40 using xhci_hcd
+2026-09-09T14:10:46 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:46 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:46 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:46 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:46 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:46 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:49 usb 1-1: USB disconnect, device number 40
+2026-09-09T14:10:49 usb 1-1: new full-speed USB device number 41 using xhci_hcd
+2026-09-09T14:10:49 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:49 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:49 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:49 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:49 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:49 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:51 usb 1-1: USB disconnect, device number 41
+2026-09-09T14:10:52 usb 1-1: new full-speed USB device number 42 using xhci_hcd
+2026-09-09T14:10:52 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:52 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:52 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:52 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:52 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:52 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:54 usb 1-1: USB disconnect, device number 42
+2026-09-09T14:10:54 usb 1-1: new full-speed USB device number 43 using xhci_hcd
+2026-09-09T14:10:54 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:54 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:54 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:54 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:54 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:54 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:57 usb 1-1: USB disconnect, device number 43
+2026-09-09T14:10:57 usb 1-1: new full-speed USB device number 44 using xhci_hcd
+2026-09-09T14:10:57 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:10:57 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:10:57 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:10:57 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:10:57 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:10:57 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:10:59 usb 1-1: USB disconnect, device number 44
+2026-09-09T14:11:00 usb 1-1: new full-speed USB device number 45 using xhci_hcd
+2026-09-09T14:11:00 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:00 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:00 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:00 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:00 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:00 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:02 usb 1-1: USB disconnect, device number 45
+2026-09-09T14:11:02 usb 1-1: new full-speed USB device number 46 using xhci_hcd
+2026-09-09T14:11:02 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:02 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:02 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:02 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:02 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:02 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:05 usb 1-1: USB disconnect, device number 46
+2026-09-09T14:11:05 usb 1-1: new full-speed USB device number 47 using xhci_hcd
+2026-09-09T14:11:05 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:05 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:05 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:05 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:05 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:05 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:07 usb 1-1: USB disconnect, device number 47
+2026-09-09T14:11:08 usb 1-1: new full-speed USB device number 48 using xhci_hcd
+2026-09-09T14:11:08 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:08 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:08 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:08 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:08 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:08 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:10 usb 1-1: USB disconnect, device number 48
+2026-09-09T14:11:10 usb 1-1: new full-speed USB device number 49 using xhci_hcd
+2026-09-09T14:11:10 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:10 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:10 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:10 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:10 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:10 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:13 usb 1-1: USB disconnect, device number 49
+2026-09-09T14:11:13 usb 1-1: new full-speed USB device number 50 using xhci_hcd
+2026-09-09T14:11:13 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:13 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:13 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:13 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:13 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:13 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:15 usb 1-1: USB disconnect, device number 50
+2026-09-09T14:11:16 usb 1-1: new full-speed USB device number 51 using xhci_hcd
+2026-09-09T14:11:16 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:16 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:16 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:16 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:16 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:16 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:18 usb 1-1: USB disconnect, device number 51
+2026-09-09T14:11:18 usb 1-1: new full-speed USB device number 52 using xhci_hcd
+2026-09-09T14:11:18 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:18 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:18 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:18 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:18 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:18 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:21 usb 1-1: USB disconnect, device number 52
+2026-09-09T14:11:21 usb 1-1: new full-speed USB device number 53 using xhci_hcd
+2026-09-09T14:11:21 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:21 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:21 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:21 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:21 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:21 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:23 usb 1-1: USB disconnect, device number 53
+2026-09-09T14:11:24 usb 1-1: new full-speed USB device number 54 using xhci_hcd
+2026-09-09T14:11:24 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:24 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:24 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:24 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:24 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:24 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:26 usb 1-1: USB disconnect, device number 54
+2026-09-09T14:11:26 usb 1-1: new full-speed USB device number 55 using xhci_hcd
+2026-09-09T14:11:26 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:26 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:26 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:26 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:26 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:26 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:29 usb 1-1: USB disconnect, device number 55
+2026-09-09T14:11:29 usb 1-1: new full-speed USB device number 56 using xhci_hcd
+2026-09-09T14:11:29 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:29 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:29 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:29 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:29 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:29 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:31 usb 1-1: USB disconnect, device number 56
+2026-09-09T14:11:32 usb 1-1: new full-speed USB device number 57 using xhci_hcd
+2026-09-09T14:11:32 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:32 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:32 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:32 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:32 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:32 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:34 usb 1-1: USB disconnect, device number 57
+2026-09-09T14:11:34 usb 1-1: new full-speed USB device number 58 using xhci_hcd
+2026-09-09T14:11:34 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:34 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:34 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:34 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:34 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:34 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:37 usb 1-1: USB disconnect, device number 58
+2026-09-09T14:11:37 usb 1-1: new full-speed USB device number 59 using xhci_hcd
+2026-09-09T14:11:37 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:37 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:37 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:37 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:37 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:37 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:39 usb 1-1: USB disconnect, device number 59
+2026-09-09T14:11:40 usb 1-1: new full-speed USB device number 60 using xhci_hcd
+2026-09-09T14:11:40 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:40 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:40 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:40 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:40 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:40 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:42 usb 1-1: USB disconnect, device number 60
+2026-09-09T14:11:42 usb 1-1: new full-speed USB device number 61 using xhci_hcd
+2026-09-09T14:11:42 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:42 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:42 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:42 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:42 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:42 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:45 usb 1-1: USB disconnect, device number 61
+2026-09-09T14:11:45 usb 1-1: new full-speed USB device number 62 using xhci_hcd
+2026-09-09T14:11:45 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:45 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:45 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:45 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:45 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:45 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:47 usb 1-1: USB disconnect, device number 62
+2026-09-09T14:11:48 usb 1-1: new full-speed USB device number 63 using xhci_hcd
+2026-09-09T14:11:48 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:48 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:48 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:48 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:48 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:48 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:50 usb 1-1: USB disconnect, device number 63
+2026-09-09T14:11:50 usb 1-1: new full-speed USB device number 64 using xhci_hcd
+2026-09-09T14:11:50 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:50 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:50 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:50 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:50 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:50 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:53 usb 1-1: USB disconnect, device number 64
+2026-09-09T14:11:53 usb 1-1: new full-speed USB device number 65 using xhci_hcd
+2026-09-09T14:11:53 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:53 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:53 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:53 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:53 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:53 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:55 usb 1-1: USB disconnect, device number 65
+2026-09-09T14:11:56 usb 1-1: new full-speed USB device number 66 using xhci_hcd
+2026-09-09T14:11:56 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:56 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:56 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:56 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:56 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:56 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:11:58 usb 1-1: USB disconnect, device number 66
+2026-09-09T14:11:58 usb 1-1: new full-speed USB device number 67 using xhci_hcd
+2026-09-09T14:11:58 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:11:58 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:11:58 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:11:58 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:11:58 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:11:58 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:12:01 usb 1-1: USB disconnect, device number 67
+2026-09-09T14:12:01 usb 1-1: new full-speed USB device number 68 using xhci_hcd
+2026-09-09T14:12:01 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:12:01 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:12:01 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:12:01 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:12:01 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:12:01 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:12:03 usb 1-1: USB disconnect, device number 68
+2026-09-09T14:12:04 usb 1-1: new full-speed USB device number 69 using xhci_hcd
+2026-09-09T14:12:04 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:12:04 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:12:04 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:12:04 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:12:04 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:12:04 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:12:06 usb 1-1: USB disconnect, device number 69
+2026-09-09T14:12:06 usb 1-1: new full-speed USB device number 70 using xhci_hcd
+2026-09-09T14:12:06 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:12:06 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:12:06 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:12:06 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:12:06 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:12:06 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
+2026-09-09T14:12:09 usb 1-1: USB disconnect, device number 70
+2026-09-09T14:12:09 usb 1-1: new full-speed USB device number 71 using xhci_hcd
+2026-09-09T14:12:09 usb 1-1: New USB device found, idVendor=303a, idProduct=1001, bcdDevice= 1.01
+2026-09-09T14:12:09 usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+2026-09-09T14:12:09 usb 1-1: Product: USB JTAG/serial debug unit
+2026-09-09T14:12:09 usb 1-1: Manufacturer: Espressif
+2026-09-09T14:12:09 usb 1-1: SerialNumber: 70:AF:09:07:F6:3C
+2026-09-09T14:12:09 cdc_acm 1-1:1.0: ttyACM0: USB ACM device
