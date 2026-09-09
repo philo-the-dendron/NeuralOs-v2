@@ -72,6 +72,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo audit                      # RustSec advisories; tool default, nothing ignored
 cargo build --no-default-features -p neuralos-snn
+(cd firmware/esp32c3 && cargo build --release --locked)  # ESP32-C3 firmware, riscv32imc target
 PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # NIR HDF5 gate leg (vendored HDF5; cmake from .nirenv)
 ```
 

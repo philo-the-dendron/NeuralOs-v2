@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@4c15000 (PR #9 merged 2026-09-06, the GitHub-mirror remediation in; mirror synced, both hosts equal) · fix/pre-push-merge-commits ahead by one hook fix (round-17 addendum), PR pending · open(session): philo rules the limitations.tex wording proposed in round-16; AE5 aggregator print waits on a re-stamp · next-work: ROADMAP § Practical next moves"
+head: "main@3504082 (PR #12 merged 2026-09-08: AGENTS.md import, commit-msg hook, cargo audit gate; mirror synced) · work/esp32c3-skeleton ahead by the firmware crate + CI (PR #14, review fixes riding as fixup, squash before merge) · open(session): board arrives 2026-09-09, first spike and ns/step are not claims until the serial log is banked · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-06T21:10:00Z
+updated: 2026-09-09T03:40:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -7046,3 +7046,30 @@ and the `home-paths` CI job. (Adjudicator's note on PR #11, accepted.)
 GUARD 1 honored: appended only; `head:` and `updated:` refreshed under
 the live-state exception. GUARD 2, GUARD 3 untouched. `evidence/` and
 `paper/` untouched.
+
+## Amendment (round-18 — the ESP32-C3 skeleton, and the review that caught two silent boards — 2026-09-09)
+
+Appended; nothing above edited (GUARD 1).
+
+Scope: `firmware/esp32c3/`, a standalone workspace (the `proofs/` shape),
+one LIF neuron stepped in a delay-paced loop, LED + serial on spike, a
+10,000-step timed burst at boot for ns/step. CI: job `firmware` and a
+firmware leg in the per-commit job, both twins. PR #13 closed unmerged
+(five commits, two of them CI fixes found by the runner: target added to
+`stable` instead of the pin; `RUSTFLAGS="-D warnings"` in the workflow
+env replacing config rustflags, so `-Tlinkall.x` never reached the
+linker). Reworked as two commits on `work/esp32c3-skeleton`, PR #14.
+
+Claims, host-verified with the crate (20,000 steps, dt 1 ms):
+- mV grid at 160 µA: 0 spikes ever (truncation, the round-9 ruler
+  finding). Caught in outside review; the first draft cited the test
+  that proves this as if it proved the opposite.
+- centi-mV grid at 160 µA without `decay_adaptation_current`: 6 spikes
+  then silent (adaptation +2 per spike, decay only in `Network::step`).
+  Same reviewer. With decay each step: 14.7 spikes/s sustained.
+- The firmware now does decay → integrate per step on the centi grid.
+
+Guards: not run on a board; the burst number and the first spike are
+not claims until the serial log is banked under `evidence/`. The
+toolchain pin holds (esp-hal `~1.1`, resolver fallback); esp-hal 1.2
+needs Rust 1.95 and waits for the alpha.7 pin bump.

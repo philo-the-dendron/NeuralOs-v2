@@ -170,6 +170,11 @@ jobs:
         with:
           components: clippy
 
+      # For the firmware leg of the loop below. Added on the pin, not via
+      # the action's `targets:` input (see the firmware job).
+      - name: rustup target add riscv32imc-unknown-none-elf (on the pin)
+        run: rustup target add riscv32imc-unknown-none-elf
+
       - uses: https://github.com/Swatinem/rust-cache@v2
 
       - name: Slint Linux build deps + cmake (vendored HDF5)
@@ -211,6 +216,17 @@ jobs:
             cargo test -p neuralos-rt --features hdf5
             cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate
             cargo clippy -p neuralos-rt --features hdf5 --all-targets -- -D warnings
+            # firmware/esp32c3 is its own workspace, invisible to every
+            # --workspace line above (PR #13: this job was green while the
+            # firmware job was red). Guarded like fmt: commits before the
+            # crate existed stay valid.
+            if [ -d firmware/esp32c3 ]; then
+              (cd firmware/esp32c3 && cargo fmt -- --check)
+              (cd firmware/esp32c3 && cargo build --release --locked)
+              (cd firmware/esp32c3 && cargo clippy --release --locked -- -D warnings)
+            else
+              echo "(no firmware/esp32c3 at this commit)"
+            fi
             echo "===== $c GREEN"
           done
           echo "== all $n commit(s) green on their own"
@@ -275,3 +291,44 @@ jobs:
 
       - name: cargo audit
         run: cargo audit
+
+  firmware:
+    name: firmware esp32c3 (riscv32imc build + fmt + clippy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+
+      # Same 1.92.0 pin as everything else (rust-toolchain.toml at the root
+      # is honored inside firmware/ too). The action's `targets:` input
+      # would add the chip target to `stable`, not to the pin (first run of
+      # PR #13: "can't find crate for core"), so the target is added in a
+      # step that runs where rustup resolves the pin.
+      - uses: https://github.com/dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: rustup target add riscv32imc-unknown-none-elf (on the pin)
+        working-directory: firmware/esp32c3
+        run: rustup target add riscv32imc-unknown-none-elf
+
+      - uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          workspaces: firmware/esp32c3
+
+      # firmware/esp32c3 is its own workspace (proofs/ pattern): esp-hal
+      # builds only for the chip target, so the root check job never sees
+      # it. This job is the only place the crate is compiled off-box.
+      # --locked: the committed lock holds the MSRV-compatible versions the
+      # resolver fallback picked; a drift here must fail, not resolve.
+      - name: cargo fmt --check (firmware)
+        working-directory: firmware/esp32c3
+        run: cargo fmt -- --check
+
+      - name: cargo build --release (firmware)
+        working-directory: firmware/esp32c3
+        run: cargo build --release --locked
+
+      - name: cargo clippy (firmware)
+        working-directory: firmware/esp32c3
+        run: cargo clippy --release --locked -- -D warnings

@@ -1,0 +1,12 @@
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+# The linker script argument lives in build.rs, not here: see the note there.
+[target.riscv32imc-unknown-none-elf]
+runner = "espflash flash --monitor"
+
+# Stay on the pinned toolchain (rust-toolchain.toml at the repo root): pick the
+# newest dependency versions whose rust-version fits it instead of the newest
+# overall. Drop this line the day the pin moves past esp-hal's MSRV.
+[resolver]
+incompatible-rust-versions = "fallback"
