@@ -126,7 +126,8 @@ displace substrate + lab bench + gated research.
    the session (the ESP-IDF app descriptor, 427b6cb). The board half
    of GUARD 3 is landed; outreach still waits on the `.nir` exporter.
    Next board work (a network on the chip, a hardware timer instead of
-   the busy-wait) is not opened here.
+   the busy-wait) is not opened here. Three spare boards in the bag
+   (a 4-pack, one used).
 6. Lock-free ports (A-extension targets only — re-scoped above) — the
    last Phase-1 remainder; **SIMD hardening DONE 2026-08-31** (ISA § Close-out)
 7. Visualizer Phase-2 — the lab bench catches up to the substrate the
