@@ -7170,3 +7170,16 @@ the live-state exception. GUARD 2 untouched. GUARD 3: the board half
 of the outreach gate is now landed; the `.nir` exporter half is not,
 no outreach. `evidence/` gained one directory of sha-pinned machine
 outputs and a README; nothing existing edited. `paper/` untouched.
+
+### Review (same day) and one figure corrected
+
+Reviewer: blocking none; cosmetic-list one; record-only four. The
+cosmetic item: "61 enumerations in 10 min of kernel log" (finding 2
+above) cited a log that was not banked. Banked now as
+`kernel-usb.log` (host kernel lines for the port, hostname stripped),
+and the figure it gives supersedes the one above, which was a count
+taken while the loop was still running: **66 enumerations between
+plug-in at 14:09:16 and the `board-info` at 14:12:09 that parked the
+chip in the bootloader**, one every ~2.6 s; none after the first flash.
+The "61 in 10 min" line above is true-when-written and superseded here
+(GUARD 1). Third commit on the branch; SHA256SUMS re-pinned.

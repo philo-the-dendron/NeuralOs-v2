@@ -17,10 +17,11 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 
 | File | What |
 |---|---|
-| `factory-empty-flash.log` | 8 s of the board as shipped: the ROM's `invalid header: 0xffffffff` loop. The flash is blank; the ROM finds no image and the watchdog resets it, which re-enumerated USB every ~2.5 s (61 enumerations in 10 min of kernel log). Not a defect. |
+| `factory-empty-flash.log` | 8 s of the board as shipped: the ROM's `invalid header: 0xffffffff` loop. The flash is blank; the ROM finds no image and the watchdog resets it, which re-enumerated USB every ~2.6 s: 66 enumerations from plug-in (14:09:16) to the `board-info` that parked it in the bootloader (14:12:09), `kernel-usb.log`. Not a defect. |
 | `boot-no-descriptor.log` | 15 s after flashing the `main@3525492` ELF with `--ignore-app-descriptor`: the ESP-IDF v5.5.1 second-stage bootloader loads the image, reads garbage where the app descriptor should be, and refuses the partition, 132 times in the window. Not one firmware line. The blocking finding, fixed by 427b6cb. |
 | `bringup.log` | **The banked run.** Fixed ELF (sha below) flashed without the flag; one reset, then 20 s: ROM `rst:` line, bootloader `Loaded app`, the firmware banner, the burst line, 295 spike lines. |
-| `SHA256SUMS` | pins the three logs and this README |
+| `kernel-usb.log` | the host kernel's USB lines for the board's port over the plug-in window, hostname stripped: 66 `New USB device found` / 65 `USB disconnect` for `303a:1001`, then none once flashed |
+| `SHA256SUMS` | pins the four logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../firmware/esp32c3/` | the firmware crate; the ELF is rebuildable, not committed |
 
