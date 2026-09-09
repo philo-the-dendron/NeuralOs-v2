@@ -57,6 +57,11 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+// The ESP-IDF app descriptor the second-stage bootloader reads before it
+// boots the factory partition. Without it the bootloader reads garbage as the
+// minimum efuse revision and refuses the image (observed 2026-09-09).
+esp_bootloader_esp_idf::esp_app_desc!();
+
 fn neuron(id: u16) -> LIFNeuron {
     LIFNeuron::new_with_type_resolution(
         id,
