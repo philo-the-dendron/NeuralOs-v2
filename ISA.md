@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@3525492 (PR #14 merged 2026-09-09: the ESP32-C3 skeleton + CI) · work/esp32c3-bringup ahead by the app-descriptor fix (427b6cb) + evidence/esp32c3-bringup/ + this round · open(session): none — first spike and ns/step are banked (bringup.log), the round-18 open item is closed · next-work: ROADMAP § Practical next moves"
+head: "main@20ba6d2 (PR #15 merged 2026-09-09: first spike on silicon, evidence banked; mirror synced) · work/consolidation-release-prep ahead by docs truth (d7164d5) + release prep (this round) · open(session): the Gitea release upload is the principal's, post-merge — GUARD 3's exporter half closes at the upload, step 7 turns legal then · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-09T19:15:00Z
+updated: 2026-09-09T21:40:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -7183,3 +7183,82 @@ plug-in at 14:09:16 and the `board-info` at 14:12:09 that parked the
 chip in the bootloader**, one every ~2.6 s; none after the first flash.
 The "61 in 10 min" line above is true-when-written and superseded here
 (GUARD 1). Third commit on the branch; SHA256SUMS re-pinned.
+
+## Amendment (round-20 — consolidation + release prep, the M1 step-4 close-out path — 2026-09-09)
+
+Appended; nothing above edited (GUARD 1). `head:` and `updated:`
+refreshed under the live-state exception.
+
+Scope: the consolidation session the cadence rule called for (three
+additive code sessions since the 2026-08-27 review: SIMD hardening,
+the ESP32-C3 skeleton, the bring-up) and, in the same PR, the release
+prep that closes M1 step 4's last line ("Release upload = principal's
+action"). Branch `work/consolidation-release-prep` from `main@20ba6d2`,
+two commits. Brief written by the principal, double-checked at source
+before the branch opened; three corrections came out of the check and
+are recorded below. Locked by the brief, not re-opened here: release
+tag `bringup-2026-09-09`; binaries never in git; lock-free parked with
+QEMU riscv64gc as the named A-extension target, the Jupiter a deferred
+purchase; toolchain pin stays 1.92.0.
+
+### Docs truth (d7164d5)
+
+AGENTS.md "three crates" / "three members" → four, a workspace-table
+row for `neuralos-nir2json`, CLAUDE.md's opening sentence names it.
+The drift was on record since the 2026-09-02 review ("out of scope,
+pre-existing"). Sweep clean over AGENTS, CLAUDE, README, docs/, crate
+READMEs. Durability lines beside § Merge procedure: no `--prune` after
+the tag-sync fetch; PR checks read through the paginated statuses
+listing, never the ten-context view. ROADMAP step 5: three spare
+boards.
+
+### The three corrections from the double-check
+
+1. **The staged exporter binary did not match its pin.** The step-4
+   close-out (2026-08-24) pinned `2e922ab8…`; the file in `dist/` was
+   `887a70fe…`, same size and day, and its help text carries
+   `--sim-units`, so it was the step-4B build, which never got a pin.
+   The `2e922ab8…` pin is true-when-written and superseded by the pin
+   below.
+2. **No durable build command existed for the tool.** The only musl
+   flags in the record were the QEMU leg's riscv64 ones. The command
+   is now the tool README § Build.
+3. **The notes and the procedure had no home in the tree.** Now
+   `docs/releases/bringup-2026-09-09.md` and the README section.
+
+### Pins (this tree, toolchain 1.92.0, committed locks)
+
+- `neuralos-nir2json-v0.1.0-x86_64-unknown-linux-musl`:
+  **d92ddf99c2ab7bae791678f085f39fa220619eb5a2f24dc0dea547e6037cdaca**,
+  1,098,392 B, static-pie, `ldd`: statically linked. Same sha on two
+  clean builds. A plain `--locked` musl build, no extra flags: the
+  target defaults to `crt-static`. Verified by execution: converts
+  `chain_population_f32.nir` (exit 0, 4 nodes 3 edges, 6 datasets
+  f32-widened, sidecar written); refuses `neg_filter_lzf.nir` by
+  filter name (exit 2).
+- firmware ELF: **102af8c6…** reproduced exactly with `--locked`, the
+  PR #15 evidence pin, 190,564 B.
+- Why the tool's sha moved since August: the spine changed under the
+  path dep (SIMD hardening, alpha.5 follow-ups); size identical, three
+  shas in the record now, only the one above is pinned to a tree.
+
+### Release notes draft
+
+`docs/releases/bringup-2026-09-09.md`: upload procedure with every
+field pre-decided (pre-release recommended: the library inside is
+alpha), file table with shas and rebuild pointers, the notes body with
+measured claims only (1,501 ns/step, step 56, 14.7/s), what the
+release is not. The upload is out of scope here and the principal's.
+
+### Cadence
+
+Consolidation count resets to 0 of 3 at this session's merge.
+
+### Guards
+
+GUARD 1 honored: appended only; head/updated refreshed under the
+live-state exception. GUARD 2 untouched. GUARD 3: unchanged by this
+PR; the exporter half closes at the upload, not here; no outreach.
+`evidence/` untouched (the firmware pin already lives there).
+`paper/` untouched. No binaries committed (`dist/` gitignored,
+verified by `git status`).

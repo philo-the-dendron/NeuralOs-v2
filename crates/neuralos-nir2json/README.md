@@ -61,6 +61,33 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   Linear-only graphs (encoders, readout heads) convert cleanly from
   any emitter, no flag needed.
 
+## Build (the release artifact)
+
+The prebuilt binary on the Gitea release is this, nothing more:
+
+```bash
+rustup target add x86_64-unknown-linux-musl          # once
+cargo build -p neuralos-nir2json --release --locked --target x86_64-unknown-linux-musl
+cp target/x86_64-unknown-linux-musl/release/neuralos-nir2json \
+   crates/neuralos-nir2json/dist/neuralos-nir2json-v0.1.0-x86_64-unknown-linux-musl
+```
+
+Static-pie, statically linked, no libc dependency (`ldd` says so). The
+musl target defaults to `crt-static`, so no extra flags. `dist/` is
+gitignored: the binary lives on the release, its pin lives in the
+record (`docs/releases/`, ISA round-20). At the tree that record names,
+under the pinned toolchain (1.92.0), the sha is stable across clean
+builds; a rebuild on another tree or toolchain gives another sha, which
+is not a finding.
+
+Verify a binary by execution, both exits:
+
+```bash
+B=crates/neuralos-nir2json/dist/neuralos-nir2json-v0.1.0-x86_64-unknown-linux-musl
+$B crates/neuralos-nir2json/tests/fixtures/chain_population_f32.nir /tmp/chain.json   # exit 0, sidecar written
+$B crates/neuralos-nir2json/tests/fixtures/neg_filter_lzf.nir /tmp/lzf.json           # exit 2, lzf refused by name
+```
+
 ## Development
 
 ```bash
