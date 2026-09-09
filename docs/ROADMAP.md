@@ -12,7 +12,7 @@
 |---|---|---|
 | **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again** — NIR DONE through general assembly (slices 1+2 + `build_network`, 2026-08-22 @ alpha.5), QEMU proof landed 2026-08-21; lock-free (re-scoped, below) remains; **SIMD hardening DONE 2026-08-31** (ten-commit branch, ISA § Close-out). |
 | **2** | `neuralos-app` — Slint visualizer / lab bench | Untouched since 2026-08-08; Phase-2 items re-opened. |
-| **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). Silicon (ESP32-C3/HiFive) remains, priority-gated (board decided 2026-08-22 — merged-plan step 3). |
+| **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). **ESP32-C3 silicon DONE 2026-09-09** (`evidence/esp32c3-bringup/`: one LIF neuron on a SuperMini, 1,501 ns/step, first spike step 56, 14.7 spikes/s, exact host match). HiFive only if a session names it. |
 | **4** | Paper track | The Branch B article (in `paper/`) — finish, gate, submit. Must not displace 1–3. |
 | **5** | Bridge follow-ups | **Frozen record.** Reopening is the principal's call on the recorded forks. The one active bridge-adjacent task is R4 (harness extraction) below. |
 
@@ -75,8 +75,8 @@ Strict order — nothing new opens until the rung above is 100%.
    posture; Leg A's no_std surface is the six core modules — recorded in
    `evidence/qemu-riscv-gate/README.md`)
 
-Remaining in this phase: silicon (ESP32-C3 / HiFive), priority-gated
-(board decided 2026-08-22 — merged-plan step 3).
+Silicon landed 2026-09-09 (ESP32-C3, `evidence/esp32c3-bringup/`);
+nothing of this phase remains but the lock-free ports (step 6).
 CI leg parked as a named follow-up (runner cost under TCG unmeasured).
 
 ## Phase 5 — Paper + bridge follow-ups (gated, frozen)
@@ -118,12 +118,15 @@ displace substrate + lab bench + gated research.
    not clear the pre-registered bar. The paper's "uncalibrated
    instrument" limitation therefore stays as written, and step 8 stays
    CLOSED until a new instrument exists.
-5. **ESP32-C3 bring-up — BOARD BOUGHT, ARRIVES 2026-09-08 (philo,
-   reported 2026-09-02).** Decided 2026-08-22 ("purchase within 1–2
-   weeks"); both the purchase and the arrival date come from that one
-   report. It gates its own step and, via GUARD 3, gates outreach
-   together with the `.nir` exporter. Still the longest pole on the
-   board; from arrival it becomes a session rather than a purchase.
+5. **ESP32-C3 bring-up — RAN 2026-09-09** (board decided 2026-08-22,
+   arrived 2026-09-09): one LIF neuron on a SuperMini, 1,501 ns/step
+   on a 10,000-step burst, first spike step 56, 147 burst spikes =
+   14.7/s (exact host match), blue LED blinking —
+   `evidence/esp32c3-bringup/`, ISA round-19. One blocking fix rode
+   the session (the ESP-IDF app descriptor, 427b6cb). The board half
+   of GUARD 3 is landed; outreach still waits on the `.nir` exporter.
+   Next board work (a network on the chip, a hardware timer instead of
+   the busy-wait) is not opened here.
 6. Lock-free ports (A-extension targets only — re-scoped above) — the
    last Phase-1 remainder; **SIMD hardening DONE 2026-08-31** (ISA § Close-out)
 7. Visualizer Phase-2 — the lab bench catches up to the substrate the

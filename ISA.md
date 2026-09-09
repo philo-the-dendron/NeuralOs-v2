@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@3504082 (PR #12 merged 2026-09-08: AGENTS.md import, commit-msg hook, cargo audit gate; mirror synced) · work/esp32c3-skeleton ahead by the firmware crate + CI (PR #14, review fixes riding as fixup, squash before merge) · open(session): board arrives 2026-09-09, first spike and ns/step are not claims until the serial log is banked · next-work: ROADMAP § Practical next moves"
+head: "main@3525492 (PR #14 merged 2026-09-09: the ESP32-C3 skeleton + CI) · work/esp32c3-bringup ahead by the app-descriptor fix (427b6cb) + evidence/esp32c3-bringup/ + this round · open(session): none — first spike and ns/step are banked (bringup.log), the round-18 open item is closed · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-09T03:40:00Z
+updated: 2026-09-09T19:15:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -7073,3 +7073,100 @@ Guards: not run on a board; the burst number and the first spike are
 not claims until the serial log is banked under `evidence/`. The
 toolchain pin holds (esp-hal `~1.1`, resolver fallback); esp-hal 1.2
 needs Rust 1.95 and waits for the alpha.7 pin bump.
+
+## Amendment (round-19 — the board: first spike on silicon, and the descriptor the bootloader wanted — 2026-09-09)
+
+Appended; nothing above edited (GUARD 1). Frontmatter `head:` and
+`updated:` refreshed under the live-state exception: the round-18 line
+still showed PR #14 open with a pending squash, and it had merged at
+3525492 before this session opened.
+
+Scope: the ESP32-C3 SuperMini (Amazon B0GQM4SRS3, a 4-pack) arrived
+2026-09-09 ~14:10 local and ran the round-18 firmware the same
+afternoon. Branch `work/esp32c3-bringup`, two commits: the firmware fix
+(427b6cb) and this record. Session run step by step on philo's word,
+each step read back before the next; verify-first held throughout
+(every board fact below is a line in `evidence/esp32c3-bringup/`).
+
+### The board, from the chip
+
+`espflash board-info`: esp32c3 revision v0.4, 40 MHz crystal, 4 MB
+flash, secure boot and flash encryption disabled, MAC
+70:af:09:07:f6:3c. Native USB-Serial-JTAG (`303a:1001`, `ttyACM0`), no
+bridge chip. Blue LED on GPIO8, red LED is power. The listing said
+SuperMini; the chip and the LED wiring confirmed it; philo's ruling on
+keeping it was made on the chip readout, before any flash.
+
+### Findings, classed
+
+1. **Blocking, fixed (427b6cb): the image had no ESP-IDF app
+   descriptor.** espflash 4 refused to flash it. Flashed anyway with
+   `--ignore-app-descriptor` (option A, chosen to observe rather than
+   fix blind), the ESP-IDF v5.5.1 second-stage bootloader espflash
+   bundles read garbage where the descriptor belongs ("Image requires
+   efuse blk rev >= v117.6, but chip is v1.3"), refused the factory
+   partition and reset, 132 times in 15 s, not one firmware line
+   (`boot-no-descriptor.log`). The fix is the esp-hal 1.x pair,
+   `esp-bootloader-esp-idf` 0.5.0 + `esp_app_desc!()`, verified against
+   the crate docs for that version, the espflash issue thread (#927,
+   where a maintainer calls the flag bad UX kept for the ESP-IDF
+   interop case) and the release pairing (esp-hal 1.1.0 shipped eight
+   days after the bootloader crate 0.5.0; 0.6.0 needs Rust 1.95, the
+   esp-hal 1.2 train, the wall round 18 already named). CI builds the
+   ELF and never flashes; nothing before a board could catch this.
+2. **Record-only: the board ships blank.** The ROM's `invalid header:
+   0xffffffff` loop, USB re-enumerating every ~2.5 s, 61 enumerations
+   in 10 min of kernel log (`factory-empty-flash.log`). Not a defect;
+   gone at the first flash.
+3. **Record-only, the builder's tooling:** two captures lost the boot
+   lines. One shared the port with `espflash reset`, which then waited
+   for bytes the reader had eaten, hung, and left the chip in download
+   mode (recovered with a clean `espflash reset`). One flushed the
+   input after the reset edge and discarded the ROM, bootloader and
+   banner lines, all out within ~50 ms. `tools/esp32c3_capture.py`
+   owns the port, drives espflash's own `reset_after_flash` DTR/RTS
+   sequence, flushes before the reset, and carries both rules in its
+   docstring. A first version of it copied the wrong espflash sequence
+   (the boot-pin-holding one) and parked the chip in download mode
+   too; also recovered, not banked.
+
+### Claims, from `bringup.log` (one reset, 20 s, fixed ELF sha 102af8c6…)
+
+- **1,501 ns/step** on the burst: 10,000 steps (decay + integrate) in
+  15,012 µs. The first board number; round 18 had no host prediction.
+- **147 spikes in the 10,000-step burst = 14.7/s at dt 1 ms.** Exact
+  host match (round 18: 14.7/s sustained on the centi grid with decay).
+- **First spike at step 56** (56,331 µs) in the real-time loop; host
+  said 55. Explained, not adjusted: the loop stamps each step with
+  wall time and a loop step costs 1.0057 ms, so simulated time runs
+  ~0.6 % slow against the step counter. The burst, which advances
+  simulated time exactly `DT_US` per step, matches to the spike.
+- **295 spikes after the reset** (raw `grep -c` 296; one stale
+  pre-reset line, named in the README). 295 / 20.106432 s = 14.672/s;
+  294 intervals / 20.050101 s = 14.663/s. Interval mean 68,198 µs,
+  sd 676, min 67,334, max 69,460. Both divisions from the log's own
+  stamps, nothing rounded first (reviewer's cosmetic check).
+- **The blue LED blinks** (philo, by eye).
+- **USB timing non-issue on a software reset.** The pre-board concern
+  (esp-println's `auto` backend routes to USB only after a USB
+  start-of-frame; the banner prints ~1 ms after boot) did not occur:
+  the link survives `USB_UART_CHIP_RESET` without re-enumeration, the
+  flag is already set, the banner arrived over USB. Cold plug-in with
+  a monitor attached is impossible by construction; untested and moot.
+
+### Sweep
+
+`2026-09-08` as the arrival date (ROADMAP step 5) → ran 2026-09-09.
+ROADMAP § Priority order row 3 and § Phase-1 remainder, VISION § near-
+term path item 2: "ESP32-C3 remains / next" → done, pointer to the
+evidence. `evidence/INDEX.md` row added. RESEARCH_LOG entry added.
+`firmware/esp32c3/src/main.rs` module note already carried the
+SuperMini/GPIO8 wiring and stays. Nothing in `paper/` names the board.
+
+### Guards
+
+GUARD 1 honored: appended only; `head:` and `updated:` refreshed under
+the live-state exception. GUARD 2 untouched. GUARD 3: the board half
+of the outreach gate is now landed; the `.nir` exporter half is not,
+no outreach. `evidence/` gained one directory of sha-pinned machine
+outputs and a README; nothing existing edited. `paper/` untouched.
