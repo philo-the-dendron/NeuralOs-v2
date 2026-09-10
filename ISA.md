@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@8773484 (PR #16 merged 2026-09-09: consolidation + release prep; mirror synced) · release `bringup-2026-09-09` published 2026-09-10T01:51Z with the three artifacts: GUARD 3's two halves are landed, outreach is the principal's call · work/percommit-script ahead by the mechanical round (this round) · open(session): none · next-work: ROADMAP § Practical next moves"
+head: "main@371e8c6 (PR #17 merged 2026-09-10: tools/percommit.sh in-repo, four owed words; mirror synced) · work/ring-buffer ahead by alpha.6 in the tree (this round: the [u32; N] ring, heapless out of the runtime deps, rust-version, crate-README truth, the bump) · open(session): the alpha.6 publish is the principal's stamp and the ESP32-C3 re-measure precedes it, both next session · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-10T15:54:02Z
+updated: 2026-09-10T20:04:09Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -7360,3 +7360,104 @@ instead of failing silently under `set -e`.
 Claim the entry above omitted: `tools/percommit.sh` ran on this branch
 before the push, all three commits green, 20 minutes from a cold
 target dir (excerpt in the first PR #17 comment).
+
+## Amendment (round-22 — the ring replaces heapless, alpha.6 in the tree — 2026-09-10)
+
+Branch `work/ring-buffer` from `main@371e8c6`, one PR. Spine code
+changed; no evidence, no paper, no crates.io action.
+
+### Scope, in commit order
+
+1. `SpikeRing` over `[u32; MAX_SPIKE_HISTORY]` + head index + len
+   replaces `heapless::Vec` in `lif_neuron.rs`. O(1) push, oldest
+   overwritten once full, iteration and indexing oldest to newest
+   (the ISI walk's order). Debug prints live entries only. The read
+   side (`len`, `is_empty`) is test-gated like its only callers, the
+   introspection trio. No public API moved; every existing test
+   passes unchanged.
+2. Differential proptest: the pre-ring implementation kept verbatim
+   as the oracle (heapless::Vec with `remove(0)`, the three consumers'
+   formulas), same spike times into both, up to 300 so the ring
+   wraps, unordered so the ISI filter runs; contents and order, then
+   `spike_count`, `firing_rate_mhz`, `isi_stats_us` must agree.
+   Proptest on the ring alone (newest `min(n, 64)` kept, oldest
+   first, by iteration and by index; clear; works again). Two unit
+   pins (Debug across a wrap; `get` past `len` panics like a slice).
+   The snn lib count moves 205 → 209.
+3. heapless → `[dev-dependencies]`. `cargo tree -e normal` prints the
+   crate alone; the crate depends on `core`. Root lock unchanged (dev
+   and normal edges share the lock union, as ruled before the branch).
+4. `rust-version = "1.92"` as a `[workspace.package]` field, inherited
+   by all four members; nir2json's own literal folded into it.
+5. Crate README truth (the crates.io README said "published as
+   alpha.4" while alpha.5 was live — the alpha.5 sweep missed it);
+   "tree == published" rewritten to "tree ahead, alpha.6 pending
+   publish" in AGENTS.md (two hits) and VISION.md § 1; the drifting
+   test-count sentence removed from the README, the AGENTS.md count
+   moved to the measured 347.
+6. Version 0.1.0-alpha.6 in the tree: root manifest, three root-lock
+   entries, the nir2json pin string, both standalone locks, the
+   "Since alpha.5" notes section.
+7. ISA (this entry). 8. The percommit.sh header's AVX2 scope word
+   (PR #17 cosmetic list) — dedicated, last, smallest.
+
+### Findings (each verified at its source this session)
+
+- **Record-only — `isi_stats_us` overflows on arbitrary `u32` spike
+  times.** Its `u64` sum of squared intervals overflows; proptest's
+  shrunk case is three intervals near 2^31. Pre-existing, test-gated,
+  zero non-test callers (the R8 census deferral, 2026-08-22). The
+  differential test bounds times to 2^27 µs (~134 s of simulation)
+  and says why in its docstring. The regression seed proptest wrote
+  for the unbounded strategy was not kept: the strategy it replays no
+  longer exists. Fix is a one-liner (`saturating_mul`/`u128`) but not
+  this brief's.
+- **Brief premise corrected — the firmware lock keeps all four
+  crates.** heapless 0.8 is pulled by esp-println → esp-sync →
+  embassy-sync; only the spine's edge to it leaves (three lines). The
+  QEMU proof lock is where the four packages actually leave.
+- **Record defect, fixed as a side effect — the QEMU proof lock
+  recorded the spine at alpha.4** since the alpha.5 bump; nobody
+  re-resolves a lock outside CI. It carries alpha.6 now. Whether the
+  banked Leg A evidence (`evidence/qemu-riscv-gate/`) was built
+  against alpha.4 or alpha.5 is not decided here; the lock says the
+  crate was last resolved at alpha.4.
+- **Record-only — the QEMU proof does not link under the repo's
+  `RUSTFLAGS` convention.** Its `-Tlink.x` and `relocation-model`
+  live in `.cargo/config.toml` `rustflags`, which the `RUSTFLAGS`
+  variable overrides (undefined `_stack_top`, `_bss_start`). The
+  firmware moved the same arg into build.rs for exactly this reason
+  (round-19). Builds fine without the variable, which is how it is
+  documented. A build.rs move is a separate change.
+- **Mechanism corrected before the branch — the stale nir2json pin
+  breaks nothing.** Scratch test: root bumped, pin left at alpha.5;
+  `metadata --locked` fails only until the three member entries are
+  bumped, then resolves; `cargo install --path --locked --offline`
+  installs. The pin moved on the manifest's semver-honest comment,
+  not on a failure.
+- **The standalone locks need the version bump too** (not in the
+  brief): both pin the spine by version; the firmware's `--locked`
+  build in CI would have gone red at commit 6 without it.
+- The firmware ELF sha moved with its lock (`6e4c6366…` at commit 3,
+  moves again at the bump); the `102af8c6…` pin is true-when-written.
+  The re-measure is next session's, on the merged tree.
+
+### Dogfood: tools/percommit.sh, first real use
+
+Ran on the branch before the first push; result and timing in the
+PR's first comment. Friction is listed there as findings. One known
+gap by design: `proofs/` is outside the loop as it is outside CI.
+
+### Not done here
+
+crates.io publish (principal's stamp, next session, after the board
+re-measure per the sequencing ruling); the bench; the overflow fix;
+the proof's build.rs; alpha.7 = the pin-bump release, when a blocker
+exists (esp-hal 1.2 / esp-bootloader-esp-idf 0.6 want 1.95).
+
+### Guards
+
+GUARD 1 honored: appended only; head/updated refreshed under the
+live-state exception. GUARD 2 untouched. GUARD 3: no outreach.
+`evidence/` untouched (the ELF pin is not re-banked; the re-measure
+banks a new entry). `paper/` untouched. No binaries committed.

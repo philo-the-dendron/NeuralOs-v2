@@ -6,7 +6,7 @@ name = "neuralos-nir2json"
 # versions independently of the library.
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.92"
+rust-version.workspace = true
 description = "Convert Neuromorphic Intermediate Representation (.nir, HDF5) files into the neuralos-snn JSON import schema — pure Rust, no C toolchain"
 license = "AGPL-3.0-or-later"
 # crates.io publish DEFERRED until after the step-7 demand measurement
@@ -32,7 +32,7 @@ hdf5-pure = { version = "0.39.0", default-features = false, features = ["std", "
 # publish of this tool would resolve the version requirement against
 # the registry instead — post-alpha spine API breaks then require a
 # spine republish before the tool's next semver-honest release.
-neuralos-snn = { version = "0.1.0-alpha.5", path = "../neuralos-snn" }
+neuralos-snn = { version = "0.1.0-alpha.6", path = "../neuralos-snn" }
 
 [dev-dependencies]
 # Tests only — never shipped: value-level comparison of converted

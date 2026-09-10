@@ -13,9 +13,10 @@
 # the other is drift, and the amendment grep sweep is what catches it.
 # One deliberate difference from the job: it runs in a scratch worktree
 # and target dir (the clean-build proof; the job builds in place on one
-# cache). The environment is the job's: RUSTFLAGS="-D warnings" and
-# NEURALOS_REQUIRE_AVX2=1 are what both workflow files export at the
-# env level, so a rustc warning is red here exactly as it is there.
+# cache). The environment is the job's: RUSTFLAGS="-D warnings" from
+# both workflow files' top-level env block, NEURALOS_REQUIRE_AVX2=1
+# from the per-commit step's own env, so a rustc warning is red here
+# exactly as it is there.
 #
 # Scratch: $NEURALOS_PERCOMMIT_SCRATCH, default .percommit/ at the repo
 # root (gitignored). The worktree is removed on exit; the target dir is

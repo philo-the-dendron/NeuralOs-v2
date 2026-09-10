@@ -43,7 +43,8 @@
 //!
 //! # `no_std`
 //!
-//! Uses `heapless::Vec` for spike history (compile-time capacity, no allocator).
+//! Spike history is a ring over `[u32; MAX_SPIKE_HISTORY]` (compile-time
+//! capacity, no allocator, no dependency): see [`SpikeRing`].
 //! Fully `no_std`-compatible for embedded RISC-V deployment.
 //!
 //! # Bug fixes vs v0.1
@@ -69,10 +70,84 @@
     clippy::cast_sign_loss
 )]
 
-use heapless::Vec;
-
 /// Maximum spike history length (compile-time, no allocator).
 pub const MAX_SPIKE_HISTORY: usize = 64;
+
+/// Bounded spike-timestamp history: a ring over
+/// `[u32; MAX_SPIKE_HISTORY]` with the index of the oldest entry and a
+/// length. Push is O(1) — once full, the oldest entry is overwritten
+/// (recent spikes are what the consumers want). Iteration and indexing
+/// run oldest to newest, the order the ISI walk depends on. Replaced
+/// `heapless::Vec` (2026-09-10): its `remove(0)` shifted the whole
+/// buffer on every spike past the 64th.
+#[derive(Clone)]
+struct SpikeRing {
+    buf: [u32; MAX_SPIKE_HISTORY],
+    /// Index of the oldest live entry. Meaningless while `len == 0`.
+    head: usize,
+    len: usize,
+}
+
+impl SpikeRing {
+    const fn new() -> Self {
+        Self {
+            buf: [0; MAX_SPIKE_HISTORY],
+            head: 0,
+            len: 0,
+        }
+    }
+
+    /// Append `t` as the newest entry; drop the oldest when full.
+    fn push(&mut self, t: u32) {
+        if self.len < MAX_SPIKE_HISTORY {
+            self.buf[(self.head + self.len) % MAX_SPIKE_HISTORY] = t;
+            self.len += 1;
+        } else {
+            self.buf[self.head] = t;
+            self.head = (self.head + 1) % MAX_SPIKE_HISTORY;
+        }
+    }
+
+    fn clear(&mut self) {
+        self.head = 0;
+        self.len = 0;
+    }
+
+    /// Read side, test-gated like its only callers (the introspection
+    /// trio below).
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// The `i`-th entry, oldest first. Panics when `i >= len()`, like a
+    /// slice index would.
+    fn get(&self, i: usize) -> u32 {
+        assert!(
+            i < self.len,
+            "SpikeRing index {i} out of range {}",
+            self.len
+        );
+        self.buf[(self.head + i) % MAX_SPIKE_HISTORY]
+    }
+
+    /// Entries oldest to newest.
+    fn iter(&self) -> impl Iterator<Item = u32> + '_ {
+        (0..self.len).map(move |i| self.get(i))
+    }
+}
+
+/// Only the live entries, oldest first — never the stale slots.
+impl core::fmt::Debug for SpikeRing {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
 
 /// Membrane potential lower bound (mV) — biological floor.
 pub const MEMBRANE_MV_MIN: i16 = -100;
@@ -214,8 +289,9 @@ pub struct LIFNeuron {
     /// Spike-frequency adaptation current (μA). Decays between spikes, jumps on each spike.
     pub adaptation_current_ua: i16,
 
-    /// Spike timestamps (chronological order, oldest at index 0). Bounded by `MAX_SPIKE_HISTORY`.
-    spike_history: Vec<u32, MAX_SPIKE_HISTORY>,
+    /// Spike timestamps (chronological order, oldest first). Bounded by
+    /// `MAX_SPIKE_HISTORY`; the oldest is overwritten once full.
+    spike_history: SpikeRing,
 }
 
 impl LIFNeuron {
@@ -266,7 +342,7 @@ impl LIFNeuron {
             resistance_mohm: 100,
             noise_amplitude_ua: 5,
             adaptation_current_ua: 0,
-            spike_history: Vec::new(),
+            spike_history: SpikeRing::new(),
         }
     }
 
@@ -362,11 +438,9 @@ impl LIFNeuron {
         self.membrane_potential = self.reset_potential;
         self.refractory_time_us = self.tau_refractory_us;
         self.last_spike_time_us = current_time_us;
-        // Drop oldest if at capacity (we want recent spikes, not the first ones).
-        if self.spike_history.is_full() {
-            self.spike_history.remove(0);
-        }
-        let _ = self.spike_history.push(current_time_us);
+        // The ring drops the oldest once full (we want recent spikes, not
+        // the first ones).
+        self.spike_history.push(current_time_us);
         // Spike-frequency adaptation accumulates per spike.
         self.adaptation_current_ua = self.adaptation_current_ua.saturating_add(2);
     }
@@ -479,7 +553,7 @@ impl LIFNeuron {
         let count = self
             .spike_history
             .iter()
-            .filter(|&&t| t >= window_start)
+            .filter(|&t| t >= window_start)
             .count() as u32;
         // spikes/sec × 1000 = (count × 1_000_000_000) / window_us
         count
@@ -500,8 +574,8 @@ impl LIFNeuron {
         let mut intervals_sqsum: u64 = 0;
         let mut count: u64 = 0;
         for i in 1..n {
-            let prev = self.spike_history[i - 1];
-            let curr = self.spike_history[i];
+            let prev = self.spike_history.get(i - 1);
+            let curr = self.spike_history.get(i);
             if curr >= prev {
                 let d = u64::from(curr - prev);
                 intervals_sum += d;
@@ -1212,5 +1286,163 @@ mod tests {
         assert_eq!(n.membrane_potential, n.resting_potential, "from above");
         let _ = n.integrate_and_fire(0, 20_000, 60_000);
         assert_eq!(n.membrane_potential, n.resting_potential, "stays at rest");
+    }
+
+    // ----- 2026-09-10: the ring replaced heapless::Vec. The oracle is the
+    // pre-ring implementation kept verbatim: heapless::Vec with remove(0)
+    // when full, and the three consumers' formulas over it. Same spike
+    // times into both; iteration order and every consumer must agree. -----
+
+    /// The pre-ring history and its consumers, as they were.
+    struct HeaplessOracle {
+        history: heapless::Vec<u32, MAX_SPIKE_HISTORY>,
+    }
+
+    impl HeaplessOracle {
+        fn new() -> Self {
+            Self {
+                history: heapless::Vec::new(),
+            }
+        }
+
+        fn push(&mut self, t: u32) {
+            if self.history.is_full() {
+                self.history.remove(0);
+            }
+            let _ = self.history.push(t);
+        }
+
+        fn firing_rate_mhz(&self, last_update_time_us: u32, window_us: u32) -> u32 {
+            if self.history.is_empty() || window_us == 0 {
+                return 0;
+            }
+            let window_start = last_update_time_us.saturating_sub(window_us);
+            let count = self.history.iter().filter(|&&t| t >= window_start).count() as u32;
+            count
+                .saturating_mul(1_000_000_000)
+                .checked_div(window_us)
+                .unwrap_or(0)
+        }
+
+        fn isi_stats_us(&self) -> Option<(u32, u32)> {
+            if self.history.len() < 2 {
+                return None;
+            }
+            let n = self.history.len();
+            let mut intervals_sum: u64 = 0;
+            let mut intervals_sqsum: u64 = 0;
+            let mut count: u64 = 0;
+            for i in 1..n {
+                let prev = self.history[i - 1];
+                let curr = self.history[i];
+                if curr >= prev {
+                    let d = u64::from(curr - prev);
+                    intervals_sum += d;
+                    intervals_sqsum += d * d;
+                    count += 1;
+                }
+            }
+            if count == 0 {
+                return None;
+            }
+            let mean = intervals_sum / count;
+            let mean_sq = mean * mean;
+            let sq_mean = intervals_sqsum / count;
+            let variance = sq_mean.saturating_sub(mean_sq);
+            let std = isqrt_u64(variance);
+            Some((mean as u32, std as u32))
+        }
+    }
+
+    proptest! {
+        /// Differential: the neuron's ring against the heapless oracle on
+        /// the same spike times — contents in order, then every consumer.
+        /// Up to 300 spikes so the ring wraps several times; unordered
+        /// times so non-monotonic sequences exercise the ISI filter.
+        /// Times are bounded to 2^27 µs (~134 s of simulation): with
+        /// arbitrary u32 times `isi_stats_us` overflows its u64 sum of
+        /// squared intervals — in the oracle and the ring version alike,
+        /// a pre-existing property of the test-gated trio, found by this
+        /// test on 2026-09-10 and recorded, not fixed here.
+        #[test]
+        fn prop_ring_matches_the_heapless_oracle(
+            times in proptest::collection::vec(0u32..=1 << 27, 0..300),
+            last_update_time_us in any::<u32>(),
+            window_us in any::<u32>(),
+        ) {
+            let mut n = LIFNeuron::new(1);
+            let mut oracle = HeaplessOracle::new();
+            for &t in &times {
+                n.spike(t);
+                oracle.push(t);
+            }
+            let ring: std::vec::Vec<u32> = n.spike_history.iter().collect();
+            let vec: std::vec::Vec<u32> = oracle.history.iter().copied().collect();
+            prop_assert_eq!(ring, vec, "iteration order and contents");
+
+            n.last_update_time_us = last_update_time_us;
+            prop_assert_eq!(n.spike_count(), oracle.history.len());
+            prop_assert_eq!(
+                n.firing_rate_mhz(window_us),
+                oracle.firing_rate_mhz(last_update_time_us, window_us)
+            );
+            prop_assert_eq!(n.isi_stats_us(), oracle.isi_stats_us());
+        }
+
+        /// The ring alone: after any number of pushes it holds the newest
+        /// `min(pushes, MAX_SPIKE_HISTORY)` entries, oldest first, by
+        /// iteration and by index; clear empties it and it works again.
+        #[test]
+        fn prop_ring_keeps_the_newest_in_order(
+            times in proptest::collection::vec(any::<u32>(), 0..300),
+        ) {
+            let mut ring = SpikeRing::new();
+            for &t in &times {
+                ring.push(t);
+            }
+            let live = times.len().min(MAX_SPIKE_HISTORY);
+            prop_assert_eq!(ring.len(), live);
+            prop_assert_eq!(ring.is_empty(), live == 0);
+            let expected = &times[times.len() - live..];
+            let got: std::vec::Vec<u32> = ring.iter().collect();
+            prop_assert_eq!(got.as_slice(), expected);
+            for (i, &t) in expected.iter().enumerate() {
+                prop_assert_eq!(ring.get(i), t);
+            }
+
+            ring.clear();
+            prop_assert!(ring.is_empty());
+            prop_assert_eq!(ring.iter().count(), 0);
+            ring.push(7);
+            prop_assert_eq!(ring.len(), 1);
+            prop_assert_eq!(ring.get(0), 7);
+        }
+    }
+
+    #[test]
+    fn ring_debug_shows_live_entries_only() {
+        let mut ring = SpikeRing::new();
+        assert_eq!(std::format!("{ring:?}"), "[]");
+        ring.push(1);
+        ring.push(2);
+        assert_eq!(std::format!("{ring:?}"), "[1, 2]");
+        // Wrap: 70 pushes of 0..70 keep 6..70, and only those print.
+        let mut ring = SpikeRing::new();
+        for t in 0..70_u32 {
+            ring.push(t);
+        }
+        let shown = std::format!("{ring:?}");
+        assert!(shown.starts_with("[6, 7, 8,"), "{shown}");
+        assert!(shown.ends_with(" 69]"), "{shown}");
+        assert_eq!(ring.iter().count(), MAX_SPIKE_HISTORY);
+    }
+
+    #[test]
+    #[should_panic(expected = "SpikeRing index 2 out of range 2")]
+    fn ring_get_past_len_panics_like_a_slice() {
+        let mut ring = SpikeRing::new();
+        ring.push(10);
+        ring.push(20);
+        let _ = ring.get(2);
     }
 }

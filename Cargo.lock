@@ -3047,7 +3047,7 @@ dependencies = [
 
 [[package]]
 name = "neuralos-app"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 dependencies = [
  "neuralos-snn",
  "slint",
@@ -3065,7 +3065,7 @@ dependencies = [
 
 [[package]]
 name = "neuralos-rt"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 dependencies = [
  "hdf5",
  "hdf5-sys",
@@ -3075,7 +3075,7 @@ dependencies = [
 
 [[package]]
 name = "neuralos-snn"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 dependencies = [
  "heapless",
  "proptest",

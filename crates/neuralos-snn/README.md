@@ -4,7 +4,7 @@
 > silicon — LIF neurons, pairwise STDP, CSR synapses, ternary weight
 > codecs, and an AVX2 batch kernel.
 
-Published on crates.io as `0.1.0-alpha.4`; the tree carries the alpha.5 changes (AGPL-3.0-or-later).
+Published on crates.io as `0.1.0-alpha.5` (2026-08-22); the tree carries the alpha.6 changes (AGPL-3.0-or-later).
 
 ## What this crate is
 
@@ -94,6 +94,30 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   `i2_s` layout helpers); introspection accessors and builders stay pub —
   see the alpha.3 audit record in the repo's `ISA.md`.
 - SIMD gate runs in CI; the batch kernel is documented mV-grid-only.
+
+## Since alpha.5 (the alpha.6 notes)
+
+- **Spike history is a `[u32; MAX_SPIKE_HISTORY]` ring** (private
+  `SpikeRing` in `lif_neuron.rs`): O(1) push, the oldest entry
+  overwritten once full, iteration oldest to newest. It replaces
+  `heapless::Vec`, whose `remove(0)` shifted the whole buffer on every
+  spike past the 64th. Proven by a differential proptest against the
+  pre-ring implementation kept verbatim as the oracle (same spike
+  times, same order, same three consumers), a proptest on the ring
+  alone, and two unit pins (Debug shows live entries only; indexing
+  past `len` panics like a slice). No public API moved.
+- **No runtime dependencies.** `heapless` is a dev-dependency now (the
+  oracle above); `cargo tree -e normal` prints the crate alone. The
+  crate depends on `core`.
+- **`rust-version = "1.92"` declared**, inherited from the workspace;
+  it is the toolchain pin, the only MSRV anyone has verified.
+- Finding, recorded not fixed: with arbitrary `u32` spike times the
+  test-gated `isi_stats_us` overflows its `u64` sum of squared
+  intervals (three intervals near 2^31 suffice). Zero non-test callers;
+  the differential test bounds its times to 2^27 µs and says why.
+- The ESP32-C3 measurement for this version is not in these notes: it
+  is taken after this tree is merged, on the board, and rides the
+  publish round.
 
 ## Since alpha.4 (the alpha.5 notes)
 
@@ -185,22 +209,23 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
 
 ## Status
 
-**`0.1.0-alpha.4` is live on crates.io** (published 2026-08-22): NIR
-structured entry (pub quantizers, `NirBuilder`, per-neuron
-populations) + the R9 review fixes. Alpha.5 adds the general
-four-kind graph assembly (see "Since alpha.4"). The alpha.3 record: the
+**`0.1.0-alpha.5` is live on crates.io** (published 2026-08-22T13:59Z
+from 103fa59, registry-verified): the general four-kind graph assembly,
+`EDGE_PULSE_QUANTA`, the assembly gates, the R17 consolidation breaks
+and the STDP dt-overflow fix (see "Since alpha.4"). Alpha.4, the same
+day: NIR structured entry (pub quantizers, `NirBuilder`, per-neuron
+populations) + the R9 review fixes. The alpha.3 record: the
 adaptation-decay contract pinned by unit + live tests (equilibrates,
 never silences the net); `synaptic_input_divisor` — **the coupling
 knob**, new public API (default 10 = the historical weight/10 pulse;
 0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
 published path unchanged; the simd batch kernel doc'd mV-grid-only.
 
-**The tree is ahead of the published crate** (rides `alpha.5`): the
-general assembly above + the consolidation breaks (builders deleted,
-introspection relocated). 306 offline unit/property tests (3 app,
-199 snn, 104 rt) + 208 simd-gated + 121 hdf5-gated (in
-`neuralos-rt`) + 5 model-gated `#[ignore]`; the API may still move
-within alpha semver.
+**The tree is ahead of the published crate** (rides `alpha.6`): the
+spike history is a `[u32; N]` ring and `heapless` has left the runtime
+dependencies (the crate depends on `core` alone), and `rust-version`
+is declared. Test counts live in the CI log and the repo's AGENTS.md
+§ Commands, not here; the API may still move within alpha semver.
 
 NIR itself: Pedersen et al., Nature Communications 15, 4962 (2024),
 DOI 10.1038/s41467-024-52259-9 — this crate's `nir` module speaks
