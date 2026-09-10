@@ -21,9 +21,11 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `boot-no-descriptor.log` | 15 s after flashing the `main@3525492` ELF with `--ignore-app-descriptor`: the ESP-IDF v5.5.1 second-stage bootloader loads the image, reads garbage where the app descriptor should be, and refuses the partition, 132 times in the window. Not one firmware line. The blocking finding, fixed by 427b6cb. |
 | `bringup.log` | **The banked run.** Fixed ELF (sha below) flashed without the flag; one reset, then 20 s: ROM `rst:` line, bootloader `Loaded app`, the firmware banner, the burst line, 295 spike lines. |
 | `kernel-usb.log` | the host kernel's USB lines for the board's port over the plug-in window, hostname stripped: 66 `New USB device found` / 65 `USB disconnect` for `303a:1001`, then none once flashed |
-| `SHA256SUMS` | pins the four logs and this README |
+| `host-bench-alpha5.log`, `host-bench-alpha6.log` | the host spike-path bench, one run per tree (§ Host bench); rebuilt by `proofs/spike-path-bench/README.md` § Run |
+| `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../firmware/esp32c3/` | the firmware crate; the ELF is rebuildable, not committed |
+| `../../proofs/spike-path-bench/` | the host bench harness (standalone crate) |
 
 ## The numbers (all from `bringup.log`, nothing rounded before division)
 
@@ -70,6 +72,39 @@ flush goes before the reset, never after. Both rules are in the tool.
 
 Not measured here, and not claimed: power, WiFi/BLE (unused), anything
 about the network layer (`network` is std-gated; one neuron only).
+
+## Host bench: the spike path, alpha.5 vs alpha.6 (2026-09-10)
+
+The question: the alpha.6 ring replaced `heapless::Vec` in the spike
+history (`remove(0)`, a 64-entry shift on every spike past the 64th,
+became an O(1) overwrite). Did it show up in the per-step cost? One
+harness, `proofs/spike-path-bench/`, public API only, run against two
+trees by the procedure in its README: the alpha.6 tree (`main@820d81a`)
+and a worktree at `371e8c6` (the alpha.5 tree). Two arms: `forced`
+(threshold at the membrane floor, refractory 0, constant input: every
+step fires and records a spike) and `control` (no input: no step
+fires, the same loop minus the spike path). 10 repetitions of
+10,000,000 steps each, release profile, fat LTO, one codegen unit.
+
+Box: Intel i5-6200U (2 cores, 4 threads), Linux 6.8, cpufreq governor
+`powersave`, nothing pinned, other processes present. The logs carry
+every repetition; the table carries min and median per arm. The
+alpha.5 log opens with the `cargo tree` line naming the worktree's
+spine; its absolute path was made repo-relative before banking (the
+burn-script convention, no home path in the record).
+
+| Arm | Tree | min ns/step | median ns/step | spikes / 10^7 steps | Log |
+|---|---|---|---|---|---|
+| forced | alpha.5 (`371e8c6`) | 17.125 | 18.092 | 10,000,000 | `host-bench-alpha5.log` |
+| forced | alpha.6 (`820d81a`) | 12.508 | 13.809 | 10,000,000 | `host-bench-alpha6.log` |
+| control | alpha.5 (`371e8c6`) | 10.661 | 11.412 | 0 | `host-bench-alpha5.log` |
+| control | alpha.6 (`820d81a`) | 10.442 | 12.194 | 0 | `host-bench-alpha6.log` |
+
+Comparison, medians: forced 18.092 → 13.809 (−4.283 ns/step);
+control 11.412 → 12.194 (+0.782, inside the repetition spread of both
+runs: control repetitions range 10.661–12.615 on alpha.5 and
+10.442–12.594 on alpha.6). Forced minus control, same tree: 6.680
+ns/step on alpha.5, 1.615 on alpha.6.
 
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
