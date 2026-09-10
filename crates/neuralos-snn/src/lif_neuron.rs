@@ -1287,4 +1287,162 @@ mod tests {
         let _ = n.integrate_and_fire(0, 20_000, 60_000);
         assert_eq!(n.membrane_potential, n.resting_potential, "stays at rest");
     }
+
+    // ----- 2026-09-10: the ring replaced heapless::Vec. The oracle is the
+    // pre-ring implementation kept verbatim: heapless::Vec with remove(0)
+    // when full, and the three consumers' formulas over it. Same spike
+    // times into both; iteration order and every consumer must agree. -----
+
+    /// The pre-ring history and its consumers, as they were.
+    struct HeaplessOracle {
+        history: heapless::Vec<u32, MAX_SPIKE_HISTORY>,
+    }
+
+    impl HeaplessOracle {
+        fn new() -> Self {
+            Self {
+                history: heapless::Vec::new(),
+            }
+        }
+
+        fn push(&mut self, t: u32) {
+            if self.history.is_full() {
+                self.history.remove(0);
+            }
+            let _ = self.history.push(t);
+        }
+
+        fn firing_rate_mhz(&self, last_update_time_us: u32, window_us: u32) -> u32 {
+            if self.history.is_empty() || window_us == 0 {
+                return 0;
+            }
+            let window_start = last_update_time_us.saturating_sub(window_us);
+            let count = self.history.iter().filter(|&&t| t >= window_start).count() as u32;
+            count
+                .saturating_mul(1_000_000_000)
+                .checked_div(window_us)
+                .unwrap_or(0)
+        }
+
+        fn isi_stats_us(&self) -> Option<(u32, u32)> {
+            if self.history.len() < 2 {
+                return None;
+            }
+            let n = self.history.len();
+            let mut intervals_sum: u64 = 0;
+            let mut intervals_sqsum: u64 = 0;
+            let mut count: u64 = 0;
+            for i in 1..n {
+                let prev = self.history[i - 1];
+                let curr = self.history[i];
+                if curr >= prev {
+                    let d = u64::from(curr - prev);
+                    intervals_sum += d;
+                    intervals_sqsum += d * d;
+                    count += 1;
+                }
+            }
+            if count == 0 {
+                return None;
+            }
+            let mean = intervals_sum / count;
+            let mean_sq = mean * mean;
+            let sq_mean = intervals_sqsum / count;
+            let variance = sq_mean.saturating_sub(mean_sq);
+            let std = isqrt_u64(variance);
+            Some((mean as u32, std as u32))
+        }
+    }
+
+    proptest! {
+        /// Differential: the neuron's ring against the heapless oracle on
+        /// the same spike times — contents in order, then every consumer.
+        /// Up to 300 spikes so the ring wraps several times; unordered
+        /// times so non-monotonic sequences exercise the ISI filter.
+        /// Times are bounded to 2^27 µs (~134 s of simulation): with
+        /// arbitrary u32 times `isi_stats_us` overflows its u64 sum of
+        /// squared intervals — in the oracle and the ring version alike,
+        /// a pre-existing property of the test-gated trio, found by this
+        /// test on 2026-09-10 and recorded, not fixed here.
+        #[test]
+        fn prop_ring_matches_the_heapless_oracle(
+            times in proptest::collection::vec(0u32..=1 << 27, 0..300),
+            last_update_time_us in any::<u32>(),
+            window_us in any::<u32>(),
+        ) {
+            let mut n = LIFNeuron::new(1);
+            let mut oracle = HeaplessOracle::new();
+            for &t in &times {
+                n.spike(t);
+                oracle.push(t);
+            }
+            let ring: std::vec::Vec<u32> = n.spike_history.iter().collect();
+            let vec: std::vec::Vec<u32> = oracle.history.iter().copied().collect();
+            prop_assert_eq!(ring, vec, "iteration order and contents");
+
+            n.last_update_time_us = last_update_time_us;
+            prop_assert_eq!(n.spike_count(), oracle.history.len());
+            prop_assert_eq!(
+                n.firing_rate_mhz(window_us),
+                oracle.firing_rate_mhz(last_update_time_us, window_us)
+            );
+            prop_assert_eq!(n.isi_stats_us(), oracle.isi_stats_us());
+        }
+
+        /// The ring alone: after any number of pushes it holds the newest
+        /// `min(pushes, MAX_SPIKE_HISTORY)` entries, oldest first, by
+        /// iteration and by index; clear empties it and it works again.
+        #[test]
+        fn prop_ring_keeps_the_newest_in_order(
+            times in proptest::collection::vec(any::<u32>(), 0..300),
+        ) {
+            let mut ring = SpikeRing::new();
+            for &t in &times {
+                ring.push(t);
+            }
+            let live = times.len().min(MAX_SPIKE_HISTORY);
+            prop_assert_eq!(ring.len(), live);
+            prop_assert_eq!(ring.is_empty(), live == 0);
+            let expected = &times[times.len() - live..];
+            let got: std::vec::Vec<u32> = ring.iter().collect();
+            prop_assert_eq!(got.as_slice(), expected);
+            for (i, &t) in expected.iter().enumerate() {
+                prop_assert_eq!(ring.get(i), t);
+            }
+
+            ring.clear();
+            prop_assert!(ring.is_empty());
+            prop_assert_eq!(ring.iter().count(), 0);
+            ring.push(7);
+            prop_assert_eq!(ring.len(), 1);
+            prop_assert_eq!(ring.get(0), 7);
+        }
+    }
+
+    #[test]
+    fn ring_debug_shows_live_entries_only() {
+        let mut ring = SpikeRing::new();
+        assert_eq!(std::format!("{ring:?}"), "[]");
+        ring.push(1);
+        ring.push(2);
+        assert_eq!(std::format!("{ring:?}"), "[1, 2]");
+        // Wrap: 70 pushes of 0..70 keep 6..70, and only those print.
+        let mut ring = SpikeRing::new();
+        for t in 0..70_u32 {
+            ring.push(t);
+        }
+        let shown = std::format!("{ring:?}");
+        assert!(shown.starts_with("[6, 7, 8,"), "{shown}");
+        assert!(shown.ends_with(" 69]"), "{shown}");
+        assert_eq!(ring.iter().count(), MAX_SPIKE_HISTORY);
+    }
+
+    #[test]
+    #[should_panic(expected = "SpikeRing index 2 out of range 2")]
+    fn ring_get_past_len_panics_like_a_slice() {
+        let mut ring = SpikeRing::new();
+        ring.push(10);
+        ring.push(20);
+        let _ = ring.get(2);
+    }
 }
