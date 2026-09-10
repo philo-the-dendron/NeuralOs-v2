@@ -4,7 +4,9 @@
 
 `no_std`, i16 fixed-point spiking-neural-network library for RISC-V edge
 silicon (`crates/neuralos-snn`, published), plus a Slint visualizer
-(`neuralos-app`) and an unpublished research runtime (`neuralos-rt`).
+(`neuralos-app`), an unpublished research runtime (`neuralos-rt`) and
+a pure-Rust `.nir`→JSON converter for strangers' graphs
+(`neuralos-nir2json`).
 Not an "AI OS"; that was v0.1. The sibling `NeuralOS` repo is that
 archived v0.1 and is read-only source material.
 

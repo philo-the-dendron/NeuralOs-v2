@@ -1,11 +1,12 @@
 # AGENTS.md
 
 Read this before touching anything. NeuralOS v2 is the **active** repo —
-pure Rust, AGPL-3.0, local-only. One workspace, three crates, one
+pure Rust, AGPL-3.0, local-only. One workspace, four crates, one
 research record: a published `no_std` SNN library (the spine), a Slint
 visualizer that runs it live (the microscope), a research runtime that
-proved the ternary bridge (closed record), and the paper distilled from
-it.
+proved the ternary bridge (closed record), a pure-Rust `.nir`→JSON
+converter for strangers' graphs (the inbound bridge), and the paper
+distilled from it.
 
 **Direction lives in `docs/VISION.md` (the north star).** Read it before
 scoping work. Shipping order: `docs/ROADMAP.md`. History:
@@ -27,6 +28,7 @@ archive, not here. `cd` to `NeuralOs-v2`.
 |---|---|
 | `crates/neuralos-snn` | The spine. Published on crates.io (`0.1.0-alpha.5`, 2026-08-22 — tree == published). `no_std`-by-default, i16 fixed-point. |
 | `crates/neuralos-app` | The microscope. Slint visualizer over the library. |
+| `crates/neuralos-nir2json` | The inbound bridge. Pure-Rust `.nir` (HDF5 via `hdf5-pure`, no C) → the library's JSON schema, for graphs strangers emit (snnTorch, norse, rockpool). The stranger-usable artifact GUARD 3 names: a static musl binary on the Gitea release, built by its README § Build. `publish = false` (crates.io deferred by ruling). |
 | `crates/neuralos-rt` | The research runtime (GGUF container, Q1_0/Q2_0 compute, tokenizer, model). `publish = false`, std-only. Consumed by the frozen bridge examples. |
 | `paper/` | The Branch B article. Builds with `make` in `paper/` (`make figs` regenerates figures from evidence; `make gate` enforces the language rules of record). |
 | `evidence/` | Raw judge/experiment logs. Indexed by `evidence/INDEX.md`. |
@@ -61,9 +63,10 @@ the desktop behind the window and give false "it works" readings.
 
 ## Commands
 
-Workspace is three members: `crates/neuralos-snn` (the library),
+Workspace is four members: `crates/neuralos-snn` (the library),
 `crates/neuralos-app` (the visualizer), `crates/neuralos-rt` (the
-research runtime). `rust-toolchain.toml` pins **1.92.0** (slint 1.17
+research runtime), `crates/neuralos-nir2json` (the `.nir`→JSON
+converter). `rust-toolchain.toml` pins **1.92.0** (slint 1.17
 MSRV — don't bump without checking).
 
 ```bash
@@ -182,6 +185,22 @@ locally and on Gitea. The tag step's falsifier (a local scratch tag
 absent from a `--dry-run` of the tag push, present in a `--dry-run` of
 `--tags`) ran 2026-09-06; the whole procedure counts as verified once
 it has synced one real merge (PR #9 is that run).
+
+Two rules learned on PR #15 (2026-09-09):
+
+- **No `git fetch --prune` right after the tag-sync fetch.** The fetch
+  above writes scratch refs under `refs/remotes/origin/tags/`, and a
+  prune deletes them because no fetch refspec claims them. The tags
+  themselves are untouched; the refs come back at the next sync. Prune
+  before the procedure or not at all.
+- **Watch a PR's checks through the full API listing, never the
+  ten-context status view.** `Gitea.ts status` reads the combined
+  status without a page size and shows at most ten contexts; PR #15
+  had twelve and it hid two pending ones. Until that tool carries a
+  page size, the merger reads
+  `GET /repos/{owner}/{repo}/commits/{sha}/statuses?limit=50` and
+  keeps the latest status per context. "Nothing pending" is decided
+  on that listing.
 
 ## Published crate
 
