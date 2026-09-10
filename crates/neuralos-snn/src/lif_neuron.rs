@@ -43,7 +43,8 @@
 //!
 //! # `no_std`
 //!
-//! Uses `heapless::Vec` for spike history (compile-time capacity, no allocator).
+//! Spike history is a ring over `[u32; MAX_SPIKE_HISTORY]` (compile-time
+//! capacity, no allocator, no dependency): see [`SpikeRing`].
 //! Fully `no_std`-compatible for embedded RISC-V deployment.
 //!
 //! # Bug fixes vs v0.1
@@ -69,10 +70,84 @@
     clippy::cast_sign_loss
 )]
 
-use heapless::Vec;
-
 /// Maximum spike history length (compile-time, no allocator).
 pub const MAX_SPIKE_HISTORY: usize = 64;
+
+/// Bounded spike-timestamp history: a ring over
+/// `[u32; MAX_SPIKE_HISTORY]` with the index of the oldest entry and a
+/// length. Push is O(1) — once full, the oldest entry is overwritten
+/// (recent spikes are what the consumers want). Iteration and indexing
+/// run oldest to newest, the order the ISI walk depends on. Replaced
+/// `heapless::Vec` (2026-09-10): its `remove(0)` shifted the whole
+/// buffer on every spike past the 64th.
+#[derive(Clone)]
+struct SpikeRing {
+    buf: [u32; MAX_SPIKE_HISTORY],
+    /// Index of the oldest live entry. Meaningless while `len == 0`.
+    head: usize,
+    len: usize,
+}
+
+impl SpikeRing {
+    const fn new() -> Self {
+        Self {
+            buf: [0; MAX_SPIKE_HISTORY],
+            head: 0,
+            len: 0,
+        }
+    }
+
+    /// Append `t` as the newest entry; drop the oldest when full.
+    fn push(&mut self, t: u32) {
+        if self.len < MAX_SPIKE_HISTORY {
+            self.buf[(self.head + self.len) % MAX_SPIKE_HISTORY] = t;
+            self.len += 1;
+        } else {
+            self.buf[self.head] = t;
+            self.head = (self.head + 1) % MAX_SPIKE_HISTORY;
+        }
+    }
+
+    fn clear(&mut self) {
+        self.head = 0;
+        self.len = 0;
+    }
+
+    /// Read side, test-gated like its only callers (the introspection
+    /// trio below).
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// The `i`-th entry, oldest first. Panics when `i >= len()`, like a
+    /// slice index would.
+    fn get(&self, i: usize) -> u32 {
+        assert!(
+            i < self.len,
+            "SpikeRing index {i} out of range {}",
+            self.len
+        );
+        self.buf[(self.head + i) % MAX_SPIKE_HISTORY]
+    }
+
+    /// Entries oldest to newest.
+    fn iter(&self) -> impl Iterator<Item = u32> + '_ {
+        (0..self.len).map(move |i| self.get(i))
+    }
+}
+
+/// Only the live entries, oldest first — never the stale slots.
+impl core::fmt::Debug for SpikeRing {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
 
 /// Membrane potential lower bound (mV) — biological floor.
 pub const MEMBRANE_MV_MIN: i16 = -100;
@@ -214,8 +289,9 @@ pub struct LIFNeuron {
     /// Spike-frequency adaptation current (μA). Decays between spikes, jumps on each spike.
     pub adaptation_current_ua: i16,
 
-    /// Spike timestamps (chronological order, oldest at index 0). Bounded by `MAX_SPIKE_HISTORY`.
-    spike_history: Vec<u32, MAX_SPIKE_HISTORY>,
+    /// Spike timestamps (chronological order, oldest first). Bounded by
+    /// `MAX_SPIKE_HISTORY`; the oldest is overwritten once full.
+    spike_history: SpikeRing,
 }
 
 impl LIFNeuron {
@@ -266,7 +342,7 @@ impl LIFNeuron {
             resistance_mohm: 100,
             noise_amplitude_ua: 5,
             adaptation_current_ua: 0,
-            spike_history: Vec::new(),
+            spike_history: SpikeRing::new(),
         }
     }
 
@@ -362,11 +438,9 @@ impl LIFNeuron {
         self.membrane_potential = self.reset_potential;
         self.refractory_time_us = self.tau_refractory_us;
         self.last_spike_time_us = current_time_us;
-        // Drop oldest if at capacity (we want recent spikes, not the first ones).
-        if self.spike_history.is_full() {
-            self.spike_history.remove(0);
-        }
-        let _ = self.spike_history.push(current_time_us);
+        // The ring drops the oldest once full (we want recent spikes, not
+        // the first ones).
+        self.spike_history.push(current_time_us);
         // Spike-frequency adaptation accumulates per spike.
         self.adaptation_current_ua = self.adaptation_current_ua.saturating_add(2);
     }
@@ -479,7 +553,7 @@ impl LIFNeuron {
         let count = self
             .spike_history
             .iter()
-            .filter(|&&t| t >= window_start)
+            .filter(|&t| t >= window_start)
             .count() as u32;
         // spikes/sec × 1000 = (count × 1_000_000_000) / window_us
         count
@@ -500,8 +574,8 @@ impl LIFNeuron {
         let mut intervals_sqsum: u64 = 0;
         let mut count: u64 = 0;
         for i in 1..n {
-            let prev = self.spike_history[i - 1];
-            let curr = self.spike_history[i];
+            let prev = self.spike_history.get(i - 1);
+            let curr = self.spike_history.get(i);
             if curr >= prev {
                 let d = u64::from(curr - prev);
                 intervals_sum += d;
