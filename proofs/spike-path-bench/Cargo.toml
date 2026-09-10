@@ -1,0 +1,21 @@
+[package]
+name = "spike-path-bench"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "Host timing of the LIF spike path through the public API: one harness, run against two trees (alpha.5 heapless history, alpha.6 ring). Evidence: evidence/esp32c3-bringup/host-bench-*.log"
+
+# Standalone on purpose (same pattern as qemu-riscv-leg-a): the repo
+# workspace never sees it. The path dependency resolves to whichever
+# tree this directory sits in, which is how the alpha.5 arm is run: the
+# same source copied into a worktree at 371e8c6 (see README § Run).
+[workspace]
+
+[dependencies]
+neuralos-snn = { path = "../../crates/neuralos-snn", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
