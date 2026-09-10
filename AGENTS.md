@@ -26,7 +26,7 @@ archive, not here. `cd` to `NeuralOs-v2`.
 
 | Path | Role |
 |---|---|
-| `crates/neuralos-snn` | The spine. Published on crates.io (`0.1.0-alpha.5`, 2026-08-22 — tree == published). `no_std`-by-default, i16 fixed-point. |
+| `crates/neuralos-snn` | The spine. Published on crates.io (`0.1.0-alpha.5`, 2026-08-22; the tree is ahead, alpha.6 pending publish). `no_std`-by-default, i16 fixed-point. |
 | `crates/neuralos-app` | The microscope. Slint visualizer over the library. |
 | `crates/neuralos-nir2json` | The inbound bridge. Pure-Rust `.nir` (HDF5 via `hdf5-pure`, no C) → the library's JSON schema, for graphs strangers emit (snnTorch, norse, rockpool). The stranger-usable artifact GUARD 3 names: a static musl binary on the Gitea release, built by its README § Build. `publish = false` (crates.io deferred by ruling). |
 | `crates/neuralos-rt` | The research runtime (GGUF container, Q1_0/Q2_0 compute, tokenizer, model). `publish = false`, std-only. Consumed by the frozen bridge examples. |
@@ -79,7 +79,7 @@ MSRV — don't bump without checking).
 # a mirror.
 cargo fmt    --all -- --check                    # formatting gate (2026-09-02): rustfmt under the pinned toolchain, default config
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; 307 executed green (3 app, 208 snn, 96 rt) + 5 rt model-gated #[ignore]
+cargo test   --workspace                          # offline; 347 executed green (3 app, 15 nir2json, 111 rt, 218 snn incl. 8 fixture + 1 doctest; 2026-09-10) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
@@ -208,7 +208,9 @@ Two rules learned on PR #15 (2026-09-09):
 2026-08-22T13:59Z from 103fa59 — general graph assembly:
 `build_network`, EDGE_PULSE_QUANTA, the assembly gates, the R17
 consolidation breaks, + the STDP dt-overflow fix; registry-verified).
-**Tree == published crate.** The workspace consumes it via path dep,
+**The tree is ahead of the published crate** (alpha.6 pending publish;
+the publish session flips this sentence back to "tree == published").
+The workspace consumes it via path dep,
 so lib edits take effect locally without republishing — a real
 bugfix or API addition warrants the next alpha. Bump the workspace
 `version` in the root `Cargo.toml` and `cargo publish -p

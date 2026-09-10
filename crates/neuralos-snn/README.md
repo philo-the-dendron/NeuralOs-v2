@@ -4,7 +4,7 @@
 > silicon — LIF neurons, pairwise STDP, CSR synapses, ternary weight
 > codecs, and an AVX2 batch kernel.
 
-Published on crates.io as `0.1.0-alpha.4`; the tree carries the alpha.5 changes (AGPL-3.0-or-later).
+Published on crates.io as `0.1.0-alpha.5` (2026-08-22); the tree carries the alpha.6 changes (AGPL-3.0-or-later).
 
 ## What this crate is
 
@@ -185,22 +185,23 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
 
 ## Status
 
-**`0.1.0-alpha.4` is live on crates.io** (published 2026-08-22): NIR
-structured entry (pub quantizers, `NirBuilder`, per-neuron
-populations) + the R9 review fixes. Alpha.5 adds the general
-four-kind graph assembly (see "Since alpha.4"). The alpha.3 record: the
+**`0.1.0-alpha.5` is live on crates.io** (published 2026-08-22T13:59Z
+from 103fa59, registry-verified): the general four-kind graph assembly,
+`EDGE_PULSE_QUANTA`, the assembly gates, the R17 consolidation breaks
+and the STDP dt-overflow fix (see "Since alpha.4"). Alpha.4, the same
+day: NIR structured entry (pub quantizers, `NirBuilder`, per-neuron
+populations) + the R9 review fixes. The alpha.3 record: the
 adaptation-decay contract pinned by unit + live tests (equilibrates,
 never silences the net); `synaptic_input_divisor` — **the coupling
 knob**, new public API (default 10 = the historical weight/10 pulse;
 0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
 published path unchanged; the simd batch kernel doc'd mV-grid-only.
 
-**The tree is ahead of the published crate** (rides `alpha.5`): the
-general assembly above + the consolidation breaks (builders deleted,
-introspection relocated). 306 offline unit/property tests (3 app,
-199 snn, 104 rt) + 208 simd-gated + 121 hdf5-gated (in
-`neuralos-rt`) + 5 model-gated `#[ignore]`; the API may still move
-within alpha semver.
+**The tree is ahead of the published crate** (rides `alpha.6`): the
+spike history is a `[u32; N]` ring and `heapless` has left the runtime
+dependencies (the crate depends on `core` alone), and `rust-version`
+is declared. Test counts live in the CI log and the repo's AGENTS.md
+§ Commands, not here; the API may still move within alpha semver.
 
 NIR itself: Pedersen et al., Nature Communications 15, 4962 (2024),
 DOI 10.1038/s41467-024-52259-9 — this crate's `nir` module speaks
