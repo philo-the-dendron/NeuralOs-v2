@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@371e8c6 (PR #17 merged 2026-09-10: tools/percommit.sh in-repo, four owed words; mirror synced) · work/ring-buffer ahead by alpha.6 in the tree (this round: the [u32; N] ring, heapless out of the runtime deps, rust-version, crate-README truth, the bump) · open(session): the alpha.6 publish is the principal's stamp and the ESP32-C3 re-measure precedes it, both next session · next-work: ROADMAP § Practical next moves"
+head: "main@820d81a (PR #18 merged 2026-09-10: the [u32; N] ring, alpha.6 in the tree; mirror synced) · work/measurements ahead by the measurements (this round: the host spike-path bench, the board re-measure at 2,842 ns/step, the mechanism read from the two flashed ELFs, the burst-loop disassemblies banked) · open(session): PR #19 review then merge on the principal's word; the two flashed ELFs to the Gitea release before any cargo clean (principal); then #20, the publish round with the 1,501 sweep and the alpha.6 stamp; then the fix brief (alpha.7) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-10T20:04:09Z
+updated: 2026-09-10T23:34:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -7461,3 +7461,148 @@ GUARD 1 honored: appended only; head/updated refreshed under the
 live-state exception. GUARD 2 untouched. GUARD 3: no outreach.
 `evidence/` untouched (the ELF pin is not re-banked; the re-measure
 banks a new entry). `paper/` untouched. No binaries committed.
+
+## Amendment (round-23 — the alpha.6 re-measure: the burst doubled, and the mechanism read from the flashed ELFs — 2026-09-10)
+
+Branch `work/measurements` from `main@820d81a`, one PR (#19 once
+pushed; it did not exist when the plan named it). Evidence and one
+host proof harness; no spine code, no paper, no crates.io action, no
+board action after the capture (the board is unplugged).
+
+### Scope, in commit order
+
+1. `proofs/spike-path-bench/`: host timing of the LIF spike path
+   through the public API, two arms (forced / control), a standalone
+   crate like the other proofs.
+2. The host bench banked, alpha.5 vs alpha.6 (evidence README § Host
+   bench): forced 18.092 → 13.809 ns/step median, control inside the
+   repetition spread. The `remove(0)` shift is gone, on x86-64.
+3. The board re-measure banked: same SuperMini, alpha.6 firmware
+   (`e26e1749…`, built `--locked` on 820d81a), 20 s after reset. Every
+   real-time figure reproduces the first entry to the step (295
+   spikes, first spike step 56, 1.0054 ms per loop step); the burst
+   went 15,012 → 28,425 µs, 1,501 → **2,842 ns/step**, 147 spikes
+   both. With it: the mechanism (below), the two burst-loop
+   disassemblies as machine output (`burst-loop-alpha{5,6}.dis`,
+   extraction and the one scrub documented in the README), the
+   `.text` pins, and the corrected ELF-pin sentence.
+4. ISA (this entry).
+
+### The mechanism (verified at its source: the two flashed ELFs)
+
+Both ELFs that ran were still in the firmware target dir and hash to
+their pins (`102af8c6…`, `e26e1749…`); the analysis is on them, not on
+rebuilds. `main` disassembled, the burst loop cut by address:
+
+| Burst loop body | alpha.5 | alpha.6 |
+|---|---|---|
+| instructions | 115 | 195 |
+| ROM `__divdi3` calls (64-bit software division) | 1 | 2 |
+| hardware `divu` | 0 | 1 |
+| loads/stores against the frame | 5 | 34 |
+
+alpha.5's burst loop: the neuron register-resident; resistance, scale
+and tau folded to constants; the current term's `×100×100/1000`
+folded to `×10`; `dt_over_tau` folded to 50; one 64-bit division
+left. alpha.6's: the neuron on the stack, resistance/scale/tau loaded
+each step, both `/1000` are ROM calls, plus a `divu`. The hot-path
+source is byte-identical between the trees (the diff touches the
+history type and `spike()` only).
+
+**The reframing finding (record-only; tombstone owed to the publish
+round):** the alpha.5 ELF's *real-time* loop already has the alpha.6
+shape (two `__divdi3`, every field loaded from the frame). Round-19's
+1,501 ns/step is one loop the compiler happened to scalarize; 2,842 is
+the step's cost on this core with the struct in memory, which is what
+a `Vec<LIFNeuron>` network always pays. The library did not get slower
+in the general case; one lucky measurement became an unlucky one.
+
+Consistent, not measured: +1,341 ns = 215 cycles at 160 MHz; one extra
+software 64-bit division plus the `divu` plus the frame traffic would
+account for it; the split needs an instrumented loop on the board and
+the finding does not need it. Not established: why LLVM stopped
+scalarizing (suspects: the ring's two variable-index stores, and the
+bounds check on `buf[head]`, the only panic edge in the loop; the
+`lif_neuron.rs` path string is in the alpha.6 rodata and absent from
+alpha.5's). The host bench going the other way is consistent
+(hardware 64-bit divide on x86-64; the forced arm measured the shift).
+
+### Findings (each verified at its source this session)
+
+- **Record defect, fixed in the evidence README — "the ELF sha is
+  reproducible only under the same toolchain and lock" was false.**
+  The ESP-IDF app descriptor carries a build stamp from
+  `esp-bootloader-esp-idf` 0.5.0's build script (`SOURCE_DATE_EPOCH`
+  or the wall clock): the alpha.5 ELF says `2026-09-09 18:33:44`; the
+  alpha.6 ELF linked 2026-09-10 says `2026-09-09 18:34:07` (the cached
+  build script); a clean scratch rebuild of 427b6cb got `22:51:51`
+  and sha `26be7a1e…` with a byte-identical `.text`. Symbol-name
+  hashes in `.strtab` follow the clone path too. The `.text` sha is
+  the pin a rebuild is compared against: `d14cce25…` (alpha.5),
+  `d672ca37…` (alpha.6). Pulled forward from the publish round's
+  "reproducibility reword" because the sentence sits in the file this
+  round banks; what #20 still owes is any copy elsewhere.
+- **Record-only — the alpha.6 `.text` pin is path-dependent.** The
+  ring's bounds check embeds `…/crates/neuralos-snn/src/lif_neuron.rs`
+  in rodata; a scratch rebuild of 820d81a from a 72-byte-longer path
+  moved 45 `addi` address immediates by exactly 72 and nothing else.
+  alpha.5 embeds no path and reproduced byte-identical.
+  `--remap-path-prefix`, or `SOURCE_DATE_EPOCH` plus the same clone
+  path, is fix-brief material.
+- **Open, principal's action — the two flashed ELFs are not durable.**
+  They live only in `firmware/esp32c3/target/…/deps/` (names in the
+  README) and no rebuild reproduces their sha. Doctrine puts binaries
+  on the Gitea release, not in the tree. Copies sit in the session
+  scratchpad for this PR's lifetime; that is not a record. Attach
+  before any `cargo clean` in `firmware/esp32c3`.
+- **Cosmetic-list — `evidence/INDEX.md`'s bringup row** names neither
+  the host-bench logs nor this round's files and still reads 1,501
+  alone; it rides the #20 sweep with the other 1,501 hits.
+
+### The path from here (philo, 2026-09-10, on the finding)
+
+1. Board unplugged; nothing needs it until the fix brief's re-measure.
+2. This PR: evidence + ISA → `tools/percommit.sh` → review → CI →
+   merge on the principal's word. The board number stays out of the
+   top-level READMEs until #20.
+3. Publish round (#20): the board number with the mechanism note in
+   the alpha.6 release notes (the condition: disclosed at publish,
+   not found in evidence); the `isi_stats_us` 2³¹ fix; the
+   ELF-reproducibility reword wherever a copy is still stale; ISA
+   tombstones (round-19's 1,501 as true-when-written, one lucky
+   loop); the 1,501 sweep, seven hits outside the bringup README:
+   `docs/ROADMAP.md` (lines 15 and 122 today), `docs/RESEARCH_LOG.md`
+   (1061), `docs/releases/bringup-2026-09-09.md` (49, a published
+   release's notes, true-when-written), `evidence/INDEX.md` (24),
+   `ISA.md` (7135, 7250); then `cargo publish`, the stamp.
+4. Fix brief (alpha.7 carries it, lean; the brief's call): the enemy
+   stated — two 64-bit divisions per step on a divider-less core, plus
+   scalarization fragility. Experiment 1, no board: one scratch line,
+   re-disassemble, count calls (same clone path, `SOURCE_DATE_EPOCH`
+   set, compare `.text`); establishes the trigger. The lever:
+   narrow/hoist/rescale the divisions under the non-negotiable
+   bit-exact constraint (differential + proptest + pinned traces move
+   not one LSB). Room seen, not designed: the current term's product
+   is `i16 × u16`, fits `i32`, so that division can be 32-bit
+   hardware unconditionally; `delta_v` needs a guarded fast path with
+   the `i64` fallback. **Done criterion, written before work opens,
+   on a loop that keeps the struct in memory** (a two-neuron array or
+   a black-boxed reference): 1,501 was luck and a fix can restore the
+   luck without helping any network. The burst is reported both ways,
+   the in-memory number is the target, behavior bit-identical (147
+   spikes, step 56, same traces), confirmed by a board re-measure.
+
+### Not done here
+
+The INDEX row, the tombstones, the release-notes line, the 1,501
+sweep (all #20); the ELFs to the release (principal); the fix.
+
+### Guards
+
+GUARD 1 honored: appended only; head/updated refreshed under the
+live-state exception; round-19's numbers untouched (tombstone owed to
+#20, named above). GUARD 2 untouched. GUARD 3: no outreach.
+`evidence/`: one new entry, two new machine outputs, one README
+sentence corrected (a record defect, not a verdict), `SHA256SUMS`
+re-pinned; the frozen logs untouched. `paper/` untouched. No binaries
+committed.
