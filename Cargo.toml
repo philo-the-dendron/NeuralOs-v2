@@ -16,6 +16,9 @@ members = [
 [workspace.package]
 version = "0.1.0-alpha.5"
 edition = "2021"
+# The pin in rust-toolchain.toml, declared: the only MSRV anyone has
+# verified (2026-09-10, alpha.6). Moves with the pin, in the same commit.
+rust-version = "1.92"
 license = "AGPL-3.0-or-later"
 authors = ["Caramoussin"]
 repository = "https://gitea.com/Caramoussin/NeuralOs-v2"
