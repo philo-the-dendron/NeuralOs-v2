@@ -95,6 +95,30 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   see the alpha.3 audit record in the repo's `ISA.md`.
 - SIMD gate runs in CI; the batch kernel is documented mV-grid-only.
 
+## Since alpha.5 (the alpha.6 notes)
+
+- **Spike history is a `[u32; MAX_SPIKE_HISTORY]` ring** (private
+  `SpikeRing` in `lif_neuron.rs`): O(1) push, the oldest entry
+  overwritten once full, iteration oldest to newest. It replaces
+  `heapless::Vec`, whose `remove(0)` shifted the whole buffer on every
+  spike past the 64th. Proven by a differential proptest against the
+  pre-ring implementation kept verbatim as the oracle (same spike
+  times, same order, same three consumers), a proptest on the ring
+  alone, and two unit pins (Debug shows live entries only; indexing
+  past `len` panics like a slice). No public API moved.
+- **No runtime dependencies.** `heapless` is a dev-dependency now (the
+  oracle above); `cargo tree -e normal` prints the crate alone. The
+  crate depends on `core`.
+- **`rust-version = "1.92"` declared**, inherited from the workspace;
+  it is the toolchain pin, the only MSRV anyone has verified.
+- Finding, recorded not fixed: with arbitrary `u32` spike times the
+  test-gated `isi_stats_us` overflows its `u64` sum of squared
+  intervals (three intervals near 2^31 suffice). Zero non-test callers;
+  the differential test bounds its times to 2^27 µs and says why.
+- The ESP32-C3 measurement for this version is not in these notes: it
+  is taken after this tree is merged, on the board, and rides the
+  publish round.
+
 ## Since alpha.4 (the alpha.5 notes)
 
 - **General graph assembly — `NirImport::build_network`**: any
