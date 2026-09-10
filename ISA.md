@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@20ba6d2 (PR #15 merged 2026-09-09: first spike on silicon, evidence banked; mirror synced) · work/consolidation-release-prep ahead by docs truth (d7164d5) + release prep (this round) · open(session): the Gitea release upload is the principal's, post-merge — GUARD 3's exporter half closes at the upload, step 7 turns legal then · next-work: ROADMAP § Practical next moves"
+head: "main@8773484 (PR #16 merged 2026-09-09: consolidation + release prep; mirror synced) · release `bringup-2026-09-09` published 2026-09-10T01:51Z with the three artifacts: GUARD 3's two halves are landed, outreach is the principal's call · work/percommit-script ahead by the mechanical round (this round) · open(session): none · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-09T21:40:00Z
+updated: 2026-09-10T15:54:02Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -7262,3 +7262,101 @@ PR; the exporter half closes at the upload, not here; no outreach.
 `evidence/` untouched (the firmware pin already lives there).
 `paper/` untouched. No binaries committed (`dist/` gitignored,
 verified by `git status`).
+
+## Amendment (round-21 — the per-commit loop moves in-repo, and four owed words — 2026-09-10)
+
+Mechanical round, one PR (`work/percommit-script`, from
+`main@8773484`). No code in the spine, no evidence, no paper.
+
+### Scope
+
+1. **`tools/percommit.sh`** — the local per-commit loop that ran three
+   times from a session scratchpad on PR #15/#16 now lives in the
+   tree. Its gate list is the `per-commit` CI job's step list, copied
+   line for line with both guards (the fmt-line grep, the
+   `firmware/esp32c3` existence test); the script header names the job
+   as the source, so an edit to one without the other is drift for the
+   sweep to catch. Three corrections against the scratchpad version,
+   recovered from the round-20 session transcript (the scratchpad
+   itself was session-scoped and gone): no hardcoded home or
+   scratchpad path (repo root from `git rev-parse`, scratch dir from
+   `NEURALOS_PERCOMMIT_SCRATCH` or the gitignored `.percommit/`);
+   `NEURALOS_REQUIRE_AVX2=1` exported as CI does; the two guards, which
+   the scratchpad loop lacked. Kept on philo's word:
+   `RUSTFLAGS="-D warnings"`, which CI does not set — the script is
+   stricter than the gate by choice, and its header says so. The
+   worktree is removed on exit by a trap; the target dir stays for the
+   next incremental run. AGENTS.md § Session protocol points its
+   "local loop" sentence at the script.
+2. **`docs/releases/bringup-2026-09-09.md`** — the published release
+   body says "the shas in the attached `SHA256SUMS` reproduce"; the
+   repo copy said "the shas above". Mirrored. Rule (round-20): the
+   published body and the repo notes carry the same words.
+3. **`firmware/esp32c3/Cargo.toml`** — the description said
+   "timer-driven step"; the source header says busy-wait delay, no
+   hardware timer peripheral yet. Now "delay-paced step". A
+   description edit does not move `Cargo.lock`; the `--locked` builds
+   stay green.
+4. **`docs/ROADMAP.md` step 5** — "outreach still waits on the `.nir`
+   exporter" was written before the upload. The release
+   `bringup-2026-09-09` went up 2026-09-10T01:51Z (pre-release, target
+   `main`) with the three artifacts: the musl exporter, the firmware
+   ELF, `SHA256SUMS`. Both halves of GUARD 3 are landed; outreach
+   itself is a public act and stays the principal's call, which is what
+   the step now says.
+5. **Head line** refreshed under the live-state exception: it still
+   named `main@20ba6d2` and the round-20 work branch.
+
+### Claims
+
+- The release exists with three assets, published 2026-09-10T01:51Z:
+  read live from the Gitea releases API this session.
+- `git ls-remote origin main` and `git ls-remote github main` both
+  print `8773484…`: the round-20 mirror sync held.
+- The scratchpad script's text: recovered from the round-20 session
+  transcript by a tool-call scan, not from memory; the three
+  corrections above are diffs against that text.
+
+### Not done here
+
+The CI job calling the script (one gate list instead of two) is a CI
+change, not a mechanical one: the job runs in place on one cache, the
+script insists on a scratch worktree. Tracked beside the other open CI
+change (teaching the job to skip commits a later `fixup!` names).
+alpha.6 (the `[u32; N]` ring buffer replacing `heapless`, `rust-version`
+declared, the board number in the README) is its own round; the board
+number must be re-measured after the ring buffer lands, not carried
+over from the alpha.5 spine.
+
+### Guards
+
+GUARD 1 honored: appended only; head/updated refreshed under the
+live-state exception. GUARD 2 untouched. GUARD 3: both halves landed
+at the upload; no outreach performed or scheduled here. `evidence/`
+untouched. `paper/` untouched.
+
+### Correction (round-21, same day — the RUSTFLAGS claim was false)
+
+Scope item 1 above says `RUSTFLAGS="-D warnings"` is "which CI does not
+set — the script is stricter than the gate by choice". False when
+written: both workflow files export `RUSTFLAGS: "-D warnings"` at the
+env level (`.gitea/workflows/ci.yml` and `.github/workflows/ci.yml`,
+the `env:` block under the trigger), the round-19 entry records it,
+and `firmware/esp32c3/build.rs` explains why the link arg lives in
+build.rs because of it. The builder gave the principal the same wrong
+opinion before the branch opened; the principal's "keep RUSTFLAGS" was
+right for the right reason. The script's flag was correct throughout;
+its header, the ac6daa3 commit message and the sentence above were
+not. The header is reworded in the correcting commit (it is the drift
+pointer and must be true); the commit message stands in history with
+this entry and the `Fixes:` trailer as the correction. Found by the
+hunk-by-hunk review of PR #17, verified at both files before acting.
+
+Two cosmetic items from the same review ride the correcting commit: a
+`$wt` directory git no longer registers (a run killed before its trap,
+then pruned) now falls through to `rm -rf`; an empty range says so
+instead of failing silently under `set -e`.
+
+Claim the entry above omitted: `tools/percommit.sh` ran on this branch
+before the push, all three commits green, 20 minutes from a cold
+target dir (excerpt in the first PR #17 comment).

@@ -124,7 +124,9 @@ displace substrate + lab bench + gated research.
    14.7/s (exact host match), blue LED blinking —
    `evidence/esp32c3-bringup/`, ISA round-19. One blocking fix rode
    the session (the ESP-IDF app descriptor, 427b6cb). The board half
-   of GUARD 3 is landed; outreach still waits on the `.nir` exporter.
+   of GUARD 3 is landed, and the exporter half closed with the release
+   `bringup-2026-09-09` (published 2026-09-10, ISA round-21); outreach
+   is the principal's call.
    Next board work (a network on the chip, a hardware timer instead of
    the busy-wait) is not opened here. Three spare boards in the bag
    (a 4-pack, one used).
