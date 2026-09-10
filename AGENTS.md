@@ -366,7 +366,10 @@ claims, reopening frozen records.
   that job's log; a local loop over `git rev-list main..HEAD` in a
   scratch worktree with its own target dir is still how a builder finds
   red before pushing, and it is the clean-build proof (the job builds
-  incremental, in place, on one cache). A red commit is reworked in
+  incremental, in place, on one cache). That loop is
+  `tools/percommit.sh [base..head]` (in-repo since 2026-09-10; its
+  header names the job as the source of its gate list): run it before
+  every first push. A red commit is reworked in
   place (`--fixup` + `--autosquash`), never patched by a later commit
   that leaves the red one in history. **Red found after the push:**
   the fix is committed as `git commit --fixup <red-sha>` and stays
