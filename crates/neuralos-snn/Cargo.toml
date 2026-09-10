@@ -24,13 +24,16 @@ std = []
 simd = ["std"]
 
 [dependencies]
-# heapless: compile-time-capacity Vec for spike history. no_std + alloc-free.
-# This is the ONLY runtime dep — keeps the audit surface minimal.
-heapless = "0.8"
+# None. The spike history is a [u32; N] ring in lif_neuron.rs since
+# 2026-09-10 (alpha.6); heapless, the one runtime dependency before
+# that, is now the differential oracle below. Audit surface: core.
 
 [dev-dependencies]
 # Property-based tests — Cardano-grade rigor (leçon v0.1: tout test doit être réel)
 proptest = "1.5"
+# The pre-ring spike history, kept as the oracle of the differential
+# test in lif_neuron.rs (prop_ring_matches_the_heapless_oracle).
+heapless = "0.8"
 
 [[example]]
 name = "bench_simd"

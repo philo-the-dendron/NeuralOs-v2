@@ -858,9 +858,6 @@ dependencies = [
 [[package]]
 name = "neuralos-snn"
 version = "0.1.0-alpha.5"
-dependencies = [
- "heapless 0.8.0",
-]
 
 [[package]]
 name = "num-traits"
