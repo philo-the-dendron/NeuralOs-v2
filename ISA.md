@@ -7334,3 +7334,29 @@ GUARD 1 honored: appended only; head/updated refreshed under the
 live-state exception. GUARD 2 untouched. GUARD 3: both halves landed
 at the upload; no outreach performed or scheduled here. `evidence/`
 untouched. `paper/` untouched.
+
+### Correction (round-21, same day — the RUSTFLAGS claim was false)
+
+Scope item 1 above says `RUSTFLAGS="-D warnings"` is "which CI does not
+set — the script is stricter than the gate by choice". False when
+written: both workflow files export `RUSTFLAGS: "-D warnings"` at the
+env level (`.gitea/workflows/ci.yml` and `.github/workflows/ci.yml`,
+the `env:` block under the trigger), the round-19 entry records it,
+and `firmware/esp32c3/build.rs` explains why the link arg lives in
+build.rs because of it. The builder gave the principal the same wrong
+opinion before the branch opened; the principal's "keep RUSTFLAGS" was
+right for the right reason. The script's flag was correct throughout;
+its header, the ac6daa3 commit message and the sentence above were
+not. The header is reworded in the correcting commit (it is the drift
+pointer and must be true); the commit message stands in history with
+this entry and the `Fixes:` trailer as the correction. Found by the
+hunk-by-hunk review of PR #17, verified at both files before acting.
+
+Two cosmetic items from the same review ride the correcting commit: a
+`$wt` directory git no longer registers (a run killed before its trap,
+then pruned) now falls through to `rm -rf`; an empty range says so
+instead of failing silently under `set -e`.
+
+Claim the entry above omitted: `tools/percommit.sh` ran on this branch
+before the push, all three commits green, 20 minutes from a cold
+target dir (excerpt in the first PR #17 comment).

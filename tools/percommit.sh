@@ -11,10 +11,11 @@
 # (mirrored in .github/workflows/ci.yml). The loop body below copies that
 # job's step list line for line, guards included; an edit to one without
 # the other is drift, and the amendment grep sweep is what catches it.
-# Two deliberate differences from the job: it runs in a scratch worktree
+# One deliberate difference from the job: it runs in a scratch worktree
 # and target dir (the clean-build proof; the job builds in place on one
-# cache), and it exports RUSTFLAGS="-D warnings" (stricter than the
-# gate: a rustc warning that CI tolerates is red here, by choice).
+# cache). The environment is the job's: RUSTFLAGS="-D warnings" and
+# NEURALOS_REQUIRE_AVX2=1 are what both workflow files export at the
+# env level, so a rustc warning is red here exactly as it is there.
 #
 # Scratch: $NEURALOS_PERCOMMIT_SCRATCH, default .percommit/ at the repo
 # root (gitignored). The worktree is removed on exit; the target dir is
@@ -42,10 +43,15 @@ export PATH="$repo/.nirenv/bin:$PATH"
 commits=$(git -C "$repo" rev-list --reverse "$range")
 n=$(printf '%s\n' "$commits" | grep -c . || true)
 echo "== $n commit(s) in $range  $(date +%T)"
-test "$n" -gt 0
+if [ "$n" -eq 0 ]; then
+  echo "nothing to check: $range is empty"
+  exit 1
+fi
 
+# A previous run interrupted before its trap leaves $wt behind: registered
+# (remove handles it) or a bare directory git no longer knows (rm does).
 if [ -e "$wt" ]; then
-  git -C "$repo" worktree remove --force "$wt"
+  git -C "$repo" worktree remove --force "$wt" 2>/dev/null || rm -rf "$wt"
 fi
 git -C "$repo" worktree prune
 git -C "$repo" worktree add --quiet --detach "$wt" HEAD
