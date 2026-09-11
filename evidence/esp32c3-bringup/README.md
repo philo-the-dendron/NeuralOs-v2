@@ -252,14 +252,30 @@ is compared against:
 llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   d14cce25ec36906b0150ec5deaf9675dc199da4fbe39feb334bfddf2c9960af4  alpha.5 (102af8c6…)
 #   d672ca37eb1ef67ba40b212904fa0cf0d4a331a68bcf7e76f8bc288617027f6b  alpha.6 (e26e1749…)
+#   6d407501400cb9beb554b2f5df7ce031f9bae08c43a274bd41ef8df07bc0ddaa  alpha.6 under the round-26 remap (build.sh, PR #23's item-1 tree; the spine and firmware sources of 820d81a, unchanged)
 ```
+
+The third pin is the second one rebuilt by `build.sh` (round 26,
+2026-09-11): rustc's `--remap-path-prefix` shortens each of the 17
+embedded path strings by 12 bytes (`/home/<user>/` → `~/`), `.rodata`
+is 204 bytes shorter, and 182 of the 9,196 instructions in `.text`
+differ, every one a `lui`/`addi` address immediate (`llvm-objdump -d`
+of both, diffed; the one `mv` in the list is `addi` with a zero
+immediate). No instruction was added, removed or reordered, so the
+behavior figures of the second entry stand unmeasured. The two
+earlier pins stand as built by the bare cargo line; they are not
+reproduced by the script and are not expected to be.
 
 The alpha.5 pin reproduced byte-identical from a clone at another
 path. The alpha.6 pin reproduces only from a clone at the same path:
 the ring's bounds check embeds the source path in rodata, and a
 rebuild of 820d81a from a 72-byte-longer path moved 45 `addi` address
 immediates in `.text` by exactly 72 and nothing else (verified by
-diffing the two `main` listings). A different ELF sha with the same
+diffing the two `main` listings). That sentence describes the bare
+line; under the script's remap the four source roots become fixed
+aliases, so the third pin is expected from any clone path, home or
+cargo home (the ELF sha still moves: the descriptor stamp is the
+commit date, and the symbol-name hashes follow the package path). A different ELF sha with the same
 log lines is not a finding; a different `.text` with the same log
 lines is one to read. Reproducing
 `boot-no-descriptor.log` means flashing an ELF built from 3525492 with
