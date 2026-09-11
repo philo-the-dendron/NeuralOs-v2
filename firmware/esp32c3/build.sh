@@ -43,8 +43,12 @@ case ${1:-build} in
     cargo clean --release -p esp-bootloader-esp-idf
     cargo build --release --locked
     remap_gate "$elf"
-    echo "elf  sha256 $(sha256sum "$elf" | cut -d' ' -f1)  $elf"
-    echo "text sha256 $(remap_text_sha "$elf")  (.text image; the comparable, README § Rebuild + run)"
+    # Assigned first: `echo "$(f)"` hides f's exit status, an assignment
+    # under set -e does not (tools/remap.sh, remap_text_sha).
+    elf_sha=$(sha256sum "$elf" | cut -d' ' -f1)
+    text_sha=$(remap_text_sha "$elf")
+    echo "elf  sha256 $elf_sha  $elf"
+    echo "text sha256 $text_sha  (.text image; the comparable, README § Rebuild + run)"
     remap_canary "$here" --release --locked
     ;;
   clippy)

@@ -60,8 +60,10 @@
 # hardcoded login, case-insensitive like the hooks; and the four roots
 # as fixed strings, because the pattern's path alternative matches
 # `/home/<x>/` only and a runner whose home is /root would slip a
-# failed remap past it. Any hit exits 1. Hits are printed with the
-# roots masked so the log stays clean.
+# failed remap past it. Any hit exits 1, and so does a grep that did
+# not run (exit 2: a pattern grep -E rejects, an unreadable file): a
+# scan that failed is not a pass. Hits are counted per grep, and the
+# distinct strings printed with the roots masked so the log stays clean.
 #
 # THE CANARY (remap_canary): cargo's `profile.*.trim-paths` will one
 # day do all of this on stable. On 1.92.0 the probe
@@ -107,9 +109,10 @@ remap_env() {
   echo "remap: 4 roots -> ~, ~/.cargo, ~/.rustup/toolchains/$(basename "$REMAP_SYSROOT"), ~/projets/NeuralOs-v2; SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 
-# remap_gate <file>: exit 1 on any personal string or unremapped root.
+# remap_gate <file>: exit 1 on any personal string or unremapped root,
+# and on any scan that did not run.
 remap_gate() {
-  local file=$1 pattern hits
+  local file=$1 pattern by_pattern by_root rc n_pattern n_root
   if [ ! -f "$file" ]; then
     echo "gate: $file does not exist; nothing to scan is not a pass" >&2
     return 1
@@ -119,13 +122,25 @@ remap_gate() {
     echo "gate: .githooks/personal-pattern is missing or empty; refusing rather than scanning with an empty pattern" >&2
     return 1
   fi
-  hits=$( {
-    grep -a -o -E -i -e "$pattern" "$file" || true
-    grep -a -o -F -e "$REMAP_HOME" -e "$REMAP_CARGO_HOME" -e "$REMAP_SYSROOT" -e "$REMAP_REPO" "$file" || true
-  } | sort -u)
-  if [ -n "$hits" ]; then
-    echo "gate: RED — $(printf '%s\n' "$hits" | wc -l) personal string(s) or unremapped root(s) in $file (roots masked):" >&2
-    printf '%s\n' "$hits" \
+  # grep exits 0 on a hit, 1 on none, 2 on an error (a pattern grep -E
+  # rejects, an unreadable file). 0 and 1 are a scan; 2 is not a pass.
+  rc=0
+  by_pattern=$(grep -a -o -E -i -e "$pattern" "$file") || rc=$?
+  if [ "$rc" -gt 1 ]; then
+    echo "gate: the pattern grep failed (exit $rc) on $file; a scan that did not run is not a pass" >&2
+    return 1
+  fi
+  rc=0
+  by_root=$(grep -a -o -F -e "$REMAP_HOME" -e "$REMAP_CARGO_HOME" -e "$REMAP_SYSROOT" -e "$REMAP_REPO" "$file") || rc=$?
+  if [ "$rc" -gt 1 ]; then
+    echo "gate: the root grep failed (exit $rc) on $file; a scan that did not run is not a pass" >&2
+    return 1
+  fi
+  n_pattern=0; [ -z "$by_pattern" ] || n_pattern=$(printf '%s\n' "$by_pattern" | wc -l)
+  n_root=0; [ -z "$by_root" ] || n_root=$(printf '%s\n' "$by_root" | wc -l)
+  if [ "$n_pattern" -gt 0 ] || [ "$n_root" -gt 0 ]; then
+    echo "gate: RED — $n_pattern pattern hit(s), $n_root root hit(s) in $file; the distinct strings, roots masked:" >&2
+    printf '%s\n' "$by_pattern" "$by_root" | sed '/^$/d' | sort -u \
       | sed -e "s#$REMAP_REPO#<REPO>#g" -e "s#$REMAP_SYSROOT#<SYSROOT>#g" \
             -e "s#$REMAP_CARGO_HOME#<CARGO_HOME>#g" -e "s#$REMAP_HOME#<HOME>#g" >&2
     return 1
@@ -147,8 +162,16 @@ remap_text_sha() {
     echo "text-sha: no llvm-objcopy (rustup component add llvm-tools, or install llvm)" >&2
     return 1
   fi
+  # Called as `v=$(remap_text_sha …)`: errexit is off inside a command
+  # substitution (bash's inherit_errexit is off by default), so each
+  # failure returns by hand, or the caller prints a wrong sha. An empty
+  # image (no .text) is a failure too: its sha is the empty file's.
   tmp=$(mktemp)
-  "$objcopy" -O binary --only-section=.text "$elf" "$tmp"
+  if ! "$objcopy" -O binary --only-section=.text "$elf" "$tmp" || [ ! -s "$tmp" ]; then
+    echo "text-sha: no .text image from $elf" >&2
+    rm -f "$tmp"
+    return 1
+  fi
   sha256sum "$tmp" | cut -d' ' -f1
   rm -f "$tmp"
 }
