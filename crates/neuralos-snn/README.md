@@ -4,7 +4,7 @@
 > silicon — LIF neurons, pairwise STDP, CSR synapses, ternary weight
 > codecs, and an AVX2 batch kernel.
 
-Published on crates.io as `0.1.0-alpha.5` (2026-08-22); the tree carries the alpha.6 changes (AGPL-3.0-or-later).
+Published on crates.io as `0.1.0-alpha.6` (2026-09-11; AGPL-3.0-or-later).
 
 ## What this crate is
 
@@ -111,13 +111,25 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   crate depends on `core`.
 - **`rust-version = "1.92"` declared**, inherited from the workspace;
   it is the toolchain pin, the only MSRV anyone has verified.
-- Finding, recorded not fixed: with arbitrary `u32` spike times the
-  test-gated `isi_stats_us` overflows its `u64` sum of squared
-  intervals (three intervals near 2^31 suffice). Zero non-test callers;
-  the differential test bounds its times to 2^27 µs and says why.
-- The ESP32-C3 measurement for this version is not in these notes: it
-  is taken after this tree is merged, on the board, and rides the
-  publish round.
+- **`isi_stats_us` sums in `u128`** (test-gated, zero non-test
+  callers): with `u64` accumulators, three intervals above 2^32/√3
+  (about 2.48e9 µs, reachable through the non-monotonic filter)
+  overflowed the sum of squares. Found by the differential proptest on
+  2026-09-10; that test now runs on arbitrary `u32` times, and a unit
+  test pins three maximal intervals on both sides.
+- **On the ESP32-C3 (rv32imc, 160 MHz) the timed burst costs 2,842 ns
+  per neuron step with this version, against 1,501 ns measured on
+  alpha.5 with the same firmware source**, every behavior figure
+  identical (147 spikes in 10,000 steps, first spike at step 56, 14.7
+  spikes/s). Read from the two flashed binaries: the alpha.5 burst loop
+  was one the compiler happened to keep in registers, with one 64-bit
+  software division per step; alpha.6's keeps the neuron in memory and
+  pays two, plus a hardware `divu`, which is what a `Vec<LIFNeuron>`
+  network pays on either version. The library did not get slower in
+  the general case; the honest number is the higher one. Mechanism,
+  listings and pins: `evidence/esp32c3-bringup/README.md` § The
+  mechanism (ISA round-23); narrowing those divisions, bit-exact, is
+  the next brief.
 
 ## Since alpha.4 (the alpha.5 notes)
 
@@ -209,8 +221,11 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
 
 ## Status
 
-**`0.1.0-alpha.5` is live on crates.io** (published 2026-08-22T13:59Z
-from 103fa59, registry-verified): the general four-kind graph assembly,
+**`0.1.0-alpha.6` is live on crates.io** (published 2026-09-11): the
+`[u32; N]` spike ring, no runtime dependencies, `rust-version`
+declared, `isi_stats_us` in u128, and the ESP32-C3 step cost read
+honestly (see "Since alpha.5"). Alpha.5 (2026-08-22T13:59Z from
+103fa59, registry-verified): the general four-kind graph assembly,
 `EDGE_PULSE_QUANTA`, the assembly gates, the R17 consolidation breaks
 and the STDP dt-overflow fix (see "Since alpha.4"). Alpha.4, the same
 day: NIR structured entry (pub quantizers, `NirBuilder`, per-neuron
@@ -221,11 +236,9 @@ knob**, new public API (default 10 = the historical weight/10 pulse;
 0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
 published path unchanged; the simd batch kernel doc'd mV-grid-only.
 
-**The tree is ahead of the published crate** (rides `alpha.6`): the
-spike history is a `[u32; N]` ring and `heapless` has left the runtime
-dependencies (the crate depends on `core` alone), and `rust-version`
-is declared. Test counts live in the CI log and the repo's AGENTS.md
-§ Commands, not here; the API may still move within alpha semver.
+**Tree == published.** Test counts live in the CI log and the repo's
+AGENTS.md § Commands, not here; the API may still move within alpha
+semver.
 
 NIR itself: Pedersen et al., Nature Communications 15, 4962 (2024),
 DOI 10.1038/s41467-024-52259-9 — this crate's `nir` module speaks
