@@ -109,12 +109,19 @@ remap_env() {
   echo "remap: 4 roots -> ~, ~/.cargo, ~/.rustup/toolchains/$(basename "$REMAP_SYSROOT"), ~/projets/NeuralOs-v2; SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 
+# remap_show <path>: the path as the record writes it, `$HOME` -> `~`
+# (the banking convention, ISA round 24), for every line these scripts
+# print: a build log pasted into evidence must not carry the home path.
+remap_show() {
+  printf '%s' "${1/#"$REMAP_HOME"/\~}"
+}
+
 # remap_gate <file>: exit 1 on any personal string or unremapped root,
 # and on any scan that did not run.
 remap_gate() {
   local file=$1 pattern by_pattern by_root rc n_pattern n_root
   if [ ! -f "$file" ]; then
-    echo "gate: $file does not exist; nothing to scan is not a pass" >&2
+    echo "gate: $(remap_show "$file") does not exist; nothing to scan is not a pass" >&2
     return 1
   fi
   pattern=$(cat "$REMAP_REPO/.githooks/personal-pattern")
@@ -127,25 +134,25 @@ remap_gate() {
   rc=0
   by_pattern=$(grep -a -o -E -i -e "$pattern" "$file") || rc=$?
   if [ "$rc" -gt 1 ]; then
-    echo "gate: the pattern grep failed (exit $rc) on $file; a scan that did not run is not a pass" >&2
+    echo "gate: the pattern grep failed (exit $rc) on $(remap_show "$file"); a scan that did not run is not a pass" >&2
     return 1
   fi
   rc=0
   by_root=$(grep -a -o -F -e "$REMAP_HOME" -e "$REMAP_CARGO_HOME" -e "$REMAP_SYSROOT" -e "$REMAP_REPO" "$file") || rc=$?
   if [ "$rc" -gt 1 ]; then
-    echo "gate: the root grep failed (exit $rc) on $file; a scan that did not run is not a pass" >&2
+    echo "gate: the root grep failed (exit $rc) on $(remap_show "$file"); a scan that did not run is not a pass" >&2
     return 1
   fi
   n_pattern=0; [ -z "$by_pattern" ] || n_pattern=$(printf '%s\n' "$by_pattern" | wc -l)
   n_root=0; [ -z "$by_root" ] || n_root=$(printf '%s\n' "$by_root" | wc -l)
   if [ "$n_pattern" -gt 0 ] || [ "$n_root" -gt 0 ]; then
-    echo "gate: RED — $n_pattern pattern hit(s), $n_root root hit(s) in $file; the distinct strings, roots masked:" >&2
+    echo "gate: RED — $n_pattern pattern hit(s), $n_root root hit(s) in $(remap_show "$file"); the distinct strings, roots masked:" >&2
     printf '%s\n' "$by_pattern" "$by_root" | sed '/^$/d' | sort -u \
       | sed -e "s#$REMAP_REPO#<REPO>#g" -e "s#$REMAP_SYSROOT#<SYSROOT>#g" \
             -e "s#$REMAP_CARGO_HOME#<CARGO_HOME>#g" -e "s#$REMAP_HOME#<HOME>#g" >&2
     return 1
   fi
-  echo "gate: 0 hits in $file (pattern + 4 roots)"
+  echo "gate: 0 hits in $(remap_show "$file") (pattern + 4 roots)"
 }
 
 # remap_text_sha <elf>: sha256 of the .text section image. Needs
@@ -168,12 +175,21 @@ remap_text_sha() {
   # image (no .text) is a failure too: its sha is the empty file's.
   tmp=$(mktemp)
   if ! "$objcopy" -O binary --only-section=.text "$elf" "$tmp" || [ ! -s "$tmp" ]; then
-    echo "text-sha: no .text image from $elf" >&2
+    echo "text-sha: no .text image from $(remap_show "$elf")" >&2
     rm -f "$tmp"
     return 1
   fi
-  sha256sum "$tmp" | cut -d' ' -f1
+  # The sha is checked before it is returned: with the cleanup as the last
+  # command the function's status was the cleanup's, and a failed checksum
+  # would have returned an empty sha with status 0.
+  local sha
+  sha=$(sha256sum "$tmp" | cut -d' ' -f1)
   rm -f "$tmp"
+  if [ -z "$sha" ]; then
+    echo "text-sha: sha256sum failed on the .text image of $(remap_show "$elf")" >&2
+    return 1
+  fi
+  printf '%s\n' "$sha"
 }
 
 # remap_canary <crate-dir> <cargo build args...>: the trim-paths probe.

@@ -47,7 +47,7 @@ case ${1:-build} in
     # under set -e does not (tools/remap.sh, remap_text_sha).
     elf_sha=$(sha256sum "$elf" | cut -d' ' -f1)
     text_sha=$(remap_text_sha "$elf")
-    echo "elf  sha256 $elf_sha  $elf"
+    echo "elf  sha256 $elf_sha  $(remap_show "$elf")"
     echo "text sha256 $text_sha  (.text image; the comparable, README § Rebuild + run)"
     remap_canary "$here" --release --locked
     ;;
