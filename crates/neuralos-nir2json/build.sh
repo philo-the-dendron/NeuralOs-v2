@@ -34,6 +34,9 @@ if [ -e "$out" ] && ! cmp -s "$built" "$out"; then
   exit 1
 fi
 cp "$built" "$out"
-echo "elf  sha256 $(sha256sum "$out" | cut -d' ' -f1)  ${out#"$repo"/}"
-echo "text sha256 $(remap_text_sha "$out")  (.text image; the comparable)"
+# Assigned first: `echo "$(f)"` hides f's exit status (tools/remap.sh, remap_text_sha).
+elf_sha=$(sha256sum "$out" | cut -d' ' -f1)
+text_sha=$(remap_text_sha "$out")
+echo "elf  sha256 $elf_sha  ${out#"$repo"/}"
+echo "text sha256 $text_sha  (.text image; the comparable)"
 remap_canary "$repo" -p neuralos-nir2json --release --locked --target "$target"
