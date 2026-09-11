@@ -8416,3 +8416,22 @@ close-out as true-when-written; head/updated refreshed under the
 live-state exception. GUARD 2 untouched. GUARD 3: no outreach, no
 upload, no release touched. No publish, no tag. `evidence/` and
 `paper/` untouched. No binaries committed.
+
+### Record-only, after the push (2026-09-11)
+
+The lease push did not run through the URL form § Session protocol
+prints. On git 2.43.0, `git push git@gitea.com:Caramoussin/NeuralOs-v2.git
+--force-with-lease --force-if-includes work/fwbuild` is rejected with
+`stale info`, dry run and real run alike: a URL is an anonymous
+remote, git has no remote-tracking ref to take the expected value
+from, and the implicit lease has nothing to compare against. The same
+command through the remote name, `git push origin --force-with-lease
+--force-if-includes work/fwbuild`, passed its dry run and pushed
+f273686 → 1d11a93 (forced update); `origin` carries one push URL,
+Gitea (§ Remotes, 2026-09-06), so the host the rule names and the
+host pushed are the same. The words "the host named" above describe
+the rule, not the push that ran. For AGENTS at the next
+consolidation: the rule's example should name `origin` (single URL
+since 2026-09-06) or the explicit `--force-with-lease=<ref>:<sha>`
+form with the sha from the step-2 note, which the rule already
+allows; the two-flag URL form does not run.
