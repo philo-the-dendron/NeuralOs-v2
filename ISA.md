@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@787fb6b (PR #19 merged 2026-09-10: the alpha.6 re-measure at 2,842 ns/step, the mechanism read from the flashed ELFs; mirror synced) · work/home-path-scrub ahead by the scrub (this round: /home/<user>/ → ~/ in 15 files, six burn logs re-pinned, the whole-tree CI gate, the immutability rule amended) · open(session): PR #20 review then merge on the principal's word; the new CI context named in branch protection (principal); then #21, the publish round with the 1,501 sweep, the second-release question and the alpha.6 stamp; then the fix brief (alpha.7) · next-work: ROADMAP § Practical next moves"
+head: "main@285cd25 (PR #20 merged 2026-09-11: the home-path scrub, the tree gate; mirror synced) · work/publish-alpha6 ahead by the publish round (this round: isi_stats_us in u128, the 1,501 sweep, the v0.1.0-alpha.6 release draft with the scrubbed board ELF, the status flips to tree == published) · open(session): PR #21 review then merge on the principal's word; then the stamp in order — tag v0.1.0-alpha.6, the Gitea release, cargo publish — and the registry timestamp into the round-25 close-out; then the fix brief (alpha.7) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-11T02:39:21Z
+updated: 2026-09-11T04:31:32Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -7788,3 +7788,111 @@ live-state exception. GUARD 2 untouched: no frozen verdict moved; the
 six re-pinned logs changed in one path string each, content
 byte-identical otherwise, proven by regeneration. GUARD 3: no
 outreach. `paper/` untouched. No binaries committed.
+
+## Amendment (round-25 — the publish round: alpha.6 to crates.io, the honest number in the record, the tag and the release — 2026-09-11)
+
+Branch `work/publish-alpha6` from `main@285cd25` (PR #20 merged that
+night), one PR (#21). Opened on philo's word after #20, decisions
+taken the same evening: tag `v0.1.0-alpha.6` on this PR's merge
+commit plus a Gitea release carrying the scrubbed board ELF; the
+Zenodo repo artifact v2 waits for the paper submission; the bring-up
+release notes get an appended dated section, not an edit. Three
+actions stay the principal's, after the merge, in order: the tag,
+the release, `cargo publish`.
+
+### Scope, in commit order
+
+1. `668b73e` **`isi_stats_us` sums in `u128`**, both the neuron's
+   test-gated version and the heapless oracle's copy; the variance is
+   proven to fit `u64` (mean ≤ `u32::MAX`) before the integer square
+   root. The differential proptest drops the 2^27 bound it carried
+   since round-22 and runs on arbitrary `u32` times; a unit test pins
+   three maximal intervals on both sides (mean `u32::MAX`, std 0).
+   The round-22 record said "three intervals near 2^31 suffice"; the
+   threshold is 2^32/√3 ≈ 2.48e9, above 2^31, corrected in the crate
+   README. Zero non-test callers; nothing shipped changes. snn lib
+   tests 209 → 210; workspace 348 executed green + 5 model-gated.
+2. `cb1aa7a` **The 1,501 sweep.** ROADMAP (priority row 3, next-move
+   5) and the evidence INDEX row carry both numbers with the reading
+   from round-23; the INDEX row lists the second entry's files and the
+   host harness. The bring-up release notes, a published body, are
+   appended to, not edited: one dated section with the three facts
+   that moved (the sha pins a build; the 1,501 reading; the asset's
+   home paths left standing). The research log gets its entry for
+   rounds 23 and 24.
+3. `0ee8c4a` **The release draft** `docs/releases/v0.1.0-alpha.6.md`:
+   procedure (tag, release, publish), the one asset, the scrub, the
+   body. The asset: the flashed alpha.6 ELF (`e26e1749…`) with its 17
+   `/home/<user>/` prefixes overwritten in place by `/redacted-usr/`,
+   sha `29511746…`, 190,372 B, `.text` sha equal to the round-23 pin
+   (`d672ca37…`), zero personal-pattern hits, produced into the
+   ignored `firmware/esp32c3/dist/` from the private copy. The crate
+   README's alpha.6 notes carry the board paragraph (crates.io is
+   where a stranger reads).
+4. **The status flips**, written before the stamp as alpha.5's were:
+   crate README line 7 and § Status, AGENTS.md (workspace table,
+   § Published crate, the test count 347 → 348, and "three
+   `(pull_request)` checks" → the seven named, stale twice over),
+   VISION.md § 1, root README status line. "Tree == published" holds
+   from the moment `cargo publish` succeeds; the registry timestamp is
+   recorded in this round's close-out.
+5. ISA (this entry).
+
+### Tombstones (true-when-written)
+
+- Round-19 § The numbers, "**1,501 ns/step** on the burst": true for
+  the alpha.5 ELF `102af8c6…`; one loop the compiler kept in registers
+  (round-23). The in-memory cost on either version is 2,842.
+- Round-20, "measured claims only (1,501 ns/step, step 56, 14.7/s)":
+  same reading; step 56 and 14.7/s stand.
+- Round-22, "three intervals near 2^31 suffice": below the threshold;
+  three above 2^32/√3 ≈ 2.48e9 suffice (commit 1 above).
+- The bring-up release notes' "Both shas were reproduced … the shas
+  in the attached SHA256SUMS reproduce": true that day in the same
+  target dir; the ELF sha pins a build (round-23 addendum). Appended
+  under the notes, not edited.
+
+### Findings (each verified at its source this session)
+
+- **Record-only — the overflow was unreachable on monotonic times.**
+  Intervals of a monotonic `u32` sequence sum to at most `u32::MAX`,
+  so their squares sum below 2^64; only the non-monotonic filter
+  (which skips `curr < prev` and keeps counting) makes three maximal
+  intervals reachable. The proptest found it because its times are
+  unordered on purpose.
+- **Record-only — the release asset is scrub-only reproducible.** No
+  rebuild reproduces the flashed ELF's sha (build stamp, path-bound
+  symbol hashes); the scrub is one byte-level replace over the private
+  copy, deterministic (the scratch test of round-23 addendum gave the
+  same `29511746…`). The `.text` sha is the comparison a rebuild can
+  make.
+- **Cosmetic, carried: `AGENTS.md` said three required checks while
+  six were named** (memory-owed since PR #18); seven now, fixed here.
+
+### The stamp (principal, after the merge, in this order)
+
+    git tag -a v0.1.0-alpha.6 <merge commit> -m "neuralos-snn 0.1.0-alpha.6"
+    git push origin v0.1.0-alpha.6                # then AGENTS.md § Merge procedure syncs it to GitHub
+    # Gitea → Releases → New release on the tag: title, body and the two files per docs/releases/v0.1.0-alpha.6.md
+    cargo publish -p neuralos-snn --dry-run && cargo publish -p neuralos-snn
+
+Close-out owed after the publish: the registry timestamp into this
+entry's close-out and AGENTS.md § Published crate; a `cargo search`
+or registry read as the verification, as alpha.5 had.
+
+### Not done here
+
+The fix brief (alpha.7): the two 64-bit divisions per step, the build
+script with gate and canary covering both shipped binaries, the
+`.text` re-pin, the done criterion on an in-memory loop. Zenodo v2.
+The QEMU proof's build.rs; CI calling `tools/percommit.sh`; a
+concurrency group cancelling superseded runs (to check on gitea.com).
+
+### Guards
+
+GUARD 1 honored: appended only; four tombstones above, the entries
+untouched; head/updated refreshed under the live-state exception.
+GUARD 2 untouched. GUARD 3: no outreach; the release is the record's
+artifact, not a message. `evidence/`: INDEX row rewritten (a living
+index), nothing else. `paper/` untouched. No binaries committed (the
+asset lives in the ignored `dist/` until the upload).
