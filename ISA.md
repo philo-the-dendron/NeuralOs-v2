@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@820d81a (PR #18 merged 2026-09-10: the [u32; N] ring, alpha.6 in the tree; mirror synced) · work/measurements ahead by the measurements (this round: the host spike-path bench, the board re-measure at 2,842 ns/step, the mechanism read from the two flashed ELFs, the burst-loop disassemblies banked) · open(session): PR #19 review then merge on the principal's word; the two flashed ELFs to the Gitea release before any cargo clean (principal); then #20, the publish round with the 1,501 sweep and the alpha.6 stamp; then the fix brief (alpha.7) · next-work: ROADMAP § Practical next moves"
+head: "main@820d81a (PR #18 merged 2026-09-10: the [u32; N] ring, alpha.6 in the tree; mirror synced) · work/measurements ahead by the measurements (this round: the host spike-path bench, the board re-measure at 2,842 ns/step, the mechanism read from the two flashed ELFs, the burst-loop disassemblies banked) · open(session): PR #19 review then merge on the principal's word; the two flashed ELFs private-copied 2026-09-10 (they carry home paths; the scrub is approved and held, the second-release question is the publish session's, whole); then #20, the publish round with the 1,501 sweep and the alpha.6 stamp; then the fix brief (alpha.7) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-10T23:34:00Z
+updated: 2026-09-11T00:37:42Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -7606,3 +7606,75 @@ live-state exception; round-19's numbers untouched (tombstone owed to
 sentence corrected (a record defect, not a verdict), `SHA256SUMS`
 re-pinned; the frozen logs untouched. `paper/` untouched. No binaries
 committed.
+
+## Amendment (round-23 addendum — the flashed ELFs carry home paths; private copies, the scrub held, the published asset left standing — 2026-09-10)
+
+Corrects one sentence of round-23 above ("Doctrine puts binaries on the
+Gitea release, not in the tree … attach before any `cargo clean`"),
+true-when-written and incomplete: attaching the raw ELFs would publish
+a home path. Same branch, one more commit; no board, no upload, no
+release touched.
+
+### Findings (each verified at its source this session)
+
+- **Both flashed ELFs embed `/home/<user>/…` paths**: 16 in the
+  alpha.5 ELF (`102af8c6…`), 17 in the alpha.6 ELF (`e26e1749…`), the
+  17th being the repo path from the ring's bounds check. They are
+  panic-location strings (`core::panic::Location`) in `.rodata` for
+  esp-hal, esp32c3, esp-rom-sys, esp-sync, riscv and the spine; the
+  `.text` section carries none (verified with `strings` on the
+  extracted `.text` images, 0 hits). The repo is public
+  (`private: false` on the API). The hooks' personal-string pattern
+  (`.githooks/personal-pattern`) flags any `/home/<x>/`, and a release
+  asset bypasses the hooks, which guard added lines of commits only.
+- **The bring-up release asset IS the flashed alpha.5 ELF, home paths
+  included.** `bringup-2026-09-09` (release id 945019) carries
+  `neuralos-esp32c3-v0.1.0-riscv32imc-unknown-none-elf.elf`, 190,564 B;
+  downloaded 2026-09-10 it hashes to `102af8c6…` exactly and holds the
+  16 paths. Public since 2026-09-09. **Ruling (philo, 2026-09-10):
+  leave it and record.** Replacing it would be the remake: it breaks
+  the verification of anyone who holds the asset against its published
+  sha, for a gain of nil sensitivity (a username inside cargo registry
+  paths). The published sha in `docs/releases/bringup-2026-09-09.md`
+  stays true.
+- **Private copies made 2026-09-10, verified by sha**, in
+  `~/projets/NeuralOs-v2-artifacts/esp32c3/` (outside every git repo;
+  `~/projets` is not one): `neuralos-esp32c3-427b6cb-102af8c6.elf`,
+  `neuralos-esp32c3-820d81a-e26e1749.elf`, `SHA256SUMS`, `README.txt`
+  saying why they stay private. The `cargo clean` time pressure is
+  gone; the copies in the session scratchpad are not a record and are
+  superseded.
+- **The scrub method is approved and held.** A same-length in-place
+  overwrite of the 14-byte `/home/<user>/` prefix (`/redacted-usr/`)
+  keeps file size and layout; tested on scratch copies: 16 and 17
+  replacements, 0 personal-pattern hits, and the `.text` image
+  byte-identical to the flashed one, so the two `.text` pins in the
+  evidence README hold for a scrubbed ELF (`d14cce25…`, `d672ca37…`).
+  Documented like the log scrubs, one sentence per asset. **Ruling:
+  no scrubbed alpha.6 on the bring-up release now**; grafting alpha.6
+  binaries onto the alpha.5 release muddies a release just decided to
+  leave standing. The publish session decides the second-release
+  question whole: binaries, notes, the scrub sentence, together. The
+  scratch-copy shas (`5a61c5fa…`, `29511746…`) are the test's, not an
+  artifact's; the upload regenerates them.
+- **Root cause to the fix brief, with a placement constraint.** A
+  rustc path remap (`--remap-path-prefix` for `$HOME` and the cargo
+  registry) keeps future ELFs free of home paths and, verified the
+  same day from the other side, makes the `.text` pin path-independent
+  (round-23: the alpha.6 pin moved with the clone path). The flag must
+  survive the `RUSTFLAGS` override: rustflags in `.cargo/config.toml`
+  die quietly under the workflow's `RUSTFLAGS="-D warnings"` (PR #13's
+  lesson, the reason the firmware's `-Tlink.x` lives in build.rs), and
+  build.rs cannot carry this one: a build script may emit link args
+  and `-l`/`-L` only, never a rustc codegen flag. So the vehicle is
+  the environment (workflow env + `tools/percommit.sh`, one more place
+  to keep in step) or one source of rustflags with the env unset for
+  that job; the brief chooses deliberately.
+
+### Guards
+
+GUARD 1 honored: appended only; the round-23 sentence stands as
+true-when-written and is corrected here; head/updated refreshed under
+the live-state exception. GUARD 2 untouched. GUARD 3: no outreach.
+`evidence/` untouched by this commit. `paper/` untouched. No binaries
+committed; no release asset added, replaced or deleted.
