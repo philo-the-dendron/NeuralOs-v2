@@ -111,10 +111,12 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   crate depends on `core`.
 - **`rust-version = "1.92"` declared**, inherited from the workspace;
   it is the toolchain pin, the only MSRV anyone has verified.
-- Finding, recorded not fixed: with arbitrary `u32` spike times the
-  test-gated `isi_stats_us` overflows its `u64` sum of squared
-  intervals (three intervals near 2^31 suffice). Zero non-test callers;
-  the differential test bounds its times to 2^27 µs and says why.
+- **`isi_stats_us` sums in `u128`** (test-gated, zero non-test
+  callers): with `u64` accumulators, three intervals above 2^32/√3
+  (about 2.48e9 µs, reachable through the non-monotonic filter)
+  overflowed the sum of squares. Found by the differential proptest on
+  2026-09-10; that test now runs on arbitrary `u32` times, and a unit
+  test pins three maximal intervals on both sides.
 - The ESP32-C3 measurement for this version is not in these notes: it
   is taken after this tree is merged, on the board, and rides the
   publish round.

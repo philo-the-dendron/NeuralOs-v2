@@ -570,14 +570,20 @@ impl LIFNeuron {
             return None;
         }
         let n = self.spike_history.len();
-        let mut intervals_sum: u64 = 0;
-        let mut intervals_sqsum: u64 = 0;
-        let mut count: u64 = 0;
+        // u128 accumulators (alpha.6): an interval is at most u32::MAX,
+        // its square below 2^64, and up to MAX_SPIKE_HISTORY - 1 of them
+        // are summed. In u64 the sum of squares overflowed once three
+        // intervals exceeded 2^32 / sqrt(3), about 2.48e9 µs, which the
+        // non-monotonic filter below makes reachable (found 2026-09-10
+        // by the differential proptest).
+        let mut intervals_sum: u128 = 0;
+        let mut intervals_sqsum: u128 = 0;
+        let mut count: u128 = 0;
         for i in 1..n {
             let prev = self.spike_history.get(i - 1);
             let curr = self.spike_history.get(i);
             if curr >= prev {
-                let d = u64::from(curr - prev);
+                let d = u128::from(curr - prev);
                 intervals_sum += d;
                 intervals_sqsum += d * d;
                 count += 1;
@@ -586,11 +592,14 @@ impl LIFNeuron {
         if count == 0 {
             return None;
         }
+        // mean <= u32::MAX, so mean_sq and sq_mean are below 2^64 and
+        // the variance fits u64 exactly.
         let mean = intervals_sum / count;
         // Variance = E[x²] − E[x]²
         let mean_sq = mean * mean;
         let sq_mean = intervals_sqsum / count;
-        let variance = sq_mean.saturating_sub(mean_sq);
+        let variance = u64::try_from(sq_mean.saturating_sub(mean_sq))
+            .expect("variance of u32 intervals is below 2^64");
         let std = isqrt_u64(variance);
         Some((mean as u32, std as u32))
     }
@@ -1329,14 +1338,17 @@ mod tests {
                 return None;
             }
             let n = self.history.len();
-            let mut intervals_sum: u64 = 0;
-            let mut intervals_sqsum: u64 = 0;
-            let mut count: u64 = 0;
+            // Same u128 accumulators as the ring side (alpha.6): the
+            // oracle is the pre-ring HISTORY kept verbatim; the
+            // consumers' arithmetic moves on both sides together.
+            let mut intervals_sum: u128 = 0;
+            let mut intervals_sqsum: u128 = 0;
+            let mut count: u128 = 0;
             for i in 1..n {
                 let prev = self.history[i - 1];
                 let curr = self.history[i];
                 if curr >= prev {
-                    let d = u64::from(curr - prev);
+                    let d = u128::from(curr - prev);
                     intervals_sum += d;
                     intervals_sqsum += d * d;
                     count += 1;
@@ -1348,7 +1360,8 @@ mod tests {
             let mean = intervals_sum / count;
             let mean_sq = mean * mean;
             let sq_mean = intervals_sqsum / count;
-            let variance = sq_mean.saturating_sub(mean_sq);
+            let variance = u64::try_from(sq_mean.saturating_sub(mean_sq))
+                .expect("variance of u32 intervals is below 2^64");
             let std = isqrt_u64(variance);
             Some((mean as u32, std as u32))
         }
@@ -1359,14 +1372,12 @@ mod tests {
         /// the same spike times — contents in order, then every consumer.
         /// Up to 300 spikes so the ring wraps several times; unordered
         /// times so non-monotonic sequences exercise the ISI filter.
-        /// Times are bounded to 2^27 µs (~134 s of simulation): with
-        /// arbitrary u32 times `isi_stats_us` overflows its u64 sum of
-        /// squared intervals — in the oracle and the ring version alike,
-        /// a pre-existing property of the test-gated trio, found by this
-        /// test on 2026-09-10 and recorded, not fixed here.
+        /// Times are arbitrary u32: the 2^27 bound this test carried on
+        /// 2026-09-10 worked around the u64 overflow of `isi_stats_us`
+        /// it had found, and the u128 accumulators (alpha.6) removed it.
         #[test]
         fn prop_ring_matches_the_heapless_oracle(
-            times in proptest::collection::vec(0u32..=1 << 27, 0..300),
+            times in proptest::collection::vec(any::<u32>(), 0..300),
             last_update_time_us in any::<u32>(),
             window_us in any::<u32>(),
         ) {
@@ -1417,6 +1428,23 @@ mod tests {
             prop_assert_eq!(ring.len(), 1);
             prop_assert_eq!(ring.get(0), 7);
         }
+    }
+
+    /// Three intervals of `u32::MAX` through the non-monotonic filter: in
+    /// u64 the sum of their squares overflowed (three above 2^32/sqrt(3)
+    /// suffice; the earlier note said "near 2^31", which is below the
+    /// threshold). Both sides agree on the exact answer.
+    #[test]
+    fn isi_stats_survive_three_maximal_intervals() {
+        let times = [0, u32::MAX, 0, u32::MAX, 0, u32::MAX];
+        let mut n = LIFNeuron::new(1);
+        let mut oracle = HeaplessOracle::new();
+        for &t in &times {
+            n.spike(t);
+            oracle.push(t);
+        }
+        assert_eq!(n.isi_stats_us(), Some((u32::MAX, 0)));
+        assert_eq!(oracle.isi_stats_us(), Some((u32::MAX, 0)));
     }
 
     #[test]
