@@ -293,9 +293,9 @@ diffing the two `main` listings). That sentence describes the bare
 line; under the script's remap the four source roots become fixed
 aliases, so the third pin is expected from any clone path, home or
 cargo home (the ELF sha still moves: the descriptor stamp is the
-commit date, and the symbol-name hashes follow the package path). A different ELF sha with the same
-log lines is not a finding; a different `.text` with the same log
-lines is one to read. Reproducing
+commit date, and the symbol-name hashes follow the package path). A
+different ELF sha with the same log lines is not a finding; a
+different `.text` with the same log lines is one to read. Reproducing
 `boot-no-descriptor.log` means flashing an ELF built from 3525492 with
 `--ignore-app-descriptor`; `factory-empty-flash.log` needs a blank
 board (`espflash erase-flash` recreates the state).
