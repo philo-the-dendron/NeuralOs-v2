@@ -266,6 +266,24 @@ behavior figures of the second entry stand unmeasured. The two
 earlier pins stand as built by the bare cargo line; they are not
 reproduced by the script and are not expected to be.
 
+### Release asset (the procedure since round 26)
+
+A firmware asset on a Gitea release is built by `build.sh` at the
+tagged commit (the descriptor stamp is that commit's time), copied
+from the target dir into `firmware/esp32c3/dist/` under the alpha.6
+name pattern
+`neuralos-esp32c3-<fw>-snn-<lib>-riscv32imc-unknown-none-elf.elf`,
+listed in `dist/SHA256SUMS`, uploaded with that file, downloaded back,
+checked with `sha256sum -c`, and gated once more on the download:
+
+```bash
+(source tools/remap.sh && remap_env >/dev/null && remap_gate <downloaded.elf>)
+```
+
+No scrub: the remap is what the alpha.6 release's § Scrub did by hand,
+at compile time. The stamped release drafts under `docs/releases/`
+describe the procedure of their day; this paragraph is the living one.
+
 The alpha.5 pin reproduced byte-identical from a clone at another
 path. The alpha.6 pin reproduces only from a clone at the same path:
 the ring's bounds check embeds the source path in rodata, and a

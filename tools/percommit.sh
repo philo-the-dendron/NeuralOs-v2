@@ -97,7 +97,7 @@ for c in $commits; do
   # Since round 26 the build is firmware/esp32c3/build.sh (remap, gate,
   # shas, canary; same flags for clippy). Commits before the script get
   # the bare lines they were green with.
-  if [ -x firmware/esp32c3/build.sh ]; then
+  if [ -f firmware/esp32c3/build.sh ]; then
     (cd firmware/esp32c3 && run cargo fmt -- --check)
     (cd firmware/esp32c3 && run ./build.sh)
     (cd firmware/esp32c3 && run ./build.sh clippy)
