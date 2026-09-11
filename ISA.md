@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@59bbeb9 (PR #22 merged 2026-09-11: round-25 close-out; mirror synced) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · wrote-from: work/fwbuild, ahead by round 26 (the brief, items 1–7 and this close-out; no spine change), unmerged, PR to open · open(session): round-26 PR review then merge on the principal's word (the epoch-unit decision in the close-out is the principal's to flip); then part B, the two 64-bit divisions and the ring-index mask (alpha.7) · next-work: ROADMAP § Practical next moves"
+head: "main@59bbeb9 (PR #22 merged 2026-09-11: round-25 close-out; mirror synced) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · wrote-from: work/fwbuild, ahead by round 26 (the brief, items 1–7, the close-out, the six review fixes as commits with trailers, and the amendment that records them; no spine change), unmerged, PR #23 open, review round 1 taken · open(session): the per-commit check on the reworded head, then merge on the principal's word (the epoch-unit ruling is recorded in the close-out: keep the conversion); then part B, the two 64-bit divisions and the ring-index mask (alpha.7) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-11T20:14:06Z
+updated: 2026-09-11T22:59:50Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -8341,3 +8341,78 @@ no outreach, no upload, no release touched; the bring-up assets stand
 by the round-23 ruling. No publish, no tag. `evidence/`: the README
 gained a pin and a paragraph, no pinned file edited. `paper/`
 untouched. No binaries committed.
+
+## Amendment (round 26 — the review fixes landed as commits, not fixups; the one rewrite was a reword — 2026-09-11)
+
+The close-out above says, in its first paragraph, that the six review
+fixes "rode as visible `fixup!` commits, one per target, the loop
+over the range, the push, then the one rewrite before merge", and its
+§ Review lists "the branch shas re-pointed by the rewrite" as
+record-only. Both lines are true-when-written and superseded here.
+
+The ruling (philo, 2026-09-11, during the review): `fixup!` plus the
+one autosquash is the vehicle for a RED commit only (AGENTS.md
+§ Session protocol, "Red found after the push"). Every target of the
+six was green, on the loop and on the per-commit check; a change that
+answers a review finding on a green commit is a normal commit on top,
+carrying `Fixes:` and `Found-by:` (§ Commit trailers), so "which
+commit corrected which" stays a query. The autosquash the close-out
+promised was not clean either: rehearsed twice by the builder and
+once more in a scratch worktree at head f273686, `git rebase -i
+--autosquash main` stops on `evidence/esp32c3-bringup/README.md` when
+the fix to 5680156 (§ Release asset, written on top of 4e3acdd's pin
+paragraph) melts into a commit that predates that paragraph, and the
+pin fix conflicts on the same region after it. A squash also drops
+the fixup's message, so the trailers would never have existed, and
+it would have re-pointed six of the seven shas § What landed cites.
+
+What happened instead: one rewrite, messages only. Old head f273686,
+its fourteen contexts green (the per-commit check over all thirteen
+commits at 22:33 UTC, the four contexts queued behind it by 22:37).
+The six `fixup!` commits were reworded in place, `git rebase -i
+--no-autosquash 3baf2e6` with six `reword` lines; every tree is the
+one already checked (`git log --format=%T 3baf2e6..` identical on
+both heads, `git diff f273686 <new tip>` empty), the seven commits
+from eebaccd to 3baf2e6 keep their shas, and every sha cited in
+§ What landed stands. The six, old → new, each carrying `Fixes:` with
+its target and `Found-by: reviewer, Opus session (PR #23)`:
+
+| Old (`fixup!`) | New | Corrects |
+|---|---|---|
+| 6ceb80c | 3b088da build(firmware): the gate refuses a grep that did not run; shas assigned before they are echoed; remap_text_sha returns every failure by hand | 006b2e8 |
+| 01579c8 | 068b097 build(nir2json): the ELF and .text shas assigned before they are echoed | 72076c2 |
+| 8e8b4b1 | 7e58055 ci+docs: `-f` not `-x` in the three loops; the release procedure moves into the evidence README | 5680156 |
+| 0fd8527 | ac364ed docs(agents): § Published crate rewrapped as a paragraph, not one line | 2762170 |
+| 192ff61 | e50c1e5 docs(isa): round-26 close-out, the review round folded in | 3baf2e6 |
+| f273686 | 2ff67d6 evidence(esp32c3): README, the reproduction paragraph rewrapped | 4e3acdd |
+
+Then this amendment, one more commit at the tip, its own loop run
+before the push (the thirteen below it were checked as the trees they
+still are). The note with old and new head goes on the PR before the
+lease push (`--force-with-lease --force-if-includes`, the host named),
+§ Session protocol steps 1 to 3; no comment thread exists on the PR
+(the review was relayed between sessions), so no anchor is lost. The
+per-commit check re-runs on the new head and the merge waits for it.
+
+On e50c1e5: it edits the round-26 close-out entry, an entry that
+exists only on this branch and has never been on `main`. Read as a
+draft under review, not a past entry of the ledger: GUARD 1 protects
+the merged record, and this amendment is the append that corrects the
+draft's two lines, not a third edit of them. That reading was offered
+with the option and taken with it (philo, 2026-09-11).
+
+Lesson, in the builder's memory and for AGENTS at the next
+consolidation: before prescribing how a fix lands, ask whether the
+target is red. Red: fixup, visible, one autosquash before merge.
+Green: a normal commit with trailers, no rewrite. A fixup written at
+the tip that touches a region a later commit also touched cannot melt
+without a conflict, which is the mechanical reason the rule holds
+beyond the trailers.
+
+### Guards
+
+GUARD 1 honored: appended only; the two superseded lines stand in the
+close-out as true-when-written; head/updated refreshed under the
+live-state exception. GUARD 2 untouched. GUARD 3: no outreach, no
+upload, no release touched. No publish, no tag. `evidence/` and
+`paper/` untouched. No binaries committed.
