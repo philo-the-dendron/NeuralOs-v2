@@ -1066,3 +1066,26 @@ wrong serial path did not occur. Two captures lost the boot lines to
 port-sharing and a misplaced flush before the third got them; the
 capture tool carries both lessons. Record: `evidence/esp32c3-bringup/`,
 ISA round-19.
+
+### The alpha.6 re-measure, the mechanism, and the scrub (2026-09-10)
+
+The ring replaced heapless (alpha.6 in the tree, PR #18) and the
+sequencing ruling said: measure on the board before publishing. Same
+SuperMini, same firmware source, the spine at alpha.6: every behavior
+figure reproduced the first entry to the step, and the burst went
+from 1,501 to 2,842 ns per step. Not noise. The two flashed ELFs were
+still in the target dir, hashing to their pins, and `main` was
+disassembled from both. The alpha.5 burst loop had the neuron in
+registers, resistance, scale and tau folded to constants, one ROM
+64-bit division left; alpha.6's keeps the neuron on the stack and
+pays two, plus a hardware divide. The alpha.5 real-time loop already
+had the alpha.6 shape, so 1,501 was one loop the compiler happened to
+scalarize and 2,842 is what any `Vec<LIFNeuron>` network pays on
+either version. Why LLVM stopped scalarizing is the fix brief's first
+experiment, host-only. Along the way: the ELF sha pins a build, not a
+source (a build stamp in the app descriptor, path-dependent symbol
+hashes); the flashed ELFs embed home paths, so they stay private and
+a same-length scrub goes on the release; and the tree carried 29 such
+paths in fifteen files from before the hooks, scrubbed under one rule
+with the six pinned logs re-pinned and a whole-tree CI gate switched
+on (PR #20). Record: ISA rounds 23 and 24, `evidence/esp32c3-bringup/`.
