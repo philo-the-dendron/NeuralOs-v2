@@ -270,6 +270,32 @@ jobs:
           fi
           echo "no personal string in added lines ($base..$head)"
 
+  tree-clean:
+    name: no personal string in the tracked tree
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+
+      # The added-lines job above guards the diff; this one guards the
+      # tree itself, so a merge, a revert or a rename cannot bring a
+      # personal string back. Every tracked file, the pattern file
+      # included (it does not match itself: the regex text is not the
+      # shape it describes). Added by the home-path scrub (ISA
+      # round-24, 2026-09-10), which made the tree clean first.
+      - name: scan every tracked file
+        run: |
+          set -euo pipefail
+          pattern=$(cat .githooks/personal-pattern)
+          test -n "$pattern"
+          hits=$(git ls-files -z | xargs -0 grep -n -E -i "$pattern" -- 2>/dev/null || true)
+          if [ -n "$hits" ]; then
+            echo "personal string in the tracked tree:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "no personal string in $(git ls-files | wc -l) tracked files"
+
   audit:
     name: cargo audit (RustSec advisories)
     runs-on: ubuntu-latest
