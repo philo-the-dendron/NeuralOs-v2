@@ -67,18 +67,26 @@ The prebuilt binary on the Gitea release is this, nothing more:
 
 ```bash
 rustup target add x86_64-unknown-linux-musl          # once
-cargo build -p neuralos-nir2json --release --locked --target x86_64-unknown-linux-musl
-cp target/x86_64-unknown-linux-musl/release/neuralos-nir2json \
-   crates/neuralos-nir2json/dist/neuralos-nir2json-v0.1.0-x86_64-unknown-linux-musl
+crates/neuralos-nir2json/build.sh                     # → dist/neuralos-nir2json-v0.1.0-x86_64-unknown-linux-musl
 ```
 
-Static-pie, statically linked, no libc dependency (`ldd` says so). The
-musl target defaults to `crt-static`, so no extra flags. `dist/` is
-gitignored: the binary lives on the release, its pin lives in the
-record (`docs/releases/`, ISA round-20). At the tree that record names,
-under the pinned toolchain (1.92.0), the sha is stable across clean
-builds; a rebuild on another tree or toolchain gives another sha, which
-is not a finding.
+The script is the bare cargo line (`cargo build -p neuralos-nir2json
+--release --locked --target x86_64-unknown-linux-musl`) plus what the
+bring-up binary lacked: rustc's path remap for the four source roots,
+so no home path or registry path of the builder reaches the binary
+(the published bring-up binary carries 38, left standing by ruling,
+ISA rounds 23 and 26); a gate that refuses the artifact on any hit;
+the `.text` sha; and the trim-paths canary. `tools/remap.sh` carries
+the why, one header. Static-pie, statically linked, no libc dependency
+(`ldd` says so). The musl target defaults to `crt-static`, so no extra
+flags. `dist/` is gitignored: the binary lives on the release, its pin
+lives in the record (`docs/releases/`, ISA round-20); the script never
+overwrites a different binary under the same name. At the tree that
+record names, under the pinned toolchain (1.92.0), the sha is stable
+across clean builds; with the remap it no longer depends on the clone
+path either. A rebuild on another tree or toolchain gives another
+sha, which is not a finding; the `.text` sha is what a rebuild is
+compared against.
 
 Verify a binary by execution, both exits:
 
