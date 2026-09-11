@@ -27,9 +27,12 @@
 //! line is the ground truth on every board. Boards with a plain LED on GPIO8
 //! (SuperMini and friends) blink.
 //!
-//! Build: `cargo build --release` in this directory (target from
+//! Build: `./build.sh` in this directory, the release build under rustc's
+//! path remap, then the personal-string gate, the ELF and `.text` shas and
+//! the trim-paths canary (`tools/remap.sh` carries the why; target from
 //! `.cargo/config.toml`, linker script from `build.rs`). Flash + monitor:
-//! `cargo run --release`.
+//! `cargo run --release`, a plain dev build with no remap; a release asset
+//! comes from `build.sh` only (evidence README § Release asset).
 
 #![no_std]
 #![no_main]

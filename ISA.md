@@ -8312,7 +8312,7 @@ for the loop; the pre-commit and pre-push hooks and CI's tracked-tree
 scan share the fail-open `grep … || true` the gate had (one bad edit
 to `personal-pattern` blinds all three silently); the firmware script
 could name and copy its artifact into `dist/` as the nir2json one
-does, once the name pattern with the snn version is settled. 
+does, once the name pattern with the snn version is settled.
 
 ### Review (round 1, the reviewer, 2026-09-11)
 
@@ -8435,3 +8435,44 @@ consolidation: the rule's example should name `origin` (single URL
 since 2026-09-06) or the explicit `--force-with-lease=<ref>:<sha>`
 form with the sha from the step-2 note, which the rule already
 allows; the two-flag URL form does not run.
+
+### Review (round 2, the builder on philo's brief, 2026-09-11)
+
+Run on the reworded head 486bc25 against the brief philo posted
+(source truth, hunk review, cross-cutting, light local checks). One
+blocking: the root README's § Quality gates still carried the bare
+firmware build line, and the crate's doc comment the same, against
+5680156's claim that every firmware caller goes through the script;
+the round-26 sweep missed both (the README line dates from
+2026-09-08). Cosmetic: one trailing space in this close-out's
+record-only list; the firmware script and the gate printed the
+artifact's absolute path, home directory included, while the
+nir2json script printed repo-relative; `remap_text_sha` returned the
+status of its cleanup, so a failed checksum would have yielded an
+empty sha with status 0. Record-only: the root grep takes the raw
+home directory as a fixed string, so a runner whose home is `/root`
+could false-positive on an unrelated string (fail-closed; both Gitea
+jobs passed with the gate active); the AGENTS lease-push example
+(the record-only paragraph above); README § Quality gates duplicates
+AGENTS § Commands and lags it, a pointer would end the drift;
+shellcheck is not on the build machine, so that check did not run.
+Verified at source beyond the round-1 items: rustc's last-match
+prefix rule, probed on the pinned 1.92.0 and on 1.97.1; the
+bootloader's build script declares one file rerun guard and no
+environment guard, and parses the variable as microseconds; the
+firmware's linker argument lives in its build script, so the encoded
+rustflags vehicle drops nothing; the hooks' grep flags match the
+gate's; the mirror differs by header and `uses:` only; the loop body
+matches the job line for line; both fmt gates and `bash -n` on the
+four scripts clean.
+
+The fixes, two commits, both targets green, no rewrite. `d29b2c5`:
+`remap_show`, the banking convention for every path the scripts
+print (the gate's five messages, the firmware ELF line, the text-sha
+errors), and the helper checks its sha before returning. This
+commit: README § Quality gates and the crate doc routed through the
+script, the trailing space, this paragraph. Read after both edits,
+one run of each script on this tree: firmware `.text` `6d407501…`
+unchanged (a doc comment reaches no binary), gate 0 hits, canary as
+expected; nir2json `a35b44af…` byte-identical to its pin under the
+no-overwrite guard, `.text` `e04fa2d7…`; every path line under `~`.
