@@ -97,7 +97,7 @@ avec DistilBERT (ou Phi-3-mini / Qwen-2.5-1.5B pour meilleure qualité) via cand
 
 - **Repo mechanics:** un seul repo nommé `NeuralOS` pour v0.1 (archive),
   `NeuralOs-v2` pour v2. Pas de rename, pas de version dans le nom.
-- **Backups:** les 3 backups filesystem locaux (`/home/student/projets/NeuralOS-backup-*`)
+- **Backups:** les 3 backups filesystem locaux (`~/projets/NeuralOS-backup-*`)
   restent intouchés — filet de sécurité.
 - **License:** AGPL-3.0-or-later.
 - **Langue de communication:** français (préférence du principal), documentation

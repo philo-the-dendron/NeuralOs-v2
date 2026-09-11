@@ -76,7 +76,9 @@ failure mode.
   principal's explicit OK. Source: `AGENTS.md` § Remotes (push
   carefully) and § Merge procedure.
 - **`evidence/` holds three species.** sha-pinned machine outputs are
-  immutable and never edited. Frozen-by-marker human docs (PREREG.md)
+  immutable in content and never edited; the one exception is a path
+  string scrubbed by the banking convention, once, on record (ISA
+  round-24). Frozen-by-marker human docs (PREREG.md)
   are immutable because the marker says so. Living orchestration docs
   (BURN.md, PREP.md) are kept true, with git as their changelog.
   Anything that must survive a deposit (a Zenodo tarball carries no

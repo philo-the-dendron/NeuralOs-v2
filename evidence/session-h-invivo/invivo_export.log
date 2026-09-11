@@ -1,4 +1,4 @@
-   Compiling neuralos-rt v0.1.0-alpha.2 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+   Compiling neuralos-rt v0.1.0-alpha.2 (~/projets/NeuralOs-v2/crates/neuralos-rt)
     Finished `release` profile [optimized] target(s) in 10.08s
      Running `target/release/examples/hybrid_invivo models/Ternary-Bonsai-4B-Q2_0.gguf export`
 === Session H: the in-vivo gate — the model's own activations drive the substrate ===

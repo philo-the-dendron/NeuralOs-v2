@@ -1,5 +1,5 @@
 === leg [rep4] start 2026-08-26T18:49:14Z ===
-   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+   Compiling neuralos-rt v0.1.0-alpha.5 (~/projets/NeuralOs-v2/crates/neuralos-rt)
     Finished `release` profile [optimized] target(s) in 27.93s
      Running `target/release/examples/hybrid_invivo --window 4`
 === Session H: the in-vivo gate — the model's own activations drive the substrate ===

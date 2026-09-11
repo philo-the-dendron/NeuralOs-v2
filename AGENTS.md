@@ -253,9 +253,13 @@ exist because careful per-session process still produced drift.
   extraction) lands, a new experiment extends the pending-extraction
   list — it does not copy `hybrid_gate.rs` again.
 - **`evidence/` holds three species — treat each by its contract.**
-  sha-pinned machine outputs are immutable and never edited;
-  frozen-by-marker human docs (PREREG.md) are immutable because the
-  marker says so; living orchestration docs (BURN.md, PREP.md) are
+  sha-pinned machine outputs are immutable in content and never
+  edited — the one exception, ruled 2026-09-10 (ISA round-24), is a
+  path string scrubbed by the banking convention (`/home/<user>/`
+  → `~/`), applied once, with old and new sha side by side in the
+  ISA so the new bytes regenerate from the old commit by one
+  command; frozen-by-marker human docs (PREREG.md) are immutable
+  because the marker says so; living orchestration docs (BURN.md, PREP.md) are
   kept true — git is their changelog, and anything that must survive
   a deposit (a Zenodo tarball carries no `.git`) is pointed at the
   frozen files, never copied into the living ones. (Ratified

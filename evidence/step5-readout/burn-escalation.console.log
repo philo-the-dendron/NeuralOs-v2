@@ -66,7 +66,7 @@ judge models/Ternary-Bonsai-4B-Q2_0-invivo-r4.gguf → evidence/step5-readout/bu
 judge chain done: evidence/step5-readout/burn/on-r4 (double-run)
 === leg [rep4] done (tail via recovery §3: nulls+judges) 2026-08-27T05:51:26Z ===
 === leg [verdict] start 2026-08-27T05:51:26Z ===
-   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+   Compiling neuralos-rt v0.1.0-alpha.5 (~/projets/NeuralOs-v2/crates/neuralos-rt)
     Finished `release` profile [optimized] target(s) in 26.61s
      Running `target/release/examples/step5_aggregate evidence/step5-readout/burn`
 == step-5 aggregation over evidence/step5-readout/burn ==

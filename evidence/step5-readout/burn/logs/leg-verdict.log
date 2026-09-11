@@ -9,7 +9,7 @@
 verdict: 0/3 SEPARATED · 2 MIXED → MIXED present — escalation ladder §5 (one, pre-authorized)
 === leg [verdict] done 2026-08-26T06:11:48Z ===
 === leg [verdict] start 2026-08-27T05:51:26Z ===
-   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+   Compiling neuralos-rt v0.1.0-alpha.5 (~/projets/NeuralOs-v2/crates/neuralos-rt)
     Finished `release` profile [optimized] target(s) in 26.61s
      Running `target/release/examples/step5_aggregate evidence/step5-readout/burn`
 == step-5 aggregation over evidence/step5-readout/burn ==

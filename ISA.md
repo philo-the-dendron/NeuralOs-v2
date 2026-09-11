@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@820d81a (PR #18 merged 2026-09-10: the [u32; N] ring, alpha.6 in the tree; mirror synced) · work/measurements ahead by the measurements (this round: the host spike-path bench, the board re-measure at 2,842 ns/step, the mechanism read from the two flashed ELFs, the burst-loop disassemblies banked) · open(session): PR #19 review then merge on the principal's word; the two flashed ELFs private-copied 2026-09-10 (they carry home paths; the scrub is approved and held, the second-release question is the publish session's, whole); then #20, the publish round with the 1,501 sweep and the alpha.6 stamp; then the fix brief (alpha.7) · next-work: ROADMAP § Practical next moves"
+head: "main@787fb6b (PR #19 merged 2026-09-10: the alpha.6 re-measure at 2,842 ns/step, the mechanism read from the flashed ELFs; mirror synced) · work/home-path-scrub ahead by the scrub (this round: /home/<user>/ → ~/ in 15 files, six burn logs re-pinned, the whole-tree CI gate, the immutability rule amended) · open(session): PR #20 review then merge on the principal's word; the new CI context named in branch protection (principal); then #21, the publish round with the 1,501 sweep, the second-release question and the alpha.6 stamp; then the fix brief (alpha.7) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-11T00:37:42Z
+updated: 2026-09-11T02:39:21Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -7678,3 +7678,113 @@ true-when-written and is corrected here; head/updated refreshed under
 the live-state exception. GUARD 2 untouched. GUARD 3: no outreach.
 `evidence/` untouched by this commit. `paper/` untouched. No binaries
 committed; no release asset added, replaced or deleted.
+
+## Amendment (round-24 — the home-path scrub: one rule, fifteen files, the tree gate — 2026-09-10)
+
+Branch `work/home-path-scrub` from `main@787fb6b` (PR #19 merged the
+same evening), one PR (#20; the publish round becomes #21). Ruled by
+philo 2026-09-10, one shot, not the conservative split: "I just don't
+want more stain on this repo." No code, no evidence content, no
+board, no upload.
+
+### The rule and the scope
+
+One transformation, `/home/<user>/` → `~/`: home-relative, no
+username, the burn-script banking convention applied late, once.
+Verified before the edit: the tilde form does not match
+`.githooks/personal-pattern`. Measured 2026-09-10: 29 lines in 15
+tracked files, every one a `Compiling … (<path>)` line or a v0.1
+backup-path note. History is not touched: rewriting it is forbidden
+by § Remotes and would not purge either host (unreachable commits
+stay fetchable by hash until a support purge). Six commits from
+2026-08-05 to 08-27 carry the strings in their diffs; that is the
+record, and the tree is what a visitor reads.
+
+| File | Lines | Pinned | In Zenodo repo artifact v1.0 (`103fa59`, DOI 10.5281/zenodo.22064020) |
+|---|---|---|---|
+| `docs/ARCHITECTURE.md` | 1 | no | yes |
+| `docs/LESSONS_LEARNED.md` | 1 | no | yes |
+| `evidence/nir-hdf5-gate/README.md` | 4 | no | yes |
+| `evidence/nir-hdf5-gate/publish_dryrun_alpha4.log` | 4 | no | yes |
+| `evidence/session-h-invivo/invivo_export.log` | 1 | no | yes |
+| `evidence/nir-assembly-gate/gate.log` | 1 | no | yes |
+| `evidence/step5-readout/burn-chain.console.log` | 4 | no | no |
+| `evidence/step5-readout/burn-escalation.console.log` | 1 | no | no |
+| `evidence/step5-readout/clamp_probe_escalation.log` | 1 | no | no |
+| `evidence/step5-readout/burn/logs/leg-all.log` | 3 | `logs/SHA256SUMS` | no |
+| `evidence/step5-readout/burn/logs/leg-pre.log` | 2 | `logs/SHA256SUMS` | no |
+| `evidence/step5-readout/burn/logs/leg-rep0.log` | 1 | `logs/SHA256SUMS` | no |
+| `evidence/step5-readout/burn/logs/leg-rep3.log` | 3 | `logs/SHA256SUMS` | no |
+| `evidence/step5-readout/burn/logs/leg-rep4.log` | 1 | `logs/SHA256SUMS` | no |
+| `evidence/step5-readout/burn/logs/leg-verdict.log` | 1 | `logs/SHA256SUMS` | no |
+
+The twelve lines inside the v1.0 tarball stay there, frozen: a
+deposit is a self-contained snapshot verified against its own sha,
+and the tree has been past `103fa59` since alpha.6 (§ Session
+discipline: what must survive a deposit is pointed at the frozen
+files, never kept in step with the living ones). Same class as the
+release asset of round-23's addendum: recorded, not remade. The next
+repo deposit is cut from a clean tree, which is why the scrub lands
+before #21.
+
+### The six re-pinned logs (the doctrine exception, stamped here)
+
+Their shas were cited nowhere but `burn/logs/SHA256SUMS`; the burn
+README quotes `leg-verdict.log` verbatim without the path line. Old
+sha → new sha, each regenerable from the old commit by one command,
+verified for all six before the commit:
+
+    git show 787fb6b:evidence/step5-readout/burn/logs/<file> | sed 's|/home/<user>/|~/|g' | sha256sum
+
+| File | Old sha (at 787fb6b) | New sha |
+|---|---|---|
+| `leg-all.log` | `61b6d5f4663b9560ff47b87c2b51877df6fd8a38af7ac257f4f3aa234d27521a` | `cfd2d0da69d04f2eccf0612c011b620f66ffc8c600049c142e84f9bbdca3319d` |
+| `leg-pre.log` | `1d9474792f0d429908961888d4f70ff4647a50d1ab537f9b95450a76fe587ff5` | `1db5f670f42b7637eb94d9595f669161701bfe6c0e6c45ad8ae83097c5985572` |
+| `leg-rep0.log` | `241a981326bb49469650878fbaf032bad1e3ae14df59808ed6e5fd343d483293` | `054d0416b13ae6ce73983bbe0acfe3df09608e7088e154fe6958d79a7feb4ba8` |
+| `leg-rep3.log` | `ef710dff68e9433190b60db630533388f0a93226eb432276b714fc5c6e779efd` | `003e8c6aa0a54de5a24a5ef01150686bf6bceae2cae48cae189f0c764c173051` |
+| `leg-rep4.log` | `fdcf211abecdf7135fa63c60a53ac0f52db4ab684324d3af3b4d2f789dc907f3` | `3180c0f56435f7d5a3f2ce2952232db610cfec07faf406351d0699b39e15ca11` |
+| `leg-verdict.log` | `c6b315ad4ecb24f4d8c714ab4b7c9729370d414d0ca42772ecfacfc5af34692e` | `ba69feaf6c952708cc7ea60b2ecbeb16125370869a68173945237da3860f1987` |
+
+`sha256sum -c` on the eleven-entry file: all pass. The other five
+entries did not move.
+
+**Doctrine amendment (principal's stamp, in the PR review):**
+"sha-pinned machine outputs are immutable and never edited" becomes
+"immutable in content and never edited — the one exception is a path
+string scrubbed by the banking convention, applied once, with old and
+new sha side by side in the ISA so the new bytes regenerate from the
+old commit by one command." Both copies amended in the same commit:
+`AGENTS.md` § Session discipline and its restatement in `CLAUDE.md`
+§ Do not violate (the restatement cites its source, which is how the
+grep sweep caught it).
+
+### The gate
+
+The CI job `no home path in added lines` guards the diff of a pull
+request. A new job, **`no personal string in the tracked tree`**
+(`tree-clean`, both workflow files, identical but for the `uses:`
+form), scans every tracked file on every push and pull request with
+the same one-line pattern and fails on any hit, so a merge, a revert
+or a rename cannot bring a string back, and the scrub's completeness
+is a check, not a claim. Run locally as the step will run: no
+personal string in 2,689 tracked files. The pattern file does not
+match itself (the regex text is not the shape it describes; verified
+by running the scan over it). Open, principal's action: name the new
+context in the `main` branch protection, as the three existing
+`(pull_request)` contexts are named, or it is a report and not a
+gate.
+
+### What stays, on record
+
+History (six commits), the Zenodo v1.0 tarball (twelve lines), the
+bring-up release assets (round-23 addendum). The contact address in
+commit metadata is the public one on both hosts (philo, 2026-09-10)
+and is not a personal string.
+
+### Guards
+
+GUARD 1 honored: appended only; head/updated refreshed under the
+live-state exception. GUARD 2 untouched: no frozen verdict moved; the
+six re-pinned logs changed in one path string each, content
+byte-identical otherwise, proven by regeneration. GUARD 3: no
+outreach. `paper/` untouched. No binaries committed.
