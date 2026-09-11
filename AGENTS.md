@@ -213,19 +213,17 @@ Two rules learned on PR #15 (2026-09-09):
 
 `neuralos-snn` is on crates.io at `0.1.0-alpha.6` (published
 2026-09-11T15:54:50Z from d8a96b1, the merge commit of PR #21, tag
-`v0.1.0-alpha.6` — the `[u32; N]` spike ring, no runtime
-dependencies, `rust-version` declared, `isi_stats_us` in u128;
-registry-verified, ISA round-25 close-out). Before it, `0.1.0-alpha.5`
-(2026-08-22T13:59Z from
-103fa59: general graph assembly, `build_network`, EDGE_PULSE_QUANTA,
-the assembly gates, the R17 consolidation breaks, the STDP dt-overflow
-fix). **Tree == published** (a publish session that leaves the tree
-ahead flips this sentence to "the tree is ahead, alpha.N pending").
-The workspace consumes it via path dep,
-so lib edits take effect locally without republishing — a real
-bugfix or API addition warrants the next alpha. Bump the workspace
-`version` in the root `Cargo.toml` and `cargo publish -p
-neuralos-snn` when that's the call.
+`v0.1.0-alpha.6` — the `[u32; N]` spike ring, no runtime dependencies,
+`rust-version` declared, `isi_stats_us` in u128; registry-verified, ISA
+round-25 close-out). Before it, `0.1.0-alpha.5` (2026-08-22T13:59Z from
+103fa59: general graph assembly, `build_network`, EDGE_PULSE_QUANTA, the
+assembly gates, the R17 consolidation breaks, the STDP dt-overflow fix).
+**Tree == published** (a publish session that leaves the tree ahead
+flips this sentence to "the tree is ahead, alpha.N pending"). The
+workspace consumes it via path dep, so lib edits take effect locally
+without republishing — a real bugfix or API addition warrants the next
+alpha. Bump the workspace `version` in the root `Cargo.toml` and `cargo
+publish -p neuralos-snn` when that's the call.
 
 ## Session discipline (the autopsy doctrine — read before scoping any session)
 
