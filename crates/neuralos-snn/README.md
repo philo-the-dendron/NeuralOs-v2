@@ -117,9 +117,19 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   overflowed the sum of squares. Found by the differential proptest on
   2026-09-10; that test now runs on arbitrary `u32` times, and a unit
   test pins three maximal intervals on both sides.
-- The ESP32-C3 measurement for this version is not in these notes: it
-  is taken after this tree is merged, on the board, and rides the
-  publish round.
+- **On the ESP32-C3 (rv32imc, 160 MHz) the timed burst costs 2,842 ns
+  per neuron step with this version, against 1,501 ns measured on
+  alpha.5 with the same firmware source**, every behavior figure
+  identical (147 spikes in 10,000 steps, first spike at step 56, 14.7
+  spikes/s). Read from the two flashed binaries: the alpha.5 burst loop
+  was one the compiler happened to keep in registers, with one 64-bit
+  software division per step; alpha.6's keeps the neuron in memory and
+  pays two, plus a hardware `divu`, which is what a `Vec<LIFNeuron>`
+  network pays on either version. The library did not get slower in
+  the general case; the honest number is the higher one. Mechanism,
+  listings and pins: `evidence/esp32c3-bringup/README.md` § The
+  mechanism (ISA round-23); narrowing those divisions, bit-exact, is
+  the next brief.
 
 ## Since alpha.4 (the alpha.5 notes)
 
