@@ -218,12 +218,15 @@ jobs:
           echo "== all $n commit(s) green on their own"
 
   # No home path or personal string in ADDED lines (2026-09-06, ISA
-  # round-17). Banked logs on main carry 27 lines of `/home/<user>/...`
-  # from cargo "Compiling" output copied verbatim (15 files, 9 of them
-  # sha-pinned; left as they are, evidence is never edited); the burn
-  # script prints repo-relative paths since 2026-09-05. This job stops the
+  # round-17). Banked logs and two docs on main carried 29 lines of
+  # `/home/<user>/...`, cargo "Compiling" output copied verbatim (15
+  # files, 6 of them sha-pinned), until the scrub of 2026-09-10 (ISA
+  # round-24: `/home/<user>/` became `~/`, the six pinned logs re-pinned
+  # with old and new shas side by side); the burn tooling prints
+  # repo-relative paths since 2026-09-05 (c27084c). This job stops the
   # class from growing: any added line in base..head that matches the
-  # pattern fails the PR. The pattern names a home directory shape and the
+  # pattern fails the PR; the tree-clean job below keeps the whole tree
+  # clean. The pattern names a home directory shape and the
   # personal list, never a username: a username in this file would itself
   # be the leak. The pattern is the one line of .githooks/personal-pattern,
   # read here and by both hooks (one record). pull_request only, like per-commit. Proven by a falsifier branch
