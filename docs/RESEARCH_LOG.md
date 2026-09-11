@@ -1089,3 +1089,15 @@ a same-length scrub goes on the release; and the tree carried 29 such
 paths in fifteen files from before the hooks, scrubbed under one rule
 with the six pinned logs re-pinned and a whole-tree CI gate switched
 on (PR #20). Record: ISA rounds 23 and 24, `evidence/esp32c3-bringup/`.
+
+## 2026-09-11 — alpha.6 stamped: tag, release, crates.io
+
+`neuralos-snn 0.1.0-alpha.6` reached crates.io at 15:54:50Z, from
+`d8a96b1`, the merge of the publish round (PR #21): the `[u32; N]`
+spike ring, no runtime dependencies, `rust-version` declared,
+`isi_stats_us` in u128. The tag `v0.1.0-alpha.6` is the first
+library-version tag since alpha.1, and the Gitea release on it carries
+the alpha.6 board firmware with its home paths scrubbed in place, the
+binary behind the 2,842 ns/step reading. The record now discloses the
+honest number at the same time as the version that produced it.
+Record: ISA round-25 and its close-out, `docs/releases/v0.1.0-alpha.6.md`.

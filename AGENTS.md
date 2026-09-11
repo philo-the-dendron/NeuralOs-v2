@@ -205,10 +205,10 @@ Two rules learned on PR #15 (2026-09-09):
 ## Published crate
 
 `neuralos-snn` is on crates.io at `0.1.0-alpha.6` (published
-2026-09-11 from the merge commit of PR #21 — the `[u32; N]` spike
-ring, no runtime dependencies, `rust-version` declared, `isi_stats_us`
-in u128; the registry timestamp is recorded in the ISA close-out of
-that round). Before it, `0.1.0-alpha.5` (2026-08-22T13:59Z from
+2026-09-11T15:54:50Z from d8a96b1, the merge commit of PR #21, tag
+`v0.1.0-alpha.6` — the `[u32; N]` spike ring, no runtime
+dependencies, `rust-version` declared, `isi_stats_us` in u128;
+registry-verified, ISA round-25 close-out). Before it, `0.1.0-alpha.5` (2026-08-22T13:59Z from
 103fa59: general graph assembly, `build_network`, EDGE_PULSE_QUANTA,
 the assembly gates, the R17 consolidation breaks, the STDP dt-overflow
 fix). **Tree == published** (a publish session that leaves the tree
@@ -371,7 +371,12 @@ claims, reopening frozen records.
   2026-09-11) and an up-to-date branch, and only the principal may merge
   (the public branch endpoint shows `protected`, the seven contexts and
   `required_approvals: 0`; the admin and merge-list facts are readable
-  only with the owner's token). GitHub carries one ruleset on its
+  only with the owner's token). Every job also posts a `(push)`
+  context, none of them required: five run on every push, and the two
+  pull-request-only jobs (`per-commit`, `home-paths`) post theirs as
+  skipped, so a PR head carries fourteen contexts of which the seven
+  `(pull_request)` ones gate (PR #21's head, read through the full
+  listing, 2026-09-11). GitHub carries one ruleset on its
   default branch only (block force pushes, restrict deletions); no
   `work/*` exists there since 2026-09-06 (§ Remotes). The merger reads
   that job's log; a local loop over `git rev-list main..HEAD` in a
