@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@59bbeb9 (PR #22 merged 2026-09-11: round-25 close-out; mirror synced) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · wrote-from: work/fwbuild, ahead by the round-26 brief (docs only), unmerged · open(session): round 26, the fix brief part A (the firmware build script with remap, gate and canary; infra; builder, PR to follow); then part B, the two 64-bit divisions and the ring-index mask (alpha.7) · next-work: ROADMAP § Practical next moves"
+head: "main@59bbeb9 (PR #22 merged 2026-09-11: round-25 close-out; mirror synced) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · wrote-from: work/fwbuild, ahead by round 26 (the brief, items 1–7 and this close-out; no spine change), unmerged, PR to open · open(session): round-26 PR review then merge on the principal's word (the epoch-unit decision in the close-out is the principal's to flip); then part B, the two 64-bit divisions and the ring-index mask (alpha.7) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-11T19:37:52Z
+updated: 2026-09-11T20:14:06Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -8182,3 +8182,120 @@ recorded command. Reproduced this round, exact argv on record:
 **Guards.** GUARD 1 (append-only), GUARD 3 unchanged (outreach is the
 principal's call and is not opened here). No publish, no tag, no
 upload, no rewrite of any frozen pin. Branch `work/fwbuild`, one PR.
+
+## Close-out (round 26 — the build is the guard: build.sh, the gate, the canary, every caller; two pins moved — 2026-09-11)
+
+Branch `work/fwbuild`, seven commits on main@59bbeb9, no spine change,
+tree == published throughout. Each commit is one item of the brief
+above. The first (the brief) was pushed before its loop, then green;
+the rule is restated in the builder's memory and a hook guard was
+offered. The six after it were reworked in place once, before any
+push (three fixups, one autosquash, two messages reworded for a sha
+that no longer exists; record-only (d) below), then the loop ran the
+whole range green, then the push.
+
+### What landed
+
+1. `006b2e8` **Items 1–3.** `tools/remap.sh`, sourced by both build
+   scripts: `remap_env` (four roots computed at run time, `$HOME`
+   first because rustc applies the last matching prefix; the flags
+   appended to the inherited `RUSTFLAGS` as `CARGO_ENCODED_RUSTFLAGS`
+   so CI's `-D warnings` survives; `SOURCE_DATE_EPOCH` from the
+   commit), `remap_gate` (the personal pattern read from
+   `.githooks/personal-pattern`, case-insensitive, plus the four roots
+   as fixed strings; any hit exits 1; hits printed with the roots
+   masked), `remap_text_sha`, `remap_canary` (after the real build,
+   `--offline`, a throwaway target dir; passes on exit 101 with the
+   expected line, loud otherwise). `firmware/esp32c3/build.sh
+   [build|clippy]`: `cargo clean --release -p esp-bootloader-esp-idf`
+   then the build, the gate, the two shas, the canary. Measured: 17
+   hits before, 0 after; the clean re-ran the build script (66 crates
+   compiled, the stamp moved); two runs, one ELF sha; the second
+   `clippy` run 0.11 s (its cache holds).
+2. `72076c2` **Item 4.** `crates/neuralos-nir2json/build.sh`, the musl
+   binary under the same helper, into `dist/` under the release name,
+   refusing to overwrite a different binary under that name; README
+   § Build points at it. Measured: 38 hits before (35 registry, 3
+   rust-src), 0 after; static; the README's two exits unchanged.
+3. `5680156` **Item 5.** Both workflow files: the firmware job runs
+   `./build.sh` and `./build.sh clippy` and adds `llvm-tools` on the
+   pin; the per-commit loop calls the script when the commit carries
+   it and keeps the bare lines before it. `tools/percommit.sh` the
+   same, its header naming the three-way copy (job, loop, § Commands).
+   AGENTS.md § Commands gains the firmware leg and the nir2json line.
+   Evidence README § Rebuild + run names the script. Mirror rule
+   checked: the two files differ only in the header and `uses:`.
+4. `4e3acdd` **Item 6.** The third `.text` pin appended (below), its
+   evidence in the README.
+5. `2762170` **Item 7.** The 94-char line rewrapped, `Found-by: philo
+   (PR #22)`.
+6. This commit: the close-out; head line refreshed.
+
+### The pins, old → new (appended, never overwritten)
+
+| Artifact | Old (bare line) | New (build.sh) | Where |
+|---|---|---|---|
+| firmware `.text`, alpha.6 spine | `d672ca37…` (820d81a) | `6d407501400cb9beb554b2f5df7ce031f9bae08c43a274bd41ef8df07bc0ddaa` (build.sh at 006b2e8; same sources) | evidence README § Rebuild + run |
+| firmware ELF | `e26e1749…` | not a pin: the stamp is the commit date, the symbol hashes follow the package path | README, `build.sh` header |
+| nir2json musl ELF | `d92ddf99…` (bring-up release) | `a35b44af6c0731d3deed943288717aa7c5661ea75c40a7a693f88fc5eddc9016` (build.sh on the item-1 tree; the ELF sha follows the package path and the commit); `.text` `e04fa2d7acefdcb4a2ddfb5531978b6e9222dbabddbf361eaeb7822b7260c829` | this table; the release pin stands |
+
+The `.text` move, read from `llvm-objdump -d` of the flashed alpha.6
+ELF and the remapped build, diffed: 182 of 9,196 instructions differ,
+173 `addi`, 8 `lui`, 1 `mv` (an `addi` with a zero immediate), none
+added, removed or reordered; `.rodata` 204 bytes shorter, 17 strings
+× 12 bytes. Behavior not re-measured; the board stayed unplugged.
+
+### One deviation from the brief, the principal's to flip
+
+Item 1 said `SOURCE_DATE_EPOCH` from `git log -1 --format=%ct`. Set
+in seconds, as the reproducible-builds spec says, the descriptor
+stamped `1970-01-01 00:29:49`: esp-bootloader-esp-idf 0.5.0's
+build.rs (line 16) parses the variable with
+`Timestamp::from_microsecond`. It is the only locked dependency that
+reads the variable. The firmware script converts the seconds to
+microseconds for that locked version only, checks the lock, and
+refuses a version bump until the unit is re-read; the helper keeps
+exporting seconds. The stamp now reads the commit's UTC time. The
+alternative, spec'd seconds and a 1970 stamp in every shipped
+descriptor, is one `if` away. Upstream report: owed list.
+
+### The canary, from the build session
+
+`build.sh` on the pin printed `canary: trim-paths still unstable on
+1.92.0 (exit 101, as expected); the remap stays` on every run; the
+probe's full transcript is the one in the brief, reproduced.
+
+### Record-only
+
+(a) Local: the bring-up trio in `crates/neuralos-nir2json/dist/` (the
+musl binary `d92ddf99…`, the alpha.5 ELF `102af8c6…`, `SHA256SUMS`)
+moved into `dist/bringup-2026-09-09/` (gitignored), verified by
+`sha256sum -c` after the move, so the script's output could take the
+release name without overwriting a published artifact. (b) The loop
+run on the item-1 commit as first written printed GREEN after all 14
+gates, then exit 127: the builder edited `tools/percommit.sh` while
+that run was executing it, and bash reads a script incrementally. The
+commit's gates are the record; the script is never edited during a
+run again. (d) Found before the range loop, fixed in place: both
+scripts located the artifact at a relative `target/`, and
+`tools/percommit.sh` exports `CARGO_TARGET_DIR` to its scratch, so
+under the loop the gate would have scanned a missing file and, the
+grep's failure swallowed, printed 0 hits. Now the gate refuses a
+missing file ("nothing to scan is not a pass") and both scripts honor
+`CARGO_TARGET_DIR`; the firmware build under a foreign target dir
+gives the same `.text` `6d407501…`. The 127 in (b) and the miss in
+(d) are the same lesson: the loop is the proof, and it is run last,
+untouched. (c) Owed, from
+the brief: the QEMU proof's `relocation-model` question; the
+concurrency group (not tried this round); the upstream report on the
+epoch unit; a pre-push hook guard for the loop.
+
+### Guards
+
+GUARD 1 honored: appended only; the brief above stands as written,
+the deviation is recorded here, not edited there; head/updated
+refreshed under the live-state exception. GUARD 2 untouched. GUARD 3:
+no outreach, no upload, no release touched; the bring-up assets stand
+by the round-23 ruling. No publish, no tag. `evidence/`: the README
+gained a pin and a paragraph, no pinned file edited. `paper/`
+untouched. No binaries committed.
