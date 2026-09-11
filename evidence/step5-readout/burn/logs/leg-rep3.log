@@ -1,5 +1,5 @@
 === leg [rep3] start 2026-08-26T11:24:16Z ===
-   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+   Compiling neuralos-rt v0.1.0-alpha.5 (~/projets/NeuralOs-v2/crates/neuralos-rt)
     Finished `release` profile [optimized] target(s) in 10.10s
      Running `target/release/examples/hybrid_invivo --window 3`
 === Session H: the in-vivo gate — the model's own activations drive the substrate ===
@@ -46,7 +46,7 @@ wall 22954.7s   peak RSS 6595 MB (budget 1536)
 --- TIER-2 export (the shared harness surgery unit; S2 re-read on EVERY file) ---
   final: 82990 cells · code 47194 · scale 0 (must be 0) · S2 clean
   wrote models/Ternary-Bonsai-4B-Q2_0-invivo-r3.gguf — sha ce42f09d46e499e2ac5b2e0710072c9c85b6a7198b85318d5a753be40f03f9f2 — fork judge next
-   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+   Compiling neuralos-rt v0.1.0-alpha.5 (~/projets/NeuralOs-v2/crates/neuralos-rt)
     Finished `release` profile [optimized] target(s) in 21.81s
      Running `target/release/examples/step5_nulls --replicate 3`
 
@@ -54,7 +54,7 @@ thread 'main' (1356103) panicked at crates/neuralos-rt/examples/step5_nulls.rs:1
 escalation seed 231 must not enter a main family
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 === LEG [rep3] FAILED — HALT written, chain stopped ===
-   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+   Compiling neuralos-rt v0.1.0-alpha.5 (~/projets/NeuralOs-v2/crates/neuralos-rt)
     Finished `release` profile [optimized] target(s) in 18.52s
      Running `target/release/examples/step5_nulls --replicate 3`
 === step-5 nulls: replicate r3 — dose-matched shuffled-drift ×10 ===

@@ -46,7 +46,7 @@ wall 22244.9s   peak RSS 6595 MB (budget 1536)
   final: 87119 cells · code 48878 · scale 0 (must be 0) · S2 clean
   ON r0 re-pin: sha == banked 71f2518a… : PASS (H2 reproduced through the new path)
   wrote models/Ternary-Bonsai-4B-Q2_0-invivo-r0.gguf — sha 71f2518a2d783cb409a3c06907a20bed1f1b5688378fc7ea7e8a0f6e16d9749b — fork judge next
-   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+   Compiling neuralos-rt v0.1.0-alpha.5 (~/projets/NeuralOs-v2/crates/neuralos-rt)
     Finished `release` profile [optimized] target(s) in 22.69s
      Running `target/release/examples/step5_nulls --replicate 0`
 === step-5 nulls: replicate r0 — dose-matched shuffled-drift ×10 ===

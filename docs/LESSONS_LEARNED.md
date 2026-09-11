@@ -68,4 +68,4 @@ Ottawa RISC-V (August 2026) reste un track parallèle potentiel, pas le driver.
 
 - Audit structurel : `NEURALOS_AUDIT_NOTES.md`
 - Rapports par-crate (dispatchés en parallèle le 2026-08-05) : libneuralos, kernel, neuralos-core, neuralos-microkernel, src/packages — chaque verdict cite `file:line` pour toute claim.
-- Backups filesystem locaux (intacts, ne pas toucher) : `/home/student/projets/NeuralOS-backup-20250915_*` (×3)
+- Backups filesystem locaux (intacts, ne pas toucher) : `~/projets/NeuralOS-backup-20250915_*` (×3)

@@ -1,12 +1,12 @@
 === leg [pre] start 2026-08-24T19:55:43Z ===
-   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+   Compiling neuralos-rt v0.1.0-alpha.5 (~/projets/NeuralOs-v2/crates/neuralos-rt)
     Finished `release` profile [optimized] target(s) in 18.46s
      Running `target/release/examples/step5_aggregate --verify-free`
   ck400: 61210 cells == banked 61210 : PASS
   ck800: 71381 cells == banked 71381 : PASS
   ck1200: 80391 cells == banked 80391 : PASS
 verify-free: ALL ck cell counts re-verified — FREE arm may be judged
-   Compiling neuralos-rt v0.1.0-alpha.5 (/home/student/projets/NeuralOs-v2/crates/neuralos-rt)
+   Compiling neuralos-rt v0.1.0-alpha.5 (~/projets/NeuralOs-v2/crates/neuralos-rt)
     Finished `release` profile [optimized] target(s) in 11.62s
      Running `target/release/examples/hybrid_invivo --identity 1`
 === Session H: the in-vivo gate — the model's own activations drive the substrate ===

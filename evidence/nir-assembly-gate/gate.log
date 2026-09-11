@@ -1,4 +1,4 @@
-   Compiling neuralos-snn v0.1.0-alpha.4 (/home/student/projets/NeuralOs-v2/crates/neuralos-snn)
+   Compiling neuralos-snn v0.1.0-alpha.4 (~/projets/NeuralOs-v2/crates/neuralos-snn)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.70s
      Running `target/debug/examples/nir_assembly_gate`
 === NIR assembly gate — general four-kind graphs, reference-emitted vectors ===
