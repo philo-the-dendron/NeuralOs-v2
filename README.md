@@ -48,7 +48,7 @@ NeuralOs-v2/
 
 ## Current status
 
-`neuralos-snn` `0.1.0-alpha.5` on crates.io · record DOIs: paper [10.5281/zenodo.22064018](https://doi.org/10.5281/zenodo.22064018), source archive [10.5281/zenodo.22064020](https://doi.org/10.5281/zenodo.22064020). Open work lives in `docs/ROADMAP.md` § Practical next moves — this README is not a state source.
+`neuralos-snn` `0.1.0-alpha.6` on crates.io · record DOIs: paper [10.5281/zenodo.22064018](https://doi.org/10.5281/zenodo.22064018), source archive [10.5281/zenodo.22064020](https://doi.org/10.5281/zenodo.22064020). Open work lives in `docs/ROADMAP.md` § Practical next moves — this README is not a state source.
 
 ## Design principles
 
