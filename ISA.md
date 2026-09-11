@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@285cd25 (PR #20 merged 2026-09-11: the home-path scrub, the tree gate; mirror synced) · work/publish-alpha6 ahead by the publish round (this round: isi_stats_us in u128, the 1,501 sweep, the v0.1.0-alpha.6 release draft with the scrubbed board ELF, the status flips to tree == published) · open(session): PR #21 review then merge on the principal's word; then the stamp in order — tag v0.1.0-alpha.6, the Gitea release, cargo publish — and the registry timestamp into the round-25 close-out; then the fix brief (alpha.7) · next-work: ROADMAP § Practical next moves"
+head: "main@d8a96b1 (PR #21 merged 2026-09-11: the publish round; mirror synced) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · work/close-out-alpha6 ahead by the round-25 close-out (PR #22, docs only) · open(session): PR #22 review then merge on the principal's word; then the fix brief — part A the firmware build script with remap, gate and canary (infra), part B the two 64-bit divisions with the done criterion on an in-memory loop (alpha.7) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-11T04:31:32Z
+updated: 2026-09-11T16:00:53Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -7896,3 +7896,111 @@ GUARD 2 untouched. GUARD 3: no outreach; the release is the record's
 artifact, not a message. `evidence/`: INDEX row rewritten (a living
 index), nothing else. `paper/` untouched. No binaries committed (the
 asset lives in the ignored `dist/` until the upload).
+
+## Close-out (round-25 — alpha.6 stamped: the tag, the release, the registry — 2026-09-11)
+
+Branch `work/close-out-alpha6` from `main@d8a96b1`, PR #22, docs only.
+The three actions round-25 § The stamp left to the principal ran on
+2026-09-11 in that order, each verified at its source the same hour.
+
+### The stamp, as it ran
+
+1. **Tag.** `v0.1.0-alpha.6`, annotated by the principal (tagger
+   identity in the object, 11:39 -0400), tag object
+   `0880ec32c77f8c366c196b61540e24c279d2a124`, on `d8a96b1`, the merge
+   commit of PR #21. The push ran from the builder session on the
+   principal's word: the principal's terminal holds no agent for the
+   passphrase-protected key (a fact of that terminal, not of the
+   repo; round-25 had already named the tag push and the release call
+   as the builder's on the word). Mirror synced by AGENTS.md § Merge
+   procedure; `main` and the tag list identical on both hosts. The
+   first library-version tag since `v0.1.0-alpha.1`; alpha.2 through
+   alpha.5 were published untagged.
+2. **Release.** Gitea release id 946215 on the tag, pre-release,
+   title and body verbatim from the draft's § Notes, created by one
+   API call from the builder session on the word "run it". Assets:
+   the scrubbed ELF (190,372 B, `29511746…`) and `SHA256SUMS` (139 B).
+   Both downloaded back from the release URL: `sha256sum -c` clean,
+   `SHA256SUMS` byte-identical to `firmware/esp32c3/dist/`, zero
+   personal-pattern hits in the published ELF.
+3. **Publish.** The principal, from `main@d8a96b1`: `cargo publish -p
+   neuralos-snn --dry-run`, then `cargo publish -p neuralos-snn`.
+   Packaged 56 files, 710.2 KiB (186.2 KiB compressed); before the
+   real run the packaged tree was listed (the 11 `src/` files, 8
+   examples, 3 proptest regressions, 28 NIR fixtures and their test,
+   README, manifest, lock, vcs info; nothing from `evidence/`,
+   `firmware/` or scratch) and scanned with the personal pattern:
+   zero hits. Registry read after the publish: `created_at`
+   2026-09-11T15:54:50.841963Z, checksum
+   `0bb6f7c3625790c53c0d190916d772d7c3c15e1138c84586b4455ffbf667cbc9`
+   equal to the local `target/package/neuralos-snn-0.1.0-alpha.6.crate`,
+   `crate_size` 190,628, `rust_version` 1.92, `published_by`
+   philo-the-dendron, `max_version` 0.1.0-alpha.6. "Tree == published"
+   is true from that instant; the sentences written before the stamp
+   (round-25 § Scope item 4) became true without an edit.
+
+### The scrub, regenerable in one line
+
+From the private copy (`~/projets/NeuralOs-v2-artifacts/esp32c3/`,
+outside the repo), `e26e1749…` → `29511746…`:
+
+    python3 -c 'import sys;b=open(sys.argv[1],"rb").read();o=b.replace(b"/home/<user>/",b"/redacted-usr/");assert len(o)==len(b) and o.count(b"/redacted-usr/")==17;open(sys.argv[2],"wb").write(o)' neuralos-esp32c3-820d81a-e26e1749.elf asset.elf
+
+with `<user>` the literal login (14 bytes either side; the pattern
+file keeps the login out of the tree). Re-run this session: 17
+occurrences, 190,372 B, sha equal to the published asset. The asset
+sha lives here and in the release draft, not in the evidence README
+(assets live on the Gitea release by rule).
+
+### The records moved (`cc4e7e0`)
+
+AGENTS.md § Published crate: the registry timestamp, the commit and
+the tag (the alpha.5 form). AGENTS.md § Session protocol, the
+seven-checks passage: what the full status listing shows — fourteen
+contexts on a PR head, every job posting a `(push)` context too
+(the two pull-request-only jobs as skipped), the seven
+`(pull_request)` ones required; PR #21's head is the source.
+`docs/releases/v0.1.0-alpha.6.md`: header past tense, § Stamped (the
+three records), the `SHA256SUMS` row says where `sha256sum -c` runs
+from and why the size equals the flashed ELF's. `docs/ROADMAP.md`
+§ Current validated state: 307 → 348 dated, breakdown pointed at
+AGENTS.md § Commands (a fourth copy of the count is what drifts).
+`docs/RESEARCH_LOG.md`: the round-25 entry. Head line refreshed (this
+commit).
+
+### Findings
+
+- **Record-only — the principal's terminal cannot push.** The SSH key
+  is passphrase-protected and that terminal runs no agent, so `git
+  push origin v0.1.0-alpha.6` prompted twice and stalled. The builder
+  session authenticates with the same key and pushed on the word. The
+  stamp stays the principal's: the tag object carries the principal's
+  identity, the publish ran under the principal's crates.io token.
+  Nothing to fix in the repo; noted so the next stamp plans the push
+  from the session that can make it.
+- **Record-only — the crate package is scanned by hand.** The package
+  is tracked files plus three generated ones, so the tree gate covers
+  it transitively; the by-hand scan before the publish is cheap and
+  stays in the stamp procedure of the next release draft.
+- **Cosmetic, open — the bring-up release body.** The dated paragraph
+  appended to `docs/releases/bringup-2026-09-09.md` (round-25 item 2)
+  is not yet on the Gitea release body; a text edit, the principal's,
+  no asset change.
+
+### Not done here
+
+The fix brief, unchanged from round-25 § Not done here: part A the
+firmware build script with remap, gate and canary, covering both
+shipped binaries, the `.text` re-pin; part B the two 64-bit divisions
+per step with the done criterion on an in-memory loop (alpha.7).
+Zenodo v2. The QEMU proof's build.rs; CI calling `tools/percommit.sh`;
+a concurrency group. Outreach: the principal's action.
+
+### Guards
+
+GUARD 1 honored: appended only; the round-25 entry untouched (its
+§ The stamp reads as the plan it was; this close-out is the record);
+head/updated refreshed under the live-state exception. GUARD 2
+untouched. GUARD 3: both halves landed with `bringup-2026-09-09`; no
+outreach taken here. `evidence/` untouched. `paper/` untouched. No
+binaries committed.

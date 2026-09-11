@@ -20,7 +20,7 @@
 
 ```bash
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; 307 executed green (3 app, 208 snn, 96 rt) + 5 rt model-gated #[ignore]
+cargo test   --workspace                          # offline; 348 executed green on 2026-09-11 (breakdown: AGENTS.md § Commands) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate
 ```
