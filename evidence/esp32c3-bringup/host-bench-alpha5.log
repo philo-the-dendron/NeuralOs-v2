@@ -1,0 +1,24 @@
+└── neuralos-snn v0.1.0-alpha.5 (./bench-rebuild/alpha5/crates/neuralos-snn)
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=18.078
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=18.914
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=17.685
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=18.023
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=18.599
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=18.151
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=17.430
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=18.106
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=17.125
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=20.024
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=11.577
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=11.613
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=10.870
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=12.615
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=11.520
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=11.253
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=10.661
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=11.304
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=11.624
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=11.275
+arm=forced min_ns_per_step=17.125 median_ns_per_step=18.092
+arm=control min_ns_per_step=10.661 median_ns_per_step=11.412
