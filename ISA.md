@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@59bbeb9 (PR #22 merged 2026-09-11: round-25 close-out; mirror synced) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · wrote-from: work/fwbuild, ahead by round 26 (the brief, items 1–7, the close-out, the six review fixes as commits with trailers, and the amendment that records them; no spine change), unmerged, PR #23 open, review round 1 taken · open(session): the per-commit check on the reworded head, then merge on the principal's word (the epoch-unit ruling is recorded in the close-out: keep the conversion); then part B, the two 64-bit divisions and the ring-index mask (alpha.7) · next-work: ROADMAP § Practical next moves"
+head: "main@7fe2388 (PR #23 merged 2026-09-12 03:20 UTC: round 26, the build is the guard; mirror synced, branch deleted) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · wrote-from: work/divisions, ahead by the round-27 brief (docs only), unmerged · open(session): round 27, the fix brief part B (the divisions and the ring mask; spine, alpha.7): item 1, the criterion on the board before any spine edit (builder, PR to follow) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-11T22:59:50Z
+updated: 2026-09-12T04:01:29Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -8476,3 +8476,290 @@ one run of each script on this tree: firmware `.text` `6d407501…`
 unchanged (a doc comment reaches no binary), gate 0 hits, canary as
 expected; nir2json `a35b44af…` byte-identical to its pin under the
 no-overwrite guard, `.text` `e04fa2d7…`; every path line under `~`.
+
+## Amendment (round 27 — the fix brief, part B: the divisions and the ring mask (spine, alpha.7) — 2026-09-12)
+
+**Brief.** Round 23 measured the honest per-step cost of the neuron
+on the ESP32-C3: 2,842 ns/step on alpha.6, with the struct in
+memory, against the 1,501 of alpha.5's burst loop, which the compiler
+happened to keep in registers. alpha.5's real-time loop has the
+in-memory shape too (read from its listing), but it was never timed,
+so "the in-memory cost on either spine" is an inference from the
+shape, not a second measurement. The mechanism, read from the two flashed ELFs: alpha.6's
+burst loop carries two ROM `__divdi3` calls (the `current_term` and `delta_v` divisions in `LIFNeuron::integrate_and_fire`), one
+hardware `divu`, and 34 frame loads/stores against alpha.5's 5, in
+195 instructions against 115. The scalarization trigger was
+established in round 26 (record-only (d)): the bounds-checked index of
+the full-ring store `self.buf[self.head]` in `SpikeRing::push`, the
+one index in the loop's source whose bound does not follow from the
+index expression itself (the not-yet-full store's `% 64` bounds its
+own index). The flashed alpha.6 burst
+loop itself has no panic call, and no branch leaves it except its
+exit (`burst-loop-alpha6.dis`). So the check changes how LLVM treats
+the struct without surviving into the loop; why stays unexplained,
+as round 26 (d) says; masking the index restores alpha.5's loop shape on a scratch
+build, `__divdi3` calls in `main` 4 → 3. This round removes the
+64-bit divisions from the physical regime and lands the mask, on the
+spine, for alpha.7. Not in scope: the publish (its own round, the
+shape of PR #21, the release asset built by `build.sh` so clean by
+construction); the batch kernel (`simd.rs`, already `i32` under its
+own bound); any change to what a step computes. The tree goes AHEAD
+of the published crate at this PR's merge and stays ahead until the
+publish round: every current "tree == published" record flips here (item 8b) and back in the publish round. Builder: an Opus session at
+xhigh (principal's choice, 2026-09-11); reviewer: a Fable session,
+two models by the round-26 principle. Prerequisite: PR #23 merged
+(the `.text` re-pin and the firmware's new arm go through the
+round-26 script).
+
+**Done means.**
+
+1. **The criterion first, on the board, before any spine edit.** The
+   firmware gains a second burst arm beside the existing one (the
+   free arm): the pinned arm, the same 10,000 steps with the neuron
+   and dt hidden from the optimizer, as a network holds them:
+   `core::hint::black_box(&mut n)` once per step, and dt read once
+   before the loop through `core::hint::black_box(DT_US)` and passed
+   into the step (the `step` helper takes dt as a parameter; the
+   timestamp stays `i × DT_US`, and the pinned arm starts from a
+   fresh `neuron(0)`, the free arm's id, because the noise is seeded
+   by `id ^ current_time_us`; so the pinned arm computes the same
+   values as the free arm and must give the same 147 spikes). A
+   network passes `time_step_us`, a run-time field. In round 23's
+   listing the firmware's const `DT_US` let LLVM turn `dt_over_tau`
+   into a `divu` (`burst-loop-alpha6.dis` line 60: the divisor from
+   the τ stack slot, the dividend the folded constant; the constant
+   1,000,000 is stored to that slot at 0x42011d00, just before the
+   cut, in the flashed ELF `e26e1749…`), so a loop
+   with a constant dt measures the neuron under a hint a network
+   never gives it. A two-element `[LIFNeuron; 2]` stepped alternately
+   is the fallback if `black_box` does not pin the struct; the
+   disassembly decides. Both arms print `ns/step`, spikes, the first
+   spike step, and a checksum of the spike steps; the checksum is
+   updated only on spike steps, with no memory access and no panic
+   check inside the timed loop (a wrapping fold of the step index).
+   The real-time loop is untouched in its logic; it is reported, not
+   gated (item 7): it stamps each step with the wall clock and the
+   noise is seeded by `id ^ current_time_us` (the constructor default `noise_amplitude_ua: 5` in `LIFNeuron::new_with_type_resolution`; the firmware sets none), so a faster
+   step moves every seed and a spike can move by one step. The pinned figure is expected ABOVE
+   2,842 (a third ROM call, `__udivdi3`, is the prediction to
+   confirm or refute in the listing); that is not a contradiction of
+   round 23, it is a different and more honest measurement, and the
+   amendment says so in as many words, so the two numbers are never
+   compared as one. Built by `build.sh` on the alpha.6 spine, its `.text` sha pinned beside the log with the commit it was built at, flashed,
+   read 20 s after reset: the two burst figures and the real-time
+   trace (first spike step, spikes per window) are the baseline,
+   banked as evidence entry three's first log, sha-pinned. The pinned arm's figure is the number this round must move; the
+   free arm's figure is reported beside it and is not the criterion
+   (round 23's lesson: a lucky loop is not a cost). At the baseline
+   the free arm is not a register loop: on alpha.6 it keeps the
+   neuron in memory too (the 2,842), and the mask is expected to
+   bring it back to registers. Each burst line in the log carries its
+   arm's name (`burst free:`, `burst pinned:`), so a log reads
+   without the brief. Written
+   into this entry as an amendment with the numbers before item 2
+   opens.
+2. **`div_1000`, one helper for both `/1000`.** `fn div_1000(x: i64)
+   -> i64`: if `i32::try_from(x)` succeeds, `i64::from(y / 1000)`
+   with `y: i32` (a multiply-high on rv32im, no divide instruction);
+   else `div_1000_wide(x)`, the same `x / 1000` as today, in a
+   `#[cold] #[inline(never)]` function, so the wide division stays
+   out of every inlined call site: `#[inline(never)]` keeps the
+   `__divdi3` call inside that function (LLVM may inline a function
+   this small even when marked cold), `#[cold]` lays the fast path
+   out straight through. If item 3's guard goes in, its fallback gets
+   the same treatment. Exact by construction: the same
+   truncating division on the same value, narrower when it fits.
+   Applied to the `current_term` division (at scale 1 the product
+   `i16 × u16` always fits, `32_768 × 65_535 = 2_147_450_880 <
+   i32::MAX`; at scale 100 it fits whenever `|I × R| ≤ 21_474_836`,
+   every physical regime) and to the `delta_v` division (the product
+   leaves `i32` only when `|delta_v| > 2.1e6` quanta, millions past
+   the clamp, so the fallback runs where the clamp decides). Never a
+   clamp, never the kernel's `DT_OVER_TAU_MAX`: the neuron stays the
+   reference semantic (the comment in `integrate_and_fire` that names the neuron as the reference semantic the batch approximates). Settled at brief review
+   (principal, 2026-09-11): the one helper for both divisions. The
+   alternative for the current term, the unconditional `(i32(I) ×
+   i32(R)) / (1000 / s)`, is exact (both scales divide 1000, and
+   I × R always fits `i32`) and would replace the current term's
+   64-bit multiplication (six multiplies and two adds in the alpha.6
+   listing). But it is a second mechanism with its own proof, and its
+   divisor is a run-time value in the pinned arm. Declined for this
+   round, kept in mind by the principal; it can come later on its own
+   listing if item 7 shows the multiplication matters, and the larger
+   lever for a network on the chip is the batch shape (arrays of
+   fields, the `simd` kernel's form), which computes the current term
+   in `i32` from the start, on its own narrower domain (`i16`
+   resistance, the mV grid only, `÷1024` in the AVX2 path); the
+   neuron's wider domain (`u16` resistance, the centi grid, an exact
+   `/1000`) is why it needs `i64`, the line record-only (b) keeps
+   between kernel and neuron.
+3. **`dt_over_tau`, a candidate, decided by the listing.** `dt_over_tau` divides `u64` by `u64`. When `dt_us ≤ u32::MAX / 1000`
+   (4,294,967 µs; physical dt is 1,000) the dividend fits `u32` and
+   the division is one hardware `divu`. Decided by the pinned arm's
+   baseline listing (item 1), where dt is a run-time value:
+   `__udivdi3` there means the guard goes in; `divu` means
+   record-only, with the listing cited. The free arm's `divu` (round
+   23's table, line 60 of the alpha.6 listing) decides nothing,
+   because it comes from the constant.
+4. **The ring mask.** `self.buf[self.head & (MAX_SPIKE_HISTORY - 1)]`
+   at the full-ring store in `SpikeRing::push`, and the same mask on the index of the not-yet-full store in place of the `%` (a no-op change: `% 64` is already an `and`, the mask
+   makes the bound visible to the optimizer). `const _: () =
+   assert!(MAX_SPIKE_HISTORY.is_power_of_two());` beside the
+   constant; a `debug_assert!(self.head < MAX_SPIKE_HISTORY)` states
+   the invariant the mask relies on. Semantic no-op: head is only
+   ever assigned `(head + 1) % MAX_SPIKE_HISTORY` or 0.
+5. **The gates, in this order.** (a) The two exactness proofs
+   against an `i128` reference stay byte-identical and green:
+   `prop_integrate_and_fire_is_exact_over_the_whole_domain` (the proptest) and
+   `the_saturating_multiply_lands_where_an_unbounded_integer_would`
+   (four fixed rows). They are the exactness proof, and
+   this round does not touch them. The four rows matter most here:
+   they are the only inputs that send a saturated product through
+   `div_1000`, and between them they reach the current term's fast
+   path (mV rows: 32,767 × 65,535 = 2,147,385,345 fits `i32`), its
+   fallback (centi rows: × 100 does not), the delta_v fallback
+   (product saturated), and the `dt_over_tau` fallback if item 3's
+   guard goes in (dt = `u32::MAX`).
+   (b) New: `prop_div_1000_equals_i64_division`, the helper against
+   `x / 1000` in `i64` (today's code, so the oracle is the old
+   behavior). Inputs are drawn half from `any::<i32>()`, widened,
+   which runs the fast path, and half from `any::<i64>()`, which
+   almost always runs the fallback: a random `i64` fits `i32` with
+   probability 2⁻³², so drawing from all of `i64` alone would never
+   run the fast path, and the fast path is the code this round adds.
+   Plus a unit test on both sides of the guard: `i32::MIN − 1`,
+   `i32::MIN`, `i32::MAX`, `i32::MAX + 1`, `i64::MIN`, `i64::MAX`,
+   and ±999, ±1000, ±1001 for rounding toward zero (the `i32::MAX +
+   1` row is the one that catches a wrapping `as i32` in place of
+   `try_from`: the cast wraps to `i32::MIN` and the helper would
+   return −2,147,483 where 2,147,483 is expected). If item 3 opens,
+   the same for `dt_over_tau`: dt drawn half from `0..=4_294_967` and
+   half from all of `u32` (a random `u32` is ≤ 4,294,967 in 0.1 % of
+   draws), against today's `u64` formula, plus dt = 4,294,967 and
+   4,294,968. No exhaustive sweep of `i32`: the release test with
+   `--include-ignored` runs inside the per-commit loop
+   (the `--include-ignored` line in `tools/percommit.sh` and in the per-commit job of both workflow files), so its cost
+   would be paid on every commit of every future PR, and the
+   boundary rows above already catch the one realistic mistake. In
+   situ, every existing physical-parameter test (dt = 1,000, τ =
+   20,000) runs the fast path inside `integrate_and_fire`, and the
+   whole-domain oracle runs both branches of the two `/1000` (the
+   current term's fast path on every mV draw) and almost only the
+   fallback of `dt_over_tau`; both branches are therefore exercised
+   through the neuron as well as through the helper.
+   (c) The transmission and step-ordering tests in `network.rs`
+   green (no per-step logic moves; the decay → integrate → clear →
+   propagate order is untouched). (d) The full gate set incl. the
+   simd equivalence tests: the kernel is not edited, and the tests
+   that compare kernel to neuron must still agree. (e) The firmware
+   tests: none exist; the board is the test.
+6. **Host bench, both trees,** with `proofs/spike-path-bench`: this
+   tree against a worktree at the PR #23 merge commit (the alpha.6
+   spine), under `bench-rebuild/` (gitignored, the `bench-rebuild/` rule in `.gitignore`). The worktree already contains the bench and its lock, so
+   both runs are `cargo run --release --locked`, with no copy. Same
+   box, same session, back to back. Two new logs beside the pinned
+   pair: `host-bench-r27-alpha6.log` and `host-bench-r27-alpha7.log`.
+   The pinned `host-bench-alpha{5,6}.log` are never written
+   (their `SHA256SUMS` rows), so no run follows the bench README's
+   `tee` lines as written. Each log opens with one line naming its
+   commit and the spine version, with no path, written by the
+   recorded command (a `printf` of `git rev-parse --short HEAD` and
+   the spine version read from the bench lock of the tree being
+   measured, piped through the same `tee`, ahead of the bench's
+   output), not by hand: the bench itself prints no version, and the
+   alpha.5 log's tree line was added by hand. The exact commands go
+   into the evidence entry, and `SHA256SUMS` gets the two new lines.
+   The bench runs AFTER the version bump (8a), or the alpha7 name
+   is not honest. Rider: one sentence in the bench README § Run:
+   a re-run writes to a new file name and is compared against the
+   pinned log, never written over it. On x86-64 the 64-bit divide is
+   hardware, so the host gain is expected to be small; the host bench
+   is the regression check (no arm slower), not the criterion.
+7. **Board re-measure and the record.** `build.sh` at the tip,
+   flashed, read 20 s after reset: both burst figures, the real-time
+   trace. Done criterion: the pinned burst figure below the item-1
+   baseline by a margin the disassembly explains (the two ROM calls
+   gone from the loop body, read from the cut listing, not inferred;
+   the loop's only calls are to the cold fallbacks, each behind its
+   guard, so the listing shows zero `__divdi3` and, item 3's guard in
+   or not, zero `__udivdi3`: either the guard removed the call or the
+   baseline listing never had it). Behavior, both burst arms: 147 spikes, and the same
+   first spike step and checksum as the item-1 baseline. Any drift
+   there is a defect, not a finding. The real-time loop is reported
+   beside the baseline and is not a gate: it stamps each step with
+   the wall clock, the noise is seeded by the stamp, so a faster step
+   can move a spike by one step. Evidence
+   entry three: the logs, the two burst-loop disassembly cuts
+   (baseline and fix, the round-23 extraction, machine output), two `.text` pins appended beside the three, each with the commit it was built at: the baseline (item 1) and the fix (item 7); the close-out records old → baseline → fix, and the old pins are never edited, the `evidence/INDEX.md` row extended
+   as the re-measure extended it. The evidence README gains a
+   third-entry section in the shape of the second (both arms,
+   baseline and fix, the reading; § Rebuild + run holds the pins),
+   and the two ROADMAP places that carry 2,842 (priority row 3 and
+   § Practical next moves) get the new figure with the reading; the
+   2,842 stays as the in-memory cost of alpha.6, tombstoned
+   true-when-written. These stay as written: the crate README § Since
+   alpha.5 (the alpha.6 notes), the alpha.6 and bring-up release
+   notes, RESEARCH_LOG's dated sections, past ISA entries, and the
+   pinned `alpha6-remeasure.log`.
+8. **The version, in two commits.** (8a, right after item 4, before
+   the measurements) Workspace `version` to `0.1.0-alpha.7`, with
+   the four lockfiles that name the spine in the same commit:
+   `Cargo.lock`, `firmware/esp32c3/Cargo.lock` (built `--locked` by
+   `build.sh`, the per-commit loop and CI: a bump without it is red
+   on its own), `proofs/spike-path-bench/Cargo.lock` (the bench runs
+   `--locked`), `proofs/qemu-riscv-leg-a/Cargo.lock`. Items 6 and 7
+   then measure the final code, and the fix pin is the head's; the
+   bump moves the crate's symbol hashes, and whether the linker's
+   layout follows symbol names is not established, so nothing is
+   measured before it. `neuralos-nir2json`'s `version =
+   "0.1.0-alpha.6"` requirement stays: it is a lower bound, and
+   alpha.7 satisfies it. (8b, after item 7) The crate README's
+   release notes gain the alpha.7 paragraph (the divisions, the
+   mask, the numbers both ways, behavior unchanged); "tree ==
+   published" flips to "the tree is ahead, alpha.7 pending" in every
+   current record: AGENTS.md (the workspace table and § Published
+   crate), docs/VISION.md § 1, and the crate README § Status; the ISA
+   head line flips at the close-out (a live-state line, which the
+   append-only rule allows editing). These stay as written: the crate
+   README's line naming alpha.6 on crates.io and the root README
+   status line (both still true), and the dated records (past ISA
+   entries, the stamped bring-up release notes). The sweep is
+   `rg -i "tree ?== ?published"`, case-insensitive, because the
+   AGENTS and crate README copies are capitalized;
+   `docs/releases/v0.1.0-alpha.7.md` drafted in the shape of the
+   alpha.6 one, with the asset row left for the publish round;
+   `docs/RESEARCH_LOG.md` gains a dated section in the shape of the
+   re-measure's (the fix, both arms before and after, the reading),
+   where the session narrative belongs (AGENTS § Session discipline).
+   No publish, no tag here.
+
+**Record-only, this round.** (a) Round 23's reframing stands: the
+library did not get slower in the general case; one lucky
+measurement became an unlucky one. This round makes the general case
+cheaper and reports both arms, free and pinned, as two
+measurements of two things: the free arm is the neuron under the
+constant-dt hint, the pinned arm is the neuron as a network holds
+it. Each arm is compared only with its own baseline. (b) The kernel's `DT_OVER_TAU_MAX` is a
+kernel bound; the helper's guard is "fits", never a bound, and the
+two must not be confused in the header comment. (c) The firmware's
+`cargo run --release` dev flash builds without the remap by design
+(round 26 doc); every figure in the record comes from a `build.sh`
+ELF. (d) The checksum is new code in both timed loops; the baseline
+and the fix both carry it, so the comparison inside this round is
+fair, while the 1,501 and 2,842 figures came from firmware without
+it, so a comparison across rounds is approximate, and the amendment
+says so beside the numbers. (e) Round 26 (d)'s "the bounds check,
+the loop's only panic edge" reads as a claim about the machine code.
+The flashed alpha.6 burst loop has no panic call; the edge is in the
+source. The experiment's result stands as recorded.
+
+**Guards.** GUARD 1 (append-only; the round-23 figures and the three
+`.text` pins are tombstoned or appended beside, never edited). GUARD
+2 untouched. GUARD 3 unchanged (no outreach; the publish and its
+release are the principal's, next round). No publish, no tag, no
+upload. Branch `work/divisions`, one PR, from `main` after PR #23.
+Item 1 before item 2, on record, or the round does not open. Commit
+order: the brief, 1, 2, 3, 4, 8a, 6, 7, 8b, the close-out; the new
+tests ride with items 2 and 3, the bench README sentence with item
+6. The item numbers stay as written, because the accepted texts
+refer to them.
