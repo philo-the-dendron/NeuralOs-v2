@@ -8,9 +8,11 @@
 # § Session protocol, Git discipline).
 #
 # Source of the gate list: the `per-commit` job in .gitea/workflows/ci.yml
-# (mirrored in .github/workflows/ci.yml). The loop body below copies that
-# job's step list line for line, guards included; an edit to one without
-# the other is drift, and the amendment grep sweep is what catches it.
+# (mirrored in .github/workflows/ci.yml), whose header says its loop body
+# IS AGENTS.md § Commands. The loop body below copies that job's step
+# list line for line, guards included; an edit to one of the three
+# without the others is drift, and the amendment grep sweep is what
+# catches it (round 26 found § Commands without the firmware leg).
 # One deliberate difference from the job: it runs in a scratch worktree
 # and target dir (the clean-build proof; the job builds in place on one
 # cache). The environment is the job's: RUSTFLAGS="-D warnings" from
@@ -26,8 +28,9 @@
 #
 # Needs what CI needs: the pinned toolchain (rust-toolchain.toml is in
 # the worktree, rustup picks it up), the riscv32imc-unknown-none-elf
-# target, and cmake on PATH for the vendored HDF5 (.nirenv/bin from the
-# main clone is prepended).
+# target, the llvm-tools component (the firmware .text sha), and cmake
+# on PATH for the vendored HDF5 (.nirenv/bin from the main clone is
+# prepended).
 set -euo pipefail
 
 repo=$(git rev-parse --show-toplevel)
@@ -91,7 +94,14 @@ for c in $commits; do
   # --workspace line above (PR #13: this job was green while the
   # firmware job was red). Guarded like fmt: commits before the
   # crate existed stay valid.
-  if [ -d firmware/esp32c3 ]; then
+  # Since round 26 the build is firmware/esp32c3/build.sh (remap, gate,
+  # shas, canary; same flags for clippy). Commits before the script get
+  # the bare lines they were green with.
+  if [ -f firmware/esp32c3/build.sh ]; then
+    (cd firmware/esp32c3 && run cargo fmt -- --check)
+    (cd firmware/esp32c3 && run ./build.sh)
+    (cd firmware/esp32c3 && run ./build.sh clippy)
+  elif [ -d firmware/esp32c3 ]; then
     (cd firmware/esp32c3 && run cargo fmt -- --check)
     (cd firmware/esp32c3 && run cargo build --release --locked)
     (cd firmware/esp32c3 && run cargo clippy --release --locked -- -D warnings)

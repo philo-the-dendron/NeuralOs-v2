@@ -158,8 +158,10 @@ jobs:
 
       # For the firmware leg of the loop below. Added on the pin, not via
       # the action's `targets:` input (see the firmware job).
-      - name: rustup target add riscv32imc-unknown-none-elf (on the pin)
-        run: rustup target add riscv32imc-unknown-none-elf
+      - name: rustup target add riscv32imc-unknown-none-elf + llvm-tools (on the pin)
+        run: |
+          rustup target add riscv32imc-unknown-none-elf
+          rustup component add llvm-tools
 
       - uses: Swatinem/rust-cache@v2
 
@@ -206,7 +208,14 @@ jobs:
             # --workspace line above (PR #13: this job was green while the
             # firmware job was red). Guarded like fmt: commits before the
             # crate existed stay valid.
-            if [ -d firmware/esp32c3 ]; then
+            # Since round 26 the build is firmware/esp32c3/build.sh (remap,
+            # gate, shas, canary; same flags for clippy). Commits before the
+            # script get the bare lines they were green with.
+            if [ -f firmware/esp32c3/build.sh ]; then
+              (cd firmware/esp32c3 && cargo fmt -- --check)
+              (cd firmware/esp32c3 && ./build.sh)
+              (cd firmware/esp32c3 && ./build.sh clippy)
+            elif [ -d firmware/esp32c3 ]; then
               (cd firmware/esp32c3 && cargo fmt -- --check)
               (cd firmware/esp32c3 && cargo build --release --locked)
               (cd firmware/esp32c3 && cargo clippy --release --locked -- -D warnings)
@@ -323,9 +332,11 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: rustup target add riscv32imc-unknown-none-elf (on the pin)
+      - name: rustup target add riscv32imc-unknown-none-elf + llvm-tools (on the pin)
         working-directory: firmware/esp32c3
-        run: rustup target add riscv32imc-unknown-none-elf
+        run: |
+          rustup target add riscv32imc-unknown-none-elf
+          rustup component add llvm-tools
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -340,10 +351,15 @@ jobs:
         working-directory: firmware/esp32c3
         run: cargo fmt -- --check
 
-      - name: cargo build --release (firmware)
+      # build.sh is the build: the path remap for the four source roots,
+      # the personal-string gate on the ELF, the ELF and .text shas, the
+      # trim-paths canary (tools/remap.sh carries the why; ISA round 26).
+      # llvm-tools above is for the .text sha. The gate is what keeps a
+      # home path out of a release asset; the hooks never see binaries.
+      - name: build.sh (firmware, remap + gate + shas + canary)
         working-directory: firmware/esp32c3
-        run: cargo build --release --locked
+        run: ./build.sh
 
-      - name: cargo clippy (firmware)
+      - name: build.sh clippy (firmware, same flags)
         working-directory: firmware/esp32c3
-        run: cargo clippy --release --locked -- -D warnings
+        run: ./build.sh clippy

@@ -89,6 +89,13 @@ PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # the h
 PATH="$PWD/.nirenv/bin:$PATH" cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate  # THE NIR HDF5 EVIDENCE GATE (5/5)
 PATH="$PWD/.nirenv/bin:$PATH" cargo clippy -p neuralos-rt --features hdf5 --all-targets -- -D warnings  # hdf5 lint gate (in CI since the hdf5 leg; listed here 2026-09-02 so this block IS the CI set)
 
+# The firmware leg (CI job `firmware`, and the per-commit loop; own workspace, invisible to --workspace; round 26):
+(cd firmware/esp32c3 && cargo fmt -- --check)
+firmware/esp32c3/build.sh                         # the build: path remap for the four source roots, personal-string gate on the ELF, ELF + .text shas, trim-paths canary (tools/remap.sh carries the why); needs the riscv32imc-unknown-none-elf target and the llvm-tools component on the pin
+firmware/esp32c3/build.sh clippy                  # clippy --release --locked -D warnings under the script's flags
+# Not a CI job, same treatment: the release musl binary of the inbound bridge.
+crates/neuralos-nir2json/build.sh                 # → crates/neuralos-nir2json/dist/ (gitignored), gated the same way; never overwrites a different binary under the same name
+
 # Run the visualizer (DISPLAY required, e.g. :0):
 cargo run -p neuralos-app --release               # ~2–9 min link on a 2-core CPU; binary cached after
 ./target/release/neuralos-app                     # rerun without rebuild
@@ -206,18 +213,17 @@ Two rules learned on PR #15 (2026-09-09):
 
 `neuralos-snn` is on crates.io at `0.1.0-alpha.6` (published
 2026-09-11T15:54:50Z from d8a96b1, the merge commit of PR #21, tag
-`v0.1.0-alpha.6` — the `[u32; N]` spike ring, no runtime
-dependencies, `rust-version` declared, `isi_stats_us` in u128;
-registry-verified, ISA round-25 close-out). Before it, `0.1.0-alpha.5` (2026-08-22T13:59Z from
-103fa59: general graph assembly, `build_network`, EDGE_PULSE_QUANTA,
-the assembly gates, the R17 consolidation breaks, the STDP dt-overflow
-fix). **Tree == published** (a publish session that leaves the tree
-ahead flips this sentence to "the tree is ahead, alpha.N pending").
-The workspace consumes it via path dep,
-so lib edits take effect locally without republishing — a real
-bugfix or API addition warrants the next alpha. Bump the workspace
-`version` in the root `Cargo.toml` and `cargo publish -p
-neuralos-snn` when that's the call.
+`v0.1.0-alpha.6` — the `[u32; N]` spike ring, no runtime dependencies,
+`rust-version` declared, `isi_stats_us` in u128; registry-verified, ISA
+round-25 close-out). Before it, `0.1.0-alpha.5` (2026-08-22T13:59Z from
+103fa59: general graph assembly, `build_network`, EDGE_PULSE_QUANTA, the
+assembly gates, the R17 consolidation breaks, the STDP dt-overflow fix).
+**Tree == published** (a publish session that leaves the tree ahead
+flips this sentence to "the tree is ahead, alpha.N pending"). The
+workspace consumes it via path dep, so lib edits take effect locally
+without republishing — a real bugfix or API addition warrants the next
+alpha. Bump the workspace `version` in the root `Cargo.toml` and `cargo
+publish -p neuralos-snn` when that's the call.
 
 ## Session discipline (the autopsy doctrine — read before scoping any session)
 

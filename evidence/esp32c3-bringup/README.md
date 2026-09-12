@@ -226,7 +226,7 @@ ns/step on alpha.5, 1.615 on alpha.6.
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
 ```bash
-(cd firmware/esp32c3 && cargo build --release --locked)
+firmware/esp32c3/build.sh                    # since round 26: cargo build --release --locked under rustc's path remap, then the personal-string gate, the ELF and .text shas, the trim-paths canary (tools/remap.sh); the two pins below were built by the bare cargo line the script wraps
 sha256sum firmware/esp32c3/target/riscv32imc-unknown-none-elf/release/neuralos-esp32c3
 #   102af8c6374766f290777b4e760a60318a0496f387fbb6a3b534200f3ebd5aed  at 427b6cb (release profile, lto fat)
 #   e26e174999804ce43163f5c2f1cf3113f480a9cdb84148bfc7fedc00da425ebb  at 820d81a (same profile; the alpha.6 spine, second entry)
@@ -252,16 +252,50 @@ is compared against:
 llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   d14cce25ec36906b0150ec5deaf9675dc199da4fbe39feb334bfddf2c9960af4  alpha.5 (102af8c6…)
 #   d672ca37eb1ef67ba40b212904fa0cf0d4a331a68bcf7e76f8bc288617027f6b  alpha.6 (e26e1749…)
+#   6d407501400cb9beb554b2f5df7ce031f9bae08c43a274bd41ef8df07bc0ddaa  alpha.6 under the round-26 remap (build.sh, PR #23's item-1 tree; the spine and firmware sources of 820d81a, unchanged)
 ```
+
+The third pin is the second one rebuilt by `build.sh` (round 26,
+2026-09-11): rustc's `--remap-path-prefix` shortens each of the 17
+embedded path strings by 12 bytes (`/home/<user>/` → `~/`), `.rodata`
+is 204 bytes shorter, and 182 of the 9,196 instructions in `.text`
+differ, every one a `lui`/`addi` address immediate (`llvm-objdump -d`
+of both, diffed; the one `mv` in the list is `addi` with a zero
+immediate). No instruction was added, removed or reordered, so the
+behavior figures of the second entry stand unmeasured. The two
+earlier pins stand as built by the bare cargo line; they are not
+reproduced by the script and are not expected to be.
+
+### Release asset (the procedure since round 26)
+
+A firmware asset on a Gitea release is built by `build.sh` at the
+tagged commit (the descriptor stamp is that commit's time), copied
+from the target dir into `firmware/esp32c3/dist/` under the alpha.6
+name pattern
+`neuralos-esp32c3-<fw>-snn-<lib>-riscv32imc-unknown-none-elf.elf`,
+listed in `dist/SHA256SUMS`, uploaded with that file, downloaded back,
+checked with `sha256sum -c`, and gated once more on the download:
+
+```bash
+(source tools/remap.sh && remap_env >/dev/null && remap_gate <downloaded.elf>)
+```
+
+No scrub: the remap is what the alpha.6 release's § Scrub did by hand,
+at compile time. The stamped release drafts under `docs/releases/`
+describe the procedure of their day; this paragraph is the living one.
 
 The alpha.5 pin reproduced byte-identical from a clone at another
 path. The alpha.6 pin reproduces only from a clone at the same path:
 the ring's bounds check embeds the source path in rodata, and a
 rebuild of 820d81a from a 72-byte-longer path moved 45 `addi` address
 immediates in `.text` by exactly 72 and nothing else (verified by
-diffing the two `main` listings). A different ELF sha with the same
-log lines is not a finding; a different `.text` with the same log
-lines is one to read. Reproducing
+diffing the two `main` listings). That sentence describes the bare
+line; under the script's remap the four source roots become fixed
+aliases, so the third pin is expected from any clone path, home or
+cargo home (the ELF sha still moves: the descriptor stamp is the
+commit date, and the symbol-name hashes follow the package path). A
+different ELF sha with the same log lines is not a finding; a
+different `.text` with the same log lines is one to read. Reproducing
 `boot-no-descriptor.log` means flashing an ELF built from 3525492 with
 `--ignore-app-descriptor`; `factory-empty-flash.log` needs a blank
 board (`espflash erase-flash` recreates the state).

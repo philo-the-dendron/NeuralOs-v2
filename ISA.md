@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@d8a96b1 (PR #21 merged 2026-09-11: the publish round; mirror synced) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · work/close-out-alpha6 ahead by the round-25 close-out (PR #22, docs only) · open(session): PR #22 review then merge on the principal's word; then the fix brief — part A the firmware build script with remap, gate and canary (infra), part B the two 64-bit divisions with the done criterion on an in-memory loop (alpha.7) · next-work: ROADMAP § Practical next moves"
+head: "main@59bbeb9 (PR #22 merged 2026-09-11: round-25 close-out; mirror synced) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · wrote-from: work/fwbuild, ahead by round 26 (the brief, items 1–7, the close-out, the six review fixes as commits with trailers, and the amendment that records them; no spine change), unmerged, PR #23 open, review round 1 taken · open(session): the per-commit check on the reworded head, then merge on the principal's word (the epoch-unit ruling is recorded in the close-out: keep the conversion); then part B, the two 64-bit divisions and the ring-index mask (alpha.7) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-11T16:00:53Z
+updated: 2026-09-11T22:59:50Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -8004,3 +8004,475 @@ head/updated refreshed under the live-state exception. GUARD 2
 untouched. GUARD 3: both halves landed with `bringup-2026-09-09`; no
 outreach taken here. `evidence/` untouched. `paper/` untouched. No
 binaries committed.
+
+## Amendment (round 26 — the fix brief, part A: the firmware build script, the gate and the canary (infra) — 2026-09-11)
+
+**Brief.** Two shipped binaries carry home-path strings from the
+builder's clone, cargo registry and rust-src: the alpha.5 firmware ELF
+on the bring-up release (16 personal-pattern hits, left standing by
+ruling, round-23 addendum) and the nir2json musl binary on the same
+release (38 hits: 35 under `.cargo/registry`, 3 under
+`<sysroot>/lib/rustlib/src/rust/library/`). The hooks guard added
+lines and the tracked tree; a release asset bypasses both. This round
+makes the build the guard. Scope: a build script for the firmware and
+the same treatment for the musl binary, a self-gate inside each, a
+canary for the day the manual remap can retire, the header comment
+that says why, and every caller switched to the script. Not in scope:
+the two 64-bit divisions and the ring-index mask, which are part B
+(round 27, alpha.7); the tree stays == published through this round.
+Vehicle, per the round-23 placement constraint: `RUSTFLAGS` set by the
+script for the one cargo call, never `.cargo/config.toml` rustflags
+(dead under CI's `-D warnings`) and never build.rs (link args only).
+
+**Done means.**
+
+1. `firmware/esp32c3/build.sh` (name final at review). Four remap
+   roots, computed at run time, never hardcoded: `$HOME`, the cargo
+   home (`${CARGO_HOME:-$HOME/.cargo}`, the 15–16 registry hits per
+   ELF), the sysroot (`rustc --print sysroot`, the 3 rust-src hits in
+   the musl binary), and the repo root (`git rev-parse
+   --show-toplevel`, the one spine hit from the path dependency). No
+   hit from the firmware's own sources was observed in any of the
+   three ELFs; the repo-root remap covers them either way. Four
+   classes, four roots; no fifth class exists in the 16 + 17 + 38
+   hits. Order: `$HOME` first, the specific roots after, because rustc
+   applies the LAST matching prefix (measured on 1.92.0 this round:
+   general-then-specific maps under the specific name, the reverse
+   maps under the general one). On CI the roots may sit outside
+   `$HOME` (a docker image's `CARGO_HOME`), which is why the script
+   reads them instead of assuming `~/.cargo`. The script APPENDS to
+   the inherited `RUSTFLAGS` (CI's `-D warnings` must survive), sets
+   `SOURCE_DATE_EPOCH` from `git log -1 --format=%ct`, runs
+   `cargo clean -p esp-bootloader-esp-idf` before the build because
+   that crate's build.rs (0.5.0) reads the variable at line 15 and
+   declares only `rerun-if-changed=./esp_config.yml` at line 34, no
+   env rerun guard, so a warm target dir keeps the cached stamp (the
+   README's "from the cached build script" mechanism; the clean is
+   necessary and sufficient), then `cargo build --release --locked`,
+   and prints the ELF sha and the `.text` sha. Header states that the
+   ELF sha stays path-dependent through cargo's symbol hashes in
+   `.strtab` and that `.text` is the only comparable.
+2. The gate, inside the script, two greps on the artifact: the
+   personal pattern from `.githooks/personal-pattern`, read from the
+   file, never a hardcoded login, case-insensitive like the hooks; and
+   the four remap source roots as fixed strings (`grep -a -F`), because
+   the pattern's path alternative matches `/home/<x>/` only and a
+   docker runner whose home is `/root` would slip a failed remap past
+   it. Pure grep (`grep -a -o -E -i`), so it needs no `binutils` on
+   the runner; its counts equal the `strings` baselines (16 / 38 / 17,
+   measured both ways this round). Any hit of either grep exits 1.
+   Baseline: 16 hits on the alpha.5 ELF, 38 on the musl binary, 0
+   required after.
+3. The canary. The probe is, in `firmware/esp32c3`, with a throwaway
+   `CARGO_TARGET_DIR`:
+
+       cargo build --release --locked --offline --config 'profile.release.trim-paths="all"'
+
+   Live transcript on the pin, 2026-09-11, exit 101, the target dir
+   left with zero files:
+
+       error: config profile `release` is not valid (defined in `--config cli option`)
+
+       Caused by:
+         feature `trim-paths` is required
+
+         The package requires the Cargo feature called `trim-paths`, but that feature is not stabilized in this version of Cargo (1.92.0 (344c4567c 2025-10-21)).
+         Consider trying a newer version of Cargo (this may require the nightly release).
+         See https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#profile-trim-paths-option for more information about the status of this feature.
+
+   The failure is NOT at config parse: `cargo --version` and
+   `cargo metadata --offline` with the same `--config` both exit 0 in
+   the same directory. It fires in the build front end's profile
+   validation, before any unit is compiled, which is what makes it a
+   cheap canary. The script passes on exit 101 with that first line
+   and prints one loud notice the day the probe exits 0 (or fails
+   differently), which is the day the remap can be deleted. The gate
+   stays regardless; it is what makes "bump-proof" a fact, not a hope.
+   Header: re-probe at each toolchain bump; delete the remap only when
+   the gate passes without it. The build session re-runs the probe and
+   records its own transcript beside this one.
+4. Same script shape for `crates/neuralos-nir2json` (musl target), its
+   README § Build pointing at the script instead of the bare cargo
+   line. Its script-built sha is APPENDED beside the bring-up pin
+   (`d92ddf99…`) with the commit that produced it; the old pin stands.
+5. Callers, every one guarded on the script's existence so commits
+   before it stay green in the loop (the `-d firmware/esp32c3` guard,
+   extended): the CI `firmware` job and the `per-commit` loop in BOTH
+   workflow files (mirror rule, § Commands), `tools/percommit.sh`, the
+   evidence README § Rebuild + run, and the release procedure, which
+   gets a living home (the evidence README, or AGENTS § Commands) since
+   `docs/releases/v0.1.0-alpha.6.md` is a stamped record. The firmware
+   job's clippy step runs under the same flags as the build, from the
+   script (`build.sh clippy` or a sourced env), so the fingerprints
+   are shared and esp-hal compiles once per commit; the job adds the
+   `llvm-tools` component for the `.text` sha. `AGENTS.md` § Commands
+   gains the firmware leg it never had. The drift, found this round:
+   `tools/percommit.sh` copies the job, the job says its loop body IS
+   § Commands (`ci.yml`, the per-commit header), and § Commands lacks
+   the firmware leg both loops carry.
+6. The `.text` re-pin: the remap shortens path strings, and the
+   alpha.6 pin is path-sensitive (45 immediates moved by 72 bytes,
+   evidence README). The new pin is APPENDED beside the old one with
+   the commit that produced it, in the evidence README and in this
+   round's close-out as old → new, and its evidence is the README's own
+   method re-run: `objdump -s` dumps of the new `.text` and of the
+   flashed alpha.6 ELF's (`e26e1749…`), filename header removed,
+   diffed, showing that only address immediates moved. The old pin
+   and the alpha.6 release draft are not edited (GUARD 1; frozen pins
+   are tombstoned, never overwritten). Behavior figures are not
+   re-measured here: no code changes, so 147 spikes, step 56 and
+   2,842 ns/step stand; the board stays unplugged.
+7. Rider: the 94-char line in `AGENTS.md` § Published crate rewrapped
+   (Found-by: philo, PR #22). Not riding: CI calling
+   `tools/percommit.sh` in place of its own gate list (dropped). The
+   QEMU proof's linker args stay where they are: its config carries
+   `-C relocation-model=static` beside `-Tlink.x`, a codegen flag that
+   build.rs cannot emit, CI never builds the proof, and whether the
+   target already defaults to static was not measured; that rider
+   moves to the owed list with that question attached. Optional if
+   small: a `concurrency` group in both workflow files cancelling
+   superseded runs of the same branch, only if gitea.com's Actions
+   honours the key (verified on a live run, not assumed); otherwise it
+   joins the owed list.
+
+**Record-only, this round.** (a) The ISA head line said `main@d8a96b1`
+with PR #22 open; main has been 59bbeb9 since the PR #22 merge; the
+head line is refreshed with this entry. (b) Found 2026-09-11: the
+gitignored `crates/neuralos-nir2json/dist/` ELF and the firmware
+target-dir ELF were both byte-identical to plain `llvm-objcopy`
+rewrites of the two flashed ELFs (`007a0c14…` from `102af8c6…`,
+`b7176015…` from `e26e1749…`), written 2026-09-10 19:06 by no
+recorded command. Reproduced this round, exact argv on record:
+
+       ~/.rustup/toolchains/1.92.0-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-objcopy <flashed.elf> <out.elf>
+
+   (LLVM 21.1.3-rust-1.92.0-stable, no other flag). What the rewrite
+   keeps and what it changes, read with `readelf -s -W`: the symbol
+   table is identical, 4,174 entries in the alpha.6 pair (1,363 of
+   them the RISC-V `.L0 ` relaxation labels, 1,645 `.L*` locals,
+   2,529 named), 4,183 in the alpha.5 pair, and every name present in
+   the flashed ELF is present in the rewrite. What shrinks is
+   `.strtab`, 65,187 → 56,341 bytes, because llvm-objcopy
+   deduplicates the string table: the 1,363 `.L0 ` symbols share one
+   string after the rewrite (4,173 → 2,255 NUL-terminated strings).
+   A `strings`-style count of `.strtab` therefore reads as "1,362
+   labels gone" while the symbol table has lost nothing; both
+   readings are recorded so the next reader is not surprised by
+   either. Same code, rodata, symbols and app-descriptor stamp;
+   string tables re-laid; nothing scrubbed. The `deps/` copies and
+   the private copies still hash to the flashed ELFs. The dist ELF
+   was restored from the private copy the same day and passes its
+   `SHA256SUMS`; the target-dir ELF is left for the next build. No
+   pin moved. (c) The flashed alpha.6 ELF carries 17 hits, not 16: the
+   17th is the spine's path from the ring's bounds check (round-23
+   addendum), the reason the repo root is a remap root. (d) Experiment
+   1 of round 23 (ISA, "one scratch line, no board") was run
+   2026-09-11 on a scratch build of main, host-only, nothing in the
+   tree: masking the ring index (`buf[head & (MAX_SPIKE_HISTORY - 1)]`,
+   a no-op under the invariant head < 64) removes the bounds check,
+   the loop's only panic edge, and the burst loop scalarizes again:
+   `__divdi3` calls in `main` 4 → 3 (alpha.5's count), and the spine's
+   path string leaves the ELF with it. Trigger established: the
+   bounds-check panic edge; the LLVM-internal reason stays unnamed.
+   The mask restores the lucky case only, networks still pay two
+   divisions, so it rides part B as the scalarization half of the fix,
+   not this round: it is a spine edit, and the tree stays == published
+   here.
+
+**Guards.** GUARD 1 (append-only), GUARD 3 unchanged (outreach is the
+principal's call and is not opened here). No publish, no tag, no
+upload, no rewrite of any frozen pin. Branch `work/fwbuild`, one PR.
+
+## Close-out (round 26 — the build is the guard: build.sh, the gate, the canary, every caller; two pins moved — 2026-09-11)
+
+Branch `work/fwbuild`, seven commits on main@59bbeb9, no spine change,
+tree == published throughout. Each commit is one item of the brief
+above. The first (the brief) was pushed before its loop, then green;
+the rule is restated in the builder's memory and a hook guard was
+offered. The six after it were reworked in place once, before any
+push (three fixups, one autosquash, two messages reworded for a sha
+that no longer exists; record-only (c) below), then the loop ran the
+whole range green, then the push, then PR #23. Review round 1 (the
+reviewer, an Opus session, hunk by hunk): three blocking, five
+cosmetic, three record-only, all taken (§ Review below); the fixes
+rode as visible `fixup!` commits, one per target, the loop over the
+range, the push, then the one rewrite before merge.
+
+### What landed
+
+1. `006b2e8` **Items 1–3.** `tools/remap.sh`, sourced by both build
+   scripts: `remap_env` (four roots computed at run time, `$HOME`
+   first because rustc applies the last matching prefix; the flags
+   appended to the inherited `RUSTFLAGS` as `CARGO_ENCODED_RUSTFLAGS`
+   so CI's `-D warnings` survives; `SOURCE_DATE_EPOCH` from the
+   commit), `remap_gate` (the personal pattern read from
+   `.githooks/personal-pattern`, case-insensitive, plus the four roots
+   as fixed strings; any hit exits 1, and so does a grep that did not
+   run, exit 2, or a missing file; hits counted per grep, 16 / 38 / 17
+   on the three dirty binaries, the distinct strings printed with the
+   roots masked), `remap_text_sha`, `remap_canary` (after the real build,
+   `--offline`, a throwaway target dir; passes on exit 101 with the
+   expected line, loud otherwise). `firmware/esp32c3/build.sh
+   [build|clippy]`: `cargo clean --release -p esp-bootloader-esp-idf`
+   then the build, the gate, the two shas, the canary. Measured: 17
+   hits before, 0 after; the clean re-ran the build script (66 crates
+   compiled, the stamp moved); two runs, one ELF sha; the second
+   `clippy` run 0.11 s (its cache holds).
+2. `72076c2` **Item 4.** `crates/neuralos-nir2json/build.sh`, the musl
+   binary under the same helper, into `dist/` under the release name,
+   refusing to overwrite a different binary under that name; README
+   § Build points at it. Measured: 38 hits before (35 registry, 3
+   rust-src), 0 after; static; the README's two exits unchanged.
+3. `5680156` **Item 5.** Both workflow files: the firmware job runs
+   `./build.sh` and `./build.sh clippy` and adds `llvm-tools` on the
+   pin; the per-commit loop calls the script when the commit carries
+   it and keeps the bare lines before it. `tools/percommit.sh` the
+   same, its header naming the three-way copy (job, loop, § Commands).
+   AGENTS.md § Commands gains the firmware leg and the nir2json line.
+   Evidence README § Rebuild + run names the script and carries the
+   release procedure since round 26 (§ Release asset: build.sh at the
+   tagged commit, `dist/`, `SHA256SUMS`, upload, download back, the
+   gate on the download, no scrub); the stamped drafts under
+   `docs/releases/` describe their day. Mirror rule checked: the two
+   files differ only in the header and `uses:`.
+4. `4e3acdd` **Item 6.** The third `.text` pin appended (below), its
+   evidence in the README.
+5. `2762170` **Item 7.** The 94-char line rewrapped, `Found-by: philo
+   (PR #22)`.
+6. This commit: the close-out; head line refreshed.
+
+### The pins, old → new (appended, never overwritten)
+
+| Artifact | Old (bare line) | New (build.sh) | Where |
+|---|---|---|---|
+| firmware `.text`, alpha.6 spine | `d672ca37…` (820d81a) | `6d407501400cb9beb554b2f5df7ce031f9bae08c43a274bd41ef8df07bc0ddaa` (build.sh at 006b2e8; same sources) | evidence README § Rebuild + run |
+| firmware ELF | `e26e1749…` | not a pin. Measured by the reviewer: the same commit with the same stamp built from two clone paths gives two ELF shas (`5db406e2…`, `6dbff5c8…`), one `.text` (`6d407501…`), and identical bytes once `.symtab` and `.strtab` are removed (`f4737f5f…`); four symbol names follow the clone path (three `core::fmt` instantiations, one `.Lanon` label); the remap flags move none: the flashed bare-line ELF and the remapped build share all 2,268 names | README, `build.sh` header |
+| nir2json musl ELF | `d92ddf99…` (bring-up release) | `a35b44af6c0731d3deed943288717aa7c5661ea75c40a7a693f88fc5eddc9016`, a pin: the release profile strips (`strip = true`, no `.symtab`/`.strtab`), and the reviewer's fresh clone of the tip outside `$HOME` rebuilt it byte-identical; `.text` `e04fa2d7acefdcb4a2ddfb5531978b6e9222dbabddbf361eaeb7822b7260c829` | this table; the release pin stands |
+
+The `.text` move, read from `llvm-objdump -d` of the flashed alpha.6
+ELF and the remapped build, diffed: 182 of 9,196 instructions differ,
+173 `addi`, 8 `lui`, 1 `mv` (an `addi` with a zero immediate), none
+added, removed or reordered; `.rodata` 204 bytes shorter, 17 strings
+× 12 bytes. Behavior not re-measured; the board stayed unplugged.
+
+### Two deviations from the brief
+
+**The clippy rationale.** Item 5 said the same flags for clippy would
+share fingerprints with the build, so esp-hal compiles once per
+commit. Wrong: clippy checks, it never shares build artifacts, and it
+took 18 s after the build on the first commit either way. The true
+reason stands in `build.sh`'s header: the same flags keep clippy's
+own cache valid across the loop and make the lints see the paths the
+artifact carries.
+
+**The epoch unit.** Item 1 said `SOURCE_DATE_EPOCH` from `git log -1 --format=%ct`. Set
+in seconds, as the reproducible-builds spec says, the descriptor
+stamped `1970-01-01 00:29:49`: esp-bootloader-esp-idf 0.5.0's
+build.rs (line 16) parses the variable with
+`Timestamp::from_microsecond`. It is the only locked dependency that
+reads the variable. The firmware script converts the seconds to
+microseconds for that locked version only, checks the lock, and
+refuses a version bump until the unit is re-read; the helper keeps
+exporting seconds. The stamp now reads the commit's UTC time. The
+alternative, spec'd seconds and a 1970 stamp in every shipped
+descriptor, is one `if` away. **Ruling (philo, 2026-09-11): keep the
+conversion**; the descriptor shows the commit time, the lock check
+stops a bump until the unit is re-read. Upstream report: owed list.
+
+### The canary, from the build session
+
+`build.sh` on the pin printed `canary: trim-paths still unstable on
+1.92.0 (exit 101, as expected); the remap stays` on every run; the
+probe's full transcript is the one in the brief, reproduced.
+
+### Record-only
+
+(a) Local: the bring-up trio in `crates/neuralos-nir2json/dist/` (the
+musl binary `d92ddf99…`, the alpha.5 ELF `102af8c6…`, `SHA256SUMS`)
+moved into `dist/bringup-2026-09-09/` (gitignored), verified by
+`sha256sum -c` after the move, so the script's output could take the
+release name without overwriting a published artifact. (b) The loop
+run on the item-1 commit as first written printed GREEN after all 14
+gates, then exit 127: the builder edited `tools/percommit.sh` while
+that run was executing it, and bash reads a script incrementally. The
+commit's gates are the record; the script is never edited during a
+run again. (c) Found before the range loop, fixed in place: both
+scripts located the artifact at a relative `target/`, and
+`tools/percommit.sh` exports `CARGO_TARGET_DIR` to its scratch, so
+under the loop the gate would have scanned a missing file and, the
+grep's failure swallowed, printed 0 hits. Now the gate refuses a
+missing file ("nothing to scan is not a pass") and both scripts honor
+`CARGO_TARGET_DIR`; the firmware build under a foreign target dir
+gives the same `.text` `6d407501…`. The 127 in (b) and the miss in
+(c) are the same lesson: the loop is the proof, and it is run last,
+untouched. (d) Owed, from the brief and the review: the QEMU proof's
+`relocation-model` question; the concurrency group (not tried this
+round); the upstream report on the epoch unit; a pre-push hook guard
+for the loop; the pre-commit and pre-push hooks and CI's tracked-tree
+scan share the fail-open `grep … || true` the gate had (one bad edit
+to `personal-pattern` blinds all three silently); the firmware script
+could name and copy its artifact into `dist/` as the nir2json one
+does, once the name pattern with the snn version is settled.
+
+### Review (round 1, the reviewer, 2026-09-11)
+
+Blocking, fixed: the gate passed when grep failed (`|| true` hid exit
+2 as well as "no match"; a pattern `grep -E` rejects, an unreadable
+file); the release procedure had not moved to a living doc; the
+nir2json row said the ELF sha follows the package path (the binary is
+stripped, the sha is a pin, measured). Cosmetic, fixed: `-f` not `-x`
+in the three loops, so a lost exec bit fails loudly; the `.text` sha
+assigned before it is echoed and every failure inside `remap_text_sha`
+returned by hand (errexit is off inside a command substitution,
+`inherit_errexit` off by default, tested); hit counts per grep, not
+distinct strings; the README pin line cites the commit; two lines
+rewrapped; record-only items in order. Record-only: the fail-open
+grep in the hooks and the tracked-tree scan (owed); the clippy
+rationale (§ Two deviations); the branch shas re-pointed by the
+rewrite.
+
+### Guards
+
+GUARD 1 honored: appended only; the brief above stands as written,
+the two deviations and the ruling are recorded here, not edited
+there; head/updated
+refreshed under the live-state exception. GUARD 2 untouched. GUARD 3:
+no outreach, no upload, no release touched; the bring-up assets stand
+by the round-23 ruling. No publish, no tag. `evidence/`: the README
+gained a pin and a paragraph, no pinned file edited. `paper/`
+untouched. No binaries committed.
+
+## Amendment (round 26 — the review fixes landed as commits, not fixups; the one rewrite was a reword — 2026-09-11)
+
+The close-out above says, in its first paragraph, that the six review
+fixes "rode as visible `fixup!` commits, one per target, the loop
+over the range, the push, then the one rewrite before merge", and its
+§ Review lists "the branch shas re-pointed by the rewrite" as
+record-only. Both lines are true-when-written and superseded here.
+
+The ruling (philo, 2026-09-11, during the review): `fixup!` plus the
+one autosquash is the vehicle for a RED commit only (AGENTS.md
+§ Session protocol, "Red found after the push"). Every target of the
+six was green, on the loop and on the per-commit check; a change that
+answers a review finding on a green commit is a normal commit on top,
+carrying `Fixes:` and `Found-by:` (§ Commit trailers), so "which
+commit corrected which" stays a query. The autosquash the close-out
+promised was not clean either: rehearsed twice by the builder and
+once more in a scratch worktree at head f273686, `git rebase -i
+--autosquash main` stops on `evidence/esp32c3-bringup/README.md` when
+the fix to 5680156 (§ Release asset, written on top of 4e3acdd's pin
+paragraph) melts into a commit that predates that paragraph, and the
+pin fix conflicts on the same region after it. A squash also drops
+the fixup's message, so the trailers would never have existed, and
+it would have re-pointed six of the seven shas § What landed cites.
+
+What happened instead: one rewrite, messages only. Old head f273686,
+its fourteen contexts green (the per-commit check over all thirteen
+commits at 22:33 UTC, the four contexts queued behind it by 22:37).
+The six `fixup!` commits were reworded in place, `git rebase -i
+--no-autosquash 3baf2e6` with six `reword` lines; every tree is the
+one already checked (`git log --format=%T 3baf2e6..` identical on
+both heads, `git diff f273686 <new tip>` empty), the seven commits
+from eebaccd to 3baf2e6 keep their shas, and every sha cited in
+§ What landed stands. The six, old → new, each carrying `Fixes:` with
+its target and `Found-by: reviewer, Opus session (PR #23)`:
+
+| Old (`fixup!`) | New | Corrects |
+|---|---|---|
+| 6ceb80c | 3b088da build(firmware): the gate refuses a grep that did not run; shas assigned before they are echoed; remap_text_sha returns every failure by hand | 006b2e8 |
+| 01579c8 | 068b097 build(nir2json): the ELF and .text shas assigned before they are echoed | 72076c2 |
+| 8e8b4b1 | 7e58055 ci+docs: `-f` not `-x` in the three loops; the release procedure moves into the evidence README | 5680156 |
+| 0fd8527 | ac364ed docs(agents): § Published crate rewrapped as a paragraph, not one line | 2762170 |
+| 192ff61 | e50c1e5 docs(isa): round-26 close-out, the review round folded in | 3baf2e6 |
+| f273686 | 2ff67d6 evidence(esp32c3): README, the reproduction paragraph rewrapped | 4e3acdd |
+
+Then this amendment, one more commit at the tip, its own loop run
+before the push (the thirteen below it were checked as the trees they
+still are). The note with old and new head goes on the PR before the
+lease push (`--force-with-lease --force-if-includes`, the host named),
+§ Session protocol steps 1 to 3; no comment thread exists on the PR
+(the review was relayed between sessions), so no anchor is lost. The
+per-commit check re-runs on the new head and the merge waits for it.
+
+On e50c1e5: it edits the round-26 close-out entry, an entry that
+exists only on this branch and has never been on `main`. Read as a
+draft under review, not a past entry of the ledger: GUARD 1 protects
+the merged record, and this amendment is the append that corrects the
+draft's two lines, not a third edit of them. That reading was offered
+with the option and taken with it (philo, 2026-09-11).
+
+Lesson, in the builder's memory and for AGENTS at the next
+consolidation: before prescribing how a fix lands, ask whether the
+target is red. Red: fixup, visible, one autosquash before merge.
+Green: a normal commit with trailers, no rewrite. A fixup written at
+the tip that touches a region a later commit also touched cannot melt
+without a conflict, which is the mechanical reason the rule holds
+beyond the trailers.
+
+### Guards
+
+GUARD 1 honored: appended only; the two superseded lines stand in the
+close-out as true-when-written; head/updated refreshed under the
+live-state exception. GUARD 2 untouched. GUARD 3: no outreach, no
+upload, no release touched. No publish, no tag. `evidence/` and
+`paper/` untouched. No binaries committed.
+
+### Record-only, after the push (2026-09-11)
+
+The lease push did not run through the URL form § Session protocol
+prints. On git 2.43.0, `git push git@gitea.com:Caramoussin/NeuralOs-v2.git
+--force-with-lease --force-if-includes work/fwbuild` is rejected with
+`stale info`, dry run and real run alike: a URL is an anonymous
+remote, git has no remote-tracking ref to take the expected value
+from, and the implicit lease has nothing to compare against. The same
+command through the remote name, `git push origin --force-with-lease
+--force-if-includes work/fwbuild`, passed its dry run and pushed
+f273686 → 1d11a93 (forced update); `origin` carries one push URL,
+Gitea (§ Remotes, 2026-09-06), so the host the rule names and the
+host pushed are the same. The words "the host named" above describe
+the rule, not the push that ran. For AGENTS at the next
+consolidation: the rule's example should name `origin` (single URL
+since 2026-09-06) or the explicit `--force-with-lease=<ref>:<sha>`
+form with the sha from the step-2 note, which the rule already
+allows; the two-flag URL form does not run.
+
+### Review (round 2, the builder on philo's brief, 2026-09-11)
+
+Run on the reworded head 486bc25 against the brief philo posted
+(source truth, hunk review, cross-cutting, light local checks). One
+blocking: the root README's § Quality gates still carried the bare
+firmware build line, and the crate's doc comment the same, against
+5680156's claim that every firmware caller goes through the script;
+the round-26 sweep missed both (the README line dates from
+2026-09-08). Cosmetic: one trailing space in this close-out's
+record-only list; the firmware script and the gate printed the
+artifact's absolute path, home directory included, while the
+nir2json script printed repo-relative; `remap_text_sha` returned the
+status of its cleanup, so a failed checksum would have yielded an
+empty sha with status 0. Record-only: the root grep takes the raw
+home directory as a fixed string, so a runner whose home is `/root`
+could false-positive on an unrelated string (fail-closed; both Gitea
+jobs passed with the gate active); the AGENTS lease-push example
+(the record-only paragraph above); README § Quality gates duplicates
+AGENTS § Commands and lags it, a pointer would end the drift;
+shellcheck is not on the build machine, so that check did not run.
+Verified at source beyond the round-1 items: rustc's last-match
+prefix rule, probed on the pinned 1.92.0 and on 1.97.1; the
+bootloader's build script declares one file rerun guard and no
+environment guard, and parses the variable as microseconds; the
+firmware's linker argument lives in its build script, so the encoded
+rustflags vehicle drops nothing; the hooks' grep flags match the
+gate's; the mirror differs by header and `uses:` only; the loop body
+matches the job line for line; both fmt gates and `bash -n` on the
+four scripts clean.
+
+The fixes, two commits, both targets green, no rewrite. `d29b2c5`:
+`remap_show`, the banking convention for every path the scripts
+print (the gate's five messages, the firmware ELF line, the text-sha
+errors), and the helper checks its sha before returning. This
+commit: README § Quality gates and the crate doc routed through the
+script, the trailing space, this paragraph. Read after both edits,
+one run of each script on this tree: firmware `.text` `6d407501…`
+unchanged (a doc comment reaches no binary), gate 0 hits, canary as
+expected; nir2json `a35b44af…` byte-identical to its pin under the
+no-overwrite guard, `.text` `e04fa2d7…`; every path line under `~`.
