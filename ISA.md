@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@7fe2388 (PR #23 merged 2026-09-12 03:20 UTC: round 26, the build is the guard; mirror synced, branch deleted) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z; the tree is ahead, alpha.7 pending · wrote-from: work/divisions, ahead by round 27 (the brief, items 1 to 8b, the inline hint, the close-out; the network's step on the ESP32-C3 3,878 → 1,579 ns/step, behavior identical), unmerged, not pushed · open(session): push on the principal's word, then PR #24 and the reviewer's round (a Fable session); then the publish round (alpha.7) · next-work: ROADMAP § Practical next moves"
+head: "main@7fe2388 (PR #23 merged 2026-09-12 03:20 UTC: round 26, the build is the guard; mirror synced, branch deleted) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z; the tree is ahead, alpha.7 pending · wrote-from: work/divisions, ahead by round 27 (the brief, items 1 to 8b, the inline hint, the close-out, the review's fixes; the network's step on the ESP32-C3 3,878 → 1,579 ns/step, behavior identical), pushed, PR #24 open, reviewed (no blocking) · open(session): the per-commit check on the PR, then the merge on the principal's word; then the publish round (alpha.7) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-12T09:18:29Z
+updated: 2026-09-12T13:20:55Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9085,3 +9085,71 @@ release touched. No publish, no tag. `evidence/`: new files
 sha-pinned, the README extended, its own stale row fixed in
 `02225dc`; no pinned file edited. `paper/` untouched. No binaries
 committed.
+
+## Amendment (round 27 — the review of the round: no blocking; four cosmetic fixed here; record-only — 2026-09-12)
+
+The reviewer, a Fable session relayed by the principal, reviewed PR
+#24 at `c11af5e`, the round after item 1 (`822beb3..c11af5e`). No
+blocking finding.
+
+Verified at source by the reviewer: `div_1000` and the `dt_over_tau`
+guard exact as the brief asks (`i32::MIN / 1000` cannot overflow;
+`dt_us <= u32::MAX / 1000` keeps the product inside `u32`; the τ = 0
+guard first); the twelve and eleven boundary rows and both
+half-and-half proptests as in the brief's 5(b); the two `i128` proofs
+byte-identical to `7fe2388`; the mask and both asserts; the spine's
+suite and the simd suite green in the reviewer's own worktree and
+target dir, and rustdoc adds no warning from the new docs; the inline
+hint's premise rebuilt at `91d92a9` (the step out of line, called once
+from `main`) and gone at the head; every cell of the fix listing
+recounted, both ranges re-extracted from the private ELF byte for
+byte; the fix `.text` pin `0de3bd91…` reproduced by `build.sh` at
+`c11af5e`, so the doc-only commits after `1affcd6` leave the code
+unchanged and the alpha.7 draft's expectation holds; every figure of
+the fix log recomputed; a host replay of the alpha.7 spine gives 147
+spikes, first spike step 55, checksum `0b78b456` on both arms; the
+host logs' header lines, minima and medians, and every share of the
+bisect table recomputed from the banked summary; all seventeen
+`SHA256SUMS` rows; 8a's seven version lines; the sweeps; no home path,
+no session link, no fixup.
+
+**Cosmetic, fixed in this commit** (`Found-by: reviewer, Fable session
+(PR #24)`):
+
+1. Evidence README § The mechanism said 2,842 ns is what a network
+   always pays, with no pointer to the third entry, where the
+   qualifier lives. One bracketed sentence added there; the dated
+   text is unchanged.
+2. The free fix loop has no ring store: the firmware never reads the
+   spike history, and with the neuron in registers the stores are
+   gone. The baseline free loop has two store sites, and alpha.5's
+   register loop stored the ring once per spike and called `memmove`,
+   the heapless shift (round 23's cut, `burst-loop-alpha5.dis`). § Third
+   entry's reading of 563 against 1,501 now says so, and its listing
+   table gains the row (ring stores 2, 0, 2, 2, counted on the
+   committed cuts).
+3. The head line read "unmerged, not pushed" and "open: push on the
+   principal's word", stale since the push: refreshed.
+4. The close-out promised a PR note with its own commit's loop
+   result, and none was posted. Recorded here instead: the loop ran
+   `c11af5e` green on its own before the push, and the per-commit job
+   on the PR runs it again.
+
+**Record-only.** (a) `f2007a7` also adds `#[inline]` to the public
+`dt_over_tau`; its message, the alpha.7 notes and the close-out do not
+name it. A hint with no semantic change, harmless under fat LTO. (b)
+The close-out's cosmetic fix carries prose credit and no `Found-by:`
+trailer; the finding predates the PR, and there is no rewrite for a
+trailer. This commit carries the trailer for its own four. (c) The
+bisect's per-commit binaries and x86 loop counts are scratch and were
+not reproduced by the reviewer; the ruling rests on the two banked
+logs, which were. (d) Three reproductions for the record: the fix pin
+from `c11af5e`, the hint's premise at `91d92a9`, the host replay of
+the alpha.7 spine.
+
+**Guards.** GUARD 1: appended; the close-out stands as written, its
+promise of a PR note answered by cosmetic 4 here; § The mechanism's
+dated text unchanged, a pointer added; head/updated refreshed under
+the live-state exception. GUARD 2 untouched. GUARD 3: no outreach, no
+upload, no release touched. No publish, no tag. `evidence/`: the
+README extended and its own row refreshed; no pinned file edited.

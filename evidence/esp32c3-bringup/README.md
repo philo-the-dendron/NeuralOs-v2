@@ -159,7 +159,10 @@ So 1,501 ns was one loop the compiler happened to scalarize, and
 2,842 ns is what the step costs on this core whenever the struct is
 in memory, which is what a network holding a `Vec<LIFNeuron>` always
 pays. The library did not get slower in the general case; one lucky
-measurement became an unlucky one.
+measurement became an unlucky one. [Round 27, 2026-09-12: this holds
+under the firmware's constant dt; with dt at run time, as a network
+passes `time_step_us`, the alpha.6 step costs 3,878 ns (§ Third
+entry).]
 
 Verified here: the two loop bodies, the identical source, the pins.
 Consistent but not measured: +1,341 ns is 215 cycles at 160 MHz, which
@@ -286,6 +289,7 @@ section's 195 and 34.
 | Calls to the cold fallbacks | — | 1 | — | 3 |
 | Loads and stores against the frame | 42 | 8 | 15 | 19 |
 | Loads and stores through the neuron pointer | — | — | 33 | 31 |
+| Ring stores (computed index) | 2 | 0 | 2 | 2 |
 | Branches out, besides the exit | 0 | 0 | 1 (`panic_bounds_check`) | 0 |
 
 The reading. The pinned loop has no ROM division left, and its only
@@ -301,7 +305,11 @@ is back in registers: 132 instructions, dt/τ folded to 50 by the
 constant, its frame traffic two range-check constants reloaded on each
 integrating step plus the save and restore around the cold call. Its
 563 ns/step is below the 1,501 of alpha.5's register loop, which still
-called the ROM once per step. The tally's three counts, spilled at the
+called the ROM once per step; the free fix loop also has no ring store
+(the firmware never reads the spike history, and with the neuron in
+registers the stores are gone), where alpha.5's loop stored the ring
+once per spike and called `memmove`, the heapless shift, so the gap is
+not the ROM call alone. The tally's three counts, spilled at the
 baseline (ISA round 27, item 1), are in registers in both fix loops;
 the only stores to them are around the cold calls. The inline hint on
 `integrate_and_fire` (ISA round 27, a deviation from the brief's list,
