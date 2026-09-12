@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@7fe2388 (PR #23 merged 2026-09-12 03:20 UTC: round 26, the build is the guard; mirror synced, branch deleted) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · wrote-from: work/divisions, ahead by the round-27 brief and item 1 (the pinned arm; the baseline on the board: pinned 3,878 ns/step, free 2,863, behavior identical; no spine change), unmerged · open(session): round 27, the fix brief part B (the divisions and the ring mask; spine, alpha.7): item 2, the div_1000 helper, next; item 3's guard goes in (the pinned listing calls __udivdi3) (builder, PR to follow) · next-work: ROADMAP § Practical next moves"
+head: "main@7fe2388 (PR #23 merged 2026-09-12 03:20 UTC: round 26, the build is the guard; mirror synced, branch deleted) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z; the tree is ahead, alpha.7 pending · wrote-from: work/divisions, ahead by round 27 (the brief, items 1 to 8b, the inline hint, the close-out; the network's step on the ESP32-C3 3,878 → 1,579 ns/step, behavior identical), unmerged, not pushed · open(session): push on the principal's word, then PR #24 and the reviewer's round (a Fable session); then the publish round (alpha.7) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-12T04:19:22Z
+updated: 2026-09-12T09:18:29Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -8895,3 +8895,193 @@ upload, no release touched. No publish, no tag. No spine edit: item 2
 opens next. `evidence/`: two new files, sha-pinned; the README gained
 two rows, a pin and a sentence, and its own row is refreshed; no
 pinned file edited. `paper/` untouched. No binaries committed.
+
+## Close-out (round 27 — the divisions and the ring mask: the network's step on the chip 3,878 → 1,579 ns/step, behavior identical; alpha.7 in the tree — 2026-09-12)
+
+Branch `work/divisions`, twelve commits on main@7fe2388: the brief,
+items 1 to 8b in the brief's order, one commit outside its list (the
+inline hint, the principal's call) and this close-out. The spine is
+at alpha.7 in the tree and not published; the tree is ahead of
+crates.io from this PR's merge until the publish round. Item 1 was
+reviewed before item 2 opened (the reviewer, a Fable session,
+relayed by the principal): no blocking.
+
+### What landed
+
+1. `f742e25` **The brief**, verbatim from the reviewed draft; head
+   line refreshed.
+2. `5c3e3ad` and `02225dc` **Item 1**, the criterion on the board
+   before any spine edit: the pinned arm beside the free one, then
+   the baseline banked (the item-1 amendment above).
+3. `822beb3` **Item 2**, `div_1000` for both `/ 1000`, with
+   `div_1000_is_exact_on_both_sides_of_the_guard` and
+   `prop_div_1000_equals_i64_division`.
+4. `f2007a7` **Item 3**, the `dt_over_tau` guard, opened by item 1's
+   listing, with `dt_over_tau_is_exact_on_both_sides_of_the_guard`
+   and `prop_dt_over_tau_equals_the_u64_formula`.
+5. `91d92a9` **Item 4**, the ring mask, the power-of-two assert, the
+   debug assert.
+6. `3f252d2` **The inline hint** on `integrate_and_fire`, outside the
+   brief's list (§ Deviations).
+7. `2c3ce09` **Item 8a**, the workspace version to alpha.7 with the
+   four lockfiles: seven version lines, nothing else.
+8. `1affcd6` **Item 6**, the host bench on both trees; the check
+   fails, bisected, recorded (§ The host bench).
+9. `bd234a4` **Item 7**, the fix on the board: evidence entry three,
+   the fix pin, ROADMAP's two places, the INDEX row.
+10. `672c11a` **Item 8b**, the alpha.7 notes, "tree == published" flipped
+    in every current record, the alpha.7 release draft, the
+    RESEARCH_LOG section.
+11. This commit: the close-out; the head line flipped; the review's
+    cosmetic.
+
+Every spine commit passed the six spine gates before it was made:
+the spine's tests (the two `i128` exactness proofs untouched and
+green), workspace clippy pedantic, `no_std`, the simd tests, simd
+clippy, and the release simd run with `--include-ignored`. The whole
+range then ran through the per-commit loop (§ The loop).
+
+### The numbers
+
+On the board (evidence README § Third entry):
+
+| Burst, 10,000 steps | Baseline (alpha.6, `5c3e3ad`) | Fix (alpha.7, `1affcd6`) |
+|---|---|---|
+| Pinned arm, the neuron as a network holds it | 3,878 ns/step | **1,579 ns/step** |
+| Free arm | 2,863 ns/step | **563 ns/step** |
+| Spikes, first spike step, checksum, both arms | 147, 55, `0b78b456` | 147, 55, `0b78b456` |
+| Real-time loop, first spike | step 56 | step 56 |
+
+Item 7's criterion holds as written. The pinned figure is 2,299
+ns/step (59.3 %) below the baseline, and the cut listing explains the
+margin: the three per-step ROM calls (two `__divdi3`, one
+`__udivdi3`) are gone from the loop body; the loop's only calls are
+the cold fallbacks, each behind its guard (`div_1000_wide` twice,
+`dt_over_tau_wide` once); zero `__divdi3`, zero `__udivdi3`, one
+`divu`, no panic branch. 368 cycles per step at 160 MHz, which three
+ROM divisions per step would account for; the split per call is not
+measured. Behavior, both arms: the same 147 spikes, first spike step
+and checksum as the baseline, which the reviewer's host replay of the
+alpha.6 spine also gives.
+
+### The pins, old → baseline → fix (appended, never overwritten)
+
+| Artifact | Old | Baseline | Fix | Where |
+|---|---|---|---|---|
+| firmware `.text` | `6d407501…` (the round-26 remap of alpha.6) | `f7193ca7…` (build.sh at 5c3e3ad: the alpha.6 spine, the pinned arm) | `0de3bd91f3d64c64060c70b1bbc868a3717fbd6f8236d423e9dd3bbdaf035322` (build.sh at 1affcd6: the alpha.7 spine, the baseline's firmware source) | evidence README § Rebuild + run |
+| flashed ELF | | `3df8a19b…` | `d4d0239a…` | not pins (the descriptor stamp, the clone path); both kept privately beside the two earlier ones |
+
+### The host bench (item 6)
+
+The check failed: alpha.7 slower on both arms, medians +2.047
+ns/step forced and +2.484 control, the repetition ranges touching by
+0.015 ns (forced) and not at all (control). Not the run order (an
+alternation in both orders, scratch) and not branch layout (the
+bisect's jump-aligned builds keep the gap). The bisect over the
+round's commits, medians of three rotated rounds, forced / control:
+item 2 +0.541 / +0.833, item 3 +0.027 / +0.081, item 4 +1.327 /
++0.855, the inline hint +0.620 / +0.735; total +2.515 / +2.504
+(+22.5 % / +25.6 %). Item 2 is added work where x86-64 had no
+division to save; item 4 makes the host loop smaller (145 to 107
+instructions) and slower, why not established; the hint changes the
+layout of a loop already inlined. **Ruling (philo, 2026-09-12, option
+A of three): recorded, not fixed; the chip is the target and item 7
+decides the round.** Not taken: limiting item 2's fast path to 32-bit
+targets (it would recover item 2's share only); a deeper look at the
+x86 code first. Evidence README § Host bench, round 27;
+`host-bisect-r27.log`.
+
+### Deviations from the brief
+
+1. **The tally spilled at the baseline** (the item-1 amendment): the
+   source kept its "no memory access"; the machine code stored the
+   three counts to the frame on spike steps. At the fix both loops
+   hold them in registers, stored only around the cold calls, read
+   from the fix listing as the amendment said item 7 would. The
+   review accepted it.
+2. **The inline hint**, a commit outside the brief's list. Items 2 to
+   4 moved LLVM's inlining; after item 4 the pinned arm called
+   `integrate_and_fire` out of line every step, a per-step call the
+   baseline did not have, and item 7's criterion would not have read
+   as written. Option A of two, the principal's call (philo,
+   2026-09-12), measured before the commit with the tree reverted
+   after; the fix listing confirms the step inlined at all three
+   sites. A hint, not a guarantee.
+3. **The host check fails**, recorded, not fixed (§ The host bench).
+4. **The bench README rider is two sentences, not one**: the second
+   moves § Run's lock sentence to the past tense, since the lock
+   names alpha.7 after the bump.
+
+### Review (item 1, the reviewer, a Fable session, relayed by the principal, 2026-09-12)
+
+No blocking; item 2 may open. Verified at source: the brief identical
+to the draft but the header date; `5c3e3ad` against every clause of
+item 1; the listing's counts reproduced cell by cell, both ranges
+re-extracted from the private ELF byte for byte; `build.sh` at
+`5c3e3ad` in a scratch worktree gives the `.text` `f7193ca7…` again;
+the real-time figures and record-only (b)'s four sd values
+recomputed; a host replay of the alpha.6 spine gives 147 spikes,
+first spike step 55, checksum `0b78b456`, so the board matches the
+host exactly and the checksum is a real behavior pin; the README's
+stale row confirmed. Cosmetic, done in this commit: the `report` doc
+comment now says the locals leave the loop free to hold the counts
+in registers, and that the baseline spilled them. Record-only: the
+deviation accepted; the stale row is a miss of the round-26 review,
+and a `sha256sum -c` step in the tree-clean job would close it
+(owed); two reproductions for this close-out, the reviewer's rebuild
+of `5c3e3ad` to the same `.text` and the host replay's three behavior
+figures.
+
+### Record-only
+
+(a) The inliner moved with the items, read from builds between
+commits (not banked): after item 2, `integrate_and_fire` out of line
+at all three firmware call sites; after item 3, still; after item 4,
+back at the free arm and the real-time loop, not at the pinned arm;
+with the hint, at all three. (b) The builder's slips, each found and
+fixed before its commit: the first tally draft (a struct passed by
+`&self`, stores on every spike, read from its listing); an inline
+format argument in `prop_assert_eq!`, which builds its message with
+`concat!` (red at the first gate run); clippy's `doc_markdown` on a
+board name in the crate README, which is the crate's rustdoc; a git
+worktree created inside `evidence/esp32c3-bringup/` because a
+parallel call had changed the working directory (a clean checkout,
+nothing written beside the pinned files, removed; every later path
+absolute); a background `rg` with no path argument that read stdin
+and never returned (killed; paths explicit since). (c) The bisect's
+binaries and per-run logs were scratch; its summary is banked with a
+header written by the command. (d) Owed: the `sha256sum -c` step (the
+review); round 26's owed list stands. (e) The host's absolute figures
+drift between runs on this laptop (alpha.6 medians from 11.1 to 13.1
+ns); only comparisons within one run are read.
+
+### The loop
+
+The per-commit loop (`tools/percommit.sh`, a scratch worktree and
+target dir) over `main..672c11a`. The first run passed the brief,
+`5c3e3ad` and `02225dc` (green, as in item 1's own loop), then the
+system stopped it for low memory at `822beb3`, after that commit's
+spine gates and during `cargo test -p neuralos-rt --features hdf5`
+(the vendored HDF5 build). It re-ran from item 2 over
+`02225dc..672c11a` with `CARGO_BUILD_JOBS=2`, half the build
+parallelism and the same gates, and the system stopped that run too,
+40 s in, during workspace clippy, with 10 GiB of RAM available and the
+511 MiB swap full at the time. The loop then ran in the foreground,
+one to three commits per call at the default parallelism: `822beb3`,
+`f2007a7`, `91d92a9`, `3f252d2`, `2c3ce09`, `1affcd6`, `bd234a4` and
+`672c11a` each green on its own. All eleven commits before this one
+are green. This commit is looped on its own before the push; the
+result is reported on the PR.
+
+### Guards
+
+GUARD 1 honored: appended only; the brief and the item-1 amendment
+stand as written; the round-23 figures and every earlier pin stand,
+the fix pin appended beside them; 2,842 and 1,501 kept as true when
+written in the living docs (ROADMAP, INDEX, and the evidence README
+by an added sentence); head/updated refreshed under the live-state
+exception. GUARD 2 untouched. GUARD 3: no outreach, no upload, no
+release touched. No publish, no tag. `evidence/`: new files
+sha-pinned, the README extended, its own stale row fixed in
+`02225dc`; no pinned file edited. `paper/` untouched. No binaries
+committed.

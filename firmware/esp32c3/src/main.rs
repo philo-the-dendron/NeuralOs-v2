@@ -92,8 +92,9 @@ fn step(n: &mut LIFNeuron, dt_us: u32, now_us: u32) -> bool {
 
 /// One line per burst arm, named, so a log reads without the brief. The
 /// counts come in by value: each arm keeps them in locals whose address never
-/// escapes, so the timed loop can hold them in registers; a struct passed by
-/// reference would be stored to on every spike.
+/// escapes, so the timed loop is free to hold them in registers (at the
+/// alpha.6 baseline the allocator spilled them on spike steps, ISA round 27
+/// item 1); a struct passed by reference would be stored to on every spike.
 fn report(arm: &str, elapsed_us: u64, spikes: u32, first_spike_step: u32, checksum: u32) {
     println!(
         "burst {}: {} steps in {} us -> {} ns/step, {} spikes, first spike step {}, checksum {:08x}",
