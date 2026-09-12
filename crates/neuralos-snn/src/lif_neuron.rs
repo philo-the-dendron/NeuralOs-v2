@@ -435,6 +435,10 @@ impl LIFNeuron {
     ///
     /// v0.1's `current_time()` returned `last_spike_time_us`, so firing-rate windows
     /// never advanced between spikes. Time is now passed in explicitly.
+    // Inline hint (ISA round 27): without it the firmware's pinned burst arm
+    // called this step out of line, a per-step call the item-1 baseline did
+    // not have. A hint, not a guarantee; the listing is the check.
+    #[inline]
     pub fn integrate_and_fire(
         &mut self,
         input_current_ua: i16,
