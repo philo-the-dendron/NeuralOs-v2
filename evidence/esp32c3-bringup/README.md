@@ -24,8 +24,8 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `alpha6-remeasure.log` | the second board run, alpha.6 firmware, 20 s after reset (§ Second entry) |
 | `burst-loop-alpha5.dis`, `burst-loop-alpha6.dis` | the timed burst loop of each flashed ELF, disassembled by address (§ The mechanism): the machine output the finding rests on; extraction and the one scrub documented there |
 | `host-bench-alpha5.log`, `host-bench-alpha6.log` | the host spike-path bench, one run per tree (§ Host bench); rebuilt by `proofs/spike-path-bench/README.md` § Run |
-| `board-r27-alpha6.log` | the third board run (ISA round 27, item 1, 2026-09-12): the alpha.6 spine and the firmware with two timed burst arms, free and pinned, each line named; 20 s after reset. Built by `build.sh` at 5c3e3ad, ELF `3df8a19b…`, `.text` pinned in § Rebuild + run. The figures and the reading: ISA round 27, item 1 |
-| `burst-loops-r27-alpha6.dis` | both burst loops of that ELF, cut by address (free `0x42011e1e`–`0x420120ac`, pinned `0x420122d4`–`0x4201260e`) with the extraction and the scrub of § The mechanism: the listing ISA round 27's item 3 is decided by |
+| `board-r27-alpha6.log`, `board-r27-alpha7.log` | the third entry (ISA round 27, 2026-09-12): the baseline on the alpha.6 spine (built at 5c3e3ad, ELF `3df8a19b…`) and the fix on the alpha.7 spine (built at 1affcd6, ELF `d4d0239a…`), the firmware with two timed burst arms, free and pinned, each line named; 20 s after reset; `.text` pins in § Rebuild + run (§ Third entry) |
+| `burst-loops-r27-alpha6.dis`, `burst-loops-r27-alpha7.dis` | both burst loops of each ELF, cut by address with the extraction and the scrub of § The mechanism (baseline: free `0x42011e1e`–`0x420120ac`, pinned `0x420122d4`–`0x4201260e`; fix: free `0x42011dca`–`0x42011f56`, pinned `0x420121b4`–`0x42012590`); the baseline's is the listing ISA round 27's item 3 was decided by (§ Third entry) |
 | `host-bench-r27-alpha6.log`, `host-bench-r27-alpha7.log` | the host spike-path bench, round 27's regression check, one run per tree, each opening with the line that names its commit and spine version (§ Host bench, round 27) |
 | `host-bisect-r27.log` | the follow-up to that check: the bench per commit of the round, medians per round (§ Host bench, round 27) |
 | `SHA256SUMS` | pins the logs and this README |
@@ -227,6 +227,93 @@ runs: control repetitions range 10.661–12.615 on alpha.5 and
 10.442–12.594 on alpha.6). Forced minus control, same tree: 6.680
 ns/step on alpha.5, 1.615 on alpha.6.
 
+## Third entry: round 27, the divisions, two burst arms (2026-09-12)
+
+Same SuperMini (MAC `70:af:09:07:f6:3c`, esp32c3 revision v0.4), same
+port, same tool, 20 s after reset; both ELFs built by `build.sh`
+(§ Rebuild + run holds the pins). The firmware gained a second timed
+burst beside the first (ISA round 27, item 1). The free arm is the
+burst of the first two entries: the neuron and the constant `DT_US` in
+plain sight of the optimizer. The pinned arm steps a fresh neuron with
+the same id through `core::hint::black_box(&mut n)` once per step,
+with dt read once through `black_box(DT_US)`, as a network holds a
+neuron: in memory, dt at run time. Both arms print ns/step, spikes,
+the first spike step and a checksum of the spike steps (a wrapping
+`× 31 + i` fold). Baseline: the alpha.6 spine, firmware at `5c3e3ad`,
+ELF `3df8a19b…`, `board-r27-alpha6.log`. Fix: the alpha.7 spine (items
+2 to 4, the inline hint, the bump), the same firmware source, built at
+`1affcd6`, ELF `d4d0239a…`, `board-r27-alpha7.log`. Each log opens
+with stale pre-reset spike lines (two in the baseline, one in the
+fix); every figure below is from after the `rst:` line.
+
+| Measurement | Baseline (alpha.6 spine) | Fix (alpha.7 spine) |
+|---|---|---|
+| Burst, pinned arm (the cost a network pays) | 38,789 µs → **3,878 ns/step** | 15,797 µs → **1,579 ns/step** |
+| Burst, free arm | 28,633 µs → 2,863 ns/step | 5,636 µs → **563 ns/step** |
+| Burst spikes, both arms | 147 | 147 |
+| First spike step, both arms | 55 | 55 |
+| Checksum of the spike steps, both arms | `0b78b456` | `0b78b456` |
+| First spike, real-time loop | step 56, 56,332 µs | step 56, 56,241 µs |
+| Sustained: spikes after the reset | 294 | 295 |
+| Sustained rate, spikes / last stamp | 294 / 20.026913 s = 14.680/s | 295 / 20.066479 s = 14.701/s |
+| Sustained rate, intervals / span | 293 / 19.970581 s = 14.672/s | 294 / 20.010238 s = 14.692/s |
+| Inter-spike interval (sample sd) | mean 68,159 µs, sd 678, min 67,333, max 70,363; 67–70 loop steps | mean 68,062 µs, sd 635, min 67,201, max 69,362; 67–69 loop steps |
+| Wall time per loop step | 20,026,913 µs / 19,917 = 1.0055 ms | 20,066,479 µs / 19,993 = 1.0037 ms |
+
+Comparison: the pinned burst −2,299 ns/step (−59.3 %), the free burst
+−2,300 ns/step (−80.3 %); spike count, first spike step and checksum
+identical in both arms on both spines, and on the alpha.6 spine
+identical to the x86-64 host replay (the item-1 review, ISA round 27).
+The real-time loop is reported, not gated: it stamps each step with
+the wall clock and the noise is seeded by the stamp, so a spike can
+move by a step; its first spike stays at step 56. Across rounds the
+comparison is approximate: the first two entries had no tally code
+(ISA round 27, record-only (d)).
+
+The listings, `burst-loops-r27-alpha6.dis` and
+`burst-loops-r27-alpha7.dis`: each loop cut from its flashed ELF by
+address, from its first instruction to its exit target, with § The
+mechanism's extraction; counted by the script that reproduces that
+section's 195 and 34.
+
+| Burst loop body | Free, baseline | Free, fix | Pinned, baseline | Pinned, fix |
+|---|---|---|---|---|
+| Range | `0x42011e1e`–`0x420120ac` | `0x42011dca`–`0x42011f56` | `0x420122d4`–`0x4201260e` | `0x420121b4`–`0x42012590` |
+| Instructions | 214 | 132 | 268 | 320 |
+| ROM `__divdi3` calls | 2 | 0 | 2 | 0 |
+| ROM `__udivdi3` calls | 0 | 0 | 1 | 0 |
+| Hardware `divu` | 1 | 0 | 0 | 1 |
+| Calls to the cold fallbacks | — | 1 | — | 3 |
+| Loads and stores against the frame | 42 | 8 | 15 | 19 |
+| Loads and stores through the neuron pointer | — | — | 33 | 31 |
+| Branches out, besides the exit | 0 | 0 | 1 (`panic_bounds_check`) | 0 |
+
+The reading. The pinned loop has no ROM division left, and its only
+calls are to the cold fallbacks, each behind its guard
+(`div_1000_wide` twice, `dt_over_tau_wide` once): both `/ 1000` are a
+multiply-high by the constant, `dt_over_tau` is one hardware `divu`,
+and the ring mask removed the bounds check. The loop is longer (320
+instructions against 268) because the arithmetic that sat behind three
+calls is now inline. −2,299 ns is 368 cycles per step at 160 MHz,
+which three ROM divisions per step would account for; the split per
+call is not measured, and the finding does not need it. The free loop
+is back in registers: 132 instructions, dt/τ folded to 50 by the
+constant, its frame traffic two range-check constants reloaded on each
+integrating step plus the save and restore around the cold call. Its
+563 ns/step is below the 1,501 of alpha.5's register loop, which still
+called the ROM once per step. The tally's three counts, spilled at the
+baseline (ISA round 27, item 1), are in registers in both fix loops;
+the only stores to them are around the cold calls. The inline hint on
+`integrate_and_fire` (ISA round 27, a deviation from the brief's list,
+the principal's call) keeps the step inlined in the pinned loop;
+without it that loop called the step out of line every step.
+
+§ The mechanism's reading, that 2,842 ns is what a network holding a
+`Vec<LIFNeuron>` always pays, holds for the struct in memory under the
+firmware's constant dt. With dt at run time, as a network passes
+`time_step_us`, the alpha.6 step costs 3,878 ns (the pinned baseline
+above); that section stands as written on 2026-09-10.
+
 ## Host bench, round 27: the alpha.6 tree against alpha.7 (2026-09-12)
 
 The same harness as § Host bench, now as round 27's regression check
@@ -340,6 +427,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   d672ca37eb1ef67ba40b212904fa0cf0d4a331a68bcf7e76f8bc288617027f6b  alpha.6 (e26e1749…)
 #   6d407501400cb9beb554b2f5df7ce031f9bae08c43a274bd41ef8df07bc0ddaa  alpha.6 under the round-26 remap (build.sh, PR #23's item-1 tree; the spine and firmware sources of 820d81a, unchanged)
 #   f7193ca7415e2d8d8c006a8cff67c97a3f5e51e2965639d442a65293a8354821  round-27 baseline (build.sh at 5c3e3ad: the alpha.6 spine, the firmware with the free and pinned burst arms; ISA round 27, item 1)
+#   0de3bd91f3d64c64060c70b1bbc868a3717fbd6f8236d423e9dd3bbdaf035322  round-27 fix (build.sh at 1affcd6: the alpha.7 spine, the baseline's firmware source; ISA round 27, item 7)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -353,7 +441,9 @@ behavior figures of the second entry stand unmeasured. The two
 earlier pins stand as built by the bare cargo line; they are not
 reproduced by the script and are not expected to be. The fourth pin is
 not a rebuild: 5c3e3ad changes the firmware's source (the pinned burst
-arm, ISA round 27, item 1) on the same alpha.6 spine.
+arm, ISA round 27, item 1) on the same alpha.6 spine. The fifth is
+round 27's fix: the same firmware source, the alpha.7 spine, built at
+1affcd6.
 
 ### Release asset (the procedure since round 26)
 

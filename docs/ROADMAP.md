@@ -12,7 +12,7 @@
 |---|---|---|
 | **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again** — NIR DONE through general assembly (slices 1+2 + `build_network`, 2026-08-22 @ alpha.5), QEMU proof landed 2026-08-21; lock-free (re-scoped, below) remains; **SIMD hardening DONE 2026-08-31** (ten-commit branch, ISA § Close-out). |
 | **2** | `neuralos-app` — Slint visualizer / lab bench | Untouched since 2026-08-08; Phase-2 items re-opened. |
-| **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). **ESP32-C3 silicon DONE 2026-09-09** (`evidence/esp32c3-bringup/`: one LIF neuron on a SuperMini, first spike step 56, 14.7 spikes/s, exact host match; the burst cost 1,501 ns/step on the alpha.5 spine and **2,842 on alpha.6**, re-measured 2026-09-10 — the alpha.5 loop was register-resident by compiler luck, 2,842 is the in-memory cost any network pays, ISA round-23; the division fix is the next brief). HiFive only if a session names it. |
+| **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). **ESP32-C3 silicon DONE 2026-09-09** (`evidence/esp32c3-bringup/`: one LIF neuron on a SuperMini, first spike step 56, 14.7 spikes/s, exact host match). Per-step cost, round 27 (alpha.7 in the tree, 2026-09-12, ISA round 27): the neuron as a network holds it (in memory, dt at run time) **3,878 ns/step on alpha.6 → 1,579 on alpha.7**, the free loop 2,863 → 563, behavior bit-identical; the host bench about 2 to 2.5 ns/step slower, recorded. The earlier figures, true when written: 1,501 on alpha.5 and 2,842 on alpha.6 (ISA round-23), both the free loop under the firmware's constant dt. HiFive only if a session names it. |
 | **4** | Paper track | The Branch B article (in `paper/`) — finish, gate, submit. Must not displace 1–3. |
 | **5** | Bridge follow-ups | **Frozen record.** Reopening is the principal's call on the recorded forks. The one active bridge-adjacent task is R4 (harness extraction) below. |
 
@@ -122,13 +122,16 @@ displace substrate + lab bench + gated research.
    arrived 2026-09-09): one LIF neuron on a SuperMini, first spike
    step 56, 147 burst spikes = 14.7/s (exact host match), blue LED
    blinking; the 10,000-step burst cost 1,501 ns/step on the alpha.5
-   spine and **2,842 ns/step on alpha.6** (re-measured 2026-09-10,
-   every behavior figure identical: the alpha.5 loop was one the
-   compiler kept in registers, 2,842 is the in-memory cost any
-   `Vec<LIFNeuron>` network pays on either version, mechanism read from
-   the two flashed ELFs, ISA round-23; narrowing the two 64-bit
-   divisions per step is the next brief) —
-   `evidence/esp32c3-bringup/`, ISA rounds 19 and 23. One blocking fix rode
+   spine and 2,842 ns/step on alpha.6 (re-measured 2026-09-10, ISA
+   round-23; true when written: both the free loop under the
+   firmware's constant dt, and a network's run-time dt costs more).
+   **Round 27 (2026-09-12, alpha.7 in the tree) narrowed the
+   divisions and masked the ring index:** the neuron as a network
+   holds it (in memory, dt at run time) 3,878 → **1,579 ns/step**,
+   the free loop 2,863 → 563, every behavior figure identical, no ROM
+   division left in the pinned loop; the host bench is about 2 to 2.5
+   ns/step slower, recorded —
+   `evidence/esp32c3-bringup/`, ISA rounds 19, 23 and 27. One blocking fix rode
    the session (the ESP-IDF app descriptor, 427b6cb). The board half
    of GUARD 3 is landed, and the exporter half closed with the release
    `bringup-2026-09-09` (published 2026-09-10, ISA round-21); outreach
