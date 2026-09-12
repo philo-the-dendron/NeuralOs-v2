@@ -24,6 +24,8 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `alpha6-remeasure.log` | the second board run, alpha.6 firmware, 20 s after reset (§ Second entry) |
 | `burst-loop-alpha5.dis`, `burst-loop-alpha6.dis` | the timed burst loop of each flashed ELF, disassembled by address (§ The mechanism): the machine output the finding rests on; extraction and the one scrub documented there |
 | `host-bench-alpha5.log`, `host-bench-alpha6.log` | the host spike-path bench, one run per tree (§ Host bench); rebuilt by `proofs/spike-path-bench/README.md` § Run |
+| `board-r27-alpha6.log` | the third board run (ISA round 27, item 1, 2026-09-12): the alpha.6 spine and the firmware with two timed burst arms, free and pinned, each line named; 20 s after reset. Built by `build.sh` at 5c3e3ad, ELF `3df8a19b…`, `.text` pinned in § Rebuild + run. The figures and the reading: ISA round 27, item 1 |
+| `burst-loops-r27-alpha6.dis` | both burst loops of that ELF, cut by address (free `0x42011e1e`–`0x420120ac`, pinned `0x420122d4`–`0x4201260e`) with the extraction and the scrub of § The mechanism: the listing ISA round 27's item 3 is decided by |
 | `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../firmware/esp32c3/` | the firmware crate; the ELF is rebuildable, not committed |
@@ -253,6 +255,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   d14cce25ec36906b0150ec5deaf9675dc199da4fbe39feb334bfddf2c9960af4  alpha.5 (102af8c6…)
 #   d672ca37eb1ef67ba40b212904fa0cf0d4a331a68bcf7e76f8bc288617027f6b  alpha.6 (e26e1749…)
 #   6d407501400cb9beb554b2f5df7ce031f9bae08c43a274bd41ef8df07bc0ddaa  alpha.6 under the round-26 remap (build.sh, PR #23's item-1 tree; the spine and firmware sources of 820d81a, unchanged)
+#   f7193ca7415e2d8d8c006a8cff67c97a3f5e51e2965639d442a65293a8354821  round-27 baseline (build.sh at 5c3e3ad: the alpha.6 spine, the firmware with the free and pinned burst arms; ISA round 27, item 1)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -264,7 +267,9 @@ of both, diffed; the one `mv` in the list is `addi` with a zero
 immediate). No instruction was added, removed or reordered, so the
 behavior figures of the second entry stand unmeasured. The two
 earlier pins stand as built by the bare cargo line; they are not
-reproduced by the script and are not expected to be.
+reproduced by the script and are not expected to be. The fourth pin is
+not a rebuild: 5c3e3ad changes the firmware's source (the pinned burst
+arm, ISA round 27, item 1) on the same alpha.6 spine.
 
 ### Release asset (the procedure since round 26)
 

@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@7fe2388 (PR #23 merged 2026-09-12 03:20 UTC: round 26, the build is the guard; mirror synced, branch deleted) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · wrote-from: work/divisions, ahead by the round-27 brief (docs only), unmerged · open(session): round 27, the fix brief part B (the divisions and the ring mask; spine, alpha.7): item 1, the criterion on the board before any spine edit (builder, PR to follow) · next-work: ROADMAP § Practical next moves"
+head: "main@7fe2388 (PR #23 merged 2026-09-12 03:20 UTC: round 26, the build is the guard; mirror synced, branch deleted) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z, tree == published · wrote-from: work/divisions, ahead by the round-27 brief and item 1 (the pinned arm; the baseline on the board: pinned 3,878 ns/step, free 2,863, behavior identical; no spine change), unmerged · open(session): round 27, the fix brief part B (the divisions and the ring mask; spine, alpha.7): item 2, the div_1000 helper, next; item 3's guard goes in (the pinned listing calls __udivdi3) (builder, PR to follow) · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-12T04:01:29Z
+updated: 2026-09-12T04:19:22Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -8763,3 +8763,135 @@ order: the brief, 1, 2, 3, 4, 8a, 6, 7, 8b, the close-out; the new
 tests ride with items 2 and 3, the bench README sentence with item
 6. The item numbers stay as written, because the accepted texts
 refer to them.
+
+## Amendment (round 27 — item 1, the criterion on the board: pinned 3,878 ns/step, free 2,863, behavior identical; item 3 opens — 2026-09-12)
+
+Item 1 of the brief above, on record before item 2 opens and before
+any spine edit. `5c3e3ad` adds the pinned arm beside the free one: a
+fresh `neuron(0)`, the free arm's id, stepped through
+`core::hint::black_box(&mut n)` once per step, dt read once through
+`black_box(DT_US)` and passed into `step`, the timestamp `i × DT_US`.
+Each arm prints one named line: ns/step, spikes, the first spike
+step, and a checksum, a wrapping fold of the spike steps (`× 31 + i`).
+Built by `build.sh` at `5c3e3ad` on the alpha.6 spine: ELF
+`3df8a19b…`, `.text`
+`f7193ca7415e2d8d8c006a8cff67c97a3f5e51e2965639d442a65293a8354821`,
+appended as the fourth pin in the evidence README § Rebuild + run (a
+build of the same source before the commit gave the same `.text`);
+gate 0 hits, canary as expected. Flashed to the same SuperMini (MAC
+`70:af:09:07:f6:3c`, esp32c3 revision v0.4) and read 20 s after reset
+by `tools/esp32c3_capture.py`:
+`evidence/esp32c3-bringup/board-r27-alpha6.log` (`830d09f0…`). The
+ELF is kept privately beside the two earlier ones
+(`~/projets/NeuralOs-v2-artifacts/esp32c3/`).
+
+**The numbers.** Every figure is from after the `rst:` line. The log
+opens with two stale pre-reset spike lines, the first spliced into a
+bootloader line, as in the second entry.
+
+| Burst, 10,000 steps | Free arm | Pinned arm |
+|---|---|---|
+| Time | 28,633 µs → **2,863 ns/step** | 38,789 µs → **3,878 ns/step** |
+| Spikes | 147 | 147 |
+| First spike step | 55 | 55 |
+| Checksum | `0b78b456` | `0b78b456` |
+
+The two arms agree on every behavior figure: same id, same inputs,
+same values. So the pinned arm computes what the free arm computes,
+and 147 is the count of the first two entries. The pinned figure is
+above 2,842, as the brief predicted. It does not contradict round 23:
+it measures the neuron as a network holds it, a different and more
+honest measurement, and the two numbers are never compared as one.
+The pinned 3,878 is the number this round must move.
+
+The real-time loop, reported and not gated: first spike at step 56,
+56,332 µs; 294 spikes after the reset (295 in the first two entries);
+294 / 20.026913 s = 14.680/s; 293 intervals / 19.970581 s =
+14.672/s; inter-spike interval mean 68,159 µs, sd 678 (sample), min
+67,333, max 70,363; 67 to 70 loop steps, with one interval of 70
+(none in the first two entries; the brief's reason applies: the loop
+stamps each step with the wall clock and the noise is seeded by the
+stamp, so a spike can move by a step); wall time per loop step
+20,026,913 µs / 19,917 steps = 1.0055 ms. One script computed these,
+and it reproduces every figure of the first two entries from their
+pinned logs (the sd: record-only (b) below).
+
+**The listing.** `evidence/esp32c3-bringup/burst-loops-r27-alpha6.dis`
+(`1d6195df…`): the two loops of the flashed ELF, each cut by address
+from its first instruction to its exit target. The extraction is
+round 23's (`llvm-objdump -d --no-show-raw-insn --print-imm-hex` over
+each range, the ELF's path on line 2 replaced by `sha256:<the ELF's
+sha>`), the two outputs one after the other. One script counts all
+three loops, and it gives round 23's 195 instructions and 34 frame
+loads/stores on `burst-loop-alpha6.dis`.
+
+| Burst loop body | Round 23, alpha.6 (`e26e1749…`) | Free arm | Pinned arm |
+|---|---|---|---|
+| Range | `0x42011d0c`–`0x42011f66` | `0x42011e1e`–`0x420120ac` | `0x420122d4`–`0x4201260e` |
+| Instructions | 195 | 214 | 268 |
+| ROM `__divdi3` calls | 2 | 2 | 2 |
+| ROM `__udivdi3` calls | 0 | 0 | 1 |
+| Hardware `divu` | 1 | 1 | 0 |
+| Loads and stores against the frame | 34 | 42 | 15 |
+| Loads and stores through the neuron pointer | — | — | 33 |
+| Ring stores (computed index) | 2 | 2 | 2 |
+| Branches out, besides the exit | 0 | 0 | 1 |
+
+The pinned arm. The pointer `black_box` returns is stored to a frame
+slot and loaded back every step, and every neuron field is read and
+written through it. So `black_box` pins the struct, and the
+two-element fallback is not needed. dt is a run-time value there: the
+dividend `dt × 1000` is computed once, before the loop, as a 64-bit
+pair, and `dt_over_tau` is a call to the ROM's `__udivdi3` on every
+integrating step, with τ loaded through the pointer. The free arm
+keeps round 23's `divu` of the folded 1,000,000. The prediction
+holds, so **item 3's guard goes in**, by the brief's rule. The one
+branch out is the ring's bounds check on the full-ring store
+`self.buf[self.head]`. head is loaded through the pointer, so its
+bound is not known: the loop compares it against 63 and branches to
+`panic_bounds_check` (length 64). The free arm has no such branch,
+like the flashed alpha.6 loop (record-only (e) above). Item 4's mask
+is expected to remove it.
+
+The free arm keeps the neuron in the frame at the baseline, as the
+brief expected: 2,863 ns/step against round 23's 2,842 on the same
+spine, 214 instructions against 195. The difference is the new tally
+code and its spills below; record-only (d) above applies, so the
+comparison across rounds is approximate, and the one inside this
+round is fair.
+
+**One deviation from the brief.** Item 1 says the checksum is updated
+"with no memory access" inside the timed loop. The source holds it:
+the three counts are locals, updated on spike steps only, and passed
+by value to `report`. A first cut kept them in a struct whose
+`report` took `&self`; its listing, read before any commit, stored
+to the struct on every spike step, so it was rewritten. The machine
+code does not hold it. Across the two ROM calls only the twelve
+callee-saved registers survive, the loop has more values live across
+the calls than that, and the allocator spills the spike count, the
+first spike step and the checksum to three frame slots. They are
+touched on spike steps only, 147 of the 10,000. Not fought here: it
+is a few frame accesses per spike step, the same code in the baseline
+and the fix, and the calls that cause the pressure are what this
+round removes. Item 7 reads the fix listing for the same slots.
+
+**Record-only.** (a) The evidence README's own row in `SHA256SUMS`
+stopped matching at round 26. `5680156`, `4e3acdd`, `7e58055` and
+`2ff67d6` edited the README and none refreshed the row, which last
+matched at `f380d04` (round 23). Found by `sha256sum -c` before this
+commit, refreshed here with the README's new text; every row checks.
+No CI job runs that check. (b) The first two entries give the
+inter-spike-interval sd by two estimators. 676 is the population sd
+of the first log's intervals (the sample sd is 677); 731 is the
+sample sd of the second's (the population sd is 730). Both are
+recomputed from the pinned logs and stand as written; this entry
+gives the sample sd.
+
+**Guards.** GUARD 1: appended; the brief above stands as written; the
+round-23 figures and the three `.text` pins stand, and the baseline
+pin is appended beside them; head/updated refreshed under the
+live-state exception. GUARD 2 untouched. GUARD 3: no outreach, no
+upload, no release touched. No publish, no tag. No spine edit: item 2
+opens next. `evidence/`: two new files, sha-pinned; the README gained
+two rows, a pin and a sentence, and its own row is refreshed; no
+pinned file edited. `paper/` untouched. No binaries committed.
