@@ -167,14 +167,23 @@ pub const MEMBRANE_MV_MAX: i16 = 50;
 /// This is the ONE definition of the formula. `simd::dt_over_tau` is this
 /// function plus the batch's clamp, so the two cannot drift.
 ///
-/// The product and the division are computed in `u64`. Computing them with
-/// `as i32` casts wrapped for `dt_us > i32::MAX` and for
+/// The wide formula computes the product and the division in `u64`.
+/// Computing them with `as i32` casts wrapped for `dt_us > i32::MAX` and for
 /// `tau_membrane_us > i32::MAX`: `dt_over_tau(2_147_484, u32::MAX)` returned
 /// `-2_147_483_647`, a value that overflows every downstream multiply, and
 /// `dt_over_tau(1000, u32::MAX)` returned `-1_000_000` — a single step that
 /// drove the membrane to the floor. Both inputs are `u32`, so `u64` covers the
 /// whole domain exactly, the result is always non-negative, and `i64` holds it
 /// with room to spare (the maximum is `u32::MAX * 1000 = 4_294_967_295_000`).
+///
+/// `u64` only where it is needed: when `dt_us <= u32::MAX / 1000`
+/// (4,294,967 µs; the physical dt is 1,000) the product fits `u32` and the
+/// division is one hardware divide on a 32-bit core; above it,
+/// `dt_over_tau_wide` computes the `u64` formula as it always did, out of
+/// line. The guard is "fits `u32`", a property of the value like
+/// `div_1000`'s "fits `i32`", never a bound on `dt/τ`. With dt a run-time
+/// value, the `u64` division was a call to the ROM's `__udivdi3` on every
+/// integrating step (ISA round 27, item 1).
 ///
 /// # Examples
 /// ```
@@ -183,6 +192,7 @@ pub const MEMBRANE_MV_MAX: i16 = 50;
 /// assert_eq!(dt_over_tau(40_000, 20_000), 2_000); // dt/tau = 2, exact
 /// assert_eq!(dt_over_tau(1_000, u32::MAX), 0);   // no wrap to a negative
 /// ```
+#[inline]
 #[must_use]
 pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i64 {
     if tau_membrane_us == 0 {
@@ -201,6 +211,21 @@ pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i64 {
         // signature moves anyway.
         return 0;
     }
+    // One hardware divide when the product fits `u32`, which covers every
+    // physical step; the guard is "fits", not a bound (doc above).
+    if dt_us <= u32::MAX / 1000 {
+        i64::from(dt_us * 1000 / tau_membrane_us)
+    } else {
+        dt_over_tau_wide(dt_us, tau_membrane_us)
+    }
+}
+
+/// The wide half of [`dt_over_tau`], for `dt_us > u32::MAX / 1000`: the
+/// `u64` formula as it always was. Out of line and cold, like
+/// [`div_1000_wide`].
+#[cold]
+#[inline(never)]
+fn dt_over_tau_wide(dt_us: u32, tau_membrane_us: u32) -> i64 {
     let raw = (u64::from(dt_us) * 1000) / u64::from(tau_membrane_us);
     // u32::MAX * 1000 < i64::MAX, so this is lossless for every input.
     raw as i64
@@ -1325,6 +1350,61 @@ mod tests {
         // Exact: dt_over_tau = 107_374_200, leak = 30, so the delta is enormous
         // and the clamp — not a bound on dt/tau — is what bounds the result.
         assert_eq!(n.membrane_potential, MEMBRANE_MV_MAX);
+    }
+
+    /// `dt_over_tau` on both sides of its `u32` guard: 4,294,967 is the
+    /// largest dt whose product fits `u32`, 4,294,968 the smallest that
+    /// takes the wide path. Every row against its value written out, and the
+    /// value against the `u64` formula the guard sits in front of, so a typo
+    /// in the table cannot pass. The `τ = u32::MAX` pair is the sharpest: 0
+    /// on one side of the guard, 1 on the other.
+    #[test]
+    fn dt_over_tau_is_exact_on_both_sides_of_the_guard() {
+        let m = u32::MAX;
+        // (dt_us, tau_us, expected)
+        let rows: [(u32, u32, i64); 11] = [
+            (4_294_967, 1, 4_294_967_000),
+            (4_294_968, 1, 4_294_968_000),
+            (4_294_967, 7, 613_566_714),
+            (4_294_968, 7, 613_566_857),
+            (4_294_967, m, 0),
+            (4_294_968, m, 1),
+            (m, 1, 4_294_967_295_000),
+            (m, m, 1_000),
+            (1_000, 20_000, 50),
+            (0, 20_000, 0),
+            (1_000, 0, 0),
+        ];
+        for (dt, tau, expected) in rows {
+            let formula = if tau == 0 {
+                0
+            } else {
+                (u64::from(dt) * 1000 / u64::from(tau)) as i64
+            };
+            assert_eq!(formula, expected, "the table: ({dt}, {tau})");
+            assert_eq!(dt_over_tau(dt, tau), expected, "dt_over_tau({dt}, {tau})");
+        }
+    }
+
+    proptest! {
+        /// `dt_over_tau` equals the `u64` formula it computed before the
+        /// guard. dt is drawn half from `0..=4_294_967`, the fast path, and
+        /// half from all of `u32`, which almost always takes the wide one: a
+        /// random `u32` is at most 4,294,967 in 0.1 % of draws. τ comes from
+        /// all of `u32`; zero, which a draw almost never hits, is a row of
+        /// the test above.
+        #[test]
+        fn prop_dt_over_tau_equals_the_u64_formula(
+            dt in prop_oneof![0u32..=4_294_967, any::<u32>()],
+            tau in any::<u32>(),
+        ) {
+            let formula = if tau == 0 {
+                0
+            } else {
+                (u64::from(dt) * 1000 / u64::from(tau)) as i64
+            };
+            prop_assert_eq!(dt_over_tau(dt, tau), formula, "dt = {} tau = {}", dt, tau);
+        }
     }
 
     /// The neuron is EXACT where the batch kernel clamps, and this is the row
