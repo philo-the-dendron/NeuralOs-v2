@@ -26,6 +26,8 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `host-bench-alpha5.log`, `host-bench-alpha6.log` | the host spike-path bench, one run per tree (§ Host bench); rebuilt by `proofs/spike-path-bench/README.md` § Run |
 | `board-r27-alpha6.log` | the third board run (ISA round 27, item 1, 2026-09-12): the alpha.6 spine and the firmware with two timed burst arms, free and pinned, each line named; 20 s after reset. Built by `build.sh` at 5c3e3ad, ELF `3df8a19b…`, `.text` pinned in § Rebuild + run. The figures and the reading: ISA round 27, item 1 |
 | `burst-loops-r27-alpha6.dis` | both burst loops of that ELF, cut by address (free `0x42011e1e`–`0x420120ac`, pinned `0x420122d4`–`0x4201260e`) with the extraction and the scrub of § The mechanism: the listing ISA round 27's item 3 is decided by |
+| `host-bench-r27-alpha6.log`, `host-bench-r27-alpha7.log` | the host spike-path bench, round 27's regression check, one run per tree, each opening with the line that names its commit and spine version (§ Host bench, round 27) |
+| `host-bisect-r27.log` | the follow-up to that check: the bench per commit of the round, medians per round (§ Host bench, round 27) |
 | `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../firmware/esp32c3/` | the firmware crate; the ELF is rebuildable, not committed |
@@ -224,6 +226,88 @@ control 11.412 → 12.194 (+0.782, inside the repetition spread of both
 runs: control repetitions range 10.661–12.615 on alpha.5 and
 10.442–12.594 on alpha.6). Forced minus control, same tree: 6.680
 ns/step on alpha.5, 1.615 on alpha.6.
+
+## Host bench, round 27: the alpha.6 tree against alpha.7 (2026-09-12)
+
+The same harness as § Host bench, now as round 27's regression check
+(ISA round 27, item 6): the alpha.7 tree must not be slower on either
+arm. Same box as that section (Intel i5-6200U, 2 cores, 4 threads,
+Linux 6.8, governor `powersave`, nothing pinned), same session, back to
+back, both trees built first: a worktree at `7fe2388` under
+`bench-rebuild/` (the PR #23 merge commit, the alpha.6 spine; it
+carries the bench and its lock, so nothing is copied) and this tree at
+`2c3ce09` (after the bump, item 8a). Each log opens with a line naming
+its commit and the spine version read from that tree's bench lock,
+written by the command through the same `tee`, never onto a pinned
+name:
+
+```bash
+git worktree add --detach bench-rebuild/r27-alpha6 7fe2388
+bench() {   # $1 = tree, $2 = log name; both trees built first with cargo build --release --locked
+  ( printf 'tree %s, neuralos-snn %s\n' \
+      "$(git -C "$1" rev-parse --short HEAD)" \
+      "$(awk '$0=="name = \"neuralos-snn\""{getline; gsub(/version = |"/,""); print}' "$1/proofs/spike-path-bench/Cargo.lock")"
+    cd "$1/proofs/spike-path-bench" && cargo run --release --locked
+  ) | tee "evidence/esp32c3-bringup/$2"
+}
+bench bench-rebuild/r27-alpha6 host-bench-r27-alpha6.log
+bench . host-bench-r27-alpha7.log
+git worktree remove --force bench-rebuild/r27-alpha6
+```
+
+| Arm | Tree | min ns/step | median ns/step | Log |
+|---|---|---|---|---|
+| forced | alpha.6 (`7fe2388`) | 12.103 | 13.084 | `host-bench-r27-alpha6.log` |
+| forced | alpha.7 (`2c3ce09`) | 14.511 | 15.131 | `host-bench-r27-alpha7.log` |
+| control | alpha.6 (`7fe2388`) | 10.559 | 11.364 | `host-bench-r27-alpha6.log` |
+| control | alpha.7 (`2c3ce09`) | 12.900 | 13.848 | `host-bench-r27-alpha7.log` |
+
+The check fails. alpha.7 is slower on both arms: medians +2.047
+ns/step forced and +2.484 control. The repetition ranges overlap by
+0.015 ns on the forced arm (alpha.6 up to 14.526, alpha.7 from 14.511)
+and not at all on the control arm (up to 12.359, from 12.900).
+
+The follow-up, from scratch builds and not part of the check: the
+round's commits bisected. Each tree is a `git archive` of
+`Cargo.toml`, `rust-toolchain.toml`, `crates/` and
+`proofs/spike-path-bench/`, built with `cargo build --release --locked
+--offline`; the seven binaries ran in three rounds in rotated order,
+two of them the two ends rebuilt with `RUSTFLAGS="-C
+llvm-args=-x86-branches-within-32B-boundaries"` as a control for
+Skylake's jump-alignment erratum. Summary: `host-bisect-r27.log`. Each
+figure below is the median of the three rounds' medians, the share in
+brackets; the last column is the loop that holds the step's one
+division, read from each binary's `objdump -d` of the bench's `run`:
+
+| Tree (commit) | forced | control | loop: instructions / memory operands |
+|---|---|---|---|
+| alpha.6 (`7fe2388`) | 11.156 | 9.778 | 94 / 19 |
+| + item 2, `div_1000` (`822beb3`) | 11.697 (+0.541) | 10.611 (+0.833) | 145 / 39 |
+| + item 3, the `dt_over_tau` guard (`f2007a7`) | 11.724 (+0.027) | 10.692 (+0.081) | 145 / 39 |
+| + item 4, the ring mask (`91d92a9`) | 13.051 (+1.327) | 11.547 (+0.855) | 107 / 23 |
+| + the inline hint (`3f252d2`, the alpha.7 code) | 13.671 (+0.620) | 12.282 (+0.735) | 111 / 24 |
+| alpha.6, jump-aligned | 10.858 | 9.831 | |
+| alpha.7 code, jump-aligned | 13.553 | 12.108 | |
+
+The aligned builds keep the gap (+2.695 forced, +2.277 control), so
+the cost is code, not branch layout. In every one of these binaries
+the whole step is inlined into the bench loop; only `div_1000_wide`
+stays out of line from item 2 on, and the `dt_over_tau` guard folds
+away (the bench's dt is a constant). Item 2 is added work: its range
+checks sit where x86-64 had no division to save (the `i64 / 1000` was
+already a multiply-high), and the loop grows from 94 instructions to
+145. Item 4 shrinks the loop to 107, the scalarization it also
+produces on the chip, and the smaller loop runs slower; why is not
+established (a listing gives size, not the critical path). The hint
+changes the layout of a loop that was already inlined. Absolute
+figures move between runs on this laptop (alpha.6 medians from 11.1 to
+13.1 ns); only comparisons within one run are read.
+
+Ruling (the principal, 2026-09-12): recorded, not fixed. The chip is
+the target and item 7 decides the round; the alpha.7 notes state this
+host cost. The two options not taken: limiting item 2's fast path to
+32-bit targets (it would recover item 2's share only), and a deeper
+look at the x86 code first.
 
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
