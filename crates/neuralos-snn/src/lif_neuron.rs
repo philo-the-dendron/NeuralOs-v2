@@ -72,6 +72,9 @@
 
 /// Maximum spike history length (compile-time, no allocator).
 pub const MAX_SPIKE_HISTORY: usize = 64;
+// `SpikeRing::push` indexes with `& (MAX_SPIKE_HISTORY - 1)`, the same slot
+// as `% MAX_SPIKE_HISTORY` only for a power of two.
+const _: () = assert!(MAX_SPIKE_HISTORY.is_power_of_two());
 
 /// Bounded spike-timestamp history: a ring over
 /// `[u32; MAX_SPIKE_HISTORY]` with the index of the oldest entry and a
@@ -98,12 +101,21 @@ impl SpikeRing {
     }
 
     /// Append `t` as the newest entry; drop the oldest when full.
+    ///
+    /// Both stores index with `& (MAX_SPIKE_HISTORY - 1)`: the same slot as
+    /// `%` and as the bare `head` (a power of two, asserted beside the
+    /// constant; `head` stays below it), and a bound the optimizer reads from
+    /// the index itself. The bare `self.buf[self.head]` was the one index
+    /// whose bound did not follow from its own expression, and its bounds
+    /// check changed how LLVM treated the whole neuron (ISA round 26,
+    /// record-only (d); round 27, item 4).
     fn push(&mut self, t: u32) {
+        debug_assert!(self.head < MAX_SPIKE_HISTORY);
         if self.len < MAX_SPIKE_HISTORY {
-            self.buf[(self.head + self.len) % MAX_SPIKE_HISTORY] = t;
+            self.buf[(self.head + self.len) & (MAX_SPIKE_HISTORY - 1)] = t;
             self.len += 1;
         } else {
-            self.buf[self.head] = t;
+            self.buf[self.head & (MAX_SPIKE_HISTORY - 1)] = t;
             self.head = (self.head + 1) % MAX_SPIKE_HISTORY;
         }
     }
