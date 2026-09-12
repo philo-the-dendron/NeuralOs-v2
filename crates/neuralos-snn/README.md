@@ -95,6 +95,46 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   see the alpha.3 audit record in the repo's `ISA.md`.
 - SIMD gate runs in CI; the batch kernel is documented mV-grid-only.
 
+## Since alpha.6 (the alpha.7 notes)
+
+- **Both divisions by 1000 in `integrate_and_fire` narrow to `i32`
+  when the value fits** (private `div_1000`): the same truncating
+  division of the same value, a multiply-high by the constant on a
+  32-bit core instead of a call to a software 64-bit division; a value
+  that does not fit takes the `i64` division as before, out of line.
+  Exact by construction, pinned by a proptest against `x / 1000` in
+  `i64` (half its draws in `i32`, half in all of `i64`) and a unit test
+  on both sides of the guard; the two `i128` exactness proofs of
+  `integrate_and_fire` are unchanged and green.
+- **`dt_over_tau` computes in `u32` when `dt_us <= u32::MAX / 1000`**
+  (4,294,967 µs): one hardware divide on a 32-bit core; above it, the
+  `u64` formula as before. The same results over the whole
+  `u32 × u32` domain, pinned the same way.
+- **The spike ring indexes its two stores with a mask**
+  (`& (MAX_SPIKE_HISTORY - 1)`, the power of two asserted at compile
+  time): the same slots, and a bound the optimizer can see in the
+  index. On the ESP32-C3 the bounds check on the bare index was what
+  kept the neuron out of registers.
+- **`#[inline]` on `LIFNeuron::integrate_and_fire`**, a hint: without
+  it one of the firmware's call sites stepped the neuron out of line.
+- **On the ESP32-C3 (rv32imc, 160 MHz), same board and same
+  firmware source**, the firmware now times two bursts. The neuron as
+  a network holds it (in memory, dt at run time) costs **1,579 ns per
+  step, against 3,878 on alpha.6**; the burst the compiler can see
+  through costs **563, against 2,863**. Every behavior figure is
+  identical: 147 spikes in the 10,000-step burst, the first at step
+  55, the same checksum of the spike steps; the real-time loop's first
+  spike still at step 56. No 64-bit software division is left in the
+  step. The 2,842 of the alpha.6 notes below is the second burst's
+  shape on alpha.6, measured before the checksum code existed; a
+  network's run-time dt cost more, 3,878. Mechanism, listings and
+  pins: `evidence/esp32c3-bringup/README.md` § Third entry (ISA round
+  27).
+- **On x86-64 the host spike-path bench is about 2 to 2.5 ns per step
+  slower** (+22 to 26 %), bisected across the round's commits and
+  recorded, not fixed (the principal's ruling): the chip is the
+  target. `evidence/esp32c3-bringup/README.md` § Host bench, round 27.
+
 ## Since alpha.5 (the alpha.6 notes)
 
 - **Spike history is a `[u32; MAX_SPIKE_HISTORY]` ring** (private
@@ -236,7 +276,8 @@ knob**, new public API (default 10 = the historical weight/10 pulse;
 0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
 published path unchanged; the simd batch kernel doc'd mV-grid-only.
 
-**Tree == published.** Test counts live in the CI log and the repo's
+**The tree is ahead, alpha.7 pending** (the divisions and the ring
+mask; see "Since alpha.6"). Test counts live in the CI log and the repo's
 AGENTS.md § Commands, not here; the API may still move within alpha
 semver.
 
