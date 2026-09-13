@@ -72,6 +72,9 @@
 
 /// Maximum spike history length (compile-time, no allocator).
 pub const MAX_SPIKE_HISTORY: usize = 64;
+// `SpikeRing::push` indexes with `& (MAX_SPIKE_HISTORY - 1)`, the same slot
+// as `% MAX_SPIKE_HISTORY` only for a power of two.
+const _: () = assert!(MAX_SPIKE_HISTORY.is_power_of_two());
 
 /// Bounded spike-timestamp history: a ring over
 /// `[u32; MAX_SPIKE_HISTORY]` with the index of the oldest entry and a
@@ -98,12 +101,21 @@ impl SpikeRing {
     }
 
     /// Append `t` as the newest entry; drop the oldest when full.
+    ///
+    /// Both stores index with `& (MAX_SPIKE_HISTORY - 1)`: the same slot as
+    /// `%` and as the bare `head` (a power of two, asserted beside the
+    /// constant; `head` stays below it), and a bound the optimizer reads from
+    /// the index itself. The bare `self.buf[self.head]` was the one index
+    /// whose bound did not follow from its own expression, and its bounds
+    /// check changed how LLVM treated the whole neuron (ISA round 26,
+    /// record-only (d); round 27, item 4).
     fn push(&mut self, t: u32) {
+        debug_assert!(self.head < MAX_SPIKE_HISTORY);
         if self.len < MAX_SPIKE_HISTORY {
-            self.buf[(self.head + self.len) % MAX_SPIKE_HISTORY] = t;
+            self.buf[(self.head + self.len) & (MAX_SPIKE_HISTORY - 1)] = t;
             self.len += 1;
         } else {
-            self.buf[self.head] = t;
+            self.buf[self.head & (MAX_SPIKE_HISTORY - 1)] = t;
             self.head = (self.head + 1) % MAX_SPIKE_HISTORY;
         }
     }
@@ -167,14 +179,23 @@ pub const MEMBRANE_MV_MAX: i16 = 50;
 /// This is the ONE definition of the formula. `simd::dt_over_tau` is this
 /// function plus the batch's clamp, so the two cannot drift.
 ///
-/// The product and the division are computed in `u64`. Computing them with
-/// `as i32` casts wrapped for `dt_us > i32::MAX` and for
+/// The wide formula computes the product and the division in `u64`.
+/// Computing them with `as i32` casts wrapped for `dt_us > i32::MAX` and for
 /// `tau_membrane_us > i32::MAX`: `dt_over_tau(2_147_484, u32::MAX)` returned
 /// `-2_147_483_647`, a value that overflows every downstream multiply, and
 /// `dt_over_tau(1000, u32::MAX)` returned `-1_000_000` — a single step that
 /// drove the membrane to the floor. Both inputs are `u32`, so `u64` covers the
 /// whole domain exactly, the result is always non-negative, and `i64` holds it
 /// with room to spare (the maximum is `u32::MAX * 1000 = 4_294_967_295_000`).
+///
+/// `u64` only where it is needed: when `dt_us <= u32::MAX / 1000`
+/// (4,294,967 µs; the physical dt is 1,000) the product fits `u32` and the
+/// division is one hardware divide on a 32-bit core; above it,
+/// `dt_over_tau_wide` computes the `u64` formula as it always did, out of
+/// line. The guard is "fits `u32`", a property of the value like
+/// `div_1000`'s "fits `i32`", never a bound on `dt/τ`. With dt a run-time
+/// value, the `u64` division was a call to the ROM's `__udivdi3` on every
+/// integrating step (ISA round 27, item 1).
 ///
 /// # Examples
 /// ```
@@ -183,6 +204,7 @@ pub const MEMBRANE_MV_MAX: i16 = 50;
 /// assert_eq!(dt_over_tau(40_000, 20_000), 2_000); // dt/tau = 2, exact
 /// assert_eq!(dt_over_tau(1_000, u32::MAX), 0);   // no wrap to a negative
 /// ```
+#[inline]
 #[must_use]
 pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i64 {
     if tau_membrane_us == 0 {
@@ -201,9 +223,61 @@ pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i64 {
         // signature moves anyway.
         return 0;
     }
+    // One hardware divide when the product fits `u32`, which covers every
+    // physical step; the guard is "fits", not a bound (doc above).
+    if dt_us <= u32::MAX / 1000 {
+        i64::from(dt_us * 1000 / tau_membrane_us)
+    } else {
+        dt_over_tau_wide(dt_us, tau_membrane_us)
+    }
+}
+
+/// The wide half of [`dt_over_tau`], for `dt_us > u32::MAX / 1000`: the
+/// `u64` formula as it always was. Out of line and cold, like
+/// [`div_1000_wide`].
+#[cold]
+#[inline(never)]
+fn dt_over_tau_wide(dt_us: u32, tau_membrane_us: u32) -> i64 {
     let raw = (u64::from(dt_us) * 1000) / u64::from(tau_membrane_us);
     // u32::MAX * 1000 < i64::MAX, so this is lossless for every input.
     raw as i64
+}
+
+/// `x / 1000`, exact: the same truncating division, done in `i32` when the
+/// value fits there.
+///
+/// The two divisions by 1000 in [`LIFNeuron::integrate_and_fire`] (the
+/// current term and `delta_v`) work in `i64`, and on a 32-bit core with no
+/// 64-bit divide each was a call to a software division (the ROM's
+/// `__divdi3` on the ESP32-C3, ISA round 23). In the physical regime both
+/// values fit `i32`, where a division by the constant 1000 is a
+/// multiply-high and shifts. So the fast path narrows, divides and widens;
+/// a value that does not fit takes [`div_1000_wide`], the `i64` division as
+/// it always was.
+///
+/// The guard is "fits `i32`", a property of the value, never a bound on the
+/// model: nothing is clamped or refused here. It is not the batch kernel's
+/// `simd::DT_OVER_TAU_MAX`, a limit the kernel's `i32` intermediates put on
+/// its inputs; the neuron stays the exact reference semantic over its whole
+/// domain. `i32::try_from`, never `as i32`: the cast wraps `i32::MAX + 1`
+/// to `i32::MIN` (pinned by `div_1000_is_exact_on_both_sides_of_the_guard`).
+#[inline]
+fn div_1000(x: i64) -> i64 {
+    if let Ok(y) = i32::try_from(x) {
+        i64::from(y / 1000)
+    } else {
+        div_1000_wide(x)
+    }
+}
+
+/// The wide half of [`div_1000`]. Out of line so that no inlined call site
+/// carries the 64-bit divide (`#[inline(never)]`: LLVM may inline a
+/// function this small even when it is marked cold); cold so the fast path
+/// is laid out straight through.
+#[cold]
+#[inline(never)]
+fn div_1000_wide(x: i64) -> i64 {
+    x / 1000
 }
 
 /// Voltage-domain resolution of a neuron's stored potentials.
@@ -361,6 +435,10 @@ impl LIFNeuron {
     ///
     /// v0.1's `current_time()` returned `last_spike_time_us`, so firing-rate windows
     /// never advanced between spikes. Time is now passed in explicitly.
+    // Inline hint (ISA round 27): without it the firmware's pinned burst arm
+    // called this step out of line, a per-step call the item-1 baseline did
+    // not have. A hint, not a guarantee; the listing is the check.
+    #[inline]
     pub fn integrate_and_fire(
         &mut self,
         input_current_ua: i16,
@@ -395,13 +473,16 @@ impl LIFNeuron {
         // Voltage quanta: leak is stored-native; the current term converts
         // μA → quanta (R·I/1000 mV, ×scale for the grid). At scale = 1 the
         // expression sequence is byte-identical to the historical arithmetic.
+        // Both divisions by 1000 go through `div_1000`: the same truncation,
+        // in `i32` when the value fits (the physical regime), in `i64` when
+        // it does not.
         let s = i64::from(self.voltage_resolution.scale());
         let dt_over_tau = dt_over_tau(dt_us, self.tau_membrane_us);
         // Both sides widened before the subtraction: in `i16` this overflows for
         // off-grid states (resting = i16::MAX against membrane = i16::MIN) and
         // panicked in debug.
         let leak_term = i64::from(self.resting_potential) - i64::from(self.membrane_potential);
-        let current_term = (i64::from(total_current) * i64::from(self.resistance_mohm) * s) / 1000;
+        let current_term = div_1000(i64::from(total_current) * i64::from(self.resistance_mohm) * s);
         // The ONE multiply in this chain that cannot fit `i64` for every legal
         // input. Worst case `|leak + current_term|` is
         // `32_768 * 65_535 * scale / 1000 + 65_535`: 214_810_623 on the
@@ -415,7 +496,7 @@ impl LIFNeuron {
         // preserves the sign. So the clamped result is identical to the one an
         // unbounded integer would give. Pinned over the whole domain against an
         // `i128` reference by `prop_integrate_and_fire_is_exact_over_the_whole_domain`.
-        let delta_v = dt_over_tau.saturating_mul(leak_term + current_term) / 1000;
+        let delta_v = div_1000(dt_over_tau.saturating_mul(leak_term + current_term));
 
         let new_v = i64::from(self.membrane_potential)
             .saturating_add(delta_v)
@@ -1015,6 +1096,52 @@ mod tests {
         }
     }
 
+    /// `div_1000` on both sides of its guard, and on the rounding: every row
+    /// against its value written out, and the row itself checked against
+    /// `/`, so a typo in the table cannot pass.
+    ///
+    /// `i32::MAX + 1` is the row that catches a wrapping `as i32` in place of
+    /// `i32::try_from`: the cast sends it to `i32::MIN`, and the helper would
+    /// answer `-2_147_483` where `2_147_483` is right. `i32::MIN - 1` is the
+    /// same trap from below.
+    #[test]
+    fn div_1000_is_exact_on_both_sides_of_the_guard() {
+        let (min, max) = (i64::from(i32::MIN), i64::from(i32::MAX));
+        let rows: [(i64, i64); 12] = [
+            (min - 1, -2_147_483),
+            (min, -2_147_483),
+            (max, 2_147_483),
+            (max + 1, 2_147_483),
+            (i64::MIN, -9_223_372_036_854_775),
+            (i64::MAX, 9_223_372_036_854_775),
+            (999, 0),
+            (-999, 0),
+            (1000, 1),
+            (-1000, -1),
+            (1001, 1),
+            (-1001, -1),
+        ];
+        for (x, expected) in rows {
+            assert_eq!(x / 1000, expected, "the table: {x} / 1000");
+            assert_eq!(div_1000(x), expected, "div_1000({x})");
+        }
+    }
+
+    proptest! {
+        /// `div_1000` equals the `i64` division it replaced, on both paths.
+        /// Half the draws come from `i32`, widened, and run the fast path;
+        /// half from all of `i64`, which almost always runs the wide one. A
+        /// random `i64` fits `i32` with probability 2⁻³², so drawing from
+        /// `i64` alone would never reach the fast path, the code the helper
+        /// adds.
+        #[test]
+        fn prop_div_1000_equals_i64_division(
+            x in prop_oneof![any::<i32>().prop_map(i64::from), any::<i64>()],
+        ) {
+            prop_assert_eq!(div_1000(x), x / 1000, "x = {}", x);
+        }
+    }
+
     proptest! {
         /// `integrate_and_fire` is EXACT over the whole input domain, against an
         /// independent `i128` reference that cannot overflow: every `u32` step,
@@ -1239,6 +1366,61 @@ mod tests {
         // Exact: dt_over_tau = 107_374_200, leak = 30, so the delta is enormous
         // and the clamp — not a bound on dt/tau — is what bounds the result.
         assert_eq!(n.membrane_potential, MEMBRANE_MV_MAX);
+    }
+
+    /// `dt_over_tau` on both sides of its `u32` guard: 4,294,967 is the
+    /// largest dt whose product fits `u32`, 4,294,968 the smallest that
+    /// takes the wide path. Every row against its value written out, and the
+    /// value against the `u64` formula the guard sits in front of, so a typo
+    /// in the table cannot pass. The `τ = u32::MAX` pair is the sharpest: 0
+    /// on one side of the guard, 1 on the other.
+    #[test]
+    fn dt_over_tau_is_exact_on_both_sides_of_the_guard() {
+        let m = u32::MAX;
+        // (dt_us, tau_us, expected)
+        let rows: [(u32, u32, i64); 11] = [
+            (4_294_967, 1, 4_294_967_000),
+            (4_294_968, 1, 4_294_968_000),
+            (4_294_967, 7, 613_566_714),
+            (4_294_968, 7, 613_566_857),
+            (4_294_967, m, 0),
+            (4_294_968, m, 1),
+            (m, 1, 4_294_967_295_000),
+            (m, m, 1_000),
+            (1_000, 20_000, 50),
+            (0, 20_000, 0),
+            (1_000, 0, 0),
+        ];
+        for (dt, tau, expected) in rows {
+            let formula = if tau == 0 {
+                0
+            } else {
+                (u64::from(dt) * 1000 / u64::from(tau)) as i64
+            };
+            assert_eq!(formula, expected, "the table: ({dt}, {tau})");
+            assert_eq!(dt_over_tau(dt, tau), expected, "dt_over_tau({dt}, {tau})");
+        }
+    }
+
+    proptest! {
+        /// `dt_over_tau` equals the `u64` formula it computed before the
+        /// guard. dt is drawn half from `0..=4_294_967`, the fast path, and
+        /// half from all of `u32`, which almost always takes the wide one: a
+        /// random `u32` is at most 4,294,967 in 0.1 % of draws. τ comes from
+        /// all of `u32`; zero, which a draw almost never hits, is a row of
+        /// the test above.
+        #[test]
+        fn prop_dt_over_tau_equals_the_u64_formula(
+            dt in prop_oneof![0u32..=4_294_967, any::<u32>()],
+            tau in any::<u32>(),
+        ) {
+            let formula = if tau == 0 {
+                0
+            } else {
+                (u64::from(dt) * 1000 / u64::from(tau)) as i64
+            };
+            prop_assert_eq!(dt_over_tau(dt, tau), formula, "dt = {} tau = {}", dt, tau);
+        }
     }
 
     /// The neuron is EXACT where the batch kernel clamps, and this is the row

@@ -22,7 +22,15 @@ cp -r proofs/spike-path-bench bench-rebuild/alpha5/proofs/
 git worktree remove --force bench-rebuild/alpha5
 ```
 
-The committed `Cargo.lock` names the spine at alpha.6; in the alpha.5
+The block is the round-23 run as recorded, when this checkout was the
+alpha.6 tree, and its two log names are pinned in
+`evidence/esp32c3-bringup/SHA256SUMS`: a re-run writes to a new file
+name and is compared against the pinned log, never written over it
+(round 27's pair is `host-bench-r27-alpha6.log` and
+`host-bench-r27-alpha7.log`, commands in that evidence README).
+
+The committed `Cargo.lock` named the spine at alpha.6 for that run
+(alpha.7 since round 27); in the alpha.5
 worktree cargo re-resolves the path dependency to alpha.5 (no
 `--locked` there, by design). Same profile (release, fat LTO, one
 codegen unit), same box, same command. Cargo refuses two

@@ -1,0 +1,11 @@
+host-bisect-r27: spike-path-bench per commit, labels a6=7fe2388 i2=822beb3 i3=f2007a7 i4=91d92a9 inl=3f252d2; -al = the same tree built with RUSTFLAGS="-C llvm-args=-x86-branches-within-32B-boundaries"; medians of each run, three rounds in rotated order
+built 04:11:54, load 1.01
+ran 04:12:44
+medians per round (r0 r1 r2):
+a6      forced [ 11.156 11.073 11.184 ] control [ 9.800 9.778 9.704 ]
+i2      forced [ 11.644 11.727 11.697 ] control [ 10.589 10.719 10.611 ]
+i3      forced [ 11.681 11.759 11.724 ] control [ 10.817 10.692 10.580 ]
+i4      forced [ 13.051 12.947 13.268 ] control [ 11.530 11.547 11.603 ]
+inl     forced [ 13.944 13.671 13.657 ] control [ 12.282 12.291 12.228 ]
+a6-al   forced [ 10.858 10.934 10.845 ] control [ 9.874 9.831 9.777 ]
+inl-al  forced [ 13.765 13.553 13.541 ] control [ 12.108 12.068 12.279 ]

@@ -1,0 +1,24 @@
+tree 2c3ce09, neuralos-snn 0.1.0-alpha.7
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=15.090
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=15.012
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=14.834
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=15.317
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=15.337
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=16.562
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=16.102
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=14.704
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=15.172
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=14.511
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=13.500
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=14.300
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=14.216
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=13.631
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=13.141
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=14.065
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=13.376
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=14.667
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=12.900
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=14.081
+arm=forced min_ns_per_step=14.511 median_ns_per_step=15.131
+arm=control min_ns_per_step=12.900 median_ns_per_step=13.848

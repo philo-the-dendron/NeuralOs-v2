@@ -1101,3 +1101,25 @@ the alpha.6 board firmware with its home paths scrubbed in place, the
 binary behind the 2,842 ns/step reading. The record now discloses the
 honest number at the same time as the version that produced it.
 Record: ISA round-25 and its close-out, `docs/releases/v0.1.0-alpha.6.md`.
+
+## 2026-09-12 — round 27: the divisions and the ring mask, on the board
+
+The fix brief's part B, on `work/divisions` (PR #24; alpha.7 in the
+tree, not published). The criterion came first, on the board, before
+any spine edit: a second timed burst that holds the neuron the way a
+network does, behind `black_box` and with dt at run time. On alpha.6
+it cost 3,878 ns per step, against 2,863 for the burst the compiler
+could see through, and its listing showed a third ROM division, the
+`u64` `dt_over_tau`, which the firmware's constant dt had hidden since
+the bring-up. Then the spine: both divisions by 1000 narrow to `i32`
+when the value fits, `dt_over_tau` to `u32` when `dt * 1000` fits,
+each with the wide division out of line and cold, and the ring's
+stores masked. The inliner moved twice along the way, and one inline
+hint, the principal's call, kept the step inlined where the baseline
+had it. On the same board: 1,579 ns per step for the network's shape,
+563 for the free loop, the same 147 spikes, first spike step and
+checksum in both, no ROM division left in either loop. The host bench
+went the other way, about 2 to 2.5 ns per step slower on x86-64,
+bisected across the commits and ruled recorded, not fixed: the chip is
+the target. Record: ISA round 27, `evidence/esp32c3-bringup/` § Third
+entry and § Host bench, round 27.

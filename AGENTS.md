@@ -26,7 +26,7 @@ archive, not here. `cd` to `NeuralOs-v2`.
 
 | Path | Role |
 |---|---|
-| `crates/neuralos-snn` | The spine. Published on crates.io (`0.1.0-alpha.6`, 2026-09-11; tree == published). `no_std`-by-default, i16 fixed-point. |
+| `crates/neuralos-snn` | The spine. Published on crates.io (`0.1.0-alpha.6`, 2026-09-11; the tree is ahead, alpha.7 pending). `no_std`-by-default, i16 fixed-point. |
 | `crates/neuralos-app` | The microscope. Slint visualizer over the library. |
 | `crates/neuralos-nir2json` | The inbound bridge. Pure-Rust `.nir` (HDF5 via `hdf5-pure`, no C) → the library's JSON schema, for graphs strangers emit (snnTorch, norse, rockpool). The stranger-usable artifact GUARD 3 names: a static musl binary on the Gitea release, built by its README § Build. `publish = false` (crates.io deferred by ruling). |
 | `crates/neuralos-rt` | The research runtime (GGUF container, Q1_0/Q2_0 compute, tokenizer, model). `publish = false`, std-only. Consumed by the frozen bridge examples. |
@@ -218,8 +218,9 @@ Two rules learned on PR #15 (2026-09-09):
 round-25 close-out). Before it, `0.1.0-alpha.5` (2026-08-22T13:59Z from
 103fa59: general graph assembly, `build_network`, EDGE_PULSE_QUANTA, the
 assembly gates, the R17 consolidation breaks, the STDP dt-overflow fix).
-**Tree == published** (a publish session that leaves the tree ahead
-flips this sentence to "the tree is ahead, alpha.N pending"). The
+**The tree is ahead, alpha.7 pending** (round 27: the divisions and
+the ring mask, ISA round 27; the publish round flips this sentence
+back to "tree == published"). The
 workspace consumes it via path dep, so lib edits take effect locally
 without republishing — a real bugfix or API addition warrants the next
 alpha. Bump the workspace `version` in the root `Cargo.toml` and `cargo
