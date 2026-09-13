@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: https://github.com/actions/checkout@v4
 
-      # rust-toolchain.toml pins 1.92.0 (slint MSRV); rustup honors it.
+      # rust-toolchain.toml pins the toolchain; rustup honors it.
       - uses: https://github.com/dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -337,7 +337,7 @@ jobs:
     steps:
       - uses: https://github.com/actions/checkout@v4
 
-      # Same 1.92.0 pin as everything else (rust-toolchain.toml at the root
+      # Same pin as everything else (rust-toolchain.toml at the root
       # is honored inside firmware/ too). The action's `targets:` input
       # would add the chip target to `stable`, not to the pin (first run of
       # PR #13: "can't find crate for core"), so the target is added in a

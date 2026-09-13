@@ -66,8 +66,10 @@ the desktop behind the window and give false "it works" readings.
 Workspace is four members: `crates/neuralos-snn` (the library),
 `crates/neuralos-app` (the visualizer), `crates/neuralos-rt` (the
 research runtime), `crates/neuralos-nir2json` (the `.nir`→JSON
-converter). `rust-toolchain.toml` pins **1.92.0** (slint 1.17
-MSRV — don't bump without checking).
+converter). `rust-toolchain.toml` pins the toolchain; the version
+lives there alone. A bump is its own commit: the lints it adds fixed
+before it, the firmware `.text` re-pinned and the board fold read again
+(PR C).
 
 ```bash
 # Quality gates. `.gitea/workflows/ci.yml` IS THE GATE (origin is Gitea);
