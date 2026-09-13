@@ -1,0 +1,432 @@
+
+sha256:dc12d19ae7e1a03abfd3dfe65a2586e5e5dcad4c0c2e7879111d45b5eb0604f9:	file format elf32-littleriscv
+
+Disassembly of section .text:
+
+42010436 <main>:
+42011c52:      	addi	a2, a1, -0x3e8
+42011c56:      	sltu	a1, a1, a2
+42011c5a:      	addi	a1, a1, -0x1
+42011c5c:      	and	a1, a1, a2
+42011c5e:      	addi	s1, s1, 0x1
+42011c60:      	beq	s1, s4, 0x42011ddc <main+0x19a6>
+42011c64:      	slli	a2, s2, 0x10
+42011c68:      	srai	a2, a2, 0x10
+42011c6a:      	sgtz	a2, a2
+42011c6e:      	sub	s2, s2, a2
+42011c72:      	bnez	a1, 0x42011c52 <main+0x181c>
+42011c74:      	mul	a1, s1, t4
+42011c78:      	slli	a1, a1, 0x14
+42011c7a:      	srli	a1, a1, 0x18
+42011c7c:      	slli	a2, a1, 0x2
+42011c80:      	add	a1, a1, a2
+42011c82:      	addi	a1, a1, -0x280
+42011c86:      	slli	a2, a1, 0x1
+42011c8a:      	srli	a2, a2, 0x19
+42011c8c:      	add	a1, a1, a2
+42011c8e:      	slli	a2, s2, 0x10
+42011c92:      	srai	a1, a1, 0x7
+42011c94:      	srai	s11, a2, 0x10
+42011c98:      	sub	a1, a1, s11
+42011c9c:      	addi	a1, a1, 0xa0
+42011ca0:      	lw	a2, 0x4c(sp)
+42011ca2:      	blt	a1, a2, 0x42011ca8 <main+0x1872>
+42011ca6:      	lw	a1, 0x4c(sp)
+42011ca8:      	lui	a2, 0xffff8
+42011caa:      	blt	a2, a1, 0x42011cb0 <main+0x187a>
+42011cae:      	lui	a1, 0xffff8
+42011cb0:      	slli	s6, a0, 0x10
+42011cb4:      	slli	a0, a1, 0x1
+42011cb8:      	slli	a1, a1, 0x3
+42011cba:      	srai	s9, s6, 0x10
+42011cbe:      	add	a0, a0, a1
+42011cc0:      	sub	a0, a0, s9
+42011cc4:      	mulh	a2, a0, t6
+42011cc8:      	mul	a1, a0, t6
+42011ccc:      	addi	a2, a2, -0x1
+42011cce:      	lw	a0, 0x40(sp)
+42011cd0:      	add	a0, a0, a1
+42011cd2:      	sltu	a0, a0, a1
+42011cd6:      	add	a3, a2, a0
+42011cda:      	lw	a0, 0x44(sp)
+42011cdc:      	add	a0, a0, a1
+42011cde:      	bne	a3, t2, 0x42011dac <main+0x1976>
+42011ce2:      	mulh	a0, a0, s7
+42011ce6:      	srli	a1, a0, 0x1f
+42011cea:      	srai	a0, a0, 0x6
+42011cec:      	add	a0, a0, a1
+42011cee:      	srai	a1, a0, 0x1f
+42011cf2:      	srai	a3, s6, 0x1f
+42011cf6:      	add	a7, s9, a0
+42011cfa:      	add	a0, a3, a1
+42011cfe:      	sltu	s0, a7, s9
+42011d02:      	xor	a2, a3, a1
+42011d06:      	add	a1, a0, s0
+42011d0a:      	xor	a3, a3, a1
+42011d0c:      	not	a0, a2
+42011d10:      	and	a3, a3, a0
+42011d12:      	srai	a0, a1, 0x1f
+42011d16:      	bltz	a3, 0x42011d38 <main+0x1902>
+42011d1a:      	bltz	a3, 0x42011d40 <main+0x190a>
+42011d1e:      	mv	a0, a7
+42011d20:      	bne	a1, t2, 0x42011d44 <main+0x190e>
+42011d24:      	sltu	a2, s5, a0
+42011d28:      	bnez	a2, 0x42011d2c <main+0x18f6>
+42011d2a:      	mv	a0, s5
+42011d2c:      	addi	a2, a2, -0x1
+42011d2e:      	or	a1, a1, a2
+42011d30:      	beqz	a1, 0x42011d50 <main+0x191a>
+42011d32:      	srli	a1, a1, 0x1f
+42011d34:      	beqz	a1, 0x42011d5a <main+0x1924>
+42011d36:      	j	0x42011d5c <main+0x1926>
+42011d38:      	xor	a1, a0, ra
+42011d3c:      	bgez	a3, 0x42011d1e <main+0x18e8>
+42011d40:      	beq	a1, t2, 0x42011d24 <main+0x18ee>
+42011d44:      	srli	a2, a1, 0x1f
+42011d48:      	xori	a2, a2, 0x1
+42011d4c:      	beqz	a2, 0x42011d2a <main+0x18f4>
+42011d4e:      	j	0x42011d2c <main+0x18f6>
+42011d50:      	srli	a1, a0, 0x3
+42011d54:      	sltiu	a1, a1, 0x271
+42011d58:      	bnez	a1, 0x42011d5c <main+0x1926>
+42011d5a:      	mv	a0, t0
+42011d5c:      	slli	a1, a0, 0x10
+42011d60:      	srai	a1, a1, 0x10
+42011d62:      	bge	a1, s3, 0x42011d6a <main+0x1934>
+42011d66:      	li	a1, 0x0
+42011d68:      	j	0x42011c5e <main+0x1828>
+42011d6a:      	addi	s2, s11, 0x2
+42011d6e:      	addi	a0, t5, -0x1
+42011d72:      	blt	s2, a0, 0x42011d9e <main+0x1968>
+42011d76:      	mv	s2, a0
+42011d78:      	lui	a0, 0xffff8
+42011d7a:      	bge	a0, s2, 0x42011da4 <main+0x196e>
+42011d7e:      	mv	a2, s1
+42011d80:      	beqz	a4, 0x42011d84 <main+0x194e>
+42011d82:      	mv	a2, a5
+42011d84:      	addi	a4, a4, 0x1
+42011d86:      	slli	a0, a6, 0x5
+42011d8a:      	sub	a3, s1, a6
+42011d8e:      	li	a1, 0x7d0
+42011d92:      	add	a6, a3, a0
+42011d96:      	addi	a0, t3, 0xc0
+42011d9a:      	mv	a5, a2
+42011d9c:      	j	0x42011c5e <main+0x1828>
+42011d9e:      	lui	a0, 0xffff8
+42011da0:      	blt	a0, s2, 0x42011d7e <main+0x1948>
+42011da4:      	lui	s2, 0xffff8
+42011da6:      	mv	a2, s1
+42011da8:      	bnez	a4, 0x42011d82 <main+0x194c>
+42011daa:      	j	0x42011d84 <main+0x194e>
+42011dac:      	sltu	a1, a0, a1
+42011db0:      	add	a1, a1, a2
+42011db2:      	sw	a4, 0x3c(sp)
+42011db4:      	mv	s0, a6
+42011db6:      	sw	a5, 0x38(sp)
+42011db8:      	auipc	ra, 0x5
+42011dbc:      	jalr	0x192(ra) <_RNvNtCshCoPWNcyagF_12neuralos_snn10lif_neuron13div_1000_wide>
+42011dc0:      	lw	t0, 0x34(sp)
+42011dc2:      	lui	ra, 0x80000
+42011dc6:      	li	t6, 0x32
+42011dca:      	lui	t5, 0x8
+42011dcc:      	li	t4, 0x3e8
+42011dd0:      	lui	t3, 0xe
+42011dd2:      	li	t2, -0x1
+42011dd4:      	lw	a5, 0x38(sp)
+42011dd6:      	mv	a6, s0
+42011dd8:      	lw	a4, 0x3c(sp)
+42011dda:      	j	0x42011cf2 <main+0x18bc>
+
+sha256:dc12d19ae7e1a03abfd3dfe65a2586e5e5dcad4c0c2e7879111d45b5eb0604f9:	file format elf32-littleriscv
+
+Disassembly of section .text:
+
+42010436 <main>:
+42011fd6:      	sub	a0, a2, a0
+42011fda:      	sltu	a1, a2, a0
+42011fde:      	addi	a1, a1, -0x1
+42011fe0:      	and	a0, a0, a1
+42011fe2:      	sw	a0, 0x8(s3)
+42011fe6:      	addi	s11, s11, 0x1
+42011fe8:      	beq	s11, s0, 0x42012358 <main+0x1f22>
+42011fec:      	sw	t6, 0x98(sp)
+42011fee:      	lw	s3, 0x98(sp)
+42011ff0:      	lh	a1, 0x24(s3)
+42011ff4:      	blez	a1, 0x42011ffe <main+0x1bc8>
+42011ff8:      	addi	a1, a1, -0x1
+42011ffa:      	sh	a1, 0x24(s3)
+42011ffe:      	lw	a2, 0x8(s3)
+42012002:      	lw	a0, 0x7c(sp)
+42012004:      	mul	s4, s11, a7
+42012008:      	sw	s4, 0xc(s3)
+4201200c:      	bnez	a2, 0x42011fd6 <main+0x1ba0>
+4201200e:      	lbu	a2, 0x26(s3)
+42012012:      	beqz	a2, 0x420122be <main+0x1e88>
+42012016:      	lhu	a3, 0x14(s3)
+4201201a:      	xor	a4, s4, a3
+4201201e:      	srli	a4, a4, 0x4
+42012020:      	slli	a3, a3, 0x7
+42012022:      	xor	a3, a3, a4
+42012024:      	zext.b	a3, a3
+42012028:      	addi	a3, a3, -0x80
+4201202c:      	mul	a2, a3, a2
+42012030:      	slli	a3, a2, 0x10
+42012034:      	srai	a3, a3, 0x6
+42012036:      	srli	a3, a3, 0x19
+42012038:      	add	a2, a2, a3
+4201203a:      	slli	a2, a2, 0x10
+4201203c:      	srai	a3, a2, 0x17
+42012040:      	lh	a2, 0x1e(s3)
+42012044:      	addi	a4, a2, 0xa0
+42012048:      	blt	a4, s1, 0x4201204e <main+0x1c18>
+4201204c:      	mv	a4, s1
+4201204e:      	lui	a2, 0xffff8
+42012050:      	blt	a2, a4, 0x4201208a <main+0x1c54>
+42012054:      	lui	a4, 0xffff8
+42012056:      	add	a3, a3, a4
+42012058:      	bge	a3, s1, 0x42012090 <main+0x1c5a>
+4201205c:      	blt	a2, a3, 0x42012096 <main+0x1c60>
+42012060:      	lui	a3, 0xffff8
+42012062:      	slli	a1, a1, 0x10
+42012064:      	srai	s5, a1, 0x10
+42012068:      	sub	s0, a3, s5
+4201206c:      	bge	s0, s1, 0x420120a4 <main+0x1c6e>
+42012070:      	blt	a2, s0, 0x420120aa <main+0x1c74>
+42012074:      	lui	s0, 0xffff8
+42012076:      	lbu	a1, 0x28(s3)
+4201207a:      	beqz	a1, 0x420120b0 <main+0x1c7a>
+4201207c:      	li	s9, 0x64
+42012080:      	lw	a1, 0x0(s3)
+42012084:      	bnez	a1, 0x420120b8 <main+0x1c82>
+42012086:      	li	s2, 0x0
+42012088:      	j	0x420120c6 <main+0x1c90>
+4201208a:      	add	a3, a3, a4
+4201208c:      	blt	a3, s1, 0x4201205c <main+0x1c26>
+42012090:      	mv	a3, s1
+42012092:      	bge	a2, s1, 0x42012060 <main+0x1c2a>
+42012096:      	slli	a1, a1, 0x10
+42012098:      	srai	s5, a1, 0x10
+4201209c:      	sub	s0, a3, s5
+420120a0:      	blt	s0, s1, 0x42012070 <main+0x1c3a>
+420120a4:      	mv	s0, s1
+420120a6:      	bge	a2, s1, 0x42012074 <main+0x1c3e>
+420120aa:      	lbu	a1, 0x28(s3)
+420120ae:      	bnez	a1, 0x4201207c <main+0x1c46>
+420120b0:      	li	s9, 0x1
+420120b2:      	lw	a1, 0x0(s3)
+420120b6:      	beqz	a1, 0x42012086 <main+0x1c50>
+420120b8:      	lw	a2, 0x3c(sp)
+420120ba:      	bgeu	a0, a2, 0x42012330 <main+0x1efa>
+420120be:      	mul	a0, a0, a7
+420120c2:      	divu	s2, a0, a1
+420120c6:      	li	s6, 0x0
+420120c8:      	slli	a0, s0, 0x10
+420120cc:      	lh	s7, 0x16(s3)
+420120d0:      	lh	s1, 0x18(s3)
+420120d4:      	lhu	a1, 0x22(s3)
+420120d8:      	srai	a2, a0, 0x10
+420120dc:      	srai	a0, a0, 0x1f
+420120de:      	mul	a0, s9, a0
+420120e2:      	mulhu	a3, s9, a2
+420120e6:      	mul	a2, s9, a2
+420120ea:      	add	a0, a0, a3
+420120ec:      	mul	a3, a0, a1
+420120f0:      	mulhu	a4, a2, a1
+420120f4:      	mul	a0, a2, a1
+420120f8:      	add	a1, a4, a3
+420120fc:      	add	a2, a0, t5
+42012100:      	sltu	a2, a2, a0
+42012104:      	add	a3, a1, t4
+42012108:      	add	a2, a2, a3
+4201210a:      	bne	a2, t4, 0x420122ce <main+0x1e98>
+4201210e:      	lw	a1, 0x4c(sp)
+42012110:      	mulh	a0, a0, a1
+42012114:      	srli	a1, a0, 0x1f
+42012118:      	srai	a0, a0, 0x6
+4201211a:      	add	a0, a0, a1
+4201211c:      	srai	a1, a0, 0x1f
+42012120:      	srai	s0, s1, 0x1f
+42012124:      	srai	a3, s7, 0x1f
+42012128:      	sltu	a4, s1, s7
+4201212c:      	sub	a2, s1, s7
+42012130:      	sub	a3, s0, a3
+42012134:      	add	t3, a0, a2
+42012138:      	sub	a3, a3, a4
+4201213a:      	sltu	a0, t3, a0
+4201213e:      	mulhu	s1, s2, t3
+42012142:      	mul	s0, s6, t3
+42012146:      	mulhsu	a4, s6, t3
+4201214a:      	add	a1, a1, a3
+4201214c:      	add	s1, s1, s0
+4201214e:      	add	a0, a0, a1
+42012150:      	sltu	a1, s1, s0
+42012154:      	mul	a3, a0, s2
+42012158:      	mulhsu	s0, a0, s2
+4201215c:      	add	a4, a4, a1
+4201215e:      	mul	t1, s6, a0
+42012162:      	mulh	a7, s6, a0
+42012166:      	add	a1, a3, s1
+4201216a:      	srai	t0, a4, 0x1f
+4201216e:      	sltu	a3, a1, a3
+42012172:      	srai	a2, a1, 0x1f
+42012176:      	add	a3, a3, s0
+42012178:      	add	s0, a4, a3
+4201217c:      	srai	a3, a3, 0x1f
+4201217e:      	add	s1, t1, s0
+42012182:      	sltu	a4, s0, a4
+42012186:      	add	a3, a3, t0
+42012188:      	xor	s0, s1, a2
+4201218c:      	add	a3, a3, a4
+4201218e:      	add	a3, a3, a7
+42012190:      	sltu	a4, s1, t1
+42012194:      	add	a3, a3, a4
+42012196:      	xor	a3, a3, a2
+42012198:      	or	a3, a3, s0
+4201219a:      	bnez	a3, 0x420122f2 <main+0x1ebc>
+4201219e:      	mul	a0, s2, t3
+420121a2:      	add	a2, a0, t5
+420121a6:      	sltu	a2, a2, a0
+420121aa:      	add	a2, a2, t4
+420121ac:      	add	a2, a2, a1
+420121ae:      	bne	a2, t4, 0x4201230c <main+0x1ed6>
+420121b2:      	lw	a1, 0x4c(sp)
+420121b4:      	mulh	a0, a0, a1
+420121b8:      	srli	a1, a0, 0x1f
+420121bc:      	srai	a0, a0, 0x6
+420121be:      	add	a0, a0, a1
+420121c0:      	srai	a1, a0, 0x1f
+420121c4:      	slli	s7, s7, 0x10
+420121c6:      	srli	a2, s7, 0x10
+420121ca:      	slli	a2, a2, 0x10
+420121cc:      	srai	a3, a2, 0x10
+420121d0:      	srai	a4, a2, 0x1f
+420121d4:      	add	a2, a4, a1
+420121d8:      	add	a0, a0, a3
+420121da:      	xor	a1, a1, a4
+420121dc:      	sltu	a3, a0, a3
+420121e0:      	add	a2, a2, a3
+420121e2:      	xor	a4, a4, a2
+420121e4:      	not	a1, a1
+420121e8:      	and	a1, a1, a4
+420121ea:      	bgez	a1, 0x420121f6 <main+0x1dc0>
+420121ee:      	srai	a0, a2, 0x1f
+420121f2:      	xor	a2, a0, t5
+420121f6:      	li	a7, 0x3e8
+420121fa:      	lw	s1, 0x44(sp)
+420121fc:      	lw	s0, 0x40(sp)
+420121fe:      	li	a4, -0x64
+42012202:      	mulhu	a1, s9, a4
+42012206:      	sub	a3, a1, s9
+4201220a:      	mul	a1, s9, a4
+4201220e:      	beq	a2, a3, 0x42012228 <main+0x1df2>
+42012212:      	slt	a3, a2, a3
+42012216:      	li	a4, 0x32
+4201221a:      	mul	a4, s9, a4
+4201221e:      	bnez	a2, 0x42012236 <main+0x1e00>
+42012220:      	sltu	a2, a0, a4
+42012224:      	beqz	a2, 0x4201223a <main+0x1e04>
+42012226:      	j	0x4201223c <main+0x1e06>
+42012228:      	sltu	a3, a0, a1
+4201222c:      	li	a4, 0x32
+42012230:      	mul	a4, s9, a4
+42012234:      	beqz	a2, 0x42012220 <main+0x1dea>
+42012236:      	srli	a2, a2, 0x1f
+42012238:      	bnez	a2, 0x4201223c <main+0x1e06>
+4201223a:      	mv	a0, a4
+4201223c:      	bnez	a3, 0x42012254 <main+0x1e1e>
+4201223e:      	mv	a1, a0
+42012240:      	lh	a0, 0x1a(s3)
+42012244:      	slli	a2, a1, 0x10
+42012248:      	srai	a2, a2, 0x10
+4201224a:      	sh	a1, 0x16(s3)
+4201224e:      	blt	a2, a0, 0x42011fe6 <main+0x1bb0>
+42012252:      	j	0x42012266 <main+0x1e30>
+42012254:      	lh	a0, 0x1a(s3)
+42012258:      	slli	a2, a1, 0x10
+4201225c:      	srai	a2, a2, 0x10
+4201225e:      	sh	a1, 0x16(s3)
+42012262:      	blt	a2, a0, 0x42011fe6 <main+0x1bb0>
+42012266:      	lw	a1, 0x4(s3)
+4201226a:      	lh	a2, 0x1c(s3)
+4201226e:      	addi	s5, s5, 0x2
+42012270:      	lui	a0, 0x8
+42012272:      	addi	a0, a0, -0x1
+42012274:      	sw	a1, 0x8(s3)
+42012278:      	sw	s4, 0x10(s3)
+4201227c:      	sh	a2, 0x16(s3)
+42012280:      	blt	s5, a0, 0x420122aa <main+0x1e74>
+42012284:      	mv	s5, a0
+42012286:      	lui	a0, 0xffff8
+42012288:      	bge	a0, s5, 0x420122b0 <main+0x1e7a>
+4201228c:      	sh	s5, 0x24(s3)
+42012290:      	mv	a0, s11
+42012292:      	beqz	t2, 0x42012298 <main+0x1e62>
+42012296:      	mv	a0, a5
+42012298:      	addi	t2, t2, 0x1
+4201229a:      	slli	a1, a6, 0x5
+4201229e:      	sub	a2, a6, s11
+420122a2:      	sub	a6, a1, a2
+420122a6:      	mv	a5, a0
+420122a8:      	j	0x42011fe6 <main+0x1bb0>
+420122aa:      	lui	a0, 0xffff8
+420122ac:      	blt	a0, s5, 0x4201228c <main+0x1e56>
+420122b0:      	lui	s5, 0xffff8
+420122b2:      	sh	s5, 0x24(s3)
+420122b6:      	mv	a0, s11
+420122b8:      	bnez	t2, 0x42012296 <main+0x1e60>
+420122bc:      	j	0x42012298 <main+0x1e62>
+420122be:      	li	a3, 0x0
+420122c0:      	lh	a2, 0x1e(s3)
+420122c4:      	addi	a4, a2, 0xa0
+420122c8:      	bge	a4, s1, 0x4201204c <main+0x1c16>
+420122cc:      	j	0x4201204e <main+0x1c18>
+420122ce:      	sw	a6, 0x38(sp)
+420122d0:      	mv	s0, t2
+420122d2:      	sw	a5, 0x34(sp)
+420122d4:      	auipc	ra, 0x5
+420122d8:      	jalr	-0x38a(ra) <_RNvNtCshCoPWNcyagF_12neuralos_snn10lif_neuron13div_1000_wide>
+420122dc:      	addi	ra, sp, 0x98
+420122e0:      	addi	t6, sp, 0x50
+420122e4:      	lui	t5, 0x80000
+420122e8:      	li	t4, -0x1
+420122ea:      	lw	a5, 0x34(sp)
+420122ec:      	mv	t2, s0
+420122ee:      	lw	a6, 0x38(sp)
+420122f0:      	j	0x42012120 <main+0x1cea>
+420122f2:      	srli	a0, a0, 0x1f
+420122f4:      	addi	a1, t5, -0x1
+420122f8:      	add	a1, a1, a0
+420122fa:      	addi	a0, a0, -0x1
+420122fc:      	add	a2, a0, t5
+42012300:      	sltu	a2, a2, a0
+42012304:      	add	a2, a2, t4
+42012306:      	add	a2, a2, a1
+42012308:      	beq	a2, t4, 0x420121b2 <main+0x1d7c>
+4201230c:      	mv	s0, a6
+4201230e:      	mv	s1, t2
+42012310:      	mv	s2, a5
+42012312:      	auipc	ra, 0x5
+42012316:      	jalr	-0x3c8(ra) <_RNvNtCshCoPWNcyagF_12neuralos_snn10lif_neuron13div_1000_wide>
+4201231a:      	addi	ra, sp, 0x98
+4201231e:      	addi	t6, sp, 0x50
+42012322:      	lui	t5, 0x80000
+42012326:      	li	t4, -0x1
+42012328:      	mv	a5, s2
+4201232a:      	mv	t2, s1
+4201232c:      	mv	a6, s0
+4201232e:      	j	0x420121c4 <main+0x1d8e>
+42012330:      	mv	s2, a6
+42012332:      	mv	s1, t2
+42012334:      	mv	s6, a5
+42012336:      	auipc	ra, 0x5
+4201233a:      	jalr	-0x3d4(ra) <_RNvNtCshCoPWNcyagF_12neuralos_snn10lif_neuron16dt_over_tau_wide>
+4201233e:      	addi	ra, sp, 0x98
+42012342:      	addi	t6, sp, 0x50
+42012346:      	lui	t5, 0x80000
+4201234a:      	li	t4, -0x1
+4201234c:      	mv	a5, s6
+4201234e:      	mv	t2, s1
+42012350:      	mv	a6, s2
+42012352:      	mv	s2, a0
+42012354:      	mv	s6, a1
+42012356:      	j	0x420120c8 <main+0x1c92>
