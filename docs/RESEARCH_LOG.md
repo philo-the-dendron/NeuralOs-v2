@@ -1123,3 +1123,16 @@ went the other way, about 2 to 2.5 ns per step slower on x86-64,
 bisected across the commits and ruled recorded, not fixed: the chip is
 the target. Record: ISA round 27, `evidence/esp32c3-bringup/` § Third
 entry and § Host bench, round 27.
+
+## 2026-09-13 — alpha.7 stamped: tag, release, crates.io
+
+`neuralos-snn 0.1.0-alpha.7` reached crates.io at 03:20:57Z, from
+`a974b9e`, the merge of round 27 (PR #24): both divisions by 1000
+narrowed to `i32` when the value fits, `dt_over_tau` in `u32`, the
+ring's masked stores, the inline hint. The tag `v0.1.0-alpha.7` is on
+that commit, and the Gitea release on it carries the board firmware
+rebuilt by `build.sh` at the tagged commit, no home path in it by
+construction, its `.text` equal to the round-27 fix pin: the binary
+behind the 1,579 ns/step reading. The version that carries the fix
+was published the same night its merge landed.
+Record: ISA round-28 close-out, `docs/releases/v0.1.0-alpha.7.md`.

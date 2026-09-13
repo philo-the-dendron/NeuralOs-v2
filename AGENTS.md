@@ -26,7 +26,7 @@ archive, not here. `cd` to `NeuralOs-v2`.
 
 | Path | Role |
 |---|---|
-| `crates/neuralos-snn` | The spine. Published on crates.io (`0.1.0-alpha.6`, 2026-09-11; the tree is ahead, alpha.7 pending). `no_std`-by-default, i16 fixed-point. |
+| `crates/neuralos-snn` | The spine. Published on crates.io (`0.1.0-alpha.7`, 2026-09-13; tree == published). `no_std`-by-default, i16 fixed-point. |
 | `crates/neuralos-app` | The microscope. Slint visualizer over the library. |
 | `crates/neuralos-nir2json` | The inbound bridge. Pure-Rust `.nir` (HDF5 via `hdf5-pure`, no C) → the library's JSON schema, for graphs strangers emit (snnTorch, norse, rockpool). The stranger-usable artifact GUARD 3 names: a static musl binary on the Gitea release, built by its README § Build. `publish = false` (crates.io deferred by ruling). |
 | `crates/neuralos-rt` | The research runtime (GGUF container, Q1_0/Q2_0 compute, tokenizer, model). `publish = false`, std-only. Consumed by the frozen bridge examples. |
@@ -211,20 +211,24 @@ Two rules learned on PR #15 (2026-09-09):
 
 ## Published crate
 
-`neuralos-snn` is on crates.io at `0.1.0-alpha.6` (published
-2026-09-11T15:54:50Z from d8a96b1, the merge commit of PR #21, tag
-`v0.1.0-alpha.6` — the `[u32; N]` spike ring, no runtime dependencies,
-`rust-version` declared, `isi_stats_us` in u128; registry-verified, ISA
-round-25 close-out). Before it, `0.1.0-alpha.5` (2026-08-22T13:59Z from
-103fa59: general graph assembly, `build_network`, EDGE_PULSE_QUANTA, the
-assembly gates, the R17 consolidation breaks, the STDP dt-overflow fix).
-**The tree is ahead, alpha.7 pending** (round 27: the divisions and
-the ring mask, ISA round 27; the publish round flips this sentence
-back to "tree == published"). The
-workspace consumes it via path dep, so lib edits take effect locally
-without republishing — a real bugfix or API addition warrants the next
-alpha. Bump the workspace `version` in the root `Cargo.toml` and `cargo
-publish -p neuralos-snn` when that's the call.
+`neuralos-snn` is on crates.io at `0.1.0-alpha.7` (published
+2026-09-13T03:20:57Z from a974b9e, the merge commit of PR #24, tag
+`v0.1.0-alpha.7` — both divisions by 1000 narrowed to `i32` when the
+value fits, `dt_over_tau` in `u32`, the spike ring's masked stores,
+`#[inline]` on `integrate_and_fire`; the network's step on the ESP32-C3
+3,878 → 1,579 ns/step, behavior identical; registry-verified, ISA
+round-28 close-out). Before it, `0.1.0-alpha.6` (2026-09-11T15:54:50Z
+from d8a96b1: the `[u32; N]` spike ring, no runtime dependencies,
+`rust-version` declared, `isi_stats_us` in u128) and `0.1.0-alpha.5`
+(2026-08-22T13:59Z from 103fa59: general graph assembly,
+`build_network`, EDGE_PULSE_QUANTA, the assembly gates, the R17
+consolidation breaks, the STDP dt-overflow fix). **Tree == published**
+(a publish session that leaves the tree ahead flips this sentence to
+"the tree is ahead, alpha.N pending", as round 27 did until its stamp).
+The workspace consumes it via path dep, so lib edits take effect
+locally without republishing — a real bugfix or API addition warrants
+the next alpha. Bump the workspace `version` in the root `Cargo.toml`
+and `cargo publish -p neuralos-snn` when that's the call.
 
 ## Session discipline (the autopsy doctrine — read before scoping any session)
 
