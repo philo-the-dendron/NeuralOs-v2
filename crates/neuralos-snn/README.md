@@ -4,7 +4,7 @@
 > silicon — LIF neurons, pairwise STDP, CSR synapses, ternary weight
 > codecs, and an AVX2 batch kernel.
 
-Published on crates.io as `0.1.0-alpha.6` (2026-09-11; AGPL-3.0-or-later).
+Published on crates.io as `0.1.0-alpha.7` (2026-09-13; AGPL-3.0-or-later).
 
 ## What this crate is
 
@@ -261,10 +261,15 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
 
 ## Status
 
-**`0.1.0-alpha.6` is live on crates.io** (published 2026-09-11): the
-`[u32; N]` spike ring, no runtime dependencies, `rust-version`
-declared, `isi_stats_us` in u128, and the ESP32-C3 step cost read
-honestly (see "Since alpha.5"). Alpha.5 (2026-08-22T13:59Z from
+**`0.1.0-alpha.7` is live on crates.io** (published 2026-09-13): both
+divisions by 1000 narrowed to `i32` when the value fits, `dt_over_tau`
+in `u32`, the spike ring's masked stores, `#[inline]` on
+`integrate_and_fire`; the network's step on the ESP32-C3 3,878 → 1,579
+ns/step, behavior identical (see "Since alpha.6"). Alpha.6
+(2026-09-11T15:54:50Z from d8a96b1, registry-verified): the `[u32; N]`
+spike ring, no runtime dependencies, `rust-version` declared,
+`isi_stats_us` in u128, and the ESP32-C3 step cost read honestly (see
+"Since alpha.5"). Alpha.5 (2026-08-22T13:59Z from
 103fa59, registry-verified): the general four-kind graph assembly,
 `EDGE_PULSE_QUANTA`, the assembly gates, the R17 consolidation breaks
 and the STDP dt-overflow fix (see "Since alpha.4"). Alpha.4, the same
@@ -276,8 +281,7 @@ knob**, new public API (default 10 = the historical weight/10 pulse;
 0 rejected); `network.rs` split into `csr.rs` + `stats.rs` with every
 published path unchanged; the simd batch kernel doc'd mV-grid-only.
 
-**The tree is ahead, alpha.7 pending** (the divisions and the ring
-mask; see "Since alpha.6"). Test counts live in the CI log and the repo's
+**Tree == published.** Test counts live in the CI log and the repo's
 AGENTS.md § Commands, not here; the API may still move within alpha
 semver.
 
