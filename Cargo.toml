@@ -16,8 +16,10 @@ members = [
 [workspace.package]
 version = "0.1.0-alpha.7"
 edition = "2021"
-# The pin in rust-toolchain.toml, declared: the only MSRV anyone has
-# verified (2026-09-10, alpha.6). Moves with the pin, in the same commit.
+# The floor the published crate promises its users, checked in CI on
+# its own toolchain (the MSRV gate, AGENTS § Commands). It does not
+# follow the pin in rust-toolchain.toml; it moves only when forced, in
+# the commit that needs it (ISA round 30).
 rust-version = "1.92"
 license = "AGPL-3.0-or-later"
 authors = ["Caramoussin"]

@@ -11,7 +11,7 @@ revision v0.4, 40 MHz crystal, 4 MB flash, secure boot and flash
 encryption disabled, native USB-Serial-JTAG (`303a:1001`, `/dev/ttyACM0`,
 no bridge chip), MAC `70:af:09:07:f6:3c`. Blue LED on GPIO8 (active
 low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
-(the pin), esp-hal 1.1.2, esp-bootloader-esp-idf 0.5.0.
+(the pin then), esp-hal 1.1.2, esp-bootloader-esp-idf 0.5.0.
 
 ## Files
 
@@ -444,12 +444,14 @@ sources) `build.sh` in the main clone gives `0de3bd91…` on 1.92.0 and
 expects the remapped pin "from any clone path": that does not hold.
 The per-commit loop's scratch worktree built `361dc540…` from the same
 commit on 1.92.0, every section the same size, the jump-table labels
-renumbered (the functions in another order). In the main clone, moving
-the target dir or setting CI's `RUSTFLAGS` left `0de3bd91…`; what
-remains is the package path, which the crate hash follows (the
-codegen-unit name differs between the two builds). A `.text` pin
-reproduces from the path it was built at. Record-only, not fixed in
-PR C.
+renumbered (the functions in another order), and a second worktree at
+another path (`bench-rebuild/c0`, PR #27's reproduction of its CI red)
+built the same `361dc540…`. In the main clone, moving the target dir or
+setting CI's `RUSTFLAGS` left `0de3bd91…`. So worktree builds differ
+from the main clone's, not one path from another; the codegen-unit name
+differs, so the crate hash moved, by a cause not isolated here. A
+`.text` pin reproduces from the checkout it was built in. Record-only,
+not fixed in PR C.
 
 ## Host bench, round 30: tree × compiler (2026-09-13)
 

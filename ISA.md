@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@2e9922b (PR #26 merged 2026-09-13 18:18 UTC: round 29, the traces; mirror synced, branch deleted) · tree is ahead, alpha.8 pending (the library source unchanged since alpha.7; the traces, their tests and two examples changed) · wrote-from: work/pin, ahead by round 30 (PR C, the pin: five commits), not pushed · open(session): the push and PR #27 on the principal's word, the seven (pull_request) contexts green in the full listing, a fresh Fable session's review, the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@2e9922b (PR #26 merged 2026-09-13 18:18 UTC: round 29, the traces; mirror synced, branch deleted) · tree is ahead, alpha.8 pending (the library source unchanged since alpha.7; the traces, their tests and two examples changed) · wrote-from: work/pin, ahead by round 30 (PR C, the pin: six commits), pushed, PR #27 open; reviewed 2026-09-13 by a fresh Fable session and by Muse Spark (a second model family), both reports in the session: one blocking, found by both (the root Cargo.toml comment still said rust-version moves with the pin), three cosmetic (this head line, the nir2json README's toolchain phrase, the bring-up README's "(the pin)"), all fixed by one commit; the record-only items owed in TODO.md (the principal's state file, outside git) · CI read on 0024391 (run 915591, the check job's MSRV step, read by the principal): `rustc 1.98.1 (48a229cea 2026-09-01)`, 1.92.0 installed, all three checks green · open(session): the seven (pull_request) contexts green on the new head in the full listing, then the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-13T20:10:00Z
+updated: 2026-09-13T20:40:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9242,3 +9242,7 @@ from its build path only (the package path, by elimination); the
 real-time loop's first spike moved 56 → 59 (wall-clock seeded, not
 gated). **Guards.** GUARD 1: appended; head line refreshed. GUARD 2: no
 verdict touched. GUARD 3: nothing public.
+
+**Correction (before the merge):** "the package path, by elimination"
+above is not settled; a second worktree path built the same `361dc540…`
+(evidence README § Fourth entry). True when written.
