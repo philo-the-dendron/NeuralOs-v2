@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@7fe2388 (PR #23 merged 2026-09-12 03:20 UTC: round 26, the build is the guard; mirror synced, branch deleted) · alpha.6 STAMPED 2026-09-11: tag v0.1.0-alpha.6 (object 0880ec32) on d8a96b1, Gitea release 946215, crates.io 15:54:50Z; the tree is ahead, alpha.7 pending · wrote-from: work/divisions, ahead by round 27 (the brief, items 1 to 8b, the inline hint, the close-out, the review's fixes; the network's step on the ESP32-C3 3,878 → 1,579 ns/step, behavior identical), pushed, PR #24 open, reviewed (no blocking) · open(session): the per-commit check on the PR, then the merge on the principal's word; then the publish round (alpha.7) · next-work: ROADMAP § Practical next moves"
+head: "main@a974b9e (PR #24 merged 2026-09-13 02:52 UTC: round 27, the divisions and the ring mask; mirror synced, branch deleted) · alpha.7 STAMPED 2026-09-13: tag v0.1.0-alpha.7 (object c7b9daab) on a974b9e, Gitea release 947865, crates.io 03:20:57Z; tree == published · wrote-from: work/close-out-alpha7, ahead by the round-28 close-out (docs only), pushed, PR #25 open · open(session): the PR's checks, then the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-12T13:20:55Z
+updated: 2026-09-13T03:25:26Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9153,3 +9153,34 @@ dated text unchanged, a pointer added; head/updated refreshed under
 the live-state exception. GUARD 2 untouched. GUARD 3: no outreach, no
 upload, no release touched. No publish, no tag. `evidence/`: the
 README extended and its own row refreshed; no pinned file edited.
+
+## Close-out (round 28 — the publish round: alpha.7 stamped, the tag, the release, the registry — 2026-09-13)
+
+Branch `work/close-out-alpha7` from `main@a974b9e`, PR #25, docs only.
+The three actions of `docs/releases/v0.1.0-alpha.7.md` § Procedure ran
+2026-09-13 03:19Z to 03:21Z in that order on the principal's word "go,
+you tag", each verified at its source; record: that file's § Stamped.
+
+1. **Tag.** `v0.1.0-alpha.7`, annotated from the builder session (the
+   principal's choice), object `c7b9daab…` on `a974b9e`; pushed to
+   Gitea, mirrored by AGENTS.md § Merge procedure, the tag lists
+   identical on both hosts.
+2. **Release.** Gitea 947865, pre-release, § Notes verbatim; the ELF
+   (195,072 B, `bed323d4…`, `.text` = the round-27 fix pin `0de3bd91…`,
+   rebuilt by `build.sh` at `a974b9e`, gate 0 hits) and `SHA256SUMS`;
+   downloaded back: sums clean, byte-identical, the gate 0 on the copy.
+3. **Publish.** Dry-run, then `cargo publish -p neuralos-snn` from the
+   clean tree at `a974b9e`; registry `created_at` 2026-09-13T03:20:57Z,
+   checksum `263226d4…` equal to the local crate file, 56 files,
+   194,387 B, `max_version`. The packed tree was scanned after the
+   upload, where round-25 scanned before: 0 personal-pattern hits,
+   0 home paths, 0 session links. Order noted; outcome the same.
+
+Sweep: "the tree is ahead, alpha.7 pending" → "tree == published" in
+AGENTS.md (two places), VISION and the crate README; the version line
+in README and ROADMAP; a RESEARCH_LOG section; this head line.
+**Record-only:** the crate README as published says "the tree is
+ahead, alpha.7 pending", stale from the upload; the next prep round
+writes it as of its publish, as alpha.6's did. **Guards.** GUARD 1:
+appended. GUARD 2 untouched. GUARD 3: a release on the canonical host
+is the stamp, not outreach. No pinned file edited; `dist/` is ignored.
