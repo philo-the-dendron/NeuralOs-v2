@@ -28,12 +28,6 @@ coordinates the hardware frontier needs.
 Every claim here verified at its source (2026-08-22 consolidation
 pass; verification method in parentheses):
 
-- **Intel archived Lava on 2026-05-13** (repo banner read verbatim:
-  archived, read-only; 739★; Intel points to a closed next-gen SDK —
-  the open slot stays vacant). The reference i16 fixed-point SNN
-  framework is gone. NeuralOS positions as its spiritual successor.
-  (The open-neuromorphic guide still lists Lava — stale; the repo
-  banner is authoritative.)
 - **The SNN-on-RISC-V frontier is real and software-starved** —
   SpikeStream, FeNN, SNAP-V, Kraken SoC, IzhiRISC-V, plus 2025's
   burst: a Tsinghua asynchronous RISC-V SNN processor (ASYNC 2025,
@@ -122,7 +116,7 @@ roadmap).
 2. **QEMU `riscv64gc` proof of the `no_std` claim — DONE 2026-08-21**
    (`evidence/qemu-riscv-gate/`); **ESP32-C3 bring-up DONE 2026-09-09**
    (`evidence/esp32c3-bringup/`, one LIF neuron on real silicon).
-3. **Position publicly as Lava's spiritual successor**; cite the
+3. **Position publicly**; cite the
    Neuromorphic-OS paper (arXiv:2603.26722), the Full-Integer-SNN
    paper (Deshpande et al., DCIS 2025), and NIR (Pedersen et al.,
    Nature Comms 2024).

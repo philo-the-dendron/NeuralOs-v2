@@ -79,7 +79,7 @@ MSRV — don't bump without checking).
 # a mirror.
 cargo fmt    --all -- --check                    # formatting gate (2026-09-02): rustfmt under the pinned toolchain, default config
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; 348 executed green (3 app, 15 nir2json, 111 rt, 219 snn incl. 8 fixture + 1 doctest; 2026-09-11) + 5 rt model-gated #[ignore]
+cargo test   --workspace                          # offline; the count is the CI log's (one number, one home) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
@@ -211,24 +211,17 @@ Two rules learned on PR #15 (2026-09-09):
 
 ## Published crate
 
-`neuralos-snn` is on crates.io at `0.1.0-alpha.7` (published
-2026-09-13T03:20:57Z from a974b9e, the merge commit of PR #24, tag
-`v0.1.0-alpha.7` — both divisions by 1000 narrowed to `i32` when the
-value fits, `dt_over_tau` in `u32`, the spike ring's masked stores,
-`#[inline]` on `integrate_and_fire`; the network's step on the ESP32-C3
-3,878 → 1,579 ns/step, behavior identical; registry-verified, ISA
-round-28 close-out). Before it, `0.1.0-alpha.6` (2026-09-11T15:54:50Z
-from d8a96b1: the `[u32; N]` spike ring, no runtime dependencies,
-`rust-version` declared, `isi_stats_us` in u128) and `0.1.0-alpha.5`
-(2026-08-22T13:59Z from 103fa59: general graph assembly,
-`build_network`, EDGE_PULSE_QUANTA, the assembly gates, the R17
-consolidation breaks, the STDP dt-overflow fix). **Tree == published**
-(a publish session that leaves the tree ahead flips this sentence to
-"the tree is ahead, alpha.N pending", as round 27 did until its stamp).
-The workspace consumes it via path dep, so lib edits take effect
-locally without republishing — a real bugfix or API addition warrants
-the next alpha. Bump the workspace `version` in the root `Cargo.toml`
-and `cargo publish -p neuralos-snn` when that's the call.
+`neuralos-snn` is on crates.io. Its version is the workspace `version`
+in the root `Cargo.toml`. Publishes since alpha.6 have their notes in
+`docs/releases/v<version>.md`, whose § Stamped carries the tag, the
+Gitea release and the registry timestamp, frozen at publish (cut 1 of
+§ Session protocol, rigor in proportion to the claim); older ones are
+in the ISA. Whether the tree is ahead of the registry is state, and
+state lives in the ISA head line and TODO.md (cut 5), not here. The
+workspace consumes the crate by path, so library edits take effect
+locally without a publish; a real bugfix or API addition warrants the
+next alpha: bump the workspace `version` and
+`cargo publish -p neuralos-snn` on the principal's word.
 
 ## Session discipline (the autopsy doctrine — read before scoping any session)
 
@@ -412,11 +405,10 @@ claims, reopening frozen records.
   the squash; teaching the job to skip commits that a later `fixup!`
   names is a CI change, tracked separately. The PR keeps its
   number and its thread. Allowed on `work/*` branches only. The push
-  names the canonical host, carries both lease flags, and never
+  goes through `origin`, carries both lease flags, and never
   `--force`:
 
-      git push git@gitea.com:Caramoussin/NeuralOs-v2.git \
-          --force-with-lease --force-if-includes work/<name>
+      git push origin --force-with-lease --force-if-includes work/<name>
 
   Why both flags: `--force-with-lease` alone compares against the
   remote-tracking ref, and any fetch in between (the per-commit loop,
@@ -428,13 +420,14 @@ claims, reopening frozen records.
   git-push(1) makes the second flag a no-op in that combination, and
   the explicit form is only as safe as where the SHA came from (from
   the note in step 2, never `git rev-parse origin/work/<name>`). Why
-  the host is named: when this rule was written (PR #7) `origin`
-  fanned out to two push URLs, and a lease could pass on one host and
-  fail on the other, leaving a rewrite that happened but reported
-  failure. Since 2026-09-06 `origin` is Gitea alone and no work branch
-  exists on GitHub (§ Remotes), so there is no second push; naming the
-  host keeps the rewrite explicit anyway. (Soushi, PR #7, both flags
-  measured in scratch repos on git 2.43.) Order of operations, each
+  the remote's name and not its URL: a lease takes its expected value
+  from the remote-tracking ref, and a URL is an anonymous remote with
+  none, so the URL form this rule printed until 2026-09-13 is refused
+  with `stale info` on git 2.43 (measured on PR #23's rewrite,
+  2026-09-11; ISA round-26 amendment). `origin` is Gitea alone since
+  2026-09-06 and no work branch exists on GitHub (§ Remotes), so the
+  name and the canonical host are one thing. (Soushi, PR #7, both
+  flags measured in scratch repos on git 2.43.) Order of operations, each
   step checkable:
   (1) rewrite only when the newest event on the PR is your own — if
   the reviewer spoke last, answer first; (2) post the note BEFORE the
@@ -458,6 +451,18 @@ claims, reopening frozen records.
 - **Findings taxonomy.** Blocking (fix before merge) · cosmetic-list
   (rides a later commit) · record-only (ISA entry, no code). Every
   review states which is which.
-- **Every session leaves its trail:** an ISA append (scope, claims,
-  guards) rides the work; evidence sha-pinned; frozen records never
-  re-litigated.
+- **Rigor in proportion to the claim** (ratified 2026-09-12; PR #24
+  shipped 264 lines of code and tests against 679 lines of ISA).
+  Tier 1, a public claim (a publish, release notes, a number in a
+  README or the paper): pinned evidence, a second-model review, the
+  sweep, an ISA entry with the numbers. Tier 2, spine behavior
+  (`neuralos-snn`, firmware): CI, per-commit, traces, one review, a
+  short ISA entry. Tier 3, no claim (docs, CI, tooling, refactors the
+  traces prove): CI green, no brief, no review round, one ISA line.
+  Six cuts: (1) one number, one home, the evidence README; other files
+  point to it, and release notes and the crate README's version notes
+  freeze at publish; (2) the brief is the PR description, one screen;
+  (3) at most 30 lines of ISA per PR; (4) 3 to 6 commits per PR; (5)
+  state in two places, the ISA head line and TODO.md; (6) doctrine one
+  in, one out. The ISA append still rides the work, sized by its tier;
+  evidence stays sha-pinned; frozen records are never re-litigated.
