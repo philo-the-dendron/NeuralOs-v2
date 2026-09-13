@@ -1279,4 +1279,14 @@ mod tests {
         let _ = n.integrate_and_fire(0, 20_000, 60_000);
         assert_eq!(n.membrane_potential, n.resting_potential, "stays at rest");
     }
+
+    /// The neuron's size, pinned (ISA round 31): no field is wider than a
+    /// `u32`, so the ESP32-C3 measures the same 44 bytes as this host.
+    /// `repr(Rust)` lets the compiler order the fields, so a toolchain bump
+    /// can move the number; the bump's commit re-pins it, as it does the
+    /// firmware's `.text`.
+    #[test]
+    fn the_neuron_is_44_bytes() {
+        assert_eq!(core::mem::size_of::<LIFNeuron>(), 44);
+    }
 }
