@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@95f5876 (PR #25 merged 2026-09-13 04:43 UTC: round-28 close-out, alpha.7 stamped; mirror synced, branch deleted) · tree == published (alpha.7) · wrote-from: work/trace, ahead by round 29 (PR B, the traces: 5 commits), unpushed · open(session): the per-commit loop, then the push and PR B on the principal's word; Opus reviews · next-work: ROADMAP § Practical next moves"
+head: "main@95f5876 (PR #25 merged 2026-09-13 04:43 UTC: round-28 close-out, alpha.7 stamped; mirror synced, branch deleted) · tree == published (alpha.7) · wrote-from: work/trace, ahead by round 29 (PR B, the traces: six commits), pushed, PR #26 open; reviewed 2026-09-13 by a fresh Fable session, the report on the PR thread: no blocking, one cosmetic (this head line, fixed by its commit), one record-only · open(session): the seven (pull_request) contexts green in the full listing, then the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-13T15:45:00Z
+updated: 2026-09-13T17:05:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
