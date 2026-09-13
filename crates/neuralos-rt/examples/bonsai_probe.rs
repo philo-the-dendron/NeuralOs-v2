@@ -150,7 +150,7 @@ fn main() {
         if k.starts_with("qwen3.") || k.starts_with("general.") {
             let vs = match v {
                 neuralos_rt::MetadataValue::String(s) => {
-                    format!("{:?}", &s.chars().take(60).collect::<String>())
+                    format!("{:?}", s.chars().take(60).collect::<String>())
                 }
                 other => format!("{other:?}"),
             };

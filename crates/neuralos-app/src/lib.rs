@@ -101,7 +101,7 @@ impl SimRunner {
 
         let cell_count = RASTER_COLS * rows;
         let mut ring = vec![0u8; cell_count * 4];
-        for cell in ring.chunks_exact_mut(4) {
+        for cell in ring.as_chunks_mut::<4>().0 {
             cell.copy_from_slice(&BG);
         }
 
@@ -109,7 +109,7 @@ impl SimRunner {
         let initial_weights: Vec<i16> = net.synapses().iter().map(|s| s.weight).collect();
         let wm_cells = rows * rows;
         let mut weight_matrix = vec![0u8; wm_cells * 4];
-        for cell in weight_matrix.chunks_exact_mut(4) {
+        for cell in weight_matrix.as_chunks_mut::<4>().0 {
             cell.copy_from_slice(&WM_BG);
         }
 
@@ -160,9 +160,7 @@ impl SimRunner {
     /// steady-state stepping (correctly-sized inputs, valid indices); any such
     /// error is swallowed as a no-spike frame rather than panicking the UI.
     pub fn tick(&mut self, input_drive_ua: i16) {
-        for slot in &mut self.inputs {
-            *slot = input_drive_ua;
-        }
+        self.inputs.fill(input_drive_ua);
         let spikes = self.net.step(&self.inputs).unwrap_or_default();
 
         // Overwrite the oldest column with the new frame: background first,
@@ -205,7 +203,7 @@ impl SimRunner {
     #[must_use]
     pub fn weight_matrix_display(&mut self) -> (usize, usize, &[u8]) {
         let n = self.rows;
-        for cell in self.weight_matrix.chunks_exact_mut(4) {
+        for cell in self.weight_matrix.as_chunks_mut::<4>().0 {
             cell.copy_from_slice(&WM_BG);
         }
         for s in self.net.synapses() {
@@ -271,7 +269,7 @@ mod tests {
             runner.tick(800);
         }
         let (_, _, bytes) = runner.raster_display();
-        let lit = bytes.chunks_exact(4).any(|px| px != BG);
+        let lit = bytes.as_chunks::<4>().0.iter().any(|px| *px != BG);
         assert!(lit, "sustained strong drive should light some raster cells");
     }
 
@@ -291,7 +289,7 @@ mod tests {
         assert_eq!((w, h), (128, 128));
         let mut warm = 0_usize; // R > B (excitatory lineage)
         let mut cool = 0_usize; // B > R (inhibitory lineage)
-        for px in bytes.chunks_exact(4) {
+        for px in bytes.as_chunks::<4>().0 {
             if px[0] > px[2] {
                 warm += 1;
             } else if px[2] > px[0] {

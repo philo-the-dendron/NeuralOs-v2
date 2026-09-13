@@ -520,7 +520,7 @@ pub fn convert_file_opts(
             flat.len()
         )));
     }
-    for pair in flat.chunks_exact(2) {
+    for pair in flat.as_chunks::<2>().0 {
         let resolve = |n: &str| {
             index
                 .get(n)
