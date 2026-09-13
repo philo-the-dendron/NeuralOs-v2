@@ -29,6 +29,7 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `host-bench-r27-alpha6.log`, `host-bench-r27-alpha7.log` | the host spike-path bench, round 27's regression check, one run per tree, each opening with the line that names its commit and spine version (§ Host bench, round 27) |
 | `host-bisect-r27.log` | the follow-up to that check: the bench per commit of the round, medians per round (§ Host bench, round 27) |
 | `board-r30-alpha7-before.log`, `board-r30-pin.log` | the fourth entry (ISA round 30, 2026-09-13): the board as round 27 left it (the 1.92.0 build on flash), then the same source built by `build.sh` on 1.98.1 at 885ff53 (ELF `971b2bcb…`), 20 s after reset each (§ Fourth entry) |
+| `host-bench-r30-2x2.log` | round 30's rider: the host spike-path bench as a 2×2, the alpha.6 tree (7fe2388) and the alpha.7 tree (26d68b0), each built on 1.92.0 and 1.98.1, three rounds in rotated order, the per-round medians appended by the run itself (§ Host bench, round 30) |
 | `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../firmware/esp32c3/` | the firmware crate; the ELF is rebuildable, not committed |
@@ -449,6 +450,38 @@ remains is the package path, which the crate hash follows (the
 codegen-unit name differs between the two builds). A `.text` pin
 reproduces from the path it was built at. Record-only, not fixed in
 PR C.
+
+## Host bench, round 30: tree × compiler (2026-09-13)
+
+Round 27's regression check once more, as PR C's rider: does the
+alpha.7 tree's x86-64 cost (§ Host bench, round 27) survive the new
+pin? Same box (Intel i5-6200U, governor `powersave`, nothing pinned),
+round 27's bisect method: `git archive` trees of `Cargo.toml`,
+`rust-toolchain.toml`, `crates/` and `proofs/spike-path-bench/` for the
+alpha.6 tree (`7fe2388`) and the alpha.7 tree (`26d68b0`), each built
+with `cargo +<toolchain> build --release --locked --offline` on 1.92.0
+and on 1.98.1; the four binaries built first, then three rounds in
+rotated order in one run, `host-bench-r30-2x2.log` (the per-round
+medians appended by the run itself). Absolute figures move between
+runs on this laptop; only this run's comparisons are read. Each figure
+is the median of the three rounds' medians, ns/step:
+
+| Arm | Tree | 1.92.0 | 1.98.1 | Compiler |
+|---|---|---|---|---|
+| forced | alpha.6 | 13.020 | 12.784 | −0.236 |
+| forced | alpha.7 | 15.000 | 15.274 | +0.274 |
+| control | alpha.6 | 11.041 | 10.567 | −0.474 |
+| control | alpha.7 | 13.546 | 13.209 | −0.337 |
+| **alpha.7 − alpha.6, forced** | | +1.980 | **+2.490** | |
+| **alpha.7 − alpha.6, control** | | +2.505 | **+2.642** | |
+
+The cost stays on the new pin: the alpha.7 tree is 2.0 to 2.6 ns/step
+slower on both compilers, and no round of one tree reaches a round of
+the other in any cell. The compiler moves each cell by less than
+0.5 ns, in both directions: its rounds overlap in two cells, touch in
+one (alpha.6 forced) and separate only on the alpha.6 control arm
+(−0.47). The cost is in the code, as round 27's bisect found, not in
+the compiler; round 27's ruling stands (recorded, not fixed).
 
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
