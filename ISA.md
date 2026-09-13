@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@2e9922b (PR #26 merged 2026-09-13 18:18 UTC: round 29, the traces; mirror synced, branch deleted) · tree is ahead, alpha.8 pending (the library source unchanged since alpha.7; the traces, their tests and two examples changed) · wrote-from: work/pin, ahead by round 30 (PR C, the pin: seven commits), pushed, PR #27 open; reviewed 2026-09-13 by a fresh Fable session and by Muse Spark (a second model family), both reports in the session: one blocking, found by both (the root Cargo.toml comment still said rust-version moves with the pin), three cosmetic (this head line, the nir2json README's toolchain phrase, the bring-up README's "(the pin)"), all fixed by one commit; the record-only items owed in TODO.md (the principal's state file, outside git) · CI read on 0024391 (run 915591, the check job's MSRV step, read by the principal): `rustc 1.98.1 (48a229cea 2026-09-01)`, 1.92.0 installed, all three checks green; the PR run there (run 915592) went red in the per-commit job only, at commit 0's firmware leg (1.92.0 lacked the chip target in CI's container, job 1240835), reproduced locally and fixed by the seventh commit: the loop provisions each commit's own pin · open(session): the seven (pull_request) contexts green on the new head in the full listing, then the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@7d65416 (PR #27 merged 2026-09-13 22:56 UTC: round 30, the pin; mirror synced, branch deleted) · tree is ahead, alpha.8 pending (since alpha.7: the traces, the pin and the MSRV gate; round 31 moves the library: `SpikeRecorder`, the neuron without its ring) · wrote-from: work/recorder, ahead by round 31 (PR D, the ring leaves the neuron: five commits), not pushed; the local loop green on commits 0 to 3 · open(session): the loop on this commit, then the push and PR #28 on the principal's word, the review by a fresh Fable session in the session, the seven (pull_request) contexts green on the head in the full listing, the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-13T20:40:00Z
+updated: 2026-09-13T23:50:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9246,3 +9246,31 @@ verdict touched. GUARD 3: nothing public.
 **Correction (before the merge):** "the package path, by elimination"
 above is not settled; a second worktree path built the same `361dc540…`
 (evidence README § Fourth entry). True when written.
+
+## Close-out (round 31 — PR D, the ring leaves the neuron: `LIFNeuron` keeps no spike history — 2026-09-13)
+
+Branch `work/recorder` from `main@7d65416`, tier 2, five commits, the
+brief as the PR description (`~/projets/pr-d-brief.md`, one screen).
+0. `41acbd8`: the ring moves whole to `spike_recorder.rs`, the public
+   `SpikeRecorder` (`new`, `record`, `len`, `is_empty`, `iter`,
+   `clear`); `get`, the rate, the ISI stats and `isqrt_u64` test-gated
+   there; `MAX_SPIKE_HISTORY` re-exported from it. Traces green, none
+   regenerated.
+1. `d3adc5b`: `size_of::<LIFNeuron>()` pinned at 44. On 1.98.1, read
+   by a scratch crate through a compile error, before: 320 B, align 8,
+   on x86-64 and 308 B, align 4, on riscv32imc; after: 44 B, align 4,
+   on both. `SpikeRecorder`: 272 B and 264 B (reported, not pinned).
+2. `a39404e`: the board, fifth entry: `.text` `33656de9…` →
+   `61639145…`; the fold 147 / 55 / `0b78b456` on both arms; pinned
+   1,585 → 1,559 and free 569 → 570 ns/step; no ring store left.
+3. `409ffdf`: PR C's two riders; `Cargo.lock` and the ELF unchanged.
+Deviations: `Default` on the recorder (clippy, `-D warnings`); the two
+reset tests lose their count lines; two ISI tests move with the stats;
+two "history" doc sites past the brief's five (the grid-switch doc
+glued onto `integrate_and_fire`'s rustdoc went back to
+`set_voltage_resolution`); the oracle's cast allow; one sentence in the
+bench harness. `lif_neuron::MAX_SPIKE_HISTORY` is gone as a path; the
+alpha.8 notes owe the line. Record-only: round 27's loop counter was
+never committed; the fifth entry states rules that reproduce its
+tables. **Guards.** GUARD 1: appended; head line refreshed. GUARD 2:
+no verdict touched. GUARD 3: nothing public.
