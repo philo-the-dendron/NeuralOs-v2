@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@a974b9e (PR #24 merged 2026-09-13 02:52 UTC: round 27, the divisions and the ring mask; mirror synced, branch deleted) · alpha.7 STAMPED 2026-09-13: tag v0.1.0-alpha.7 (object c7b9daab) on a974b9e, Gitea release 947865, crates.io 03:20:57Z; tree == published · wrote-from: work/close-out-alpha7, ahead by the round-28 close-out (docs only), pushed, PR #25 open · open(session): the PR's checks, then the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@95f5876 (PR #25 merged 2026-09-13 04:43 UTC: round-28 close-out, alpha.7 stamped; mirror synced, branch deleted) · tree == published (alpha.7) · wrote-from: work/trace, ahead by round 29 (PR B, the traces: 5 commits), unpushed · open(session): the per-commit loop, then the push and PR B on the principal's word; Opus reviews · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-13T03:25:26Z
+updated: 2026-09-13T15:45:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9184,3 +9184,32 @@ ahead, alpha.7 pending", stale from the upload; the next prep round
 writes it as of its publish, as alpha.6's did. **Guards.** GUARD 1:
 appended. GUARD 2 untouched. GUARD 3: a release on the canonical host
 is the stamp, not outreach. No pinned file edited; `dist/` is ignored.
+
+## Close-out (round 29 — PR B, the traces: what the network does, step by step, as text; CI compares — 2026-09-13)
+
+Branch `work/trace` from `main@95f5876`, tier 2, five commits, the
+brief as the PR description (`~/projets/pr-b-brief.md`, one screen).
+1. The rider (tier 3): AGENTS § Session protocol gains the tiers and
+   the six cuts, replacing "every session leaves its trail"; cuts 1
+   and 5 applied to AGENTS itself (§ Published crate a pointer, the
+   test count out of § Commands and ROADMAP); VISION drops the Lava
+   comparison; the lease push prints `origin` (round 26's owed fix).
+2. Format `neuralos-trace v1` in `crates/neuralos-snn/tests/traces/`:
+   the brief's header plus `kind`, `steps`, `rows`; one row per step,
+   written after it; no library change.
+3. 12 regression cases and 1 reference vector (the neuron: no synapse,
+   no spike). Files 39,903 B, directory 57,271 B, packed crate
+   212,618 B, `cargo package --list` shows all 13.
+4. `cargo test -p neuralos-snn --test traces`, five tests in the test
+   gate. Pins that hold on this tree: the board case folds to the
+   bench record (147 spikes, first at step 55, `0b78b456`); session F
+   (+2 mV, +12 quanta one step later); the NIR chain (9 spikes in 100
+   steps, first at step 6); the i128 model equals the neuron on the
+   150 reference rows. Test of the test: one edited membrane goes red
+   at its line, the case named.
+Deviations from the brief: the three header fields (a file replays
+without the code; the board case is 10,000 steps and 147 rows); the
+board case and the reference vector ride the writer's commit. Not in
+it: QEMU replay, a viewer, the network oracle, any public API.
+**Guards.** GUARD 1: appended; head line refreshed. GUARD 2 untouched.
+GUARD 3: nothing public. No evidence file touched.
