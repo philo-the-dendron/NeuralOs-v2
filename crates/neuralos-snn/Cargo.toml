@@ -25,15 +25,16 @@ std = []
 simd = ["std"]
 
 [dependencies]
-# None. The spike history is a [u32; N] ring in lif_neuron.rs since
-# 2026-09-10 (alpha.6); heapless, the one runtime dependency before
-# that, is now the differential oracle below. Audit surface: core.
+# None. The spike history is a [u32; N] ring, SpikeRecorder in
+# spike_recorder.rs (alpha.8; a field of the neuron in lif_neuron.rs
+# from 2026-09-10, alpha.6); heapless, the one runtime dependency
+# before that, is now the differential oracle below. Audit surface: core.
 
 [dev-dependencies]
 # Property-based tests — Cardano-grade rigor (leçon v0.1: tout test doit être réel)
 proptest = "1.5"
 # The pre-ring spike history, kept as the oracle of the differential
-# test in lif_neuron.rs (prop_ring_matches_the_heapless_oracle).
+# test in spike_recorder.rs (prop_ring_matches_the_heapless_oracle).
 heapless = "0.8"
 
 [[example]]
