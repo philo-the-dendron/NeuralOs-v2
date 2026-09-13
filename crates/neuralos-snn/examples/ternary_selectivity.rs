@@ -508,25 +508,24 @@ fn main() {
     );
     println!();
 
-    let gate: String;
-    if !control_ok {
-        gate = "NO (INVALID) — i16 control failed to discriminate; input lacks learnable structure"
-            .to_string();
+    let gate: String = if !control_ok {
+        "NO (INVALID) — i16 control failed to discriminate; input lacks learnable structure"
+            .to_string()
     } else if tern_selective && spiking_ok {
-        gate = format!(
+        format!(
             "YES — ternary discriminates by correlation (SI={:.3} vs i16 SI={:.3}) and stays non-collapsed",
             tern_si, i16_si
-        );
+        )
     } else if control_ok && !tern_selective {
-        gate = format!(
+        format!(
             "NO — ternary collapses uniformly (SI={:.3}) despite i16 discriminating (SI={:.3}); too coarse to learn selectively",
             tern_si, i16_si
-        );
+        )
     } else {
-        gate = format!(
+        format!(
             "MARGINAL — ternary SI={:.3} vs i16 SI={:.3}, spiking {:.2}× ref; partial/weak discrimination",
             tern_si, i16_si, tern_ratio
-        );
-    }
+        )
+    };
     println!("GATE: {gate}");
 }

@@ -176,7 +176,7 @@ pub fn q2_0_matvec(
             // four LSB-first lanes per code byte.
             let mut partial: i64 = 0;
             let codes = &row[base + 2..base + Q2_0_BLOCK_BYTES];
-            for (byte, act4) in codes.iter().zip(acts[b * Q2_0_BLOCK..].chunks_exact(4)) {
+            for (byte, act4) in codes.iter().zip(acts[b * Q2_0_BLOCK..].as_chunks::<4>().0) {
                 let a = [
                     i64::from(act4[0]),
                     i64::from(act4[1]),

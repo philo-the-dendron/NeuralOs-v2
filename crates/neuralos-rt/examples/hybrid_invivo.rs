@@ -545,7 +545,9 @@ fn main() {
             .expect("attn_norm tensor present");
         let norm_milli: Vec<i32> = {
             let d = f.tensor_data(norm_w).expect("norm slice");
-            d.chunks_exact(4)
+            d.as_chunks::<4>()
+                .0
+                .iter()
                 .map(|c| {
                     neuralos_rt::f32_bits_to_milli(u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 })

@@ -11,7 +11,7 @@ revision v0.4, 40 MHz crystal, 4 MB flash, secure boot and flash
 encryption disabled, native USB-Serial-JTAG (`303a:1001`, `/dev/ttyACM0`,
 no bridge chip), MAC `70:af:09:07:f6:3c`. Blue LED on GPIO8 (active
 low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
-(the pin), esp-hal 1.1.2, esp-bootloader-esp-idf 0.5.0.
+(the pin then), esp-hal 1.1.2, esp-bootloader-esp-idf 0.5.0.
 
 ## Files
 
@@ -28,6 +28,8 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `burst-loops-r27-alpha6.dis`, `burst-loops-r27-alpha7.dis` | both burst loops of each ELF, cut by address with the extraction and the scrub of § The mechanism (baseline: free `0x42011e1e`–`0x420120ac`, pinned `0x420122d4`–`0x4201260e`; fix: free `0x42011dca`–`0x42011f56`, pinned `0x420121b4`–`0x42012590`); the baseline's is the listing ISA round 27's item 3 was decided by (§ Third entry) |
 | `host-bench-r27-alpha6.log`, `host-bench-r27-alpha7.log` | the host spike-path bench, round 27's regression check, one run per tree, each opening with the line that names its commit and spine version (§ Host bench, round 27) |
 | `host-bisect-r27.log` | the follow-up to that check: the bench per commit of the round, medians per round (§ Host bench, round 27) |
+| `board-r30-alpha7-before.log`, `board-r30-pin.log` | the fourth entry (ISA round 30, 2026-09-13): the board as round 27 left it (the 1.92.0 build on flash), then the same source built by `build.sh` on 1.98.1 at 885ff53 (ELF `971b2bcb…`), 20 s after reset each (§ Fourth entry) |
+| `host-bench-r30-2x2.log` | round 30's rider: the host spike-path bench as a 2×2, the alpha.6 tree (7fe2388) and the alpha.7 tree (26d68b0), each built on 1.92.0 and 1.98.1, three rounds in rotated order, the per-round medians appended by the run itself (§ Host bench, round 30) |
 | `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../firmware/esp32c3/` | the firmware crate; the ELF is rebuildable, not committed |
@@ -404,6 +406,85 @@ host cost. The two options not taken: limiting item 2's fast path to
 32-bit targets (it would recover item 2's share only), and a deeper
 look at the x86 code first.
 
+## Fourth entry: round 30, the pin moves to 1.98.1 (2026-09-13)
+
+Same SuperMini (MAC `70:af:09:07:f6:3c`, esp32c3 revision v0.4), same
+port, same tool, 20 s after reset. The toolchain pin moved from 1.92.0
+to 1.98.1 (PR C); no spine or firmware source changed since round 27's
+fix. Before: the board as round 27 left it, its flash holding the fix
+built on 1.92.0, captured the same afternoon,
+`board-r30-alpha7-before.log`. After: `build.sh` at `885ff53` on
+1.98.1, ELF `971b2bcb…`, `.text` `33656de9…` (§ Rebuild + run),
+flashed, `board-r30-pin.log`. The gate: 0 hits. The trim-paths canary
+on 1.98.1: still unstable (exit 101); the remap stays. Each log opens
+with stale pre-reset spike lines (two before, one after); every figure
+below is from after the `rst:` line.
+
+| Measurement | Before (1.92.0 build) | After (1.98.1 build) |
+|---|---|---|
+| Burst, pinned arm | 15,798 µs → 1,579 ns/step | 15,856 µs → **1,585 ns/step** |
+| Burst, free arm | 5,636 µs → 563 ns/step | 5,694 µs → **569 ns/step** |
+| Burst spikes, first spike step, checksum, both arms | 147, 55, `0b78b456` | 147, 55, `0b78b456` |
+| First spike, real-time loop | step 56, 56,241 µs | step 59, 59,276 µs |
+| Spikes after the reset | 295 | 295 |
+
+The gate holds: both burst arms identical in spike count, first spike
+step and checksum, the figures the traces compare also pins on the
+host (`one-neuron-board.trace`). The new compiler costs 58 µs per
+10,000 steps on both arms, 5.8 ns per step (+0.4 % pinned, +1.0 %
+free), about one cycle at 160 MHz; not read further. The real-time
+loop is reported, not gated: its noise is seeded by the wall-clock
+stamp, and the two bursts before it now take 116 µs longer, so every
+stamp moves; its first spike lands at step 59, three steps after round
+27's step 56, with the same 295 spikes in 20 s.
+
+The `.text` moved with the compiler alone: at `ff15c8e` (the same
+sources) `build.sh` in the main clone gives `0de3bd91…` on 1.92.0 and
+`33656de9…` on 1.98.1. One correction to § Rebuild + run, which
+expects the remapped pin "from any clone path": that does not hold.
+The per-commit loop's scratch worktree built `361dc540…` from the same
+commit on 1.92.0, every section the same size, the jump-table labels
+renumbered (the functions in another order), and a second worktree at
+another path (`bench-rebuild/c0`, PR #27's reproduction of its CI red)
+built the same `361dc540…`. In the main clone, moving the target dir or
+setting CI's `RUSTFLAGS` left `0de3bd91…`. So worktree builds differ
+from the main clone's, not one path from another; the codegen-unit name
+differs, so the crate hash moved, by a cause not isolated here. A
+`.text` pin reproduces from the checkout it was built in. Record-only,
+not fixed in PR C.
+
+## Host bench, round 30: tree × compiler (2026-09-13)
+
+Round 27's regression check once more, as PR C's rider: does the
+alpha.7 tree's x86-64 cost (§ Host bench, round 27) survive the new
+pin? Same box (Intel i5-6200U, governor `powersave`, nothing pinned),
+round 27's bisect method: `git archive` trees of `Cargo.toml`,
+`rust-toolchain.toml`, `crates/` and `proofs/spike-path-bench/` for the
+alpha.6 tree (`7fe2388`) and the alpha.7 tree (`26d68b0`), each built
+with `cargo +<toolchain> build --release --locked --offline` on 1.92.0
+and on 1.98.1; the four binaries built first, then three rounds in
+rotated order in one run, `host-bench-r30-2x2.log` (the per-round
+medians appended by the run itself). Absolute figures move between
+runs on this laptop; only this run's comparisons are read. Each figure
+is the median of the three rounds' medians, ns/step:
+
+| Arm | Tree | 1.92.0 | 1.98.1 | Compiler |
+|---|---|---|---|---|
+| forced | alpha.6 | 13.020 | 12.784 | −0.236 |
+| forced | alpha.7 | 15.000 | 15.274 | +0.274 |
+| control | alpha.6 | 11.041 | 10.567 | −0.474 |
+| control | alpha.7 | 13.546 | 13.209 | −0.337 |
+| **alpha.7 − alpha.6, forced** | | +1.980 | **+2.490** | |
+| **alpha.7 − alpha.6, control** | | +2.505 | **+2.642** | |
+
+The cost stays on the new pin: the alpha.7 tree is 2.0 to 2.6 ns/step
+slower on both compilers, and no round of one tree reaches a round of
+the other in any cell. The compiler moves each cell by less than
+0.5 ns, in both directions: its rounds overlap in two cells, touch in
+one (alpha.6 forced) and separate only on the alpha.6 control arm
+(−0.47). The cost is in the code, as round 27's bisect found, not in
+the compiler; round 27's ruling stands (recorded, not fixed).
+
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
 ```bash
@@ -436,6 +517,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   6d407501400cb9beb554b2f5df7ce031f9bae08c43a274bd41ef8df07bc0ddaa  alpha.6 under the round-26 remap (build.sh, PR #23's item-1 tree; the spine and firmware sources of 820d81a, unchanged)
 #   f7193ca7415e2d8d8c006a8cff67c97a3f5e51e2965639d442a65293a8354821  round-27 baseline (build.sh at 5c3e3ad: the alpha.6 spine, the firmware with the free and pinned burst arms; ISA round 27, item 1)
 #   0de3bd91f3d64c64060c70b1bbc868a3717fbd6f8236d423e9dd3bbdaf035322  round-27 fix (build.sh at 1affcd6: the alpha.7 spine, the baseline's firmware source; ISA round 27, item 7)
+#   33656de99e9e008b5e8681a86de041227bc1f470cc424e3f3108087e3f0d80c5  round 30, the pin (build.sh at 885ff53 on 1.98.1, main clone: the alpha.7 spine and firmware source; ISA round 30)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -451,7 +533,8 @@ reproduced by the script and are not expected to be. The fourth pin is
 not a rebuild: 5c3e3ad changes the firmware's source (the pinned burst
 arm, ISA round 27, item 1) on the same alpha.6 spine. The fifth is
 round 27's fix: the same firmware source, the alpha.7 spine, built at
-1affcd6.
+1affcd6. The sixth is that source under the new pin, 1.98.1, built at
+885ff53 in the main clone (§ Fourth entry).
 
 ### Release asset (the procedure since round 26)
 

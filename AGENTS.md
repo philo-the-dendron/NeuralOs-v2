@@ -66,8 +66,10 @@ the desktop behind the window and give false "it works" readings.
 Workspace is four members: `crates/neuralos-snn` (the library),
 `crates/neuralos-app` (the visualizer), `crates/neuralos-rt` (the
 research runtime), `crates/neuralos-nir2json` (the `.nir`→JSON
-converter). `rust-toolchain.toml` pins **1.92.0** (slint 1.17
-MSRV — don't bump without checking).
+converter). `rust-toolchain.toml` pins the toolchain; the version
+lives there alone. A bump is its own commit: the lints it adds fixed
+before it, the firmware `.text` re-pinned and the board fold read again
+(PR C).
 
 ```bash
 # Quality gates. `.gitea/workflows/ci.yml` IS THE GATE (origin is Gitea);
@@ -82,6 +84,9 @@ cargo check  --workspace --all-targets
 cargo test   --workspace                          # offline; the count is the CI log's (one number, one home) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
+RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib                         # the MSRV gate (PR C): rust-version is the crate's promise, the pin is ours; needs `rustup toolchain install 1.92.0 --profile minimal`
+RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features   # same gate, the no_std configuration
+RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd         # same gate, the simd configuration
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
 cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings  # simd lint gate: workspace clippy never compiles the feature-gated module (2026-08-30)
 cargo test -p neuralos-snn --release --features simd -- --include-ignored   # simd release gate: the slice-length contract is assert_eq!, its regression test only fails in release (2026-08-30); --include-ignored pulls the two exhaustive sweeps in, ~12 s in release (round 12, 2026-09-02)

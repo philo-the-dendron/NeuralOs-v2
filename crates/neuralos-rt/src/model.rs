@@ -1175,7 +1175,7 @@ impl Qwen3 {
                 .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
             all.push((t as u32, milli));
         }
-        all.sort_by(|a, b| b.1.cmp(&a.1));
+        all.sort_by_key(|a| std::cmp::Reverse(a.1));
         all.truncate(k);
         Ok(all)
     }

@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@95f5876 (PR #25 merged 2026-09-13 04:43 UTC: round-28 close-out, alpha.7 stamped; mirror synced, branch deleted) · tree == published (alpha.7) · wrote-from: work/trace, ahead by round 29 (PR B, the traces: six commits), pushed, PR #26 open; reviewed 2026-09-13 by a fresh Fable session, the report on the PR thread: no blocking, one cosmetic (this head line, fixed by its commit), one record-only · open(session): the seven (pull_request) contexts green in the full listing, then the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@2e9922b (PR #26 merged 2026-09-13 18:18 UTC: round 29, the traces; mirror synced, branch deleted) · tree is ahead, alpha.8 pending (the library source unchanged since alpha.7; the traces, their tests and two examples changed) · wrote-from: work/pin, ahead by round 30 (PR C, the pin: seven commits), pushed, PR #27 open; reviewed 2026-09-13 by a fresh Fable session and by Muse Spark (a second model family), both reports in the session: one blocking, found by both (the root Cargo.toml comment still said rust-version moves with the pin), three cosmetic (this head line, the nir2json README's toolchain phrase, the bring-up README's "(the pin)"), all fixed by one commit; the record-only items owed in TODO.md (the principal's state file, outside git) · CI read on 0024391 (run 915591, the check job's MSRV step, read by the principal): `rustc 1.98.1 (48a229cea 2026-09-01)`, 1.92.0 installed, all three checks green; the PR run there (run 915592) went red in the per-commit job only, at commit 0's firmware leg (1.92.0 lacked the chip target in CI's container, job 1240835), reproduced locally and fixed by the seventh commit: the loop provisions each commit's own pin · open(session): the seven (pull_request) contexts green on the new head in the full listing, then the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-13T17:05:00Z
+updated: 2026-09-13T20:40:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9213,3 +9213,36 @@ board case and the reference vector ride the writer's commit. Not in
 it: QEMU replay, a viewer, the network oracle, any public API.
 **Guards.** GUARD 1: appended; head line refreshed. GUARD 2 untouched.
 GUARD 3: nothing public. No evidence file touched.
+
+## Close-out (round 30 — PR C, the pin: 1.92.0 → 1.98.1, behavior unchanged on host and chip — 2026-09-13)
+
+Branch `work/pin` from `main@2e9922b`, tier 2, five commits, the brief
+as the PR description (`~/projets/pr-c-brief.md`, one screen).
+0. `ff15c8e`: the 14 clippy sites 1.98.1 adds (six lints), clippy's own
+   rewrites, valid on 1.92, before the pin. The four research examples
+   among them (`hybrid_invivo`, `step5_clamp_probe`, `bonsai_probe`,
+   `ternary_selectivity`) took them with no re-run: each rewrite gives
+   the same output by construction (philo, option A of three).
+1. `f02f111`: the pin; the number leaves AGENTS and the workflow
+   comments. Traces compare green on 1.98.1, none regenerated.
+2. `885ff53`: the MSRV gate, `rust-version = "1.92"` kept (philo):
+   `cargo +1.92.0 check -p neuralos-snn --lib`, three configurations,
+   RUSTFLAGS empty, in CI's check job and per-commit loop, AGENTS
+   § Commands and `tools/percommit.sh`.
+3. `26d68b0`: the board. `.text` `0de3bd91…` → `33656de9…` with the
+   compiler alone; the fold 147 / 55 / `0b78b456` on both burst arms;
+   pinned 1,579 → 1,585, free 563 → 569 ns/step.
+4. This commit: the host bench as a 2×2, tree × compiler: alpha.7's x86
+   cost stays on 1.98.1 (+2.49 forced, +2.64 control ns/step), the
+   compiler moves each cell by less than 0.5. The question is closed.
+Deviations: `tools/remap.sh` keeps its two 1.92.0 mentions (measurement
+records); the crate README's alpha.6 MSRV line stays (frozen; the
+alpha.8 notes state the gate). Record-only: a `.text` pin reproduces
+from its build path only (the package path, by elimination); the
+real-time loop's first spike moved 56 → 59 (wall-clock seeded, not
+gated). **Guards.** GUARD 1: appended; head line refreshed. GUARD 2: no
+verdict touched. GUARD 3: nothing public.
+
+**Correction (before the merge):** "the package path, by elimination"
+above is not settled; a second worktree path built the same `361dc540…`
+(evidence README § Fourth entry). True when written.

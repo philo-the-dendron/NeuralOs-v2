@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # rust-toolchain.toml pins 1.92.0 (slint MSRV); rustup honors it.
+      # rust-toolchain.toml pins the toolchain; rustup honors it.
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -56,6 +56,21 @@ jobs:
       # The SNN core stays no_std (the embedded/RISC-V posture).
       - name: no_std gate (neuralos-snn)
         run: cargo build --no-default-features -p neuralos-snn
+
+      # The MSRV gate: `rust-version = "1.92"` is the crate's promise to its
+      # users; the pin is ours and follows stable (PR C). The library alone,
+      # in the three configurations a user can pick, on the declared floor.
+      # RUSTFLAGS is emptied: this proves the crate builds there, not that
+      # an old compiler's lints are quiet. `rustc -V` names the pin first.
+      - name: MSRV gate (neuralos-snn on 1.92.0)
+        env:
+          RUSTFLAGS: ""
+        run: |
+          rustc -V
+          rustup toolchain install 1.92.0 --profile minimal
+          cargo +1.92.0 check -p neuralos-snn --lib
+          cargo +1.92.0 check -p neuralos-snn --lib --no-default-features
+          cargo +1.92.0 check -p neuralos-snn --lib --features simd
 
       # SIMD kernel equivalence vs scalar (AVX2, x86_64, behind `simd`).
       # NEURALOS_REQUIRE_AVX2 turns the module's nine "AVX2 not available"
@@ -163,6 +178,10 @@ jobs:
           rustup target add riscv32imc-unknown-none-elf
           rustup component add llvm-tools
 
+      # For the MSRV gate in the loop below (the check job's step says why).
+      - name: rustup toolchain install 1.92.0 (the MSRV gate)
+        run: rustup toolchain install 1.92.0 --profile minimal
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Slint Linux build deps + cmake (vendored HDF5)
@@ -198,6 +217,9 @@ jobs:
             cargo test --workspace
             cargo clippy --workspace --all-targets -- -D warnings
             cargo build --no-default-features -p neuralos-snn
+            RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib
+            RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features
+            RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd
             cargo test -p neuralos-snn --features simd
             cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
             cargo test -p neuralos-snn --release --features simd -- --include-ignored
@@ -211,6 +233,12 @@ jobs:
             # Since round 26 the build is firmware/esp32c3/build.sh (remap,
             # gate, shas, canary; same flags for clippy). Commits before the
             # script get the bare lines they were green with.
+            # The firmware leg needs the chip target and llvm-tools on THIS
+            # commit's pin; the steps above provision only the head's, and a
+            # branch can move the pin (PR C, where commit 0 went red on
+            # 1.92.0). A no-op when both are there.
+            rustup target add riscv32imc-unknown-none-elf
+            rustup component add llvm-tools
             if [ -f firmware/esp32c3/build.sh ]; then
               (cd firmware/esp32c3 && cargo fmt -- --check)
               (cd firmware/esp32c3 && ./build.sh)
@@ -323,7 +351,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Same 1.92.0 pin as everything else (rust-toolchain.toml at the root
+      # Same pin as everything else (rust-toolchain.toml at the root
       # is honored inside firmware/ too). The action's `targets:` input
       # would add the chip target to `stable`, not to the pin (first run of
       # PR #13: "can't find crate for core"), so the target is added in a

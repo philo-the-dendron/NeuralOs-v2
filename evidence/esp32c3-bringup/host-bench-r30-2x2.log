@@ -1,0 +1,296 @@
+host-bench-r30-2x2: spike-path-bench, tree x compiler (PR C rider, ISA round 30); a6 = 7fe2388 (neuralos-snn 0.1.0-alpha.6), a7 = 26d68b0 (neuralos-snn 0.1.0-alpha.7); -1.92 = rustc 1.92.0, -1.98 = rustc 1.98.1; git archive trees, cargo build --release --locked --offline
+built 19:58:42Z, load 1.00 0.90 1.24
+=== round 0 a6-1.92
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=12.835
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=14.865
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=12.378
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=13.128
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=13.247
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=12.130
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=12.788
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=12.290
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=12.909
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=12.872
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=10.446
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=11.977
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=14.279
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=10.907
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=11.572
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=11.587
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=10.641
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=10.419
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=11.662
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=10.175
+arm=forced min_ns_per_step=12.130 median_ns_per_step=12.853
+arm=control min_ns_per_step=10.175 median_ns_per_step=11.239
+=== round 0 a6-1.98
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=12.865
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=12.702
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=13.356
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=12.149
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=13.092
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=12.471
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=12.321
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=11.920
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=13.523
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=13.765
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=10.734
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=11.082
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=11.812
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=9.995
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=10.654
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=10.190
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=10.130
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=10.618
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=10.153
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=10.966
+arm=forced min_ns_per_step=11.920 median_ns_per_step=12.784
+arm=control min_ns_per_step=9.995 median_ns_per_step=10.636
+=== round 0 a7-1.92
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=16.217
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=15.154
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=14.530
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=14.774
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=14.232
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=15.877
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=15.368
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=14.873
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=14.780
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=15.127
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=13.298
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=13.647
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=13.648
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=13.861
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=13.445
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=13.898
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=14.106
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=12.923
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=13.156
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=13.227
+arm=forced min_ns_per_step=14.232 median_ns_per_step=15.000
+arm=control min_ns_per_step=12.923 median_ns_per_step=13.546
+=== round 0 a7-1.98
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=14.917
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=15.286
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=15.627
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=15.414
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=15.192
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=15.262
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=15.446
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=14.634
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=15.767
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=14.820
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=12.746
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=12.882
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=14.103
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=14.690
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=13.080
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=13.620
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=12.772
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=13.622
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=12.732
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=13.338
+arm=forced min_ns_per_step=14.634 median_ns_per_step=15.274
+arm=control min_ns_per_step=12.732 median_ns_per_step=13.209
+=== round 1 a6-1.98
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=12.918
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=12.168
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=12.790
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=12.385
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=13.337
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=12.971
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=13.425
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=12.601
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=13.864
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=12.285
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=9.980
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=10.526
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=10.634
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=10.548
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=10.587
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=11.468
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=11.576
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=12.135
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=10.208
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=10.233
+arm=forced min_ns_per_step=12.168 median_ns_per_step=12.854
+arm=control min_ns_per_step=9.980 median_ns_per_step=10.567
+=== round 1 a7-1.92
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=14.414
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=14.721
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=14.539
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=15.421
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=15.817
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=14.984
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=14.297
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=14.945
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=14.143
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=16.154
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=13.810
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=13.795
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=12.806
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=14.125
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=13.579
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=13.783
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=13.967
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=13.883
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=13.496
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=14.508
+arm=forced min_ns_per_step=14.143 median_ns_per_step=14.833
+arm=control min_ns_per_step=12.806 median_ns_per_step=13.803
+=== round 1 a7-1.98
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=14.668
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=15.702
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=15.205
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=16.068
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=14.396
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=16.355
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=14.939
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=14.992
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=14.644
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=15.381
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=13.012
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=13.845
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=13.092
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=12.874
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=12.765
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=13.076
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=14.119
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=12.729
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=13.313
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=13.207
+arm=forced min_ns_per_step=14.396 median_ns_per_step=15.098
+arm=control min_ns_per_step=12.729 median_ns_per_step=13.084
+=== round 1 a6-1.92
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=14.082
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=12.569
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=13.134
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=13.199
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=13.486
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=12.957
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=12.065
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=12.396
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=12.249
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=13.082
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=10.076
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=10.317
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=10.508
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=10.957
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=10.775
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=11.782
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=10.978
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=10.212
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=11.378
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=11.437
+arm=forced min_ns_per_step=12.065 median_ns_per_step=13.019
+arm=control min_ns_per_step=10.076 median_ns_per_step=10.866
+=== round 2 a7-1.92
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=15.376
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=15.107
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=14.809
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=15.187
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=15.148
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=15.391
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=15.335
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=14.103
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=15.842
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=15.661
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=13.747
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=13.428
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=12.909
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=13.184
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=13.320
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=13.564
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=13.269
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=13.743
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=13.136
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=12.829
+arm=forced min_ns_per_step=14.103 median_ns_per_step=15.261
+arm=control min_ns_per_step=12.829 median_ns_per_step=13.295
+=== round 2 a7-1.98
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=15.631
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=15.276
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=15.488
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=15.503
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=16.091
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=15.205
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=16.519
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=15.015
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=14.447
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=14.251
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=13.313
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=13.228
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=13.585
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=13.571
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=14.590
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=13.336
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=12.654
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=13.625
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=13.624
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=13.957
+arm=forced min_ns_per_step=14.251 median_ns_per_step=15.382
+arm=control min_ns_per_step=12.654 median_ns_per_step=13.578
+=== round 2 a6-1.92
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=12.438
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=13.149
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=12.870
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=13.084
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=12.185
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=13.014
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=13.998
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=12.064
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=13.141
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=13.353
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=10.292
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=10.979
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=10.693
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=11.177
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=11.104
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=12.791
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=10.221
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=10.889
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=11.932
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=11.298
+arm=forced min_ns_per_step=12.064 median_ns_per_step=13.049
+arm=control min_ns_per_step=10.221 median_ns_per_step=11.042
+=== round 2 a6-1.98
+spike-path-bench steps=10000000 reps=10 dt_us=1000 profile=release
+arm=forced rep=1 steps=10000000 spikes=10000000 ns_per_step=13.033
+arm=forced rep=2 steps=10000000 spikes=10000000 ns_per_step=13.112
+arm=forced rep=3 steps=10000000 spikes=10000000 ns_per_step=12.523
+arm=forced rep=4 steps=10000000 spikes=10000000 ns_per_step=13.168
+arm=forced rep=5 steps=10000000 spikes=10000000 ns_per_step=12.523
+arm=forced rep=6 steps=10000000 spikes=10000000 ns_per_step=12.229
+arm=forced rep=7 steps=10000000 spikes=10000000 ns_per_step=13.860
+arm=forced rep=8 steps=10000000 spikes=10000000 ns_per_step=12.570
+arm=forced rep=9 steps=10000000 spikes=10000000 ns_per_step=12.885
+arm=forced rep=10 steps=10000000 spikes=10000000 ns_per_step=12.012
+arm=control rep=1 steps=10000000 spikes=0 ns_per_step=9.999
+arm=control rep=2 steps=10000000 spikes=0 ns_per_step=10.804
+arm=control rep=3 steps=10000000 spikes=0 ns_per_step=9.872
+arm=control rep=4 steps=10000000 spikes=0 ns_per_step=10.539
+arm=control rep=5 steps=10000000 spikes=0 ns_per_step=10.856
+arm=control rep=6 steps=10000000 spikes=0 ns_per_step=12.206
+arm=control rep=7 steps=10000000 spikes=0 ns_per_step=10.389
+arm=control rep=8 steps=10000000 spikes=0 ns_per_step=10.244
+arm=control rep=9 steps=10000000 spikes=0 ns_per_step=10.434
+arm=control rep=10 steps=10000000 spikes=0 ns_per_step=9.834
+arm=forced min_ns_per_step=12.012 median_ns_per_step=12.727
+arm=control min_ns_per_step=9.834 median_ns_per_step=10.411
+ran until 19:59:14Z, load 1.25 0.97 1.25
+medians per round (r0 r1 r2) -> median of the three, ns/step:
+a6-1.92  forced [ 12.854 13.020 13.049 ] -> 13.020   control [ 11.239 10.866 11.041 ] -> 11.041
+a6-1.98  forced [ 12.784 12.854 12.727 ] -> 12.784   control [ 10.636 10.567 10.412 ] -> 10.567
+a7-1.92  forced [ 15.000 14.833 15.261 ] -> 15.000   control [ 13.546 13.803 13.294 ] -> 13.546
+a7-1.98  forced [ 15.274 15.099 15.382 ] -> 15.274   control [ 13.209 13.084 13.578 ] -> 13.209

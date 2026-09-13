@@ -1,6 +1,10 @@
 [toolchain]
-# Pinned: slint 1.17.x MSRV is 1.92. Project-local pin (rustup auto-installs) so
-# the global `stable` default is left untouched for other projects.
-channel = "1.92.0"
+# One compiler for CI, the per-commit loop and the sha-pinned firmware. A bump
+# moves the firmware's `.text`, so it lands as its own commit, the shas
+# re-pinned and the board fold read again (PR C). The floor users get is
+# `rust-version` in Cargo.toml; this pin is ours. Project-local (rustup
+# auto-installs), so the global `stable` default is left untouched for other
+# projects.
+channel = "1.98.1"
 components = ["rustfmt", "clippy", "rust-src"]
 profile = "minimal"

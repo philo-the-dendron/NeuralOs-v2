@@ -82,7 +82,7 @@ the why, one header. Static-pie, statically linked, no libc dependency
 flags. `dist/` is gitignored: the binary lives on the release, its pin
 lives in the record (`docs/releases/`, ISA round-20); the script never
 overwrites a different binary under the same name. At the tree that
-record names, under the pinned toolchain (1.92.0), the sha is stable
+record names, under that record's toolchain (1.92.0), the sha is stable
 across clean builds; with the remap it no longer depends on the clone
 path either. A rebuild on another tree or toolchain gives another
 sha, which is not a finding; the `.text` sha is what a rebuild is

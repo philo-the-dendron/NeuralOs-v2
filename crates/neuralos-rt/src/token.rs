@@ -881,11 +881,9 @@ mod tests {
             id_of.insert(s.clone(), b as u32);
             vocab.push(s);
         }
-        let mut next_id = vocab.len() as u32;
-        for e in extra {
+        for (next_id, e) in (vocab.len() as u32..).zip(extra.iter()) {
             id_of.insert((*e).to_string(), next_id);
             vocab.push((*e).to_string());
-            next_id += 1;
         }
         let mut merge_map = HashMap::new();
         for (rank, (a, b)) in merges.iter().enumerate() {

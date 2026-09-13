@@ -28,9 +28,10 @@
 #
 # Needs what CI needs: the pinned toolchain (rust-toolchain.toml is in
 # the worktree, rustup picks it up), the riscv32imc-unknown-none-elf
-# target, the llvm-tools component (the firmware .text sha), and cmake
-# on PATH for the vendored HDF5 (.nirenv/bin from the main clone is
-# prepended).
+# target, the llvm-tools component (the firmware .text sha), the MSRV
+# toolchain 1.92.0 (`rustup toolchain install 1.92.0 --profile
+# minimal`), and cmake on PATH for the vendored HDF5 (.nirenv/bin from
+# the main clone is prepended).
 set -euo pipefail
 
 repo=$(git rev-parse --show-toplevel)
@@ -84,6 +85,9 @@ for c in $commits; do
   run cargo test --workspace
   run cargo clippy --workspace --all-targets -- -D warnings
   run cargo build --no-default-features -p neuralos-snn
+  run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib
+  run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features
+  run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd
   run cargo test -p neuralos-snn --features simd
   run cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
   run cargo test -p neuralos-snn --release --features simd -- --include-ignored
@@ -97,6 +101,11 @@ for c in $commits; do
   # Since round 26 the build is firmware/esp32c3/build.sh (remap, gate,
   # shas, canary; same flags for clippy). Commits before the script get
   # the bare lines they were green with.
+  # The firmware leg needs the chip target and llvm-tools on THIS
+  # commit's pin, and a branch can move the pin (PR C); the same two
+  # lines as the per-commit job, a no-op when both are there.
+  run rustup target add riscv32imc-unknown-none-elf
+  run rustup component add llvm-tools
   if [ -f firmware/esp32c3/build.sh ]; then
     (cd firmware/esp32c3 && run cargo fmt -- --check)
     (cd firmware/esp32c3 && run ./build.sh)
