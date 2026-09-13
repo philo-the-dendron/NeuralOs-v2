@@ -71,6 +71,21 @@ jobs:
       - name: no_std gate (neuralos-snn)
         run: cargo build --no-default-features -p neuralos-snn
 
+      # The MSRV gate: `rust-version = "1.92"` is the crate's promise to its
+      # users; the pin is ours and follows stable (PR C). The library alone,
+      # in the three configurations a user can pick, on the declared floor.
+      # RUSTFLAGS is emptied: this proves the crate builds there, not that
+      # an old compiler's lints are quiet. `rustc -V` names the pin first.
+      - name: MSRV gate (neuralos-snn on 1.92.0)
+        env:
+          RUSTFLAGS: ""
+        run: |
+          rustc -V
+          rustup toolchain install 1.92.0 --profile minimal
+          cargo +1.92.0 check -p neuralos-snn --lib
+          cargo +1.92.0 check -p neuralos-snn --lib --no-default-features
+          cargo +1.92.0 check -p neuralos-snn --lib --features simd
+
       # SIMD kernel equivalence vs scalar (AVX2, x86_64, behind `simd`).
       # NEURALOS_REQUIRE_AVX2 turns the module's nine "AVX2 not available"
       # skips into one failure (`ci_runner_actually_has_avx2`), so a runner
@@ -177,6 +192,10 @@ jobs:
           rustup target add riscv32imc-unknown-none-elf
           rustup component add llvm-tools
 
+      # For the MSRV gate in the loop below (the check job's step says why).
+      - name: rustup toolchain install 1.92.0 (the MSRV gate)
+        run: rustup toolchain install 1.92.0 --profile minimal
+
       - uses: https://github.com/Swatinem/rust-cache@v2
 
       - name: Slint Linux build deps + cmake (vendored HDF5)
@@ -212,6 +231,9 @@ jobs:
             cargo test --workspace
             cargo clippy --workspace --all-targets -- -D warnings
             cargo build --no-default-features -p neuralos-snn
+            RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib
+            RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features
+            RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd
             cargo test -p neuralos-snn --features simd
             cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
             cargo test -p neuralos-snn --release --features simd -- --include-ignored
