@@ -101,6 +101,11 @@ for c in $commits; do
   # Since round 26 the build is firmware/esp32c3/build.sh (remap, gate,
   # shas, canary; same flags for clippy). Commits before the script get
   # the bare lines they were green with.
+  # The firmware leg needs the chip target and llvm-tools on THIS
+  # commit's pin, and a branch can move the pin (PR C); the same two
+  # lines as the per-commit job, a no-op when both are there.
+  run rustup target add riscv32imc-unknown-none-elf
+  run rustup component add llvm-tools
   if [ -f firmware/esp32c3/build.sh ]; then
     (cd firmware/esp32c3 && run cargo fmt -- --check)
     (cd firmware/esp32c3 && run ./build.sh)
