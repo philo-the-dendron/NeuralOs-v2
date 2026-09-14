@@ -16,6 +16,31 @@
 | **4** | Paper track | The Branch B article (in `paper/`) — finish, gate, submit. Must not displace 1–3. |
 | **5** | Bridge follow-ups | **Frozen record.** Reopening is the principal's call on the recorded forks. The one active bridge-adjacent task is R4 (harness extraction) below. |
 
+## 0.1.0
+
+**Same graph, same spikes, every target.** A network built from a
+`.nir` file runs heapless and panic-free on the ESP32-C3, bit for bit
+with the host.
+
+0.1.0 is tagged when the fourteen checks below hold, not on a date. A
+stranger can run each one. This list is their one home; a tick names
+the PR that made the check hold, as of this tree.
+
+1. [ ] Traces from today's network; CI replays them on host, QEMU at release. (Host: CI, PR B, #26. QEMU: open.)
+2. [x] `FixedNetwork` replays them bit for bit on the ESP32-C3. (PR E, #29: twelve of thirteen; `plasticity-on` is outside `FixedNetwork` by design.)
+3. [x] No panic path in the step, proven at link time. (PR E, #29.)
+4. [x] No spike ring in the neuron; history is a recorder. (PR D, #28.)
+5. [x] MSRV declared and tested on the bumped pin. (PR C, #27: `rust-version` 1.92 checked on 1.92.0 in CI, three configurations.)
+6. [ ] A two-layer snnTorch, norse or rockpool graph builds (LIF→Linear→LIF).
+7. [ ] `.nir` → fixed arrays → firmware, one documented command.
+8. [ ] Worst case from capacity, measured at that case on the C3.
+9. [ ] STDP behind an unstable feature.
+10. [ ] The README's first example is a real doctest; `missing_docs` on.
+11. [ ] Rustdoc states rounding, saturation, reset, leak, step order; delay is the edge's.
+12. [ ] The default build forbids `unsafe` (only `simd` has it).
+13. [ ] Grep gate on release texts: no "golden", "conformance", "successor", Lava. (Ticked at a stamp, by the grep in that release draft's § Procedure.)
+14. [x] Zero runtime dependencies (`cargo tree -e normal`) at each release. (PR F, #30: `cargo tree -e normal -p neuralos-snn` prints the crate alone, with `std` and without.)
+
 ## Current validated state
 
 ```bash
