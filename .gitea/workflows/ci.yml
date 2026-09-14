@@ -417,7 +417,7 @@ jobs:
       # The link-time proof that FixedNetwork::step has no panic path
       # (proofs/no-panic-step/build.sh carries the why): its own fmt, then
       # the step linked under the firmware's profile and under one without
-      # LTO, each with a canary the linker must refuse by name. Its own
+      # cross-crate LTO, each with a canary the linker must refuse by name. Its own
       # workspace, like the firmware; the chip target is the one added
       # above.
       - name: build.sh (proofs/no-panic-step, the no-panic link)

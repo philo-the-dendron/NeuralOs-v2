@@ -23,7 +23,7 @@ core, `no_std` by default. Designed for FPU-less edge targets
 | `spike_recorder` | `SpikeRecorder`, the spike history a caller keeps when it wants one: a `[u32; MAX_SPIKE_HISTORY]` ring (64 entries, the oldest overwritten), fed from `integrate_and_fire`'s return; the neuron keeps none |
 | `synapse` | Synapse + pairwise STDP rule (a₊ 50 / a₋ −53 / lr 100), weight scale `SCALE = 1000` |
 | `network` *(std)* | `SpikingNeuralNetwork` orchestration (`step()`), CSR `SparseSynapseMatrix` with forward + reverse iteration, 4 topology builders (Random, Small-World, Feedforward, Balanced E/I), plasticity passes (LTD + LTP), per-step stats |
-| `fixed` | `FixedNetwork<N, S>`: `N` neurons and `S` synapses in arrays, no heap, no plasticity, the std step's order; its step has no `Result`, no index and no division. `TryFrom<&SpikingNeuralNetwork>` *(std)* converts a plasticity-off network of the same size |
+| `fixed` | `FixedNetwork<N, S>`: `N` neurons and `S` synapses in arrays, no heap, no plasticity, the std step's order; its step has no `Result`, no index and no division of its own. `TryFrom<&SpikingNeuralNetwork>` *(std)* converts a plasticity-off network of the same size |
 | `trit` | Ternary weight type `{-1, 0, +1}` + scale, ternarizer, stochastic bucket-flip (LFSR, integer-only) |
 | `bridge` | `BitNet` `i2_s` encode/decode (bit-exact round-trip), Prism `q1_0`/`q2_0` import + `q2_0` export, integer fp16 widening — layouts pinned from reference sources, loud errors on impossible input |
 | `nir` | NIR (Neuromorphic Intermediate Representation) slice 1 — JSON import/export of `Input`/`Linear`/`LIF`/`Output` graphs, explicit per-node quantization records, loud lossiness, byte-stable export. Schema pinned verbatim to the reference implementation (`neuromorphs/NIR` @ `7883c3c`); fixtures are the reference's own emissions (`tools/gen_nir_fixtures.py`) |
@@ -44,8 +44,9 @@ keeps every historically recorded result bit-exact.
 - `std` *(default)* — enables the `network` orchestration module
 - `simd` — implies `std`, x86_64-only AVX2 batch kernel
 
-Without `std` the crate builds `no_std` (neurons, synapses, the fixed
-network, trit, bridge, kernel, nir) — the embedded posture CI enforces.
+Without `std` the crate builds `no_std` (neurons, the spike recorder,
+synapses, the fixed network, trit, bridge, kernel, nir) — the embedded
+posture CI enforces.
 
 ## Usage sketch
 

@@ -8,9 +8,9 @@ header line, then its rows, and the replay ends with one line,
 themselves (every trace whose header says plasticity=off), splits the
 log at the headers, drops carriage returns, and compares each case with
 its file line for line: one line per case, exit 1 on any difference. A
-header missing or repeated, a header no file has, or no end line after
-the last case is a difference too: a capture cut off is red, not a
-shorter compare.
+header missing or repeated, a header outside the frozen set, or no end
+line after the last case is a difference too: a capture cut off is red,
+not a shorter compare.
 
 usage: tools/esp32c3_trace_diff.py LOG
 Standard library only.
@@ -51,7 +51,7 @@ def main():
     red = 0
     for i in heads:
         if log[i] not in cases:
-            print(f"log line {i + 1}: a header no trace file has: {log[i]}")
+            print(f"log line {i + 1}: a header outside the frozen set: {log[i]}")
             red += 1
     for header, (name, want) in cases.items():
         at = [i for i in heads if log[i] == header]

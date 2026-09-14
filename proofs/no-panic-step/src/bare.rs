@@ -6,8 +6,9 @@
 //! garbage collection drops the handler and its reference, and the link is
 //! green. When one is, the reference is live and lld refuses it:
 //! `undefined symbol: neuralos_fixed_step_has_a_panic_path`, referenced
-//! from the codegen unit that holds the handler. The linker names that
-//! object, never the site; build.sh prints the build that finds the site.
+//! by the handler (`__rustc::rust_begin_unwind`, in its codegen unit). The
+//! linker names the handler, never the site; build.sh prints the build that
+//! finds the site.
 
 #[cfg(not(feature = "handler-loops"))]
 extern "C" {

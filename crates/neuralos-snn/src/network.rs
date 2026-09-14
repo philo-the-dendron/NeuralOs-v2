@@ -3,7 +3,7 @@
 //! # Module placement
 //!
 //! This module is `std`-gated. The hot-path primitives ([`LIFNeuron`], [`Synapse`])
-//! are `no_std`-compatible; this orchestrator uses `Vec`, `VecDeque`, and `Instant`
+//! are `no_std`-compatible; this orchestrator uses `Vec` and `VecDeque`
 //! for desktop/server simulation. For bare-metal RISC-V deployment,
 //! [`FixedNetwork`](crate::fixed::FixedNetwork) steps the same network in arrays,
 //! `no_std`, without plasticity.

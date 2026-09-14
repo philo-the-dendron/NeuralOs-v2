@@ -6,13 +6,15 @@
 //! the adaptation decay of every neuron; integrate-and-fire, which reads
 //! the pulses the previous step delivered; the clear; then the pulses of
 //! this step's spikes, in the synapse array's order. The step has no
-//! `Result`, no index and no division: an id past the arrays is no spike
-//! and no target.
+//! `Result`, no index and no division of its own; the neuron it calls
+//! divides only by a constant or a `NonZero`. An id past the arrays is no
+//! spike and no target.
 //!
-//! On the host, `FixedNetwork::try_from(&net)` converts a plasticity-off
-//! `SpikingNeuralNetwork` of the same size, and the two step alike, bit
-//! for bit; the tests below pin it on the network of `chain-3`
-//! (`tests/traces/cases.rs`).
+//! On the host, `FixedNetwork::try_from(&net)` converts a plasticity-off,
+//! finalized `SpikingNeuralNetwork` of the same size, and the two step
+//! alike, bit for bit: the tests below pin it on the network of `chain-3`
+//! (`tests/traces/cases.rs`), and `tests/traces.rs` on every
+//! plasticity-off trace.
 //!
 //! # `no_std`
 //!
@@ -368,18 +370,21 @@ mod tests {
     }
 
     /// `from_network`'s order is the CSR's. Edges added out of `pre` order,
-    /// two sharing pre 0 and two sharing pre 2, and a divisor that truncates
-    /// (3): a `SparseSynapseMatrix` built from the same edges and finalized
-    /// lists, pre by pre, the same synapses in the same order.
+    /// two sharing pre 2 and two sharing pre 0, pre 0's added out of `post`
+    /// order (0→2 before 0→1), and a divisor that truncates (3): a
+    /// `SparseSynapseMatrix` built from the same edges and finalized lists,
+    /// pre by pre, the same synapses in the same order. Within one `pre`
+    /// that is the order they were added, not the `post` order, so a sort
+    /// by `(pre, post)` fails here.
     #[cfg(feature = "std")]
     #[test]
     fn from_network_is_the_csr_order() {
         let edges: [(u16, u16, i16); 5] = [
             (2, 0, -125),
-            (0, 1, 125),
+            (0, 2, 7),
             (2, 3, -250),
             (1, 3, 40),
-            (0, 2, 7),
+            (0, 1, 125),
         ];
         let mut net =
             SpikingNeuralNetwork::from_neurons((0..4).map(LIFNeuron::new).collect(), 1_000)
@@ -413,6 +418,16 @@ mod tests {
             })
             .collect();
         assert_eq!(FixedSynapse::from_network(&net), want);
+        let pre_0: Vec<u16> = FixedSynapse::from_network(&net)
+            .iter()
+            .filter(|s| s.pre == 0)
+            .map(|s| s.post)
+            .collect();
+        assert_eq!(
+            pre_0,
+            [2, 1],
+            "pre 0's synapses in the order added, not by post"
+        );
     }
 
     /// `try_from` refuses what a fixed network cannot hold, and carries the

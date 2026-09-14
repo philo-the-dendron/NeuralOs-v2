@@ -571,9 +571,12 @@ constant drive, behind `black_box` once per step as the pinned neuron
 is; then the replays, every frozen case printing its trace's header
 line and its rows through the library's `row.rs`, and one end line,
 `# neuralos-trace end`. `build.sh` in the main clone on 1.98.1, with
-the sources of this entry's commit: ELF `ab7612df…`, `.text`
-`61639145…` → `b5351531…` (§ Rebuild + run), the gate 0 hits, the
-trim-paths canary still unstable on 1.98.1 (exit 101). Flashed from a
+the sources of this entry's commit before it was made: ELF
+`ab7612df…`, its descriptor stamped with the time of `550fb48`, the
+head then (a build at this entry's commit gives another ELF sha, and
+the same `.text`), `.text` `61639145…` → `b5351531…` (§ Rebuild +
+run), the gate 0 hits, the trim-paths canary still unstable on 1.98.1
+(exit 101). Flashed from a
 copy of that ELF, `board-r32-network.log`, 47,728 bytes. The capture
 holds two boots: it opens with the tail of the boot that followed the
 flash (a bootloader line spliced into another, the banner and both
@@ -591,12 +594,12 @@ line.
 | First spike, real-time loop | step 55, 55,161 µs | step 55, 55,149 µs |
 | Spikes after the reset | 295 | 290 |
 
-The gates hold. Both neuron arms keep the fold. The network arm's
-three numbers are the pin `tests/traces.rs` holds on the host
-(`the_network_arm_folds_to_its_pin`). And
-`python3 tools/esp32c3_trace_diff.py evidence/esp32c3-bringup/board-r32-network.log`
-finds each of the twelve headers once and the end line after them,
-and prints:
+The gates hold, at this entry's commit. Both neuron arms keep the
+fold. The network arm's three numbers are the pin `tests/traces.rs`
+holds on the host (`the_network_arm_folds_to_its_pin`). And
+`python3 tools/esp32c3_trace_diff.py evidence/esp32c3-bringup/board-r32-network.log`,
+which reads the tree's trace files, finds each of the twelve headers
+once and the end line after them, and prints:
 
 ```text
 centi-mv-grid: identical, 30 rows
@@ -620,11 +623,14 @@ arrays the host steps; `plasticity-on` is outside `FixedNetwork` by
 design. The network arm costs 14,058 ns per step of the whole network,
 its spike tally included. The pinned neuron arm, the comparable
 figure, moved 1,559 → 1,577 ns/step (+18, +1.2 %). The free arm moved
-570 → 367 with its source unchanged; that is recorded and not
+570 → 367 with its firmware source unchanged; the one spine change in
+the neuron arms' path is PR E's `dt_over_tau`, which divides by a
+`NonZero` now, behavior identical. The move is recorded and not
 explained, since there is no listing this round. The real-time loop is
 reported, not gated: its first spike lands at step 55, and it counts
-290 spikes in the window against 295, since the replays now run before
-it starts.
+290 spikes in the window against 295, since the network arm and the
+replays now run before it starts and the larger image boots 22 ms
+later (the bootloader's `Loaded app` at 147 ms against 125).
 
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
