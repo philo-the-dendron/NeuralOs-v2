@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 publish = false
-description = "One LIF neuron from neuralos-snn on an ESP32-C3: delay-paced step, LED and serial on each spike"
+description = "neuralos-snn on an ESP32-C3: the LIF neuron and a FixedNetwork timed in bursts, the host's frozen traces replayed over serial, then a delay-paced neuron with the LED and a serial line on each spike"
 
 # Own workspace on purpose (same pattern as proofs/): esp-hal compiles only
 # for the chip target, so a root workspace member would break the host-side

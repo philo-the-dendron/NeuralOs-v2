@@ -1,4 +1,4 @@
-//! One LIF neuron from `neuralos-snn` on an ESP32-C3.
+//! A LIF neuron and a `FixedNetwork` from `neuralos-snn` on an ESP32-C3.
 //!
 //! What it does, in order:
 //! 1. burst, two arms of `BURST_STEPS` calls of the neuron step back to
@@ -12,7 +12,19 @@
 //!      memory, `time_step_us` a run-time field). Same id and inputs as the
 //!      free arm, so the same spikes; its figure is the cost a network pays
 //!      (ISA round 27).
-//! 2. loop: one step every `DT_US`, paced by a busy-wait delay (no hardware
+//! 2. network: the frozen `feedforward-8` of the library's traces (8
+//!    neurons, 6 synapses, `frozen.rs`), `BURST_STEPS` steps of
+//!    `FixedNetwork::step` on its constant drive, timed, the network behind
+//!    `black_box` once per step as the pinned arm's neuron is. It prints
+//!    the same line; its checksum folds every spike, step then id
+//!    (`× 31 + step`, `× 31 + id`), and `tests/traces.rs` pins its three
+//!    numbers on the host (the network arm).
+//! 3. replay: every frozen case (`for_each_frozen!`), its trace's header
+//!    line, then its rows through the library's writer (`row.rs`) into
+//!    `esp_println::Printer`, then one end line, `# neuralos-trace end`.
+//!    `tools/esp32c3_trace_diff.py` diffs a capture against
+//!    `tests/traces/`.
+//! 4. loop: one step every `DT_US`, paced by a busy-wait delay (no hardware
 //!    timer peripheral yet); the LED toggles and a line is printed on each
 //!    spike
 //!
@@ -51,8 +63,27 @@ use esp_hal::delay::Delay;
 use esp_hal::gpio::{Level, Output, OutputConfig};
 use esp_hal::main;
 use esp_hal::time::Instant;
-use esp_println::println;
+use esp_println::{println, Printer};
 use neuralos_snn::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
+use neuralos_snn::FixedNetwork;
+
+// The frozen cases and the one row writer, by path into the library's
+// tests directory: the arrays are the cases' derivative and live with
+// them, so the library's package stays self-contained. rustfmt leaves the
+// generated file as written (its head says why).
+#[rustfmt::skip]
+#[path = "../../../crates/neuralos-snn/tests/traces/frozen.rs"]
+mod frozen;
+#[path = "../../../crates/neuralos-snn/tests/traces/row.rs"]
+mod row;
+
+/// The network arm's drive: `feedforward-8`'s, one constant run, read
+/// from the frozen arrays at compile time.
+const NETWORK_INPUT: [i16; frozen::feedforward_8::N] = frozen::feedforward_8::DRIVE[0].1;
+const _: () = assert!(
+    frozen::feedforward_8::DRIVE.len() == 1,
+    "the network arm steps feedforward-8's drive as one constant run"
+);
 
 /// Simulation step, µs. Same value the crate's own tests use.
 const DT_US: u32 = 1_000;
@@ -165,7 +196,68 @@ fn main() -> ! {
     let elapsed_us = t0.elapsed().as_micros();
     report("pinned", elapsed_us, spikes, first_spike_step, checksum);
 
-    // 2. Real-time loop: one step per DT_US of wall time. now_us wraps at
+    // 2. The network arm: the frozen feedforward-8, BURST_STEPS steps on
+    //    its constant drive, behind `black_box` once per step as the
+    //    pinned neuron is: in memory, read and written behind the
+    //    optimizer's back. The checksum folds every spike, step then id
+    //    (`× 31 + step`, `× 31 + id`); tests/traces.rs pins the three
+    //    numbers on the host.
+    let mut net = FixedNetwork::new(
+        frozen::feedforward_8::NEURONS,
+        frozen::feedforward_8::SYNAPSES,
+        frozen::feedforward_8::DT_US,
+    );
+    let mut fired = [false; frozen::feedforward_8::N];
+    let (mut spikes, mut first_spike_step, mut checksum) = (0u32, u32::MAX, 0u32);
+    let t0 = Instant::now();
+    for i in 0..BURST_STEPS {
+        core::hint::black_box(&mut net).step(&NETWORK_INPUT, &mut fired);
+        for (id, spiked) in (0u32..).zip(fired) {
+            if spiked {
+                if spikes == 0 {
+                    first_spike_step = i;
+                }
+                spikes = spikes.wrapping_add(1);
+                checksum = checksum
+                    .wrapping_mul(31)
+                    .wrapping_add(i)
+                    .wrapping_mul(31)
+                    .wrapping_add(id);
+            }
+        }
+    }
+    let elapsed_us = t0.elapsed().as_micros();
+    report("network", elapsed_us, spikes, first_spike_step, checksum);
+
+    // 3. The replays: every frozen case, its header line, then its rows
+    //    through the library's writer, then the end line, all before the
+    //    loop below, whose spike lines would otherwise land in the last
+    //    case. tools/esp32c3_trace_diff.py compares them with the host's
+    //    files.
+    macro_rules! replay {
+        ($case:ident) => {{
+            use frozen::$case as c;
+            println!("{}", c::HEADER);
+            let mut net = FixedNetwork::new(c::NEURONS, c::SYNAPSES, c::DT_US);
+            let mut fired = [false; c::N];
+            let mut step = 0u32;
+            for &(count, input) in c::DRIVE {
+                for _ in 0..count {
+                    let time_us = net.time_us();
+                    net.step(&input, &mut fired);
+                    if !c::SPIKES_ONLY || fired.contains(&true) {
+                        // Printer's write_str never fails.
+                        let _ = row::row(&mut Printer, step, time_us, &fired, net.neurons());
+                    }
+                    step = step.wrapping_add(1);
+                }
+            }
+        }};
+    }
+    frozen::for_each_frozen!(replay);
+    println!("# neuralos-trace end");
+
+    // 4. Real-time loop: one step per DT_US of wall time. now_us wraps at
     //    about 71 minutes; fine for a skeleton.
     let mut n = neuron(1);
     let mut i: u32 = 0;

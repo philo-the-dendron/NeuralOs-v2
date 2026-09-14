@@ -32,8 +32,10 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `host-bench-r30-2x2.log` | round 30's rider: the host spike-path bench as a 2×2, the alpha.6 tree (7fe2388) and the alpha.7 tree (26d68b0), each built on 1.92.0 and 1.98.1, three rounds in rotated order, the per-round medians appended by the run itself (§ Host bench, round 30) |
 | `board-r31-recorder.log` | the fifth entry (ISA round 31, 2026-09-13): the neuron without its spike ring, the firmware source unchanged, built by `build.sh` on 1.98.1 at d3adc5b (ELF `dc12d19a…`), 20 s after reset (§ Fifth entry) |
 | `burst-loops-r31-recorder.dis` | both burst loops of that ELF, cut by address as in § Third entry (free `0x42011c52`–`0x42011ddc`, pinned `0x42011fd6`–`0x42012358`); no ring store in either (§ Fifth entry) |
+| `board-r32-network.log` | the sixth entry (ISA round 32, 2026-09-14): the firmware with the network arm and the twelve replays of the frozen traces, built by `build.sh` on 1.98.1 from that entry's sources (ELF `ab7612df…`), 20 s after reset (§ Sixth entry) |
 | `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
+| `../../tools/esp32c3_trace_diff.py` | the replay diff: every plasticity-off trace of `crates/neuralos-snn/tests/traces/` against its case in a capture, one line per case (§ Sixth entry) |
 | `../../firmware/esp32c3/` | the firmware crate; the ELF is rebuildable, not committed |
 | `../../proofs/spike-path-bench/` | the host bench harness (standalone crate) |
 
@@ -557,6 +559,73 @@ the compiler moved in between (§ Fourth entry) and round 30's loops on
 and the 26 ns/step, measured on one compiler, has no listing to split
 it.
 
+## Sixth entry: round 32, the network on the chip (2026-09-14)
+
+Same SuperMini (MAC `70:af:09:07:f6:3c`, esp32c3 revision v0.4), same
+port, same tool, 20 s after reset. The spine gained `FixedNetwork`
+(PR E, ISA round 32), and the firmware two parts after its neuron
+arms: a third timed arm, the network arm, which steps the frozen
+`feedforward-8` (8 neurons, 6 synapses, from
+`crates/neuralos-snn/tests/traces/frozen.rs`) 10,000 times on its
+constant drive, behind `black_box` once per step as the pinned neuron
+is; then the replays, every frozen case printing its trace's header
+line and its rows through the library's `row.rs`, and one end line,
+`# neuralos-trace end`. `build.sh` in the main clone on 1.98.1, with
+the sources of this entry's commit: ELF `ab7612df…`, `.text`
+`61639145…` → `b5351531…` (§ Rebuild + run), the gate 0 hits, the
+trim-paths canary still unstable on 1.98.1 (exit 101). Flashed from a
+copy of that ELF, `board-r32-network.log`, 47,728 bytes. The capture
+holds two boots: it opens with the tail of the boot that followed the
+flash (a bootloader line spliced into another, the banner and both
+neuron arms), cut by the capture's reset during that boot's network
+arm, then the full run. Every figure below is from after the `rst:`
+line.
+
+| Measurement | Round 31 | Round 32 |
+|---|---|---|
+| Burst, pinned arm | 15,595 µs → 1,559 ns/step | 15,774 µs → **1,577 ns/step** |
+| Burst, free arm | 5,704 µs → 570 ns/step | 3,676 µs → 367 ns/step |
+| Burst spikes, first spike step, checksum, both neuron arms | 147, 55, `0b78b456` | 147, 55, `0b78b456` |
+| Burst, network arm (8 neurons, 6 synapses a step) | none | 140,586 µs → **14,058 ns/step** |
+| Network arm: spikes, first spike step, checksum | none | **3,377, 5, `7e700ee1`** |
+| First spike, real-time loop | step 55, 55,161 µs | step 55, 55,149 µs |
+| Spikes after the reset | 295 | 290 |
+
+The gates hold. Both neuron arms keep the fold. The network arm's
+three numbers are the pin `tests/traces.rs` holds on the host
+(`the_network_arm_folds_to_its_pin`). And
+`python3 tools/esp32c3_trace_diff.py evidence/esp32c3-bringup/board-r32-network.log`
+finds each of the twelve headers once and the end line after them,
+and prints:
+
+```text
+centi-mv-grid: identical, 30 rows
+chain-3: identical, 100 rows
+feedforward-8: identical, 150 rows
+inhibitory: identical, 100 rows
+neuron-reference: identical, 150 rows
+nir-chain-fixture: identical, 100 rows
+one-neuron-board: identical, 147 rows
+plasticity-off: identical, 150 rows
+recurrent-transmission: identical, 30 rows
+refractory: identical, 40 rows
+saturation-floor-ceiling: identical, 100 rows
+ternary-weights: identical, 100 rows
+12 cases, 0 red
+```
+
+So every plasticity-off trace of `tests/traces/` replays bit for bit
+on the chip, the spikes and every membrane, row for row, from the
+arrays the host steps; `plasticity-on` is outside `FixedNetwork` by
+design. The network arm costs 14,058 ns per step of the whole network,
+its spike tally included. The pinned neuron arm, the comparable
+figure, moved 1,559 → 1,577 ns/step (+18, +1.2 %). The free arm moved
+570 → 367 with its source unchanged; that is recorded and not
+explained, since there is no listing this round. The real-time loop is
+reported, not gated: its first spike lands at step 55, and it counts
+290 spikes in the window against 295, since the replays now run before
+it starts.
+
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
 ```bash
@@ -591,6 +660,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   0de3bd91f3d64c64060c70b1bbc868a3717fbd6f8236d423e9dd3bbdaf035322  round-27 fix (build.sh at 1affcd6: the alpha.7 spine, the baseline's firmware source; ISA round 27, item 7)
 #   33656de99e9e008b5e8681a86de041227bc1f470cc424e3f3108087e3f0d80c5  round 30, the pin (build.sh at 885ff53 on 1.98.1, main clone: the alpha.7 spine and firmware source; ISA round 30)
 #   61639145c30824f334785f1bd11b88ba60aabe9fee4763dd2514b151b2bb46a1  round 31, the recorder (build.sh at d3adc5b on 1.98.1, main clone: the neuron without its ring, the firmware source unchanged; ISA round 31)
+#   b5351531a8765a5a2aadd41132d64abe366d6115d2137ca9293ae3dab2ec1643  round 32, the network (build.sh on 1.98.1, main clone, from the sixth entry's sources: the network arm and the twelve replays; ISA round 32)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -609,7 +679,10 @@ round 27's fix: the same firmware source, the alpha.7 spine, built at
 1affcd6. The sixth is that source under the new pin, 1.98.1, built at
 885ff53 in the main clone (§ Fourth entry). The seventh is the same
 firmware source on the spine without the neuron's ring, built at
-d3adc5b in the main clone (§ Fifth entry).
+d3adc5b in the main clone (§ Fifth entry). The eighth is the firmware
+with the network arm and the replays, on the spine with
+`FixedNetwork`, built from the sixth entry's sources in the main clone
+(§ Sixth entry).
 
 ### Release asset (the procedure since round 26)
 
