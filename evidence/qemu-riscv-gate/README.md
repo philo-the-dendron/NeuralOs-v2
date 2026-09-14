@@ -40,9 +40,10 @@ bare-metal. No libc overclaim in either direction.
 | File | What |
 |---|---|
 | `leg-a.log` | Leg A run transcript — 175/175 cited checks, raster, `LEG A PASS`, `qemu_exit=0` |
+| `leg-a-alpha8.log` | Leg A re-run at the alpha.8 stamp (2026-09-14, `main@6f03e1b`), the same harness: 175/175 cited checks, `LEG A PASS`; two header lines prepended at PR G (§ Leg A) |
 | `leg-b.log` | Leg B full-suite run — 187 unit + 8 integration = 195/195 (matches host count), `cargo_test_exit=0`, wall clock |
 | `replay-alpha8.log` | the trace replay (round 33, 2026-09-14): the twelve plasticity-off traces stepped by `FixedNetwork` on bare-metal riscv64gc, as `proofs/qemu-trace-replay/build.sh` captured them from the UART; identical to the tree's files by `tools/esp32c3_trace_diff.py` (§ The trace replay) |
-| `SHA256SUMS` | pins the three logs and this README |
+| `SHA256SUMS` | pins the four logs and this README |
 | `../../proofs/qemu-riscv-leg-a/` | the committed, rebuildable Leg A harness crate (standalone workspace; repo workspace untouched) |
 | `../../proofs/qemu-trace-replay/` | the trace replay's crate (standalone workspace, like Leg A's) and its `build.sh` |
 
@@ -87,6 +88,13 @@ timeout 120 qemu-system-riscv64 -machine virt -nographic -bios none \
 The FAIL direction is verified too: a deliberately-broken check was
 probed (exit 1, `FAIL [ 26] lif::centi_mode membrane got=-7000
 want=-7001`), then restored — the gate bites.
+
+Re-run at the alpha.8 stamp, `leg-a-alpha8.log` is the first run since
+2026-08-22, 175/175, same verdict per check (every check line identical
+to `leg-a.log`'s; the capture ends at `LEG A PASS`, no `# qemu_exit`
+line); its two header lines, `# date:` (the file's mtime) and
+`# commit:`, were prepended at PR G (round 34) to the capture of sha
+`ab189be96472f449646b8ff7c936c9c69bb9e9f956535de500ff40e35e8720d4`.
 
 ## Leg B — user-mode, the REAL suite (the wire crosses)
 

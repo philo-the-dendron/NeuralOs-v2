@@ -38,7 +38,7 @@ the PR that made the check hold, as of this tree.
 10. [ ] The README's first example is a real doctest; `missing_docs` on.
 11. [ ] Rustdoc states rounding, saturation, reset, leak, step order; delay is the edge's.
 12. [ ] The default build forbids `unsafe` (only `simd` has it).
-13. [ ] Grep gate on release texts: no "golden", "conformance", "successor", Lava. (Ticked at a stamp, by the grep in that release draft's § Procedure.)
+13. [x] Grep gate on release texts: no "golden", "conformance", "successor", Lava. (Ticked at a stamp, by the grep in that release draft's § Procedure: alpha.8 stamp, 0 hits.)
 14. [x] Zero runtime dependencies (`cargo tree -e normal`) at each release. (PR F, #30: `cargo tree -e normal -p neuralos-snn` prints the crate alone, with `std` and without.)
 
 ## Current validated state
