@@ -4,7 +4,7 @@
 > silicon — LIF neurons, pairwise STDP, CSR synapses, ternary weight
 > codecs, and an AVX2 batch kernel.
 
-Published on crates.io as `0.1.0-alpha.7` (2026-09-13; AGPL-3.0-or-later).
+Published on crates.io as `0.1.0-alpha.8` (AGPL-3.0-or-later).
 
 ## What this crate is
 
@@ -97,6 +97,58 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   `i2_s` layout helpers); introspection accessors and builders stay pub —
   see the alpha.3 audit record in the repo's `ISA.md`.
 - SIMD gate runs in CI; the batch kernel is documented mV-grid-only.
+
+## Since alpha.7 (the alpha.8 notes)
+
+- **`FixedNetwork<N, S>`**, `no_std`: `N` neurons and `S` synapses in
+  arrays, no heap, no plasticity, the std network's step in the same
+  order; its step has no `Result`, no index and no division of its
+  own. `FixedNetwork::try_from(&net)` converts a plasticity-off
+  `SpikingNeuralNetwork` of the same size on the host. **No panic path
+  in its step, proven at link time** (the repository's
+  `proofs/no-panic-step/`: a panic handler that is an undefined
+  symbol, under the firmware's profile and under one without
+  cross-crate LTO; the one path the proof found, a division in
+  `dt_over_tau`'s wide half, now divides by a `NonZero`, behavior
+  identical).
+- **Traces:** `tests/traces/`, thirteen cases of the network as text
+  (`neuralos-trace v1`: the spikes and every membrane, step by step),
+  compared by `cargo test` against the code; a trace that moves is
+  red at its line. A reference vector pins the bare neuron against an
+  `i128` model on 150 rows.
+- **The spike ring leaves the neuron.** `LIFNeuron` keeps no history;
+  `SpikeRecorder`, a `no_std` 64-entry ring the caller feeds from
+  `integrate_and_fire`'s return, holds it, with the crate-private
+  firing-rate and ISI readers. `size_of::<LIFNeuron>()` is 44 bytes
+  (320 on alpha.7, x86-64), pinned by a test on the host (x86-64); the
+  same 44 on riscv32imc was read at PR D (#28), not asserted in the
+  tree. API: the one public path that moved is `MAX_SPIKE_HISTORY`, at
+  the crate root and in `spike_recorder`, no longer under
+  `lif_neuron`; the neuron's history readers were not public in
+  alpha.7 and are not now; they live on the recorder.
+- **The MSRV is tested.** `rust-version = "1.92"`, checked on 1.92.0
+  in CI in three configurations (`std`, `no_std`, `simd`); the
+  toolchain pin is 1.98.1.
+- **On the ESP32-C3 (rv32imc, 160 MHz), the same board:** every
+  plasticity-off trace of `tests/traces/`, twelve of the thirteen,
+  replays on the chip bit for bit from the arrays the host steps, the
+  spikes and every membrane, row for row (`plasticity-on` is outside
+  `FixedNetwork` by design). The frozen `feedforward-8` (8 neurons, 6
+  synapses) steps in **14,058 ns per step of the whole network**, its
+  spike tally included; the neuron as a network holds it 1,576
+  ns/step (1,579 on alpha.7). Every behavior figure of alpha.7 is
+  unchanged: 147 spikes in the 10,000-step burst, the first at step
+  55, the same checksum. Numbers, logs and `.text` pins:
+  `evidence/esp32c3-bringup/README.md` § Sixth and § Seventh entry.
+- **On x86-64 the host spike-path bench is within a nanosecond per
+  step of alpha.7** on the same compiler (forced −0.6, control +0.05
+  ns/step, one run): `evidence/esp32c3-bringup/README.md` § Host
+  bench, round 33.
+- **Under QEMU `riscv64gc`** the same twelve traces replay bit for bit
+  (`proofs/qemu-trace-replay/`, `evidence/qemu-riscv-gate/`).
+- **The road to 0.1.0** is the repository's `docs/ROADMAP.md`
+  § 0.1.0: fourteen checks a stranger can run, six of them holding at
+  this release.
 
 ## Since alpha.6 (the alpha.7 notes)
 
@@ -264,11 +316,16 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
 
 ## Status
 
-**`0.1.0-alpha.7` is live on crates.io** (published 2026-09-13): both
-divisions by 1000 narrowed to `i32` when the value fits, `dt_over_tau`
-in `u32`, the spike ring's masked stores, `#[inline]` on
-`integrate_and_fire`; the network's step on the ESP32-C3 3,878 → 1,579
-ns/step, behavior identical (see "Since alpha.6"). Alpha.6
+**`0.1.0-alpha.8` is live on crates.io**: `FixedNetwork`, a network in
+arrays, replays every plasticity-off trace bit for bit on the ESP32-C3
+and under QEMU `riscv64gc`, with no panic path in its step, proven at
+link time; the traces; the spike ring out of the neuron; the MSRV
+tested (see "Since alpha.7"). Alpha.7 (2026-09-13T03:20:57Z from
+a974b9e, registry-verified): both divisions by 1000 narrowed to `i32`
+when the value fits, `dt_over_tau` in `u32`, the spike ring's masked
+stores, `#[inline]` on `integrate_and_fire`; the network's step on the
+ESP32-C3 3,878 → 1,579 ns/step, behavior identical (see "Since
+alpha.6"). Alpha.6
 (2026-09-11T15:54:50Z from d8a96b1, registry-verified): the `[u32; N]`
 spike ring, no runtime dependencies, `rust-version` declared,
 `isi_stats_us` in u128, and the ESP32-C3 step cost read honestly (see

@@ -55,8 +55,8 @@ pass; verification method in parentheses):
 
 ### 1. The substrate (now — the active front)
 
-`neuralos-snn` on crates.io (`0.1.0-alpha.7`, published
-2026-09-13; tree == published):
+`neuralos-snn` on crates.io (`0.1.0-alpha.8`, release notes in
+`docs/releases/v0.1.0-alpha.8.md`):
 `no_std`, i16 fixed-point,
 LIF + full pairwise STDP + 4 topologies + CSR sparse matrix + AVX2 kernel
 + the ternary bridge codecs (`i2_s`/`q1_0`/`q2_0`) + shared ternary

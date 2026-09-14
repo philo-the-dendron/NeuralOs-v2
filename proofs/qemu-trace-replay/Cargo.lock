@@ -7,7 +7,7 @@ name = "neuralos-snn"
 version = "0.1.0-alpha.8"
 
 [[package]]
-name = "no-panic-step"
+name = "qemu-trace-replay"
 version = "0.1.0"
 dependencies = [
  "neuralos-snn",

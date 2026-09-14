@@ -41,8 +41,10 @@ bare-metal. No libc overclaim in either direction.
 |---|---|
 | `leg-a.log` | Leg A run transcript — 175/175 cited checks, raster, `LEG A PASS`, `qemu_exit=0` |
 | `leg-b.log` | Leg B full-suite run — 187 unit + 8 integration = 195/195 (matches host count), `cargo_test_exit=0`, wall clock |
-| `SHA256SUMS` | pins both logs |
+| `replay-alpha8.log` | the trace replay (round 33, 2026-09-14): the twelve plasticity-off traces stepped by `FixedNetwork` on bare-metal riscv64gc, as `proofs/qemu-trace-replay/build.sh` captured them from the UART; identical to the tree's files by `tools/esp32c3_trace_diff.py` (§ The trace replay) |
+| `SHA256SUMS` | pins the three logs and this README |
 | `../../proofs/qemu-riscv-leg-a/` | the committed, rebuildable Leg A harness crate (standalone workspace; repo workspace untouched) |
+| `../../proofs/qemu-trace-replay/` | the trace replay's crate (standalone workspace, like Leg A's) and its `build.sh` |
 
 ## Leg A — bare-metal none-elf (the edge posture)
 
@@ -125,3 +127,31 @@ behaved; `--test-threads=1` was not needed.
 QEMU riscv64 CI leg — runner cost under TCG unmeasured (Leg B was 14 s
 warm here, but CI cost needs its own measurement); not added to
 ci.yml this session by commission.
+
+## The trace replay (round 33, 2026-09-14)
+
+`proofs/qemu-trace-replay/` is the ESP32-C3 firmware's replay under
+QEMU: every plasticity-off case of `crates/neuralos-snn/tests/traces/`
+stepped by `FixedNetwork`, bare metal on `riscv64gc-unknown-none-elf`
+(Leg A's boot, copied), its header line and its rows written over the
+UART by the library's `row.rs`, then the end line, then the pass code.
+Its `build.sh` builds the crate `--release --locked` on the pin
+(1.98.1, the spine at `0.1.0-alpha.8`), runs it under
+`qemu-system-riscv64` 8.2.2 (`virt`, `-bios none`, a 120 s timeout),
+and diffs the capture with the board's tool,
+`tools/esp32c3_trace_diff.py`: green only on QEMU exit 0 and
+`12 cases, 0 red`. `replay-alpha8.log` is that capture (1,210 lines,
+35,807 bytes), built from the sources of the commit that adds it: the
+twelve cases identical, with the board's row counts
+(`evidence/esp32c3-bringup/README.md` § Sixth entry), QEMU exit 0.
+Three runs gave the same bytes; `build.sh` refuses a log name that
+exists, so a re-run writes a new one and compares. Not a CI job: QEMU
+is not on the runner image, and Leg A is not one either; it runs by
+hand at a release round and is pinned. Check 1 of `docs/ROADMAP.md`
+§ 0.1.0 rests on it.
+
+```bash
+rustup target add riscv64gc-unknown-none-elf
+proofs/qemu-trace-replay/build.sh      # the capture into its target/replay.log, the diff, the verdict
+cmp proofs/qemu-trace-replay/target/replay.log evidence/qemu-riscv-gate/replay-alpha8.log
+```

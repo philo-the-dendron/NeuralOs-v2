@@ -30,7 +30,7 @@ name and is compared against the pinned log, never written over it
 `host-bench-r27-alpha7.log`, commands in that evidence README).
 
 The committed `Cargo.lock` named the spine at alpha.6 for that run
-(alpha.7 since round 27); in the alpha.5
+(alpha.7 since round 27, alpha.8 since round 33); in the alpha.5
 worktree cargo re-resolves the path dependency to alpha.5 (no
 `--locked` there, by design). Same profile (release, fat LTO, one
 codegen unit), same box, same command. Cargo refuses two

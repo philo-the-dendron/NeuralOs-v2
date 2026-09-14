@@ -1,0 +1,21 @@
+[package]
+name = "qemu-trace-replay"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "The frozen traces under QEMU riscv64gc, bare metal: every plasticity-off case of the library's tests/traces/ stepped by FixedNetwork, its rows over the UART, diffed against the files"
+
+# Standalone on purpose (same pattern as qemu-riscv-leg-a and the
+# firmware): it builds only for the bare-metal target, and the repo
+# workspace never sees it.
+[workspace]
+
+[dependencies]
+neuralos-snn = { path = "../../crates/neuralos-snn", default-features = false }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

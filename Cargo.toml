@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 edition = "2021"
 # The floor the published crate promises its users, checked in CI on
 # its own toolchain (the MSRV gate, AGENTS § Commands). It does not

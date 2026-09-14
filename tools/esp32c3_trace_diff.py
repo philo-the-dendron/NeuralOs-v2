@@ -10,7 +10,9 @@ log at the headers, drops carriage returns, and compares each case with
 its file line for line: one line per case, exit 1 on any difference. A
 header missing or repeated, a header outside the frozen set, or no end
 line after the last case is a difference too: a capture cut off is red,
-not a shorter compare.
+not a shorter compare. Any capture with the headers and the end line
+reads the same way, the C3's or QEMU's (proofs/qemu-trace-replay/, the
+same replay on riscv64gc).
 
 usage: tools/esp32c3_trace_diff.py LOG
 Standard library only.

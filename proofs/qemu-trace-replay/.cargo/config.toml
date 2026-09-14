@@ -1,0 +1,4 @@
+[build]
+target = "riscv64gc-unknown-none-elf"
+
+# The linker script argument lives in build.rs, not here: see the note there.
