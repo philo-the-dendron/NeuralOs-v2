@@ -669,8 +669,8 @@ prints the twelve plasticity-off cases identical, with the sixth
 entry's row counts, the end line present, `12 cases, 0 red`. The three
 burst times move by at most 7 µs per 10,000 steps (pinned −7, free −4,
 network 0), under one ns per step; not read further. The real-time
-loop is reported, not gated: its first spike lands at step 57, with 290
-spikes in the window, as in round 32.
+loop is reported, not gated: its first spike lands at step 57, against
+55 in round 32, with 290 spikes in the window, as in round 32.
 
 ## Host bench, round 33: alpha.7 against alpha.8 (2026-09-14)
 

@@ -120,12 +120,12 @@ ternary SNN↔LLM bridge on this substrate lives in the workspace's
   `SpikeRecorder`, a `no_std` 64-entry ring the caller feeds from
   `integrate_and_fire`'s return, holds it, with the crate-private
   firing-rate and ISI readers. `size_of::<LIFNeuron>()` is 44 bytes
-  (320 on alpha.7), pinned by a test on the host (x86-64); the same
-  44 on riscv32imc was read at PR D (#28), not asserted in the tree.
-  API: the one public path that moved is `MAX_SPIKE_HISTORY`, at the
-  crate root and in `spike_recorder`, no longer under `lif_neuron`;
-  the neuron's history readers were crate-private and stay so, on the
-  recorder.
+  (320 on alpha.7, x86-64), pinned by a test on the host (x86-64); the
+  same 44 on riscv32imc was read at PR D (#28), not asserted in the
+  tree. API: the one public path that moved is `MAX_SPIKE_HISTORY`, at
+  the crate root and in `spike_recorder`, no longer under
+  `lif_neuron`; the neuron's history readers were not public in
+  alpha.7 and are not now; they live on the recorder.
 - **The MSRV is tested.** `rust-version = "1.92"`, checked on 1.92.0
   in CI in three configurations (`std`, `no_std`, `simd`); the
   toolchain pin is 1.98.1.
