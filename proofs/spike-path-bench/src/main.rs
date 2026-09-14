@@ -5,7 +5,9 @@
 //!   constant input — every step fires, so every step records a spike
 //!   in the history. After the 64th spike the alpha.5 history shifted
 //!   64 entries per step (`heapless::Vec::remove(0)`); the alpha.6 ring
-//!   overwrites one slot.
+//!   overwrites one slot. From alpha.8 the neuron keeps no history (a
+//!   `SpikeRecorder` is the caller's), so on that tree the arm times the
+//!   spike path with no store.
 //! - `control`: no input, threshold untouched — no step fires; the same
 //!   loop minus the spike path.
 //!

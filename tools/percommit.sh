@@ -27,9 +27,9 @@
 # exits 1 with the worktree still removed.
 #
 # Needs what CI needs: the pinned toolchain (rust-toolchain.toml is in
-# the worktree, rustup picks it up), the riscv32imc-unknown-none-elf
-# target, the llvm-tools component (the firmware .text sha), the MSRV
-# toolchain 1.92.0 (`rustup toolchain install 1.92.0 --profile
+# the worktree, rustup picks it up), the chip target and llvm-tools,
+# which the loop adds to each commit's pin itself, as the job does, the
+# MSRV toolchain 1.92.0 (`rustup toolchain install 1.92.0 --profile
 # minimal`), and cmake on PATH for the vendored HDF5 (.nirenv/bin from
 # the main clone is prepended).
 set -euo pipefail

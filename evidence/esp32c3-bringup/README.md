@@ -30,6 +30,8 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `host-bisect-r27.log` | the follow-up to that check: the bench per commit of the round, medians per round (§ Host bench, round 27) |
 | `board-r30-alpha7-before.log`, `board-r30-pin.log` | the fourth entry (ISA round 30, 2026-09-13): the board as round 27 left it (the 1.92.0 build on flash), then the same source built by `build.sh` on 1.98.1 at 885ff53 (ELF `971b2bcb…`), 20 s after reset each (§ Fourth entry) |
 | `host-bench-r30-2x2.log` | round 30's rider: the host spike-path bench as a 2×2, the alpha.6 tree (7fe2388) and the alpha.7 tree (26d68b0), each built on 1.92.0 and 1.98.1, three rounds in rotated order, the per-round medians appended by the run itself (§ Host bench, round 30) |
+| `board-r31-recorder.log` | the fifth entry (ISA round 31, 2026-09-13): the neuron without its spike ring, the firmware source unchanged, built by `build.sh` on 1.98.1 at d3adc5b (ELF `dc12d19a…`), 20 s after reset (§ Fifth entry) |
+| `burst-loops-r31-recorder.dis` | both burst loops of that ELF, cut by address as in § Third entry (free `0x42011c52`–`0x42011ddc`, pinned `0x42011fd6`–`0x42012358`); no ring store in either (§ Fifth entry) |
 | `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../firmware/esp32c3/` | the firmware crate; the ELF is rebuildable, not committed |
@@ -485,6 +487,76 @@ one (alpha.6 forced) and separate only on the alpha.6 control arm
 (−0.47). The cost is in the code, as round 27's bisect found, not in
 the compiler; round 27's ruling stands (recorded, not fixed).
 
+## Fifth entry: round 31, the ring leaves the neuron (2026-09-13)
+
+Same SuperMini (MAC `70:af:09:07:f6:3c`, esp32c3 revision v0.4), same
+port, same tool, 20 s after reset. The spine's neuron keeps no spike
+history since PR D (ISA round 31): the ring became `SpikeRecorder`,
+which the firmware does not use, and the firmware source did not
+change. `build.sh` at `d3adc5b` on 1.98.1 in the main clone: ELF
+`dc12d19a…`, `.text` `61639145…` (§ Rebuild + run), the gate 0 hits,
+the trim-paths canary still unstable on 1.98.1 (exit 101). Flashed
+from a copy of that ELF, `board-r31-recorder.log`; it opens with two
+stale pre-reset spike lines, the first spliced into a bootloader line,
+and every figure below is from after the `rst:` line. The comparison
+is § Fourth entry's after column: the same board, compiler and
+firmware source, the same day.
+
+| Measurement | Round 30 (the ring in the neuron) | Round 31 (no ring) |
+|---|---|---|
+| Burst, pinned arm | 15,856 µs → 1,585 ns/step | 15,595 µs → **1,559 ns/step** |
+| Burst, free arm | 5,694 µs → 569 ns/step | 5,704 µs → **570 ns/step** |
+| Burst spikes, first spike step, checksum, both arms | 147, 55, `0b78b456` | 147, 55, `0b78b456` |
+| First spike, real-time loop | step 59, 59,276 µs | step 55, 55,161 µs |
+| Spikes after the reset | 295 | 295 |
+
+The gate holds: both burst arms identical in spike count, first spike
+step and checksum, the figures `one-neuron-board.trace` pins on the
+host. The pinned arm is 261 µs faster per 10,000 steps, 26 ns per step
+(−1.6 %), about four cycles at 160 MHz; the free arm is 10 µs slower,
+1 ns per step (+0.2 %). The same ELF measured twice moved by at most
+1 µs (round 27's fix, § Third entry, against § Fourth entry's before
+column), so both moves are the build's; neither is read further. The
+real-time loop is reported, not gated: its noise is seeded by the
+wall-clock stamp, and the bursts before it now end at other times; its
+first spike lands at step 55, with the same 295 spikes in 20 s.
+
+The listing, `burst-loops-r31-recorder.dis`: both loops of the flashed
+ELF, each cut by address from its first instruction to its exit
+target with § The mechanism's `llvm-objdump` line (LLVM 22.1.8, from
+1.98.1's `llvm-tools`). Line 2 of each half names the ELF by its sha
+because the copy it was cut from was named `sha256:<sha>`; nothing was
+scrubbed. The counts follow rules that reproduce every figure of
+§ The mechanism's table and of § Third entry's listing table from
+their pinned files: a load or store based on `sp` is a frame access;
+in the pinned arm the base register of most other loads and stores is
+the neuron pointer (`s9` and `s11` there, `s3` here); a store based on
+neither is a computed-index store; a branch out targets neither the
+range nor the exit.
+
+| Burst loop body | Free, round 31 | Pinned, round 31 |
+|---|---|---|
+| Range | `0x42011c52`–`0x42011ddc` | `0x42011fd6`–`0x42012358` |
+| Instructions | 132 | 288 |
+| ROM `__divdi3` calls | 0 | 0 |
+| ROM `__udivdi3` calls | 0 | 0 |
+| Hardware `divu` | 0 | 1 |
+| Calls to the cold fallbacks | 1 | 3 |
+| Loads and stores against the frame | 9 | 12 |
+| Loads and stores through the neuron pointer | — | 27 |
+| Ring stores (computed index) | 0 | 0 |
+| Branches out, besides the exit | 0 | 0 |
+
+The reading. Neither loop has a computed-index store: every store
+through the pinned arm's pointer is at a fixed offset of the struct,
+where § Third entry's fix loop stored the ring twice on a spike step.
+Against that fix (built on 1.92.0) the pinned loop is 288 instructions
+against 320, with 12 frame and 27 pointer accesses against 19 and 31;
+the compiler moved in between (§ Fourth entry) and round 30's loops on
+1.98.1 were never cut, so those differences are not the ring's alone,
+and the 26 ns/step, measured on one compiler, has no listing to split
+it.
+
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
 ```bash
@@ -518,6 +590,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   f7193ca7415e2d8d8c006a8cff67c97a3f5e51e2965639d442a65293a8354821  round-27 baseline (build.sh at 5c3e3ad: the alpha.6 spine, the firmware with the free and pinned burst arms; ISA round 27, item 1)
 #   0de3bd91f3d64c64060c70b1bbc868a3717fbd6f8236d423e9dd3bbdaf035322  round-27 fix (build.sh at 1affcd6: the alpha.7 spine, the baseline's firmware source; ISA round 27, item 7)
 #   33656de99e9e008b5e8681a86de041227bc1f470cc424e3f3108087e3f0d80c5  round 30, the pin (build.sh at 885ff53 on 1.98.1, main clone: the alpha.7 spine and firmware source; ISA round 30)
+#   61639145c30824f334785f1bd11b88ba60aabe9fee4763dd2514b151b2bb46a1  round 31, the recorder (build.sh at d3adc5b on 1.98.1, main clone: the neuron without its ring, the firmware source unchanged; ISA round 31)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -534,7 +607,9 @@ not a rebuild: 5c3e3ad changes the firmware's source (the pinned burst
 arm, ISA round 27, item 1) on the same alpha.6 spine. The fifth is
 round 27's fix: the same firmware source, the alpha.7 spine, built at
 1affcd6. The sixth is that source under the new pin, 1.98.1, built at
-885ff53 in the main clone (§ Fourth entry).
+885ff53 in the main clone (§ Fourth entry). The seventh is the same
+firmware source on the spine without the neuron's ring, built at
+d3adc5b in the main clone (§ Fifth entry).
 
 ### Release asset (the procedure since round 26)
 

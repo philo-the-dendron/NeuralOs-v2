@@ -14,6 +14,7 @@ pub mod network;
 pub mod nir;
 #[cfg(feature = "simd")]
 pub mod simd;
+pub mod spike_recorder;
 #[cfg(feature = "std")]
 pub mod stats;
 pub mod synapse;
@@ -26,9 +27,7 @@ pub use bridge::{
 pub use kernel::{
     absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit, Q15_MAX, TRITS_PER_BYTE,
 };
-pub use lif_neuron::{
-    LIFNeuron, NeuronType, VoltageResolution, MAX_SPIKE_HISTORY, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN,
-};
+pub use lif_neuron::{LIFNeuron, NeuronType, VoltageResolution, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
 #[cfg(feature = "std")]
 pub use network::{
     NetworkStats, NetworkTopology, SparseSynapseMatrix, Spike, SpikingNeuralNetwork,
@@ -38,6 +37,7 @@ pub use nir::{
     NirImportOptions, NirLif, NirLifParams, NirLifPopulation, NirLinear, NirNode, NirNodeKind,
     NirNote, NirReport, NirScan, EXPORT_VERSION, NIR_NOTE_KINDS, NIR_REF_SHA,
 };
+pub use spike_recorder::{SpikeRecorder, MAX_SPIKE_HISTORY};
 pub use synapse::{STDPRule, Synapse, SynapseType, SCALE};
 pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternarize, Trit};
 
