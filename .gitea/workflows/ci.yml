@@ -264,6 +264,14 @@ jobs:
             else
               echo "(no firmware/esp32c3 at this commit)"
             fi
+            # The no-panic proof (proofs/no-panic-step): its own workspace,
+            # like the firmware, on the same chip target; guarded the same
+            # way, so commits before the crate stay valid.
+            if [ -f proofs/no-panic-step/build.sh ]; then
+              (cd proofs/no-panic-step && ./build.sh)
+            else
+              echo "(no proofs/no-panic-step at this commit)"
+            fi
             echo "===== $c GREEN"
           done
           echo "== all $n commit(s) green on their own"
@@ -405,3 +413,13 @@ jobs:
       - name: build.sh clippy (firmware, same flags)
         working-directory: firmware/esp32c3
         run: ./build.sh clippy
+
+      # The link-time proof that FixedNetwork::step has no panic path
+      # (proofs/no-panic-step/build.sh carries the why): its own fmt, then
+      # the step linked under the firmware's profile and under one without
+      # LTO, each with a canary the linker must refuse by name. Its own
+      # workspace, like the firmware; the chip target is the one added
+      # above.
+      - name: build.sh (proofs/no-panic-step, the no-panic link)
+        working-directory: proofs/no-panic-step
+        run: ./build.sh

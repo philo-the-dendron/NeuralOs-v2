@@ -117,6 +117,13 @@ for c in $commits; do
   else
     echo "(no firmware/esp32c3 at this commit)"
   fi
+  # The no-panic proof (proofs/no-panic-step): its own workspace, like the
+  # firmware, on the same chip target; the same guard as the job's.
+  if [ -f proofs/no-panic-step/build.sh ]; then
+    (cd proofs/no-panic-step && run ./build.sh)
+  else
+    echo "(no proofs/no-panic-step at this commit)"
+  fi
   echo "===== $c GREEN  $(date +%T)"
 done
 echo "== all $n commit(s) green on their own  $(date +%T)"
