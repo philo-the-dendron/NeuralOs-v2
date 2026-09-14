@@ -26,7 +26,7 @@ with the host.
 stranger can run each one. This list is their one home; a tick names
 the PR that made the check hold, as of this tree.
 
-1. [ ] Traces from today's network; CI replays them on host, QEMU at release. (Host: CI, PR B, #26. QEMU: open.)
+1. [x] Traces from today's network; CI replays them on host, QEMU at release. (Host: CI, PR B, #26. QEMU: PR F, #30, `proofs/qemu-trace-replay/`, the twelve plasticity-off traces bit for bit.)
 2. [x] `FixedNetwork` replays them bit for bit on the ESP32-C3. (PR E, #29: twelve of thirteen; `plasticity-on` is outside `FixedNetwork` by design.)
 3. [x] No panic path in the step, proven at link time. (PR E, #29.)
 4. [x] No spike ring in the neuron; history is a recorder. (PR D, #28.)
