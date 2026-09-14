@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@0064920 (PR #28 merged 2026-09-14 02:38 UTC: round 31, the ring leaves the neuron; mirror synced, branch deleted) · tree is ahead, alpha.8 pending (since alpha.7: the traces, the pin and the MSRV gate, the recorder; round 32 adds `FixedNetwork`, `no_std`, and the link-time proof of its step) · wrote-from: work/fixed, ahead by round 32 (PR E, the fixed network: six commits), not pushed; the builder's read-only review of each commit, in the session: one blocking (the proof's recipe under `CARGO_TARGET_DIR`), fixed with the cosmetic ones in commit 4; the board run, the proof and the per-commit loop in the close-out below and in TODO.md (the principal's state file, outside git) · open(session): the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, a fresh Fable review and Muse Spark, and the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@df5e55d (PR #29 merged 2026-09-14 13:13 UTC: round 32, the fixed network; mirror synced, branch deleted) · alpha.8 in the tree, stamp pending (since alpha.7: the traces, the pin and the MSRV gate, the recorder, `FixedNetwork` and the link-time proof of its step; round 33 bumps the version, reads the board fold again, replays the traces under QEMU and drafts the notes) · wrote-from: work/alpha8, ahead by round 33 (PR F, alpha.8 stamped: six commits), not pushed; the per-commit loop runs over the six before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, a fresh Fable review and Muse Spark (tier 1), the merge on the principal's word, then the stamp by `docs/releases/v0.1.0-alpha.8.md` § Procedure (the tag, the release, the publish), its record in the next PR's first commit · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-14T06:10:12Z
+updated: 2026-09-14T17:00:27Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9313,3 +9313,34 @@ names the spine: the alpha.8 bump moves it. The sweep kept the dated
 records, ROADMAP's priority row 3 among them. The free arm's move is
 recorded, not explained. **Guards.** GUARD 1: appended; head line
 refreshed. GUARD 2: no verdict touched. GUARD 3: nothing public.
+
+## Close-out (round 33 — PR F, alpha.8 stamped: the bump, the notes, the board fold after the bump, the traces under QEMU — 2026-09-14)
+
+Branch `work/alpha8` from `main@df5e55d`, tier 1 (a publish), six
+commits, the brief as the PR description. Commits: `f4a7c6d` ROADMAP
+§ 0.1.0, the fourteen checks in the tree (FUTURE.md points there,
+outside git); `6ddf774` the bump and the five locks; `0b9a5f0` the
+seventh board entry and the host bench (against alpha.7 on 1.98.1:
+forced −0.6, control +0.05 ns/step); `941d303` the traces under QEMU,
+twelve of twelve, the sixth lock; `15bf557` the release draft, the
+crate README as of the publish, the sweep; this close-out. Checks
+holding at this tree: 1 (host PR B, QEMU here), 2, 3, 4, 5, 14, six of
+fourteen; 13 is ticked at the stamp. Record-only: the bump alone moves
+`.text`, `b5351531…` → `6f8ec538…`, measured at the brief on
+`df5e55d`'s sources, again at `6ddf774` and on `15bf557`'s (the crate
+README is its rustdoc and moves nothing), the fold unchanged on all
+three arms, the twelve diffs empty; the free arm's 570 → 367 of round
+32 is still unexplained (367 again), its listing owed; the second
+board is still open; the diff tool's name says C3 and serves QEMU
+too; AGENTS.md:225 keeps "the tree is ahead" as doctrine, the sweep's
+one hit (the principal's call); cargo 1.98.1's dry-run packs into
+`target/package/tmp-crate/`, so § Procedure runs `cargo package` for
+alpha.7's path, the same bytes. Deviations: the host bench in its own
+§ Host bench, round 33 (the principal's call, against "no new
+section"); the check-13 grep written `golde[n]|…`, since the brief's
+spelling matches its own line; the notes' 1,577 → 1,576, the seventh
+entry's; the QEMU `build.sh` runs the crate's fmt gate first and links
+through `build.rs`, not config rustflags; the INDEX rows and the bench
+README's lock line ride the sweep. The stamp is open (the head line).
+**Guards.** GUARD 1: appended; head line refreshed. GUARD 2: no verdict
+touched. GUARD 3: nothing public.
