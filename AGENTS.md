@@ -26,7 +26,7 @@ archive, not here. `cd` to `NeuralOs-v2`.
 
 | Path | Role |
 |---|---|
-| `crates/neuralos-snn` | The spine. Published on crates.io (`0.1.0-alpha.7`, 2026-09-13; tree == published). `no_std`-by-default, i16 fixed-point. |
+| `crates/neuralos-snn` | The spine. Published on crates.io; the version is the workspace `version`, § Published crate. `no_std`-by-default, i16 fixed-point. |
 | `crates/neuralos-app` | The microscope. Slint visualizer over the library. |
 | `crates/neuralos-nir2json` | The inbound bridge. Pure-Rust `.nir` (HDF5 via `hdf5-pure`, no C) → the library's JSON schema, for graphs strangers emit (snnTorch, norse, rockpool). The stranger-usable artifact GUARD 3 names: a static musl binary on the Gitea release, built by its README § Build. `publish = false` (crates.io deferred by ruling). |
 | `crates/neuralos-rt` | The research runtime (GGUF container, Q1_0/Q2_0 compute, tokenizer, model). `publish = false`, std-only. Consumed by the frozen bridge examples. |
