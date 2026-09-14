@@ -4,8 +4,9 @@
 //!
 //! This module is `std`-gated. The hot-path primitives ([`LIFNeuron`], [`Synapse`])
 //! are `no_std`-compatible; this orchestrator uses `Vec`, `VecDeque`, and `Instant`
-//! for desktop/server simulation. For bare-metal RISC-V deployment, hand-roll loops
-//! over the primitives directly.
+//! for desktop/server simulation. For bare-metal RISC-V deployment,
+//! [`FixedNetwork`](crate::fixed::FixedNetwork) steps the same network in arrays,
+//! `no_std`, without plasticity.
 //!
 //! # Invariants (testable)
 //!
@@ -790,6 +791,13 @@ impl SpikingNeuralNetwork {
     #[must_use]
     pub fn current_time_us(&self) -> u32 {
         self.current_time_us
+    }
+
+    /// The simulation step (μs), read by `FixedNetwork`'s conversion.
+    /// `pub(crate)`: whether it goes public is the pub walk's call.
+    #[must_use]
+    pub(crate) fn time_step_us(&self) -> u32 {
+        self.time_step_us
     }
 
     /// Total neuron count.
