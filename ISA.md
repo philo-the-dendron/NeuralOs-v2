@@ -4,7 +4,7 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@7d65416 (PR #27 merged 2026-09-13 22:56 UTC: round 30, the pin; mirror synced, branch deleted) · tree is ahead, alpha.8 pending (since alpha.7: the traces, the pin and the MSRV gate; round 31 moves the library: `SpikeRecorder`, the neuron without its ring) · wrote-from: work/recorder, ahead by round 31 (PR D, the ring leaves the neuron: five commits), not pushed; the local loop green on commits 0 to 3 · open(session): the loop on this commit, then the push and PR #28 on the principal's word, the review by a fresh Fable session in the session, the seven (pull_request) contexts green on the head in the full listing, the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@7d65416 (PR #27 merged 2026-09-13 22:56 UTC: round 30, the pin; mirror synced, branch deleted) · tree is ahead, alpha.8 pending (since alpha.7: the traces, the pin and the MSRV gate; round 31 moves the library: `SpikeRecorder`, the neuron without its ring) · wrote-from: work/recorder, ahead by round 31 (PR D, the ring leaves the neuron: six commits), pushed, PR #28 open; reviewed 2026-09-13 by a fresh Fable session and by Muse Spark (a second model family), both in the session, no blocking; one finding, confirmed at the source, corrected by the sixth commit (the ELF sha holds only with the build stamp held; the `.text` is the comparable); the record-only notes in TODO.md (the principal's state file, outside git) · the local loop green on all five commits before the first push · open(session): the seven (pull_request) contexts green on the new head in the full listing, then the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
 updated: 2026-09-13T23:50:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
@@ -9274,3 +9274,11 @@ alpha.8 notes owe the line. Record-only: round 27's loop counter was
 never committed; the fifth entry states rules that reproduce its
 tables. **Guards.** GUARD 1: appended; head line refreshed. GUARD 2:
 no verdict touched. GUARD 3: nothing public.
+
+**Correction (before the merge):** item 3's "the ELF unchanged" holds
+only with the build stamp held. `tools/remap.sh` sets
+`SOURCE_DATE_EPOCH` to the checked-out commit's time and the app
+descriptor embeds it; the rider build ran with commit 1 checked out,
+fourteen minutes before `409ffdf` was made. The comparable is the
+`.text`, `61639145…`, reproduced at the head; a fresh build there gives
+another ELF sha (`5a6195f5…` at `75280b2`). True when written.
