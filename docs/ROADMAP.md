@@ -136,9 +136,10 @@ displace substrate + lab bench + gated research.
    of GUARD 3 is landed, and the exporter half closed with the release
    `bringup-2026-09-09` (published 2026-09-10, ISA round-21); outreach
    is the principal's call.
-   Next board work (a network on the chip, a hardware timer instead of
-   the busy-wait) is not opened here. Three spare boards in the bag
-   (a 4-pack, one used).
+   The network on the chip ran in round 32 (PR E, `FixedNetwork`,
+   `evidence/esp32c3-bringup/` § Sixth entry). Next board work (a
+   hardware timer instead of the busy-wait) is not opened here. Three
+   spare boards in the bag (a 4-pack, one used).
 6. Lock-free ports (A-extension targets only — re-scoped above) — the
    last Phase-1 remainder; **SIMD hardening DONE 2026-08-31** (ISA § Close-out)
 7. Visualizer Phase-2 — the lab bench catches up to the substrate the

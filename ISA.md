@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@7d65416 (PR #27 merged 2026-09-13 22:56 UTC: round 30, the pin; mirror synced, branch deleted) · tree is ahead, alpha.8 pending (since alpha.7: the traces, the pin and the MSRV gate; round 31 moves the library: `SpikeRecorder`, the neuron without its ring) · wrote-from: work/recorder, ahead by round 31 (PR D, the ring leaves the neuron: six commits), pushed, PR #28 open; reviewed 2026-09-13 by a fresh Fable session and by Muse Spark (a second model family), both in the session, no blocking; one finding, confirmed at the source, corrected by the sixth commit (the ELF sha holds only with the build stamp held; the `.text` is the comparable); the record-only notes in TODO.md (the principal's state file, outside git) · the local loop green on all five commits before the first push · open(session): the seven (pull_request) contexts green on the new head in the full listing, then the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@0064920 (PR #28 merged 2026-09-14 02:38 UTC: round 31, the ring leaves the neuron; mirror synced, branch deleted) · tree is ahead, alpha.8 pending (since alpha.7: the traces, the pin and the MSRV gate, the recorder; round 32 adds `FixedNetwork`, `no_std`, and the link-time proof of its step) · wrote-from: work/fixed, ahead by round 32 (PR E, the fixed network: six commits), not pushed; the builder's read-only review of each commit, in the session: one blocking (the proof's recipe under `CARGO_TARGET_DIR`), fixed with the cosmetic ones in commit 4; the board run, the proof and the per-commit loop in the close-out below and in TODO.md (the principal's state file, outside git) · open(session): the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, a fresh Fable review and Muse Spark, and the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-13T23:50:00Z
+updated: 2026-09-14T06:10:12Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9282,3 +9282,34 @@ descriptor embeds it; the rider build ran with commit 1 checked out,
 fourteen minutes before `409ffdf` was made. The comparable is the
 `.text`, `61639145…`, reproduced at the head; a fresh build there gives
 another ELF sha (`5a6195f5…` at `75280b2`). True when written.
+
+## Close-out (round 32 — PR E, the fixed network: `FixedNetwork` on the ESP32-C3, no panic path in its step — 2026-09-14)
+
+Branch `work/fixed` from `main@0064920`, tier 2, six commits, the brief
+as the PR description. Two 0.1.0 checks close, quoted from
+`~/projets/FUTURE.md` § The checks: "2. `FixedNetwork` replays them bit
+for bit on the ESP32-C3." (twelve of thirteen; `plasticity-on` is
+outside `FixedNetwork` by design) and "3. No panic path in the step,
+proven at link time." Commits: `ce3cb29` the type, `NonZero` divisions;
+`44cf69e` the proof, 4 of 4 (its message holds the falsifier); `550fb48`
+the frozen arrays, `row.rs`, four tests, the rider; `d91e370` the board,
+evidence § Sixth entry; `629d5f9` the build's review round, one blocking
+(the proof's recipe under `CARGO_TARGET_DIR`) with the cosmetic ones;
+this close-out. Deviations: six commits; a unit test past the brief;
+`black_box` on the network arm; `first_difference` (the old search
+looped forever on line endings). Record-only: `try_from` assumes a finalized
+network, as the std step does (a second finalize after a reordering one
+breaks the std CSR, not the fixed one); `from_network` divides by the
+std step's expression, so a divisor above 32,767 wraps negative and
+65,535 against `i16::MIN` panics as the std step would, at
+construction; the neurons are cloned. Check 3 holds for one instance,
+`<8, 6>` on riscv32imc and 1.98.1, in release codegen (build.sh's
+header); fat LTO, not the codegen-unit count, hid the old path
+(`lto = false` at one unit: red); the clamp's assert is gone by the
+optimizer, not by a type (llvm-nm: no `scale`, clamp or panic symbol);
+the canary indexes in range behind `black_box` (philo), so it also turns
+red if the hiding fails. The proof's `Cargo.lock` is the fifth lock that
+names the spine: the alpha.8 bump moves it. The sweep kept the dated
+records, ROADMAP's priority row 3 among them. The free arm's move is
+recorded, not explained. **Guards.** GUARD 1: appended; head line
+refreshed. GUARD 2: no verdict touched. GUARD 3: nothing public.
