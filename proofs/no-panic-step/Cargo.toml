@@ -1,0 +1,36 @@
+[package]
+name = "no-panic-step"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "Link-time proof that FixedNetwork::step has no panic path: a reachable panic is an undefined symbol, so the link is red"
+
+# Standalone on purpose (same pattern as qemu-riscv-leg-a and the firmware):
+# it builds only for the chip target, and the repo workspace never sees it.
+[workspace]
+
+[dependencies]
+neuralos-snn = { path = "../../crates/neuralos-snn", default-features = false }
+
+[features]
+# The site-finding build that build.sh prints on red: the panic handler
+# loops instead of calling the undefined symbol, so the link is green and
+# the path can be read in the disassembly.
+handler-loops = []
+
+# The firmware's profile (firmware/esp32c3/Cargo.toml), the code the chip
+# runs: opt 3, fat LTO, one codegen unit, abort.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+# Cargo's default release shape: no LTO across crates, 16 codegen units.
+# Fat LTO can carry a caller's proof across a call the source leaves open;
+# this profile links only if the code itself has no path (build.sh).
+[profile.nolto]
+inherits = "release"
+lto = false
+codegen-units = 16

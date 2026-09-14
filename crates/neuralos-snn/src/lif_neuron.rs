@@ -71,6 +71,8 @@
     clippy::cast_sign_loss
 )]
 
+use core::num::{NonZeroU32, NonZeroU64};
+
 /// Membrane potential lower bound (mV) — biological floor.
 pub const MEMBRANE_MV_MIN: i16 = -100;
 
@@ -88,6 +90,13 @@ pub const MEMBRANE_MV_MAX: i16 = 50;
 ///
 /// This is the ONE definition of the formula. `simd::dt_over_tau` is this
 /// function plus the batch's clamp, so the two cannot drift.
+///
+/// Both divisions are by a `NonZero`: the zero test on entry is the only
+/// one, and the type carries it into each division, the out-of-line wide
+/// half's included, so no division here has a zero check left to fail.
+/// With a plain `u32` the wide half kept its own check in a build without
+/// LTO, where it cannot see its caller's test: the one panic path in a
+/// `FixedNetwork`'s step.
 ///
 /// The wide formula computes the product and the division in `u64`.
 /// Computing them with `as i32` casts wrapped for `dt_us > i32::MAX` and for
@@ -117,7 +126,7 @@ pub const MEMBRANE_MV_MAX: i16 = 50;
 #[inline]
 #[must_use]
 pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i64 {
-    if tau_membrane_us == 0 {
+    let Some(tau) = NonZeroU32::new(tau_membrane_us) else {
         // Division-by-zero guard, and nothing more. This comment claimed "the
         // network rejects tau == 0 at construction" until 2026-09-01; no such
         // rejection exists anywhere in the crate. `tau_membrane_us` is a `pub`
@@ -132,23 +141,24 @@ pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i64 {
         // resistance-seam change (PR #1 scope note), which is where the
         // signature moves anyway.
         return 0;
-    }
+    };
     // One hardware divide when the product fits `u32`, which covers every
     // physical step; the guard is "fits", not a bound (doc above).
     if dt_us <= u32::MAX / 1000 {
-        i64::from(dt_us * 1000 / tau_membrane_us)
+        i64::from(dt_us * 1000 / tau)
     } else {
-        dt_over_tau_wide(dt_us, tau_membrane_us)
+        dt_over_tau_wide(dt_us, tau)
     }
 }
 
 /// The wide half of [`dt_over_tau`], for `dt_us > u32::MAX / 1000`: the
-/// `u64` formula as it always was. Out of line and cold, like
-/// [`div_1000_wide`].
+/// `u64` formula as it always was, divided by a `NonZeroU64`. Out of line
+/// and cold, like [`div_1000_wide`]; the type, not the caller, says `tau`
+/// is not zero.
 #[cold]
 #[inline(never)]
-fn dt_over_tau_wide(dt_us: u32, tau_membrane_us: u32) -> i64 {
-    let raw = (u64::from(dt_us) * 1000) / u64::from(tau_membrane_us);
+fn dt_over_tau_wide(dt_us: u32, tau_membrane_us: NonZeroU32) -> i64 {
+    let raw = (u64::from(dt_us) * 1000) / NonZeroU64::from(tau_membrane_us);
     // u32::MAX * 1000 < i64::MAX, so this is lossless for every input.
     raw as i64
 }

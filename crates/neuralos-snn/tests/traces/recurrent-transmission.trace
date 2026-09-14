@@ -1,4 +1,4 @@
-# neuralos-trace v1 case=recurrent-transmission kind=regression n=2 dt_us=1000 res=mV plasticity=on divisor=10 steps=30 rows=all
+# neuralos-trace v1 case=recurrent-transmission kind=regression n=2 dt_us=1000 res=mV plasticity=off divisor=10 steps=30 rows=all
 0 0 | 0 | -80 -70
 1 1000 |  | -80 -68
 2 2000 |  | -80 -68
