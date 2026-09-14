@@ -1,4 +1,4 @@
-# neuralos-trace v1 case=centi-mv-grid kind=regression n=2 dt_us=1000 res=cmV plasticity=on divisor=10 steps=30 rows=all
+# neuralos-trace v1 case=centi-mv-grid kind=regression n=2 dt_us=1000 res=cmV plasticity=off divisor=10 steps=30 rows=all
 0 0 | 0 | -8000 -7000
 1 1000 |  | -8000 -6988
 2 2000 |  | -8000 -6989
