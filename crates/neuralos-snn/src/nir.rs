@@ -1781,6 +1781,9 @@ mod std_assembly {
     /// across fan-in, plasticity frozen at assembly, as a D1 pulse does.
     /// A zero `q` makes no synapse; a nonzero `q_ii` from a population
     /// back onto itself would be a self-synapse and rejects by name.
+    /// `q` is scaled by the composed matrix's own absmax, as each drive
+    /// stage is (D6's note), so a chain's largest weight always maps to
+    /// ±32767: a 1×1 chain delivers ±327 μA whatever its nonzero weight.
     ///
     /// The divisor is the substrate's encoder gain: both drive encoders
     /// read this constant, so an input feature of 1 and a spike of 1
@@ -3653,12 +3656,13 @@ mod std_assembly {
         vec![vec![0.0; c]; r]
     }
 
-    /// The value arriving at a Linear's input from one root Input:
-    /// the composed matrix (cols × feat) + the contributing Linear
-    /// node indices (topological order, deduplicated).
+    /// The value arriving at a Linear's input from one root, an Input
+    /// or (D8) a LIF: the composed matrix (cols × feat) + the
+    /// contributing Linear node indices (topological order,
+    /// deduplicated).
     type GVal = (Vec<Vec<f64>>, Vec<usize>);
 
-    /// `G(L)`: root-Input index → arriving value.
+    /// `G(L)`: root node index (an Input or, D8, a LIF) → arriving value.
     type GMap = BTreeMap<usize, GVal>;
 
     /// The Linear half of the chain: feature currents (μA) →

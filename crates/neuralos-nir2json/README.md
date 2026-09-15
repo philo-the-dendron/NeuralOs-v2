@@ -73,7 +73,8 @@ options, then `build_network`) and writes, beside the JSON and its
 sidecar:
 
 - **`<out.rs>`**, one `pub mod` named after the file's stem (lowercased,
-  anything but a letter, digit or `_` made `_`): `N` neurons and `S`
+  anything but a letter, digit or `_` made `_`; a letter or `_` first,
+  not a Rust keyword): `N` neurons and `S`
   synapses as the arrays a `neuralos_snn::FixedNetwork<N, S>` steps,
   the time step, the run, the trace's header line (`kind=stranger`),
   and `DRIVE`, one run of `--steps` steps (default 150) of the currents
