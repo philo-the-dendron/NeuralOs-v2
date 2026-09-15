@@ -9,12 +9,13 @@ the LED. The board's record, every capture and pin, is
 ## Your graph on the chip: one command
 
 ```bash
-firmware/esp32c3/stranger.sh build <graph.nir>     # no board needed
-firmware/esp32c3/stranger.sh run <graph.nir> [--port /dev/ttyACM0] [--seconds 20]
+firmware/esp32c3/stranger.sh build <graph.nir> [--steps 150]     # no board needed
+firmware/esp32c3/stranger.sh run <graph.nir> [--port /dev/ttyACM0] [--seconds 20] [--steps 150]
 ```
 
 `build` converts the graph (`neuralos-nir2json --sim-units --freeze`:
-150 steps of the graph's own drive, 1 on every input feature), checks
+`--steps` steps of the graph's own drive, 150 unless given, 1 on every
+input feature; `run` takes `--steps` too and replays that many), checks
 the capacity floor below, and builds this firmware with the graph in
 its slot (`build.rs`, `NEURALOS_GRAPH`) through `build.sh`: the path
 remap, the personal-string gate, the ELF and `.text` shas, clippy. It

@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# firmware/esp32c3/stranger.sh build <graph.nir>
-# firmware/esp32c3/stranger.sh run <graph.nir> [--port /dev/ttyACM0] [--seconds 20]
+# firmware/esp32c3/stranger.sh build <graph.nir> [--steps 150]
+# firmware/esp32c3/stranger.sh run <graph.nir> [--port /dev/ttyACM0] [--seconds 20] [--steps 150]
 #
 # The one command (docs/ROADMAP.md § 0.1.0, check 7): a stranger's
 # `.nir` on the ESP32-C3, the board's rows against the host's trace.
 # Runs from any directory; the repo root comes from git, as build.sh
-# finds it. README.md beside this file is the stranger's page.
+# finds it. README.md beside this file is the stranger's page. --steps
+# goes with either phase, --port and --seconds with run alone.
 #
 # build: neuralos-nir2json --sim-units --freeze writes
 #   target/stranger/<stem>.{json,rs,trace} under this crate (gitignored
-#   by **/target/; the sidecar beside the JSON) with --steps 150, which
-#   keeps a capture inside 20 s; then the capacity check below; then
+#   by **/target/; the sidecar beside the JSON) with --steps N, the run
+#   the trace holds and the board replays, 150 unless given, which keeps
+#   a small graph's capture inside the default 20 s; then the capacity
+#   check below; then
 #   build.sh and build.sh clippy with NEURALOS_GRAPH=<the module> and
 #   CARGO_TARGET_DIR=<that directory>, so the remap, the personal-string
 #   gate, the shas, the canary and the lint apply to this configuration
@@ -54,8 +57,8 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 build <graph.nir>" >&2
-  echo "       $0 run <graph.nir> [--port /dev/ttyACM0] [--seconds 20]" >&2
+  echo "usage: $0 build <graph.nir> [--steps 150]" >&2
+  echo "       $0 run <graph.nir> [--port /dev/ttyACM0] [--seconds 20] [--steps 150]" >&2
   exit 2
 }
 
@@ -75,22 +78,27 @@ nir=$(realpath -e -- "$2")
 shift 2
 port=/dev/ttyACM0
 seconds=20
-while [ $# -gt 0 ] && [ "$phase" = run ]; do
+steps=150
+while [ $# -gt 0 ]; do
   case $1 in
-    --port)
+    --steps)
       [ $# -ge 2 ] || usage
+      steps=$2
+      shift 2
+      ;;
+    --port)
+      [ "$phase" = run ] && [ $# -ge 2 ] || usage
       port=$2
       shift 2
       ;;
     --seconds)
-      [ $# -ge 2 ] || usage
+      [ "$phase" = run ] && [ $# -ge 2 ] || usage
       seconds=$2
       shift 2
       ;;
     *) usage ;;
   esac
 done
-[ $# -eq 0 ] || usage
 
 # What this script prints is repo-relative, the record's convention.
 rel() { printf '%s' "${1#"$repo"/}"; }
@@ -105,7 +113,7 @@ mkdir -p "$out"
 # 1. The converter, from the root (the header says why), its paths
 #    repo-relative so its own lines print them that way.
 (cd "$repo" && cargo run --locked -p neuralos-nir2json -- --sim-units \
-  --freeze "$(rel "$module")" --steps 150 "$(rel "$nir")" "$(rel "$out/$stem.json")")
+  --freeze "$(rel "$module")" --steps "$steps" "$(rel "$nir")" "$(rel "$out/$stem.json")")
 
 # 2. The capacity check (the header). 10# reads the counts as decimal.
 n_lines=$(grep -cE '^    pub const N: usize = [0-9]+;$' "$module" || true)

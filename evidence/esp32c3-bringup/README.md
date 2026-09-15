@@ -862,6 +862,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 34, D8 and the row writer (build.sh at 74712ee on 1.98.1, main clone)
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 35, the slot (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line: round 34's .text, unmoved)
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 36 base (build.sh at fbc2bd7 on 1.98.1, main clone, NEURALOS_GRAPH unset: e5d3125's firmware sources, the slot with its large-array allow; round 35's .text, unmoved)
+#   9e2e6ef1e0e0627d3d245e64b004f0d42ce91f39f4c77ef7034e265b71d48c9b  round 36, the mark (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line: the stack's paint and scan, report()'s step count)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -894,7 +895,14 @@ case became a path and the stranger's include is cfg-stripped; the two
 compile to the same code (§ Eighth entry). The twelfth is round 36's
 base, the default build at `fbc2bd7`, PR H's merge: `e5d3125`'s
 firmware sources, the eleventh's with the slot's large-array allow,
-and the eleventh's `.text` (§ Ninth entry).
+and the eleventh's `.text` (§ Ninth entry). The thirteenth is round
+36's firmware, the default build of the commit that adds it: the
+stack's paint after esp-hal's init and its scan after the replays, and
+`report()`'s step count, which moves the `.text` on its own (a build
+with that change alone, before the mark went in). `report()` divides a
+u64 by a run-time count, a software 64-bit division (the round-27
+cost), once per arm, after the arm has read its elapsed time, so no
+timed span contains it.
 
 ### Release asset (the procedure since round 26)
 
