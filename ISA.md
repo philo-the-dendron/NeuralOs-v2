@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@74712ee (PR #31 merged 2026-09-15 12:26 UTC: round 34, PR G, alpha.9 opens; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 and 35 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7), alpha.9 open · wrote-from: work/one-command, round 35 (PR H, the one command: six commits), not pushed; the per-commit loop runs over the six before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, one fresh Fable review (tier 2), the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@fbc2bd7 (PR #32 merged 2026-09-15 17:36 UTC: round 35, PR H, the one command; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 and 35 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7), alpha.9 open · wrote-from: work/capacity, round 36 (PR I, check 8, capacity: five commits), not pushed; the per-commit loop runs over the five before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): the board's three captures (commit 3), one fresh Fable review before the push (tier 2), the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-15T15:57:24Z
+updated: 2026-09-15T21:17:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 

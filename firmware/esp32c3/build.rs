@@ -9,7 +9,9 @@
 // environment.
 //
 // The stranger slot (PR H): NEURALOS_GRAPH names a module written by
-// `neuralos-nir2json --freeze`. This script copies it into OUT_DIR as
+// `neuralos-nir2json --freeze`; a relative path resolves against this
+// crate's directory, cargo's cwd for a build script, and stranger.sh
+// exports an absolute one. This script copies it into OUT_DIR as
 // graph.rs with one line more, `pub use self::<name> as graph;`, and sets
 // `cfg(stranger)`, under which main.rs includes it and replays it after
 // the frozen set. A file that is missing, unreadable, or holds not exactly

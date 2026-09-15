@@ -802,6 +802,27 @@ further. The real-time loop is reported, not gated: its first spike
 lands at steps 56, 54 and 55, with 289, 289 and 288 spikes in the
 window.
 
+## Ninth entry: round 36, capacity (2026-09-15)
+
+Why this entry exists: check 8 of `docs/ROADMAP.md` § 0.1.0, the worst
+case from capacity, measured at that case on the C3. PR H (ISA round
+35) left `stranger.sh`'s capacity check a floor, 65,536 bytes of
+arrays, the QEMU harness's stack line and not the chip's; PR I (ISA
+round 36) defines capacity, adds the stack's high-water mark and a
+timed arm for the stranger's graph to the firmware, and runs the two
+corners of the bar on the board.
+
+Base: a build, not a flash. `build.sh` at `fbc2bd7`, PR H's merge, on
+1.98.1 in the main clone (a worktree's `.text` diverges at identical
+source, § Fourth entry), `NEURALOS_GRAPH` unset: ELF `ab4b5431…`,
+`.text` `701490cf…`, the eleventh pin reproduced and appended as
+"round 36 base" (§ Rebuild + run); the gate 0 hits, the trim-paths
+canary still unstable on 1.98.1 (exit 101). PR H's last firmware
+change, `e5d3125`, differs from `12c032c`, the eighth entry's head, by
+the slot's `clippy::large_const_arrays` allow alone, and nothing after
+it touches the firmware's sources up to `fbc2bd7`; its `.text`, re-read
+here after the allow, is the one the eighth entry read on the board.
+
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
 ```bash
@@ -840,6 +861,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   6f8ec5385617a1345d251591d237a77718eed1952686d7ab50a5ca0962a06a77  round 33, the version (build.sh at 6ddf774 on 1.98.1, main clone: the sixth entry's sources under 0.1.0-alpha.8; ISA round 33)
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 34, D8 and the row writer (build.sh at 74712ee on 1.98.1, main clone)
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 35, the slot (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line: round 34's .text, unmoved)
+#   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 36 base (build.sh at fbc2bd7 on 1.98.1, main clone, NEURALOS_GRAPH unset: e5d3125's firmware sources, the slot with its large-array allow; round 35's .text, unmoved)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -869,7 +891,10 @@ built at 74712ee in the main clone (§ Eighth entry). The eleventh is
 the slot, the default build of the commit that adds it: the same
 `.text` as the tenth, where a move was expected, since the replay's
 case became a path and the stranger's include is cfg-stripped; the two
-compile to the same code (§ Eighth entry).
+compile to the same code (§ Eighth entry). The twelfth is round 36's
+base, the default build at `fbc2bd7`, PR H's merge: `e5d3125`'s
+firmware sources, the eleventh's with the slot's large-array allow,
+and the eleventh's `.text` (§ Ninth entry).
 
 ### Release asset (the procedure since round 26)
 

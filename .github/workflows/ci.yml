@@ -364,7 +364,7 @@ jobs:
   firmware:
     name: firmware esp32c3 (riscv32imc build + fmt + clippy)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 20 # measured with the stranger leg (PR H's runs): 4 min cold, 2 min warm
     steps:
       - uses: actions/checkout@v4
 

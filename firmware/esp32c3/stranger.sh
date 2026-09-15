@@ -125,8 +125,8 @@ echo "capacity: 44·$n + 6·$s = $bytes bytes of arrays, within the floor of 65,
 
 # 3. The firmware with the graph in its slot, through build.sh.
 #    Assigned first: `echo "$(f)"` hides f's exit status (tools/remap.sh).
-export NEURALOS_GRAPH=$module
-export CARGO_TARGET_DIR=$out
+export NEURALOS_GRAPH="$module"
+export CARGO_TARGET_DIR="$out"
 built=$("$here/build.sh")
 printf '%s\n' "$built"
 "$here/build.sh" clippy

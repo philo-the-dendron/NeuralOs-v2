@@ -471,5 +471,8 @@ claims, reopening frozen records.
   freeze at publish; (2) the brief is the PR description, one screen;
   (3) at most 30 lines of ISA per PR; (4) 3 to 6 commits per PR; (5)
   state in two places, the ISA head line and TODO.md; (6) doctrine one
-  in, one out. The ISA append still rides the work, sized by its tier;
-  evidence stays sha-pinned; frozen records are never re-litigated.
+  in, one out. The brief's Who line names the review count, and the
+  tier sets it: tier 3 none, tier 2 one fresh review plus the per-commit
+  loop, tier 1 that plus the second model family and the sweep. No
+  reviewer joins mid-PR unless the tier changes or a finding reopens
+  the design (PR H had three reviews that agreed, 2026-09-15).
