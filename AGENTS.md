@@ -98,7 +98,7 @@ PATH="$PWD/.nirenv/bin:$PATH" cargo clippy -p neuralos-rt --features hdf5 --all-
 (cd firmware/esp32c3 && cargo fmt -- --check)
 firmware/esp32c3/build.sh                         # the build: path remap for the four source roots, personal-string gate on the ELF, ELF + .text shas, trim-paths canary (tools/remap.sh carries the why); needs the riscv32imc-unknown-none-elf target and the llvm-tools component on the pin
 firmware/esp32c3/build.sh clippy                  # clippy --release --locked -D warnings under the script's flags
-firmware/esp32c3/stranger.sh build crates/neuralos-nir2json/tests/fixtures/community/snnTorch_two_layer.nir  # the one command's build phase on the witness (PR H): the converter, the capacity floor, build.sh + clippy with the graph in the slot, in firmware/esp32c3/target/stranger/; `run` adds the board (firmware/esp32c3/README.md)
+firmware/esp32c3/stranger.sh build crates/neuralos-nir2json/tests/fixtures/community/snnTorch_two_layer.nir  # the one command's build phase on the witness (PR H): the converter, the capacity bar, build.sh + clippy with the graph in the slot, in firmware/esp32c3/target/stranger/; `run` adds the board (firmware/esp32c3/README.md)
 proofs/no-panic-step/build.sh                     # the no-panic proof, same job and loop: its own fmt, then FixedNetwork::step linked under the firmware's profile and under one without cross-crate LTO, each leg with a canary the linker must refuse by name (the script's header carries the why)
 # Not a CI job, same treatment: the release musl binary of the inbound bridge.
 crates/neuralos-nir2json/build.sh                 # → crates/neuralos-nir2json/dist/ (gitignored), gated the same way; never overwrites a different binary under the same name
@@ -471,5 +471,8 @@ claims, reopening frozen records.
   freeze at publish; (2) the brief is the PR description, one screen;
   (3) at most 30 lines of ISA per PR; (4) 3 to 6 commits per PR; (5)
   state in two places, the ISA head line and TODO.md; (6) doctrine one
-  in, one out. The ISA append still rides the work, sized by its tier;
-  evidence stays sha-pinned; frozen records are never re-litigated.
+  in, one out. The brief's Who line names the review count, and the
+  tier sets it: tier 3 none, tier 2 one fresh review plus the per-commit
+  loop, tier 1 that plus the second model family and the sweep. No
+  reviewer joins mid-PR unless the tier changes or a finding reopens
+  the design (PR H had three reviews that agreed, 2026-09-15).

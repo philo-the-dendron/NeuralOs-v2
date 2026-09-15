@@ -38,6 +38,9 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `board-r35-base.log` | the eighth entry (ISA round 35, 2026-09-15): the firmware at `74712ee`, PR G's two D8 cases in its replay, built by `build.sh` on 1.98.1 in the main clone (ELF `690024f9…`), 20 s after reset (§ Eighth entry) |
 | `board-r35-head.log` | the eighth entry: the default firmware at head (`12c032c`, the slot empty), built by `build.sh` on 1.98.1 in the main clone (ELF `e681ec6e…`), 20 s after reset (§ Eighth entry) |
 | `board-r35-stranger.log` | the eighth entry: the snnTorch witness in the slot by `stranger.sh run` at `12c032c` (ELF `a0d6f553…`), 20 s after reset; the script's `target/stranger/snnTorch_two_layer.capture.log`, byte for byte (§ Eighth entry) |
+| `board-r36-head.log` | the ninth entry (ISA round 36, 2026-09-15): the default firmware at head, the stack's mark and `report()`'s step count, built by `build.sh` on 1.98.1 in the main clone (ELF `0f8b0d38…`), 20 s after reset (§ Ninth entry) |
+| `board-r36-neurons.log` | the ninth entry: the neuron corner (5,957 neurons, no synapse) in the slot by `stranger.sh run --steps 20 --seconds 30` (ELF `f25500df…`), 30 s after reset; the script's `target/stranger/neurons.capture.log`, byte for byte, the largest log in `evidence/` (§ Ninth entry) |
+| `board-r36-dense.log` | the ninth entry: the dense corner (402 neurons, 40,401 synapses) the same way (ELF `3eeb2d72…`), 30 s after reset; `target/stranger/dense.capture.log`, byte for byte (§ Ninth entry) |
 | `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../tools/esp32c3_trace_diff.py` | the replay diff: every plasticity-off trace of `crates/neuralos-snn/tests/traces/` against its case in a capture, one line per case (§ Sixth entry) |
@@ -802,6 +805,166 @@ further. The real-time loop is reported, not gated: its first spike
 lands at steps 56, 54 and 55, with 289, 289 and 288 spikes in the
 window.
 
+## Ninth entry: round 36, capacity (2026-09-15)
+
+Why this entry exists: check 8 of `docs/ROADMAP.md` § 0.1.0, the worst
+case from capacity, measured at that case on the C3. PR H (ISA round
+35) left `stranger.sh`'s capacity check a floor, 65,536 bytes of
+arrays, the QEMU harness's stack line and not the chip's; PR I (ISA
+round 36) defines capacity, adds the stack's high-water mark and a
+timed arm for the stranger's graph to the firmware, and runs the two
+corners of the bar on the board.
+
+Base: a build, not a flash. `build.sh` at `fbc2bd7`, PR H's merge, on
+1.98.1 in the main clone (a worktree's `.text` diverges at identical
+source, § Fourth entry), `NEURALOS_GRAPH` unset: ELF `ab4b5431…`,
+`.text` `701490cf…`, the eleventh pin reproduced and appended as
+"round 36 base" (§ Rebuild + run); the gate 0 hits, the trim-paths
+canary still unstable on 1.98.1 (exit 101). PR H's last firmware
+change, `e5d3125`, differs from `12c032c`, the eighth entry's head, by
+the slot's `clippy::large_const_arrays` allow alone, and nothing after
+it touches the firmware's sources up to `fbc2bd7`; its `.text`, re-read
+here after the allow, is the one the eighth entry read on the board.
+
+Head: `build.sh` on 1.98.1 in the main clone, `NEURALOS_GRAPH` unset,
+from this commit's firmware sources (commit 1's, the allow comment
+reading "bar" for "floor"): ELF `0f8b0d38…`, `.text` `9e2e6ef1…`, the
+pin commit 1 appended as "round 36, the mark" (§ Rebuild + run),
+confirmed here; `main`'s frame `0x420`, as at the base. Flashed from a
+copy, `board-r36-head.log`, 53,583 bytes, 20 s after reset.
+
+Corners: `tools/gen_snnTorch_corner.py` at 262,144 wrote `neurons.nir`
+(N 5,957, S 0, 262,108 bytes of arrays) and `dense.nir` (N 402,
+S 40,401, 260,094 bytes) under `firmware/esp32c3/target/stranger/`,
+never committed. Each went through the one command, from the repo
+root, the build phase for both corners before any flash:
+
+```bash
+firmware/esp32c3/stranger.sh build firmware/esp32c3/target/stranger/neurons.nir --steps 20
+firmware/esp32c3/stranger.sh build firmware/esp32c3/target/stranger/dense.nir --steps 20
+firmware/esp32c3/stranger.sh run firmware/esp32c3/target/stranger/neurons.nir --steps 20 --seconds 30
+firmware/esp32c3/stranger.sh run firmware/esp32c3/target/stranger/dense.nir --steps 20 --seconds 30
+```
+
+The builds took 20 s and 13 s (modules of 2.64 and 2.62 MB of
+source). Before the flashes, each ELF's frame was read from `main`'s
+prologue (`llvm-objdump -d --disassemble-symbols=main`) against
+`.stack` less 16 KiB, 299,924 bytes: neurons `addi sp, sp, -0x100`,
+then a `sub` of `0x42000 − 0x5a0`, 269,152 bytes; dense the same 256
+and `0x40000 − 0x330`, 261,584 bytes. `run` rebuilt the same two ELFs,
+graph-dependent and so pinned here only: neurons ELF
+`f25500df8c5a95ac8f56d29faf68835eb0bd808e603b53d18bd37c07a2c7480f`,
+`.text`
+`119a68d5770bbd8a764ee4ac07637a3cbead968eb124bafef5986dc188295586`;
+dense ELF
+`3eeb2d72868486f5b22d482f74e636de208227ac01349652005445e72297ada4`,
+`.text`
+`d9d846437e1d3c23340b1bd4fc92575de4bfc42864aa78f705cc725762010b4e`.
+Their captures, the script's `target/stranger/<stem>.capture.log`,
+are banked byte for byte: `board-r36-neurons.log`, 581,830 bytes, the
+largest log in `evidence/`, and `board-r36-dense.log`, 89,920 bytes.
+The three captures hold two boots, as in the sixth to eighth entries,
+the post-flash fragment with no trace line in it; every figure below
+is from after the `rst:` line.
+
+| Measurement | Head (default) | Neurons (5,957, 0) | Dense (402, 40,401) |
+|---|---|---|---|
+| Burst, pinned arm | 15,714 µs → 1,571 ns/step | 15,647 µs → 1,564 ns/step | 15,647 µs → 1,564 ns/step |
+| Burst, free arm | 3,617 µs → 361 ns/step | 3,672 µs → 367 ns/step | 3,673 µs → 367 ns/step |
+| Burst spikes, first spike step, checksum, both neuron arms | 147, 55, `0b78b456` | 147, 55, `0b78b456` | 147, 55, `0b78b456` |
+| Burst, network arm (8 neurons, 6 synapses a step) | 140,587 µs → 14,058 ns/step | 141,009 µs → 14,100 ns/step | 141,009 µs → 14,100 ns/step |
+| Network arm: spikes, first spike step, checksum | 3,377, 5, `7e700ee1` | 3,377, 5, `7e700ee1` | 3,377, 5, `7e700ee1` |
+| Stranger arm, 100 steps, mean | — | 585,098 µs → **5,850,980 ns/step** | 533,339 µs → **5,333,390 ns/step** |
+| Stranger arm, largest step | — | **10,946 µs** | **7,537 µs** |
+| Stranger arm: spikes, first spike step, checksum | — | 297,850, 0, `5ba1819a` | 20,100, 0, `289fbb1c` |
+| `main`'s frame, from the prologue | 1,056 B | 269,152 B | 261,584 B |
+| Stack high-water mark, of `.stack` | **1,432** of 316,316 B | **269,528** of 316,308 B | **261,960** of 316,308 B |
+| `.stack` free at the mark | 314,884 B | **46,780 B** | **54,348 B** |
+| First spike, real-time loop | step 57, 57,156 µs | step 54, 54,158 µs | step 54, 54,152 µs |
+| Spikes after the reset | 288 in 20 s | 359 in 30 s | 420 in 30 s |
+| Replay diff, last line | `14 cases, 0 red` | `15 cases, 0 red` | `15 cases, 0 red` |
+
+The gates hold. At head the three arms keep their fold and
+`python3 tools/esp32c3_trace_diff.py evidence/esp32c3-bringup/board-r36-head.log`
+reads the fourteen cases identical, `14 cases, 0 red`, on the `.text`
+commit 1 pinned: the mark and `report()`'s step count moved the code,
+not the behavior. At each corner the diff, run by the command with
+`--trace firmware/esp32c3/target/stranger/<stem>.trace`, reads the
+fourteen, then `neurons (given): identical, 20 rows` or
+`dense (given): identical, 20 rows`, then `15 cases, 0 red`: the
+largest graphs under the bar replay bit for bit on the chip, the
+spikes and every membrane. The burst arms are reported, not gated:
+against the eighth entry's head the neuron arms move by at most 62 µs
+per 10,000 steps; the network arm reads 140,587 µs at head, 421 µs
+under the eighth entry's and round 33's figure again, on the `.text`
+the mark moved, and 141,009 µs in both stranger builds; not read
+further.
+
+The mark. It sits 376 bytes above the frame read before the flash in
+all three builds: `main`'s frame plus 376 bytes of callees and of the
+frames above `main` is all the stack this firmware uses after
+esp-hal's init (the paint runs after the init, so the init's own depth
+is not in the mark; a used word that holds the paint's value reads as
+unused). `.stack` is 316,316 bytes in the default build and 316,308 in
+a stranger build (`.data` 776 and 784 bytes; `_stack_end` moves by the
+difference, and `__stack_chk_guard` stays 60 bytes above it, inside
+the 256 the paint leaves alone). At the neuron corner the mark leaves
+46,780 bytes free, at the dense corner 54,348, both above 16 KiB:
+**the bar is 262,144**, the first one briefed; no step-down was
+needed.
+
+The cost of a step. The stranger arm times each step around the call
+alone, the fold over `fired` between samples, one pair of timer reads
+inside each sample, small against milliseconds. With every weight 1.0
+each neuron fires on alternate steps, the assembly's 1 ms refractory
+being one step. At the neuron corner all 5,957 fire on the same steps,
+50 times each in the 100 (297,850 spikes), and are refractory on the
+others, so the mean mixes a firing step, the largest sample, 10,946
+µs, and a refractory step, about 756 µs (twice the mean less the
+largest). At the dense corner the two layers alternate, 201 spikes a
+step (20,100), and on the steps where the first layer fires all 40,401
+synapses deliver; the largest sample is 7,537 µs. **The worst case
+measured is the neuron corner: 5,850,980 ns/step on average, 10,946
+µs on a firing step**, far above the 1 ms step the real-time loop
+keeps: a graph at the bar replays bit for bit, not in real time.
+Derived, not a claim: at 10,946 µs for 5,957 firing neurons, a 1 ms
+loop holds roughly 540 firing neurons.
+
+A step costs a·N + b·S + c. Solved exactly from three points, the
+head's network arm (8, 6: 14,058 ns) and the two corners' means, not
+fitted, so there is no residual: a = 981.3 ns a neuron, b = 122.1 ns
+a synapse, c = 5,475 ns. The three runs differ in method (the network
+arm's fold runs inside its timing, and its neurons fire at about 4 % a
+step), so a, b and c describe these runs, not a law. The densest legal
+graph under the bar is all to all: the converter assembles a
+population back onto itself through a Linear whose diagonal is zero (a
+nonzero diagonal is a self-synapse and rejects by name, `nir.rs`), so
+205 neurons with 41,820 synapses, 259,940 bytes. Computed, not
+measured: a·205 + b·41,820 + c = 5,313,354 ns a step, beside the dense
+corner's measured 5,333,390.
+
+The band, D8's open question (`nir.rs`). A zero-pulse synapse, one
+whose composed `q` has `0 < |q| < 100`, costs 6 bytes of the bar and
+b, about 122 ns, a step. On a 97×97 `Linear` with Gaussian weights
+(`torch.randn`, seed 0, the witness's pipeline), 92 of 9,409 synapses
+are in the band, 0.98 % (reproduced this round); on the tree's two
+assembling fixtures, `two_lif_neurons` and `snnTorch_two_layer`, 0 of
+1 each (both pulses 327 μA). The freeze keeps them:
+`FixedNetwork::try_from` holds `S` equal to the network's synapse
+count, one freezer writes the library's cases and a stranger's, and
+`S` is the graph's topology, the count the visualizer shows. A drop
+would need a fixture that assembles with a band of a tenth of its `S`;
+none has one.
+
+The link. The banked captures carry no timestamps. At the brief, a
+timestamped copy of the capture tool read the fourteen frozen cases
+streaming at 145 to 160 KB/s and a 1,310-neuron case's 5.5 KB rows at
+109 KB/s (scratch, not banked). The neuron corner's rows are 11,926
+bytes on a refractory step and 40,602 on a firing step, about 2 and 7
+bytes a neuron (its trace's twenty rows are 525,277 bytes), which is
+why the corners replay 20 rows in a 30 s window: 150 rows would be
+about 4 MB.
+
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
 ```bash
@@ -840,6 +1003,8 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   6f8ec5385617a1345d251591d237a77718eed1952686d7ab50a5ca0962a06a77  round 33, the version (build.sh at 6ddf774 on 1.98.1, main clone: the sixth entry's sources under 0.1.0-alpha.8; ISA round 33)
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 34, D8 and the row writer (build.sh at 74712ee on 1.98.1, main clone)
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 35, the slot (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line: round 34's .text, unmoved)
+#   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 36 base (build.sh at fbc2bd7 on 1.98.1, main clone, NEURALOS_GRAPH unset: e5d3125's firmware sources, the slot with its large-array allow; round 35's .text, unmoved)
+#   9e2e6ef1e0e0627d3d245e64b004f0d42ce91f39f4c77ef7034e265b71d48c9b  round 36, the mark (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line: the stack's paint and scan, report()'s step count)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -869,7 +1034,17 @@ built at 74712ee in the main clone (§ Eighth entry). The eleventh is
 the slot, the default build of the commit that adds it: the same
 `.text` as the tenth, where a move was expected, since the replay's
 case became a path and the stranger's include is cfg-stripped; the two
-compile to the same code (§ Eighth entry).
+compile to the same code (§ Eighth entry). The twelfth is round 36's
+base, the default build at `fbc2bd7`, PR H's merge: `e5d3125`'s
+firmware sources, the eleventh's with the slot's large-array allow,
+and the eleventh's `.text` (§ Ninth entry). The thirteenth is round
+36's firmware, the default build of the commit that adds it: the
+stack's paint after esp-hal's init and its scan after the replays, and
+`report()`'s step count, which moves the `.text` on its own (a build
+with that change alone, before the mark went in). `report()` divides a
+u64 by a run-time count, a software 64-bit division (the round-27
+cost), once per arm, after the arm has read its elapsed time, so no
+timed span contains it.
 
 ### Release asset (the procedure since round 26)
 

@@ -1808,10 +1808,17 @@ mod std_assembly {
     /// met by any Linear a spike reaches that has an Output successor,
     /// whatever its other successors (an Input-rooted Linear with an
     /// Output beside its LIF stays legal, decoration as before D8);
-    /// `Input→LIF` (direct drive); encoder-only graphs. Open beside
-    /// them: whether the freeze drops the band's zero-pulse synapses,
-    /// check 8's (`docs/ROADMAP.md` § 0.1.0), answered with a number in
-    /// PR I.
+    /// `Input→LIF` (direct drive); encoder-only graphs. The freeze keeps
+    /// the band's zero-pulse synapses too (check 8 of `docs/ROADMAP.md`
+    /// § 0.1.0, PR I): 92 of 9,409 on a 97×97 Gaussian layer
+    /// (`torch.randn`, seed 0), 0 of 1 on both assembling fixtures, each
+    /// 6 bytes of the capacity bar and about 122 ns a step on the C3
+    /// (`evidence/esp32c3-bringup/README.md` § Ninth entry). Kept, since
+    /// `FixedNetwork::try_from` holds `S` equal to the network's synapse
+    /// count, one freezer writes the library's cases and a stranger's,
+    /// and `S` is the graph's topology, the count the visualizer shows;
+    /// a drop would need a fixture that assembles with a band of a tenth
+    /// of its `S`.
     pub const LINEAR_GAIN_DIVISOR: i16 = 100;
 
     /// D8's std weight divisor: [`LINEAR_GAIN_DIVISOR`] over the
