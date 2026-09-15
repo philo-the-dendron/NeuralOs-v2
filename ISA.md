@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@fbc2bd7 (PR #32 merged 2026-09-15 17:36 UTC: round 35, PR H, the one command; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 and 35 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7), alpha.9 open · wrote-from: work/capacity, round 36 (PR I, check 8, capacity: five commits), not pushed; the per-commit loop runs over the five before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): the board's three captures (commit 3), one fresh Fable review before the push (tier 2), the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@fbc2bd7 (PR #32 merged 2026-09-15 17:36 UTC: round 35, PR H, the one command; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34, 35 and 36 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8), alpha.9 open · wrote-from: work/capacity, round 36 (PR I, check 8, capacity: five commits), not pushed; the per-commit loop runs over the five before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): one fresh Fable review before the push (tier 2), the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-15T21:17:00Z
+updated: 2026-09-15T22:22:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9404,3 +9404,32 @@ cargo config targets the chip; AGENTS § Commands gains the stranger
 line (the principal's word); #32 assumed for check 7 until the PR opens.
 **Guards.** GUARD 1: appended; head line refreshed. GUARD 2: no verdict
 touched. GUARD 3: nothing public.
+
+## Close-out (round 36 — PR I, capacity: the bar measured at its two corners on the ESP32-C3, check 8 — 2026-09-15)
+
+Branch `work/capacity` from `main@fbc2bd7`, tier 2, five commits:
+`7963be8` head line, PR H's items 3 to 6, the Rigor bullet's review
+count in and its last sentence out, the base (`701490cf…`); `6522c93`
+the stack's mark, the stranger's timed arm, `report()`'s step count,
+`--steps`, `.text` `9e2e6ef1…`; `0be7241` the corner generator, items
+1 and 2; `fa4b197` head and both corners on the board, 0 red, the bar
+262,144 held, check 8, the sweep (history kept); this close-out.
+Checks holding: 1 to 8, 13, 14. Numbers: evidence README § Ninth
+entry. Record-only: the arrays sit in `main`'s frame, one copy, the
+drive read from `.rodata`, the mark the frame plus 376 bytes in all
+three builds; the floor was about a fifth of the room; the band is
+under 1 % on a Gaussian layer, 0 on the fixtures; the link streams 109
+to 160 KB/s (the brief's scratch reads); a, b and c are an exact
+solve, no residual, all to all computed; a 1 ms loop holds about 540
+firing neurons, derived; PR H's 400-neuron probe lives in `e5d3125`'s
+message, unbanked; on a converter failure the scratch dir keeps the
+previous ELF and the script exits non-zero, so every gate stays red;
+PR H's six commits sat at the top of cut 4; PR H's stranger ELF was
+`0da5dff2…` at the probe and `a0d6f553…` in the entry on one `.text`
+(`c542f367…`), the descriptor's stamp; this brief ran 275 lines at its
+review, 363 as built, against cut 2's one screen. Deviations:
+`report()`'s step count moves the `.text` alone (`87128835…`); the
+`unsafe` blocks are the fill and the scan, the symbols safe by `&raw
+const`; paint and scan `#[inline(never)]`; both corners built before
+any flash; #33 assumed. **Guards.** GUARD 1: appended; head line
+refreshed. GUARD 2: no verdict touched. GUARD 3: nothing public.
