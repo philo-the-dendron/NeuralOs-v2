@@ -86,11 +86,15 @@ mod frozen;
 // The stranger slot: a `neuralos-nir2json --freeze` module, in a build
 // that names one in NEURALOS_GRAPH. build.rs copies it into OUT_DIR as
 // graph.rs with one line more, `pub use self::<name> as graph;`, and sets
-// `cfg(stranger)` (its header carries the rules). The allow is the one
-// frozen.rs carries and the freezer's module does not: the replay reads
-// only the constants it needs.
+// `cfg(stranger)` (its header carries the rules). Two allows. dead_code is
+// the one frozen.rs carries and the freezer's module does not: the replay
+// reads only the constants it needs. large_const_arrays: clippy refuses a
+// const array above 16,384 bytes (from 373 neurons), far inside
+// stranger.sh's capacity floor, and `FixedNetwork::new` takes the arrays
+// by value either way, so the floor stays the one bar (measured at 400
+// neurons).
 #[cfg(stranger)]
-#[allow(dead_code)]
+#[allow(dead_code, clippy::large_const_arrays)]
 mod stranger {
     include!(concat!(env!("OUT_DIR"), "/graph.rs"));
 }
