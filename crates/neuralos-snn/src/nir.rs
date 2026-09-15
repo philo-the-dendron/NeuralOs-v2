@@ -1697,27 +1697,34 @@ mod std_assembly {
     //!   and root Input `r`, the composed matrix `W_L·G` (product of
     //!   the chain's matrices in f64, D2 fusion) is quantized ONCE via
     //!   [`quantize_linear`](super::quantize_linear). At step time the
-    //!   encoder applies the substrate's `/100` gain per stage and
-    //!   merges saturating-i16 into the global per-step current vector
-    //!   (D5's mechanical merge; multiple Inputs read their own slices,
-    //!   one stage matrix per (drive Linear, root) pair).
+    //!   encoder applies the substrate's gain, [`LINEAR_GAIN_DIVISOR`],
+    //!   per stage and merges saturating-i16 into the global per-step
+    //!   current vector (D5's mechanical merge; multiple Inputs read
+    //!   their own slices, one stage matrix per (drive Linear, root)
+    //!   pair).
     //! - **Edges:** LIF→LIF wires `add_synapse(pre_i, post_i,
     //!   EDGE_PULSE_QUANTA)` per neuron pair (identity element
     //!   mapping — the reference defines no element semantics at this
-    //!   sha); Input→Linear is the encoder entry; LIF→Output is
+    //!   sha); a LIF→Linear→…→LIF path is the spiking Linear edge
+    //!   (D8, [`LINEAR_GAIN_DIVISOR`]): the same fused walk with the
+    //!   LIF as its root, one synapse per nonzero composed weight;
+    //!   Input→Linear is the encoder entry; LIF→Output is
     //!   shape-checked decoration.
     //! - **Plasticity is FROZEN at assembly** (`NIR has no plasticity
     //!   term` — STDP would clamp ±32767 and corrupt the edge quanta);
     //!   recorded in the report.
     //! - **Grid:** any graph with a LIF→LIF edge assembles only on
     //!   [`VoltageResolution::CentiMillivolt`] options — a 20 μA edge
-    //!   pulse is dead 10× over on mV. Explicit mV options on such a
+    //!   pulse is dead 10× over on mV — and D8 extends the rule to any
+    //!   graph with a LIF→Linear edge. Explicit mV options on such a
     //!   graph reject BY NAME with the re-import remedy (never a
     //!   silent override).
     //! - Every rejection is NAMED (see the fixture table in the
     //!   tests): structure (empty / no Input / no Output / no LIF),
-    //!   edge kinds (pass-through, direct drive, readout, self-loop,
-    //!   Output-as-source), per-edge shapes
+    //!   edge kinds (pass-through, direct drive, self-loop,
+    //!   Output-as-source), the readout (a Linear a spike reaches,
+    //!   with an Output successor), a spiking Linear edge onto its own
+    //!   neuron, per-edge shapes
     //!   ([`NirError::EdgeShapeMismatch`], reference `check_types`
     //!   parity), Linear-only cycles, and the u16 neuron-id bound
     //!   ([`NirError::BufferOverflow`], D7).
@@ -1760,6 +1767,46 @@ mod std_assembly {
     /// single 20 μA pulse is dead 10× over on the mV grid. Explicit mV
     /// options on such a graph are rejected BY NAME with the remedy.
     pub const EDGE_PULSE_QUANTA: i16 = 200;
+
+    /// **D8, the spiking Linear edge (decided 2026-09-14, PR G).**
+    ///
+    /// A spike on a `LIF→Linear→…→LIF` path is the value 1 into the
+    /// Linear chain. The pulse it delivers to post neuron `i` from pre
+    /// neuron `j` is `trunc(q_ij / LINEAR_GAIN_DIVISOR)` μA, where `q`
+    /// is the composed chain's quantized i16 weight: the chain's
+    /// matrices composed in f64 from the LIF and quantized ONCE by
+    /// [`quantize_linear`](super::quantize_linear), the D2 fusion code
+    /// and record of the drive side (one Linear is a chain of one). The
+    /// pulse is delivered one step later and accumulates saturating-i16
+    /// across fan-in, plasticity frozen at assembly, as a D1 pulse does.
+    /// A zero `q` makes no synapse; a nonzero `q_ii` from a population
+    /// back onto itself would be a self-synapse and rejects by name.
+    ///
+    /// The divisor is the substrate's encoder gain: both drive encoders
+    /// read this constant, so an input feature of 1 and a spike of 1
+    /// through the same Linear give the same μA. In the std network the
+    /// edge is one synapse per nonzero `(j, i)` of weight
+    /// `trunc(q_ij / 10)` under the assembly's divisor 10, and the
+    /// step's `weight / 10` is `trunc(trunc(q/10)/10) = trunc(q/100)`
+    /// for every i16 `q` (truncation toward zero composes; pinned over
+    /// all 65,536 values), which `FixedSynapse::from_network` carries.
+    ///
+    /// The grid: D1's rule extends to it. A graph with a LIF→Linear
+    /// edge assembles only under `CentiMillivolt` import options;
+    /// explicit mV options reject BY NAME with the remedy.
+    ///
+    /// Deferred, by name: `LIF→Linear→Output`, the readout to Output,
+    /// met by any Linear a spike reaches that has an Output successor,
+    /// whatever its other successors (an Input-rooted Linear with an
+    /// Output beside its LIF stays legal, decoration as before D8);
+    /// `Input→LIF` (direct drive); encoder-only graphs.
+    pub const LINEAR_GAIN_DIVISOR: i16 = 100;
+
+    /// D8's std weight divisor: [`LINEAR_GAIN_DIVISOR`] over the
+    /// assembly's `synaptic_input_divisor`, the network's default 10,
+    /// which `build_network` never changes (the witnesses' tests pin
+    /// the pulse end to end).
+    const D8_WEIGHT_DIVISOR: i16 = LINEAR_GAIN_DIVISOR / 10;
 
     #[cfg(test)]
     mod edge_contract_tests {
@@ -2111,7 +2158,7 @@ mod std_assembly {
                         matches!(
                         e,
                         NirError::UnsupportedTopology(
-                            "readout (LIF->Linear) deferred — spike-count readout convention not yet named"
+                            "readout (LIF->Linear->Output) deferred — spike-count readout convention not yet named"
                         )
                     )
                     },
@@ -2360,6 +2407,336 @@ mod std_assembly {
         }
     }
 
+    /// D8, the spiking Linear edge: the two witnesses (snnTorch's own
+    /// export and the NIR paper's `two_lif_neurons`, each converted by
+    /// `neuralos-nir2json --sim-units`; `tests/nir_fixtures/README.md`),
+    /// the fused tripwire, the std weight's identity, the gain the drive
+    /// side shares, and the named rejections.
+    #[cfg(test)]
+    mod spiking_linear_tests {
+        use super::{
+            NirBuilder, NirError, NirGraphEncoder, NirImport, NirImportOptions, NirLifParams,
+            D8_WEIGHT_DIVISOR, LINEAR_GAIN_DIVISOR, SPIKING_LINEAR_MV_REMEDY,
+        };
+        use crate::fixed::FixedSynapse;
+        use crate::lif_neuron::VoltageResolution;
+        use crate::network::SpikingNeuralNetwork;
+
+        const SNNTORCH: &[u8] = include_bytes!("../tests/nir_fixtures/snntorch_two_layer_sim.json");
+        const TWO_LIF: &[u8] = include_bytes!("../tests/nir_fixtures/two_lif_neurons_sim.json");
+        const READOUT: &str =
+            "readout (LIF->Linear->Output) deferred — spike-count readout convention not yet named";
+        const SELF_SYNAPSE: &str = "spiking Linear edge onto its own neuron (LIF->Linear->LIF, \
+             a nonzero diagonal) — the substrate forbids self-synapse";
+
+        /// The one synapse of both witnesses: lif1 → lif2, 327 μA. A 1×1
+        /// weight quantizes to full scale, 32767, and 32767 / 100
+        /// truncates to 327.
+        const ONE_EDGE: [FixedSynapse; 1] = [FixedSynapse {
+            pre: 0,
+            post: 1,
+            pulse_ua: 327,
+        }];
+
+        fn centi() -> NirImportOptions {
+            NirImportOptions::new(1_000, VoltageResolution::CentiMillivolt)
+        }
+
+        /// A biological-scale LIF population of `n`: τ 20 ms, 100 MΩ,
+        /// −70 / −55 / −80 mV.
+        fn lif(bld: &mut NirBuilder<'_>, name: &'static str, n: usize) -> usize {
+            bld.add_lif_population(
+                name,
+                &NirLifParams {
+                    tau_s: &vec![0.02; n],
+                    r_ohm: &vec![1e8; n],
+                    v_leak_v: &vec![-0.07; n],
+                    v_threshold_v: &vec![-0.055; n],
+                    v_reset_v: Some(&vec![-0.08; n]),
+                },
+            )
+            .expect("a biological LIF population")
+        }
+
+        /// The builder's nodes wired by these edges, by index.
+        fn wire(bld: &mut NirBuilder<'_>, edges: &[(usize, usize)]) {
+            for &(from, to) in edges {
+                bld.add_edge(from, to).expect("indices from the builder");
+            }
+        }
+
+        /// The spike steps of each of two neurons over `steps` steps of
+        /// a one-feature drive.
+        fn raster(
+            net: &mut SpikingNeuralNetwork,
+            enc: &NirGraphEncoder,
+            steps: u32,
+            drive: impl Fn(u32) -> i16,
+        ) -> [Vec<u32>; 2] {
+            let mut spike_steps = [Vec::new(), Vec::new()];
+            for step in 0..steps {
+                let spikes = net
+                    .step(&enc.encode(&[&[drive(step)]]))
+                    .expect("an assembled network steps");
+                for spike in spikes {
+                    spike_steps[usize::from(spike.neuron_id)].push(step);
+                }
+            }
+            spike_steps
+        }
+
+        /// The constant is part of the public contract: pin it, with the
+        /// std weight's divisor it implies.
+        #[test]
+        fn linear_gain_divisor_is_one_hundred() {
+            assert_eq!(LINEAR_GAIN_DIVISOR, 100);
+            assert_eq!(D8_WEIGHT_DIVISOR * 10, LINEAR_GAIN_DIVISOR);
+        }
+
+        /// The std weight composes to the pulse for every i16 `q`: the
+        /// step divides `trunc(q / 10)` by the assembly's divisor 10, and
+        /// `trunc(trunc(q / 10) / 10) = trunc(q / 100)`, truncation toward
+        /// zero composing. All 65,536 values.
+        #[test]
+        fn the_std_weight_composes_to_the_pulse_for_every_i16() {
+            for q in i16::MIN..=i16::MAX {
+                assert_eq!(
+                    q / D8_WEIGHT_DIVISOR / 10,
+                    q / LINEAR_GAIN_DIVISOR,
+                    "q = {q}"
+                );
+            }
+        }
+
+        /// The framework witness of ROADMAP § 0.1.0 check 6: snnTorch
+        /// 1.0's own export of `Linear → Leaky → Linear → Leaky`, read
+        /// under `--sim-units` (τ 5 ms, 50,000 MΩ, threshold 1 mV). Two
+        /// neurons, one synapse of 327 μA, and the drive side's 327 μA
+        /// for a feature of 1. Driven 1 on steps 0–9 and 50–59, lif1
+        /// fires on every step its refractory allows (NIR's LIF has none;
+        /// the assembly's minimum, 1 ms, is one step), so on every other
+        /// driven step, and lif2 fires on the step after each, on the
+        /// pulse alone. Both fall silent when the drive stops, lif2 one
+        /// step after lif1.
+        #[test]
+        fn the_snntorch_two_layer_graph_builds_and_fires() {
+            let graph = NirImport::from_json(SNNTORCH, centi()).expect("the emission imports");
+            let (mut net, enc, rep) = graph.build_network().expect("the two-layer graph builds");
+            assert_eq!((rep.neurons, rep.synapses), (2, 1));
+            assert_eq!(net.synaptic_input_divisor(), 10, "the assembly's divisor");
+            assert_eq!(net.synapses()[0].weight, 32_767 / D8_WEIGHT_DIVISOR);
+            assert_eq!(FixedSynapse::from_network(&net), ONE_EDGE);
+            assert_eq!(
+                enc.encode(&[&[1]]),
+                [327, 0],
+                "the drive side, the same 327 μA"
+            );
+            let [lif1, lif2] = raster(&mut net, &enc, 150, |step| {
+                i16::from(matches!(step, 0..=9 | 50..=59))
+            });
+            assert_eq!(lif1, [0, 2, 4, 6, 8, 50, 52, 54, 56, 58]);
+            assert_eq!(lif2[0], 1, "lif2's first spike, on the pulse's step");
+            assert_eq!(
+                lif2,
+                lif1.iter().map(|step| step + 1).collect::<Vec<_>>(),
+                "lif2 one step after each lif1 spike"
+            );
+        }
+
+        /// The reference witness: the NIR paper's own `two_lif_neurons`
+        /// (written through the `nir` library, not a framework), the same
+        /// shape under `--sim-units`. lif1's leak, 1.2 mV, sits above its
+        /// 1 mV threshold, so it fires with no input: at step 0 from
+        /// rest, then every 20 steps from reset. lif2 (threshold 20 mV)
+        /// fires on the step after each lif1 spike: a 327 μA pulse at
+        /// 1,000 MΩ is +3,270 quanta against 2,000.
+        #[test]
+        fn the_two_lif_neurons_graph_builds_and_fires_with_no_input() {
+            let graph = NirImport::from_json(TWO_LIF, centi()).expect("the file imports");
+            let (mut net, enc, rep) = graph.build_network().expect("the two-layer graph builds");
+            assert_eq!((rep.neurons, rep.synapses), (2, 1));
+            assert_eq!(FixedSynapse::from_network(&net), ONE_EDGE);
+            let [lif1, lif2] = raster(&mut net, &enc, 100, |_| 0);
+            assert_eq!(lif1, [0, 20, 40, 60, 80]);
+            assert_eq!(lif2, [1, 21, 41, 61, 81]);
+        }
+
+        /// D1's grid rule extends to D8: both witnesses reject by name on
+        /// the mV grid, with the remedy.
+        #[test]
+        fn the_mv_grid_rejects_both_witnesses_by_name() {
+            for (label, doc) in [("snntorch", SNNTORCH), ("two_lif", TWO_LIF)] {
+                let graph = NirImport::from_json(doc, NirImportOptions::default())
+                    .unwrap_or_else(|e| panic!("{label}: imports on mV: {e}"));
+                let err = graph
+                    .build_network()
+                    .expect_err("mV must reject a spiking Linear edge");
+                assert!(
+                    matches!(err, NirError::UnsupportedTopology(m) if m == SPIKING_LINEAR_MV_REMEDY),
+                    "{label}: {err:?}"
+                );
+            }
+        }
+
+        /// The tripwire that separates fused from per-segment:
+        /// `a → Linear([[2.0]]) → Linear([[0.3]]) → b` composes to 0.6,
+        /// absmax 0.6, `q = 32767`, a 327 μA pulse. Quantizing each
+        /// tensor to full scale and composing in i16 would deliver about
+        /// 32,767. The chain is one fusion record, as on the drive side.
+        #[test]
+        fn a_two_linear_chain_after_a_lif_is_fused_once() {
+            let mut bld = NirBuilder::new(centi());
+            let inp = bld.add_input("input", &[1]).expect("input");
+            let l0 = bld.add_linear("l0", &[1.0], 1, 1).expect("linear");
+            let pre = lif(&mut bld, "a", 1);
+            let l1 = bld.add_linear("l1", &[2.0], 1, 1).expect("linear");
+            let l2 = bld.add_linear("l2", &[0.3], 1, 1).expect("linear");
+            let post = lif(&mut bld, "b", 1);
+            let out = bld.add_output("out", &[1]).expect("output");
+            wire(
+                &mut bld,
+                &[
+                    (inp, l0),
+                    (l0, pre),
+                    (pre, l1),
+                    (l1, l2),
+                    (l2, post),
+                    (post, out),
+                ],
+            );
+            let graph = bld.build().expect("builds");
+            let (net, _enc, rep) = graph.build_network().expect("the chain assembles");
+            assert_eq!(
+                FixedSynapse::from_network(&net),
+                ONE_EDGE,
+                "327, not 32,767"
+            );
+            assert_eq!(rep.fused.len(), 1);
+            assert_eq!(rep.fused[0].chain, ["l1", "l2"]);
+        }
+
+        /// One constant, two sides: an input feature of 1 and a spike of
+        /// 1 through the same 1×1 Linear give the same μA. `l` has two
+        /// roots, the Input (an encoder stage onto `b`) and the LIF `a`
+        /// (a D8 synapse onto `b`); both quantize the same matrix and
+        /// read `LINEAR_GAIN_DIVISOR`.
+        #[test]
+        fn an_input_feature_and_a_spike_through_one_linear_give_the_same_ua() {
+            let mut bld = NirBuilder::new(centi());
+            let inp = bld.add_input("input", &[1]).expect("input");
+            let to_pre = bld.add_linear("la", &[1.0], 1, 1).expect("linear");
+            let pre = lif(&mut bld, "a", 1);
+            let shared = bld.add_linear("l", &[0.25], 1, 1).expect("linear");
+            let post = lif(&mut bld, "b", 1);
+            let out = bld.add_output("out", &[1]).expect("output");
+            wire(
+                &mut bld,
+                &[
+                    (inp, to_pre),
+                    (to_pre, pre),
+                    (inp, shared),
+                    (pre, shared),
+                    (shared, post),
+                    (post, out),
+                ],
+            );
+            let graph = bld.build().expect("builds");
+            let (net, enc, _) = graph.build_network().expect("assembles");
+            let drive = enc.encode(&[&[1]])[1];
+            let pulse = FixedSynapse::from_network(&net)[0].pulse_ua;
+            assert_eq!((drive, pulse), (327, 327));
+            assert_eq!(pulse, 32_767 / LINEAR_GAIN_DIVISOR);
+        }
+
+        /// The readout stays deferred, by name, wherever a spike path
+        /// would feed an Output: a Linear after a LIF with an Output
+        /// successor, whatever its others (here a LIF too). An
+        /// Input-rooted Linear with an Output beside its LIF assembles,
+        /// as before D8 (the principal's call, 2026-09-14). A Linear
+        /// after a LIF feeding the Output alone is the fixture case in
+        /// the named-rejection table.
+        #[test]
+        fn a_spike_path_into_an_output_is_the_deferred_readout() {
+            let mut bld = NirBuilder::new(centi());
+            let inp = bld.add_input("input", &[1]).expect("input");
+            let l0 = bld.add_linear("l0", &[1.0], 1, 1).expect("linear");
+            let pre = lif(&mut bld, "a", 1);
+            let mixed = bld.add_linear("l", &[1.0], 1, 1).expect("linear");
+            let post = lif(&mut bld, "b", 1);
+            let out = bld.add_output("out", &[1]).expect("output");
+            wire(
+                &mut bld,
+                &[
+                    (inp, l0),
+                    (l0, pre),
+                    (pre, mixed),
+                    (mixed, post),
+                    (mixed, out),
+                ],
+            );
+            let graph = bld.build().expect("builds");
+            let err = graph
+                .build_network()
+                .expect_err("a spike path into the Output");
+            assert!(
+                matches!(err, NirError::UnsupportedTopology(m) if m == READOUT),
+                "{err:?}"
+            );
+
+            let mut bld = NirBuilder::new(centi());
+            let inp = bld.add_input("input", &[1]).expect("input");
+            let drive = bld.add_linear("l", &[1.0], 1, 1).expect("linear");
+            let pop = lif(&mut bld, "a", 1);
+            let out = bld.add_output("out", &[1]).expect("output");
+            wire(&mut bld, &[(inp, drive), (drive, pop), (drive, out)]);
+            let graph = bld.build().expect("builds");
+            assert!(
+                graph.build_network().is_ok(),
+                "an Input-rooted Linear may feed an Output beside its LIF"
+            );
+        }
+
+        /// A population's spikes back onto itself through a Linear: the
+        /// off-diagonal weights are synapses and a zero weight makes
+        /// none, but a nonzero diagonal would be a self-synapse, which
+        /// the substrate forbids, so it rejects by name.
+        #[test]
+        fn a_spiking_linear_edge_onto_its_own_neuron_rejects_by_name() {
+            fn recurrent(weights: &[f64]) -> Result<Vec<FixedSynapse>, String> {
+                let mut bld = NirBuilder::new(centi());
+                let inp = bld.add_input("input", &[1]).expect("input");
+                let l0 = bld.add_linear("l0", &[1.0, 1.0], 2, 1).expect("linear");
+                let pop = lif(&mut bld, "a", 2);
+                let back = bld.add_linear("l", weights, 2, 2).expect("linear");
+                let out = bld.add_output("out", &[2]).expect("output");
+                wire(
+                    &mut bld,
+                    &[(inp, l0), (l0, pop), (pop, back), (back, pop), (pop, out)],
+                );
+                let graph = bld.build().expect("builds");
+                graph
+                    .build_network()
+                    .map(|(net, _, _)| FixedSynapse::from_network(&net))
+                    .map_err(|e| e.to_string())
+            }
+            let both = vec![
+                FixedSynapse {
+                    pre: 0,
+                    post: 1,
+                    pulse_ua: 327,
+                },
+                FixedSynapse {
+                    pre: 1,
+                    post: 0,
+                    pulse_ua: 327,
+                },
+            ];
+            assert_eq!(recurrent(&[0.0, 1.0, 1.0, 0.0]), Ok(both));
+            let err = recurrent(&[0.0, 1.0, 1.0, 0.5]).expect_err("a nonzero diagonal");
+            assert!(err.contains(SELF_SYNAPSE), "{err}");
+        }
+    }
+
     /// An imported graph in owned buffers (std convenience over the
     /// two-pass buffer API).
     #[derive(Debug)]
@@ -2525,17 +2902,20 @@ mod std_assembly {
         /// Assemble ANY reference-emitted four-kind graph onto a real
         /// substrate network: every LIF population becomes neurons
         /// (its own quantized params), every LIF→LIF edge becomes an
-        /// [`EDGE_PULSE_QUANTA`] synapse pair, and the Linear DAG
-        /// becomes quantized encoder stages (D2 fusion at the setup
-        /// seam). Plasticity is frozen; the report records everything
-        /// loud (fusion, undriven structure, multi-Linear gain).
+        /// [`EDGE_PULSE_QUANTA`] synapse pair, the Linear DAG becomes
+        /// quantized encoder stages from its Inputs (D2 fusion at the
+        /// setup seam), and from its LIFs one synapse per nonzero
+        /// composed weight (D8, [`LINEAR_GAIN_DIVISOR`]). Plasticity is
+        /// frozen; the report records everything loud (fusion,
+        /// undriven structure, multi-Linear gain).
         ///
         /// The import options ARE the grid request (one channel, no
-        /// overrides): a graph with any LIF→LIF edge assembles only
-        /// on centi-mV options — mV options reject by name with the
-        /// re-import remedy (D1: a 20 μA pulse is dead 10× over on
-        /// the mV grid). Feed-forward imports (no LIF→LIF edge) keep
-        /// the historical mV default — the frozen chain pins.
+        /// overrides): a graph with any LIF→LIF or LIF→Linear edge
+        /// assembles only on centi-mV options — mV options reject by
+        /// name with the re-import remedy (D1: a 20 μA pulse is dead
+        /// 10× over on the mV grid; D8 extends the rule). Feed-forward
+        /// imports without a spike edge keep the historical mV default
+        /// — the frozen chain pins.
         ///
         /// # Errors
         ///
@@ -2603,6 +2983,18 @@ mod std_assembly {
             let mut net = SpikingNeuralNetwork::from_neurons(neurons, self.opts.dt_us)
                 .map_err(|_| NirError::BufferOverflow)?;
 
+            // encoder stages, D8 synapses and fusion records: the Linear
+            // DAG, fused, from every root (an Input, or a LIF)
+            let order = self.linear_order()?;
+            let EncoderPlan {
+                mats,
+                stages,
+                spiking,
+                fused,
+                rooted,
+                drive_linears,
+            } = self.build_stages(&inputs, &order, &pop_base)?;
+
             // LIF->LIF edges -> EDGE_PULSE_QUANTA synapse pairs
             // (identity element mapping; equal sizes shape-checked)
             let mut synapses = 0usize;
@@ -2618,18 +3010,15 @@ mod std_assembly {
                     }
                 }
             }
+            // LIF->Linear->…->LIF paths -> the D8 synapses, in stage order
+            for &(pre, post, weight) in &spiking {
+                net.add_synapse(pre, post, weight)
+                    .map_err(|_| NirError::BufferOverflow)?;
+                synapses += 1;
+            }
             net.finalize_synapses();
             net.set_plasticity_enabled(false); // NIR has no plasticity term
 
-            // encoder stages + fusion records (the Linear DAG, fused)
-            let order = self.linear_order()?;
-            let EncoderPlan {
-                mats,
-                stages,
-                fused,
-                rooted,
-                drive_linears,
-            } = self.build_stages(&inputs, &order, &pop_base)?;
             let undriven = self.undriven_notes(&inputs, &rooted);
             let encoder = NirGraphEncoder {
                 total,
@@ -2656,8 +3045,10 @@ mod std_assembly {
 
         /// The named rejections, in deterministic order: empty /
         /// no-Input / no-Output / dead-Input / per-edge kinds /
-        /// no-LIF / per-edge shapes / the mV-on-recurrent grid
-        /// rejection. (Cycles through Linear nodes reject later, in
+        /// no-LIF / per-edge shapes / the readout (D8: a Linear a
+        /// spike reaches, with an Output successor) / the two mV grid
+        /// rejections, LIF→LIF then LIF→Linear. (Cycles through Linear
+        /// nodes reject later, in
         /// [`Self::linear_order`]; D4's cycle boundary resolves here —
         /// a cycle legal at import is tolerated exactly when the
         /// graph still has its Input-rooted path and Output leaf,
@@ -2690,21 +3081,20 @@ mod std_assembly {
             for &(a, b) in &self.edges {
                 let (ka, kb) = (nodes[a as usize].kind, nodes[b as usize].kind);
                 let err = match (ka, kb) {
-                    (NirNodeKind::Input, NirNodeKind::Output) => Some(
-                        NirError::UnsupportedTopology("Input->Output pass-through"),
-                    ),
+                    (NirNodeKind::Input, NirNodeKind::Output) => {
+                        Some(NirError::UnsupportedTopology("Input->Output pass-through"))
+                    }
                     (NirNodeKind::Input, NirNodeKind::Lif) => Some(NirError::UnsupportedTopology(
                         "direct drive (Input->LIF) deferred — drive convention not yet named",
                     )),
-                    (NirNodeKind::Lif, NirNodeKind::Linear) => Some(NirError::UnsupportedTopology(
-                        "readout (LIF->Linear) deferred — spike-count readout convention not yet named",
-                    )),
-                    (NirNodeKind::Lif, NirNodeKind::Lif) if a == b => Some(
-                        NirError::UnsupportedTopology("LIF self-loop — the substrate forbids self-synapse"),
-                    ),
-                    (NirNodeKind::Output, _) => Some(NirError::UnsupportedTopology(
-                        "Output node as edge source",
-                    )),
+                    (NirNodeKind::Lif, NirNodeKind::Lif) if a == b => {
+                        Some(NirError::UnsupportedTopology(
+                            "LIF self-loop — the substrate forbids self-synapse",
+                        ))
+                    }
+                    (NirNodeKind::Output, _) => {
+                        Some(NirError::UnsupportedTopology("Output node as edge source"))
+                    }
                     _ => None,
                 };
                 if let Some(e) = err {
@@ -2732,6 +3122,9 @@ mod std_assembly {
                     (NirNodeKind::Lif, NirNodeKind::Lif) => {
                         na.lif.expect("checked").len == nb.lif.expect("checked").len
                     }
+                    (NirNodeKind::Lif, NirNodeKind::Linear) => {
+                        na.lif.expect("checked").len == nb.linear.expect("checked").cols
+                    }
                     (NirNodeKind::Lif, NirNodeKind::Output) => {
                         nb.shape_len == 1 && nb.shape[0] as usize == na.lif.expect("checked").len
                     }
@@ -2748,14 +3141,50 @@ mod std_assembly {
                     });
                 }
             }
+            // D8: the Linears a spike reaches, over a LIF→Linear edge
+            // and then Linear→Linear ones. One with an Output successor
+            // is the readout, deferred by name whatever its other
+            // successors; an Input-rooted Linear with an Output beside
+            // its LIF stays legal (decoration, as before D8).
+            let mut linear_children: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+            let mut work: Vec<usize> = Vec::new();
+            for &(a, b) in &self.edges {
+                match (nodes[a as usize].kind, nodes[b as usize].kind) {
+                    (NirNodeKind::Linear, NirNodeKind::Linear) => {
+                        linear_children[a as usize].push(b as usize);
+                    }
+                    (NirNodeKind::Lif, NirNodeKind::Linear) => work.push(b as usize),
+                    _ => {}
+                }
+            }
+            let mut spiked = vec![false; nodes.len()];
+            while let Some(l) = work.pop() {
+                if !spiked[l] {
+                    spiked[l] = true;
+                    work.extend(&linear_children[l]);
+                }
+            }
+            if self
+                .edges
+                .iter()
+                .any(|&(a, b)| spiked[a as usize] && nodes[b as usize].kind == NirNodeKind::Output)
+            {
+                return Err(NirError::UnsupportedTopology(
+                    "readout (LIF->Linear->Output) deferred — spike-count readout convention not yet named",
+                ));
+            }
             let recurrent = self.edges.iter().any(|&(a, b)| {
                 matches!(
                     (nodes[a as usize].kind, nodes[b as usize].kind),
                     (NirNodeKind::Lif, NirNodeKind::Lif)
                 )
             });
-            if recurrent && self.opts.resolution == VoltageResolution::Millivolt {
+            let mv = self.opts.resolution == VoltageResolution::Millivolt;
+            if recurrent && mv {
                 return Err(NirError::UnsupportedTopology(RECURRENT_MV_REMEDY));
+            }
+            if spiked.contains(&true) && mv {
+                return Err(NirError::UnsupportedTopology(SPIKING_LINEAR_MV_REMEDY));
             }
             Ok(())
         }
@@ -2815,13 +3244,15 @@ mod std_assembly {
         }
 
         /// Symbolically evaluate the Linear DAG (topological fold) and
-        /// quantize one matrix per (drive Linear, root Input) stage.
-        /// `G(L)[r]` is the transform arriving at `L`'s INPUT from
-        /// root `r` — identity from an Input parent, `W_p·G(p)[r]`
-        /// through a Linear parent (multi-parent sums are the linear
-        /// DAG's native semantics) — so the stage matrix is `W_L·G`.
+        /// quantize one matrix per (drive Linear, root) stage, the root
+        /// an Input or (D8) a LIF. `G(L)[r]` is the transform arriving
+        /// at `L`'s INPUT from root `r` — identity from an Input or LIF
+        /// parent, `W_p·G(p)[r]` through a Linear parent (multi-parent
+        /// sums are the linear DAG's native semantics) — so the stage
+        /// matrix is `W_L·G`. An Input root's matrix is an encoder
+        /// stage; a LIF root's is one synapse per nonzero weight (D8).
         /// D2 fusion records every stage composed from ≥2 matrices,
-        /// with each component tensor's scale.
+        /// with each component tensor's scale, from either root.
         // the symbolic DAG fold is one coherent unit; splitting the G
         // accumulation from stage quantization would spread the
         // borrowed-g map across two functions (nir_import precedent)
@@ -2850,11 +3281,13 @@ mod std_assembly {
                 let mut acc: GMap = BTreeMap::new();
                 for &p in &incoming[l] {
                     match self.nodes[p].kind {
-                        NirNodeKind::Input => {
-                            let n_feat = self.nodes[p].shape[0] as usize; // == cols (checked)
+                        // a root enters as identity: an Input's features,
+                        // or (D8) a LIF's spikes, each the value 1 into
+                        // the chain; its width is `cols` (shape-checked)
+                        NirNodeKind::Input | NirNodeKind::Lif => {
                             let entry_val = acc
                                 .entry(p)
-                                .or_insert_with(|| (mat_zero(cols, n_feat), Vec::new()));
+                                .or_insert_with(|| (mat_zero(cols, cols), Vec::new()));
                             for i in 0..cols {
                                 entry_val.0[i][i] += 1.0;
                             }
@@ -2892,7 +3325,7 @@ mod std_assembly {
                                 }
                             }
                         }
-                        _ => {} // LIF parents are named-rejected already
+                        NirNodeKind::Output => {} // named-rejected as a source already
                     }
                 }
                 g.insert(l, acc);
@@ -2900,13 +3333,14 @@ mod std_assembly {
 
             let mut mats: Vec<QuantMat> = Vec::new();
             let mut stages: Vec<DriveStage> = Vec::new();
+            let mut spiking: Vec<(u16, u16, i16)> = Vec::new();
             let mut fused: Vec<LinearFusedRecord<'_>> = Vec::new();
             let mut rooted: BTreeSet<usize> = BTreeSet::new();
             for &lin_idx in order {
                 if g[&lin_idx].is_empty() {
                     continue; // no root path — never invoked (noted)
                 }
-                rooted.insert(lin_idx); // has an Input-rooted path, whatever it feeds
+                rooted.insert(lin_idx); // has a root path (an Input's or a LIF's), whatever it feeds
                 if lif_children[lin_idx].is_empty() {
                     continue; // feeds no LIF — stages come from its consumers
                 }
@@ -2928,18 +3362,47 @@ mod std_assembly {
                     }
                     let mut q = vec![0i16; rows * f];
                     super::quantize_linear(&flat, rows, f, &mut q, 0)?;
-                    let mat = mats.len();
-                    mats.push(QuantMat { q, rows, cols: f });
-                    let root_ord = inputs
-                        .iter()
-                        .position(|&i| i == *root)
-                        .expect("root is an Input");
-                    for &pop in &lif_children[lin_idx] {
-                        stages.push(DriveStage {
-                            pop_base: pop_base[&pop],
-                            root: root_ord,
-                            mat,
-                        });
+                    if self.nodes[*root].kind == NirNodeKind::Lif {
+                        // D8: pre j of the root population to post i of
+                        // each LIF this Linear feeds, one synapse per
+                        // nonzero composed weight
+                        let pre_base = pop_base[root];
+                        for &pop in &lif_children[lin_idx] {
+                            let post_base = pop_base[&pop];
+                            for i in 0..rows {
+                                for j in 0..f {
+                                    let qij = q[i * f + j];
+                                    if qij == 0 {
+                                        continue; // a zero q makes no synapse
+                                    }
+                                    let (pre, post) = (pre_base + j, post_base + i);
+                                    if pre == post {
+                                        return Err(NirError::UnsupportedTopology(
+                                            "spiking Linear edge onto its own neuron (LIF->Linear->LIF, a nonzero diagonal) — the substrate forbids self-synapse",
+                                        ));
+                                    }
+                                    spiking.push((
+                                        pre as u16,
+                                        post as u16,
+                                        qij / D8_WEIGHT_DIVISOR,
+                                    ));
+                                }
+                            }
+                        }
+                    } else {
+                        let mat = mats.len();
+                        mats.push(QuantMat { q, rows, cols: f });
+                        let root_ord = inputs
+                            .iter()
+                            .position(|&i| i == *root)
+                            .expect("root is an Input");
+                        for &pop in &lif_children[lin_idx] {
+                            stages.push(DriveStage {
+                                pop_base: pop_base[&pop],
+                                root: root_ord,
+                                mat,
+                            });
+                        }
                     }
                     if !contrib.is_empty() {
                         let mut chain: Vec<&str> =
@@ -2962,6 +3425,7 @@ mod std_assembly {
             Ok(EncoderPlan {
                 mats,
                 stages,
+                spiking,
                 fused,
                 rooted,
                 drive_linears,
@@ -2970,8 +3434,8 @@ mod std_assembly {
 
         /// `UndrivenPopulation` notes (structural, name-carrying): LIF
         /// populations with no Input-rooted path (permanently silent)
-        /// and Linear nodes never invoked as encoders (no root path or
-        /// no path to any LIF). The reference tolerates AND auto-wires
+        /// and Linear nodes never invoked (no root path, Input or LIF,
+        /// or no path to any LIF). The reference tolerates AND auto-wires
         /// such components at emission; we do not invent structure at
         /// import — silence is documented, never silent.
         fn undriven_notes(&self, inputs: &[usize], rooted: &BTreeSet<usize>) -> Vec<&'_ str> {
@@ -3028,12 +3492,15 @@ mod std_assembly {
     }
 
     /// What [`NirImport::build_network`] derives from the Linear DAG:
-    /// quantized stage matrices, stage wiring, fusion records, the
-    /// Input-rooted Linear set (for undriven notes), and the D6
+    /// quantized stage matrices, stage wiring, the D8 synapses, fusion
+    /// records, the rooted Linear set (for undriven notes), and the D6
     /// drive-Linear count.
     struct EncoderPlan<'a> {
         mats: Vec<QuantMat>,
         stages: Vec<DriveStage>,
+        /// D8: `(pre, post, weight)`, one per nonzero composed weight of
+        /// a LIF-rooted stage, in stage order.
+        spiking: Vec<(u16, u16, i16)>,
         fused: Vec<LinearFusedRecord<'a>>,
         rooted: BTreeSet<usize>,
         drive_linears: usize,
@@ -3053,9 +3520,9 @@ mod std_assembly {
     /// entry per neuron). One quantized matrix per (drive Linear,
     /// root) pair — fused chains arrive as a single composed matrix
     /// (D2: no hop-by-hop i16 encode-composition) — with the
-    /// substrate's `/100` encoder gain and i64 row accumulation
-    /// (`ChainEncoder` semantics per stage), merged saturating-i16
-    /// across stages (D5's mechanical merge).
+    /// substrate's encoder gain, [`LINEAR_GAIN_DIVISOR`], and i64 row
+    /// accumulation (`ChainEncoder` semantics per stage), merged
+    /// saturating-i16 across stages (D5's mechanical merge).
     #[derive(Debug)]
     pub struct NirGraphEncoder {
         total: usize,
@@ -3106,7 +3573,7 @@ mod std_assembly {
                         acc += i64::from(m.q[r * m.cols + c])
                             * i64::from(x.get(c).copied().unwrap_or(0));
                     }
-                    acc /= 100;
+                    acc /= i64::from(LINEAR_GAIN_DIVISOR);
                     let v = acc.clamp(i64::from(i16::MIN), i64::from(i16::MAX)) as i16;
                     out[st.pop_base + r] = out[st.pop_base + r].saturating_add(v);
                 }
@@ -3129,14 +3596,15 @@ mod std_assembly {
     pub struct NirAssemblyReport<'a> {
         /// Total neurons (all populations).
         pub neurons: usize,
-        /// LIF→LIF synapse pairs at [`EDGE_PULSE_QUANTA`].
+        /// Synapses: the LIF→LIF pairs at [`EDGE_PULSE_QUANTA`] (D1) and
+        /// the spiking Linear edges' nonzero composed weights (D8).
         pub synapses: usize,
         /// Input nodes (encoder entry points).
         pub inputs: usize,
-        /// Linear nodes directly feeding a LIF stage (D6's note fires
-        /// when > 1: each tensor's absmax scale absorbs its branch's
-        /// true gain — the dequantizing global-scale encode is a
-        /// named follow-up, NOT this surface).
+        /// Linear nodes directly feeding a LIF stage, from an Input or
+        /// (D8) a LIF (D6's note fires when > 1: each tensor's absmax
+        /// scale absorbs its branch's true gain — the dequantizing
+        /// global-scale encode is a named follow-up, NOT this surface).
         pub drive_linears: usize,
         /// Quantized (drive Linear × root) encoder matrices.
         pub stages: usize,
@@ -3156,6 +3624,13 @@ mod std_assembly {
     const RECURRENT_MV_REMEDY: &str = "recurrent graph on mV: pulses fall in the ~200 uA dead \
      zone — re-import with NirImportOptions { resolution: \
      VoltageResolution::CentiMillivolt, ..NirImportOptions::default() }";
+
+    /// The named mV-on-spiking-Linear rejection (D8 extends D1's grid
+    /// rule), remedy verbatim and copy-pasteable.
+    const SPIKING_LINEAR_MV_REMEDY: &str = "spiking Linear edge (LIF->Linear->LIF) on mV: D8 \
+     assembles on the centi-mV grid only, as LIF->LIF does — re-import with \
+     NirImportOptions { resolution: VoltageResolution::CentiMillivolt, \
+     ..NirImportOptions::default() }";
 
     /// The assembly's neuron mapping (`build_chain_network`'s, shared):
     /// per-neuron quantized params onto an Excitatory substrate
@@ -3188,9 +3663,10 @@ mod std_assembly {
 
     /// The Linear half of the chain: feature currents (μA) →
     /// per-neuron currents (μA), saturating i16 — `y = W·x` in
-    /// substrate units. Weights are scaled by 1/100 (the substrate's
-    /// synapse convention: a weight contributes `w/100` μA per unit
-    /// input feature current), documented as the encoder's gain.
+    /// substrate units. Weights are scaled by 1/[`LINEAR_GAIN_DIVISOR`]
+    /// (the substrate's convention: a weight contributes `w/100` μA per
+    /// unit input feature current; D8's spike side reads the same
+    /// constant), documented as the encoder's gain.
     #[derive(Debug)]
     pub struct ChainEncoder<'a> {
         lin: NirLinear,
@@ -3222,7 +3698,7 @@ mod std_assembly {
                     let w = i64::from(self.weights[self.lin.weight_offset + r * self.lin.cols + c]);
                     acc += w * i64::from(x.get(c).copied().unwrap_or(0));
                 }
-                acc /= 100;
+                acc /= i64::from(LINEAR_GAIN_DIVISOR);
                 *o = acc.clamp(i64::from(i16::MIN), i64::from(i16::MAX)) as i16;
             }
             out
@@ -3441,7 +3917,7 @@ mod std_assembly {
 #[cfg(feature = "std")]
 pub use std_assembly::{
     ChainEncoder, LinearFusedRecord, NirAssemblyReport, NirBuilder, NirGraphEncoder, NirImport,
-    EDGE_PULSE_QUANTA,
+    EDGE_PULSE_QUANTA, LINEAR_GAIN_DIVISOR,
 };
 
 #[cfg(test)]

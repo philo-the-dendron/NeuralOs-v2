@@ -316,6 +316,81 @@ fn stranger_fallback_snntorch_head_completes_full_path_f32() {
 }
 
 #[test]
+fn stranger_fallback_snntorch_two_layer_completes_full_path_sim_units() {
+    // ROADMAP § 0.1.0 check 6's framework witness: snnTorch 1.0's own
+    // export_to_nir of Linear → Leaky → Linear → Leaky, OUR values
+    // through THEIR pipeline (rung ii, PROVENANCE.md). Its LIF carries
+    // the simulation-unit r = 50 Ω, so it refuses natively and converts
+    // under --sim-units; the two-layer graph then builds (D8).
+    let path = fixture("community/snnTorch_two_layer.nir");
+    let err =
+        convert_file(&path, NirImportOptions::default()).expect_err("r = 50 Ω refuses natively");
+    assert!(matches!(err, ConvertError::SimUnits { .. }), "{err:?}");
+    let c = convert_file_opts(&path, NirImportOptions::default(), true)
+        .expect("converts under --sim-units");
+    assert_eq!(c.stamp.nir_version, "1.0.9.dev1+g7883c3c85");
+    assert!(
+        c.stamp.f32_datasets.iter().any(|d| d.ends_with("/weight")),
+        "torch's float32 widened: {:?}",
+        c.stamp.f32_datasets
+    );
+    let centi = NirImportOptions::new(1_000, neuralos_snn::VoltageResolution::CentiMillivolt);
+    let g = neuralos_snn::nir::NirImport::from_json(&c.json, centi).expect("imports under centi");
+    for l in &g.lifs {
+        assert_eq!(
+            (
+                l.tau_us,
+                l.resistance_mohm,
+                l.leak_q,
+                l.threshold_q,
+                l.reset_q
+            ),
+            (5_000, 50_000, 0, 100, 0),
+            "τ 5 ms; 50 Ω × 1000 → 50,000 MΩ; threshold 1 mV → 100 centi quanta"
+        );
+    }
+    let (net, _enc, report) = g
+        .build_network()
+        .expect("the two-layer snnTorch graph builds");
+    assert_eq!((report.neurons, report.synapses), (2, 1));
+    assert_eq!(
+        neuralos_snn::FixedSynapse::from_network(&net),
+        [neuralos_snn::FixedSynapse {
+            pre: 0,
+            post: 1,
+            pulse_ua: 327
+        }]
+    );
+}
+
+#[test]
+fn the_snn_witness_fixtures_are_this_converter_s_bytes() {
+    // One writer: the two D8 witnesses in neuralos-snn's
+    // tests/nir_fixtures/ are this tool's --sim-units output, byte for
+    // byte (that directory's README).
+    for (nir, json) in [
+        (
+            "community/snnTorch_two_layer.nir",
+            "snntorch_two_layer_sim.json",
+        ),
+        ("community/two_lif_neurons.nir", "two_lif_neurons_sim.json"),
+    ] {
+        let c = convert_file_opts(&fixture(nir), NirImportOptions::default(), true)
+            .expect("converts under --sim-units");
+        let committed = std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../neuralos-snn/tests/nir_fixtures")
+                .join(json),
+        )
+        .expect("the snn fixture");
+        assert!(
+            c.json == committed,
+            "{json} is not the converter's output for {nir}"
+        );
+    }
+}
+
+#[test]
 fn stranger_emitter_skew_norse_is_a_named_wall() {
     // lif_norse carries an Affine node (Linear+bias) — outside the
     // four-kind subset. The loud named rejection IS the recorded
