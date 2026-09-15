@@ -4,7 +4,7 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@6f03e1b (PR #30 merged 2026-09-14 20:28 UTC: round 33, alpha.8 in the tree; mirror synced, branch deleted) · tree == published, alpha.8 stamped 2026-09-14 (tag object `f2a195df` on `6f03e1b`, Gitea release 948528, crates.io 20:37:43Z; `docs/releases/v0.1.0-alpha.8.md` § Stamped) · wrote-from: work/two-layers, round 34 (PR G, alpha.9 opens: five commits), not pushed · open(session): the builder's five commits (0 the stamp's record; 1 D8, the spiking Linear edge, and the two witnesses; 2 the two trace cases; 3 row and the freezer into the library, nir2json --freeze, the QEMU re-run; 4 the close-out), the per-commit loop green on each before the first push, then the push and the PR on the principal's word, the seven (pull_request) contexts green in the full listing, one fresh Fable review (tier 2), the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@6f03e1b (PR #30 merged 2026-09-14 20:28 UTC: round 33, alpha.8 in the tree; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by round 34 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`), alpha.9 open · wrote-from: work/two-layers, round 34 (PR G, alpha.9 opens: five commits), not pushed; the per-commit loop runs over the five before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, one fresh Fable review (tier 2), the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
 updated: 2026-09-14T17:00:27Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
@@ -9342,5 +9342,35 @@ spelling matches its own line; the notes' 1,577 → 1,576, the seventh
 entry's; the QEMU `build.sh` runs the crate's fmt gate first and links
 through `build.rs`, not config rustflags; the INDEX rows and the bench
 README's lock line ride the sweep. The stamp is open (the head line).
+**Guards.** GUARD 1: appended; head line refreshed. GUARD 2: no verdict
+touched. GUARD 3: nothing public.
+
+## Close-out (round 34 — PR G, alpha.9 opens: LIF→Linear→LIF named and built, the freeze step on the host, the stamp's record — 2026-09-14)
+
+Branch `work/two-layers` from `main@6f03e1b`, tier 2, five commits, the
+brief as the PR description: `7cb6d6c` the stamp's record (§ Stamped,
+RESEARCH_LOG, `leg-a-alpha8.log` with two header lines prepended, VISION
+item 6, check 13); `48fe4d8` D8, the spiking Linear edge (the walk from
+LIF roots, `LINEAR_GAIN_DIVISOR`, the readout deferred by name, the two
+witnesses, check 6); `d4c8eb3` the two trace cases, none moved;
+`455c92c` `fixed::row` and `fixed::freeze` in the library, `nir2json
+--freeze`, QEMU at fourteen (`replay-alpha9-g.log`, 14 cases, 0 red);
+this close-out. Checks holding: 1, 2 (twelve on the board, PR G's two in
+PR H), 3, 4, 5, 6, 13, 14; check 7 has its host half. Record-only: the
+snnTorch witness fires on every other driven step, not every step as the
+brief said (NIR's LIF has no refractory; the assembly's minimum, 1 ms,
+is one step), measured, nothing tuned; two_lif's lif1 fires with no
+input, its leak above its threshold under `--sim-units`, the stranger's
+graph, not a defect; the firmware `.text` moves at commits 2 and 3,
+`6f8ec538…` → `701490cf…`, read on the board in PR H;
+`LINEAR_GAIN_DIVISOR` is the first constant the drive and the spike side
+share. Deviations: a nonzero diagonal back onto its own population
+rejects by name (a self-synapse, else `BufferOverflow`); D8's mV
+rejection has its own message, the graph is not recurrent; the readout
+message keeps its reason; `--freeze` writes the options' `dt_us`
+(`time_step_us` is crate-private); commit 0 missed `evidence/INDEX.md`,
+commit 3 carries it. The principal's answers: the mixed Linear after a
+LIF takes the readout message, an Input-rooted one stays legal; VISION
+item 6 takes its final period; `--freeze`'s trace steps the std network.
 **Guards.** GUARD 1: appended; head line refreshed. GUARD 2: no verdict
 touched. GUARD 3: nothing public.
