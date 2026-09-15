@@ -276,6 +276,51 @@ pub mod ternary_weights {
     ];
 }
 
+pub mod snntorch_two_layer {
+    use neuralos_snn::{FixedSynapse, LIFNeuron, NeuronType, VoltageResolution};
+
+    pub const N: usize = 2;
+    pub const S: usize = 1;
+    pub const DT_US: u32 = 1000;
+    pub const STEPS: u32 = 150;
+    pub const SPIKES_ONLY: bool = false;
+    pub const HEADER: &str = "# neuralos-trace v1 case=snntorch-two-layer kind=regression n=2 dt_us=1000 res=cmV plasticity=off divisor=10 steps=150 rows=all";
+    pub const NEURONS: [LIFNeuron; N] = [
+        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: 0, resting_potential: 0, threshold: 100, reset_potential: 0, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 5000, tau_refractory_us: 1000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 0, resistance_mohm: 50000, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron { id: 1, neuron_type: NeuronType::Excitatory, membrane_potential: 0, resting_potential: 0, threshold: 100, reset_potential: 0, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 5000, tau_refractory_us: 1000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 0, resistance_mohm: 50000, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+    ];
+    pub const SYNAPSES: [FixedSynapse; S] = [
+        FixedSynapse { pre: 0, post: 1, pulse_ua: 327 },
+    ];
+    pub const DRIVE: &[(u32, [i16; N])] = &[
+        (10, [327, 0]),
+        (40, [0, 0]),
+        (10, [327, 0]),
+        (90, [0, 0]),
+    ];
+}
+
+pub mod two_lif_neurons {
+    use neuralos_snn::{FixedSynapse, LIFNeuron, NeuronType, VoltageResolution};
+
+    pub const N: usize = 2;
+    pub const S: usize = 1;
+    pub const DT_US: u32 = 1000;
+    pub const STEPS: u32 = 150;
+    pub const SPIKES_ONLY: bool = false;
+    pub const HEADER: &str = "# neuralos-trace v1 case=two-lif-neurons kind=regression n=2 dt_us=1000 res=cmV plasticity=off divisor=10 steps=150 rows=all";
+    pub const NEURONS: [LIFNeuron; N] = [
+        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: 120, resting_potential: 120, threshold: 100, reset_potential: 0, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 10000, tau_refractory_us: 1000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 10, resistance_mohm: 1000, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron { id: 1, neuron_type: NeuronType::Excitatory, membrane_potential: 0, resting_potential: 0, threshold: 2000, reset_potential: 0, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 10000, tau_refractory_us: 1000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 10, resistance_mohm: 1000, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+    ];
+    pub const SYNAPSES: [FixedSynapse; S] = [
+        FixedSynapse { pre: 0, post: 1, pulse_ua: 327 },
+    ];
+    pub const DRIVE: &[(u32, [i16; N])] = &[
+        (150, [327, 0]),
+    ];
+}
+
 /// Applies the caller's macro to every frozen case, in file order.
 macro_rules! for_each_frozen {
     ($m:ident) => {
@@ -291,6 +336,8 @@ macro_rules! for_each_frozen {
         $m!(saturation_floor_ceiling);
         $m!(nir_chain_fixture);
         $m!(ternary_weights);
+        $m!(snntorch_two_layer);
+        $m!(two_lif_neurons);
     };
 }
 pub(crate) use for_each_frozen;

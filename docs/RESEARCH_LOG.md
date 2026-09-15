@@ -1136,3 +1136,18 @@ construction, its `.text` equal to the round-27 fix pin: the binary
 behind the 1,579 ns/step reading. The version that carries the fix
 was published the same night its merge landed.
 Record: ISA round-28 close-out, `docs/releases/v0.1.0-alpha.7.md`.
+
+## 2026-09-14 — alpha.8 stamped: tag, release, crates.io
+
+`neuralos-snn 0.1.0-alpha.8` reached crates.io at 20:37:43Z, from
+`6f03e1b`, the merge of round 33 (PR #30): `FixedNetwork` and the
+link-time proof of its step, the traces, the spike ring out of the
+neuron, the tested MSRV. The tag `v0.1.0-alpha.8` is on that commit,
+and the Gitea release on it carries the board firmware rebuilt by
+`build.sh` at the tagged commit, no home path in it by construction,
+its `.text` equal to the seventh entry's pin: the binary behind the
+14,058 ns per step of the whole network. This time the packed tree was
+scanned before the upload, not after, and the release texts passed the
+check-13 grep: 0 hits both.
+Record: ISA round-34 close-out, `docs/releases/v0.1.0-alpha.8.md`
+§ Stamped.

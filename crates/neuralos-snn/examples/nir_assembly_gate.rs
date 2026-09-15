@@ -258,12 +258,12 @@ fn main() {
             },
         ),
         (
-            "readout (LIF->Linear)",
+            "readout (LIF->Linear->Output)",
             include_bytes!("../tests/nir_fixtures/neg_asm_lif_to_linear.json"),
             centi(),
             |e| {
                 matches!(e, NirError::UnsupportedTopology(
-                "readout (LIF->Linear) deferred — spike-count readout convention not yet named"))
+                "readout (LIF->Linear->Output) deferred — spike-count readout convention not yet named"))
             },
         ),
         (

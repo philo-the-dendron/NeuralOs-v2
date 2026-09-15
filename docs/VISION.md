@@ -124,3 +124,12 @@ roadmap).
    NeuralOS brings the open software library.
 5. **Paper track:** finish and submit the Branch B article from `paper/`
    (its own gated workflow, never again displacing Phase-1/2 work).
+6. **After 0.1.0, the learning chapter, in two steps and two
+   places.** First, one learning task on the ESP32-C3, sized to the
+   chip, built as the calibration of a readout: a task with ground
+   truth, plasticity on against plasticity off as the control, the bar
+   written before the run, the null ladder run where it is cheap. Its
+   result is the instrument, not the number. Second, the bridge reopens
+   on its recorded forks, on the host, measured with that readout, so an
+   effect can be attributed. Learning is the grail only as a measured
+   claim; Branch B proved the mechanism and had no instrument.

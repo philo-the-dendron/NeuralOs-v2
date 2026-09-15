@@ -6,10 +6,12 @@
 # the tree's trace files with the board's diff tool
 # (tools/esp32c3_trace_diff.py), so a wrong writer is red, not trusted.
 # Green only if QEMU exits 0 (the test device's pass code, written after
-# the end line) and the diff's last line is "12 cases, 0 red": every
-# plasticity-off trace of crates/neuralos-snn/tests/traces/ replayed row
-# for row. The count is checked too, because a trace file deleted from
-# the tree would shrink the compare to fewer cases, all green.
+# the end line) and the diff's last line is "N cases, 0 red", N the
+# plasticity-off traces of crates/neuralos-snn/tests/traces/ counted here
+# from their header lines, as the diff reads them: every one replayed row
+# for row (12 at round 33, 14 since PR G). A trace file deleted from the
+# tree lowers both counts, but the replay still prints that case, and the
+# diff calls a header outside the tree's set red.
 #
 # A release-round gate, run by hand and pinned, like Leg A: not a CI job
 # (QEMU is not on the runner image). The capture goes to LOG, default
@@ -39,6 +41,14 @@ fi
 cargo fmt -- --check
 cargo build --release --locked
 
+# The count the diff must read: the tree's plasticity-off traces.
+want=0
+for trace in "$repo"/crates/neuralos-snn/tests/traces/*.trace; do
+  if head -1 "$trace" | grep -q ' plasticity=off '; then
+    want=$((want + 1))
+  fi
+done
+
 mkdir -p "$(dirname "$log")"
 qemu=0
 timeout 120 qemu-system-riscv64 -machine virt -nographic -bios none \
@@ -52,8 +62,8 @@ if [ "$qemu" -ne 0 ]; then
   echo "qemu-trace-replay: RED, QEMU exited $qemu (0 is the pass code after the end line, 1 a panic, 124 the timeout)" >&2
   exit 1
 fi
-if [ "$diff" -ne 0 ] || [ "$(tail -1 <<<"$verdict")" != "12 cases, 0 red" ]; then
-  echo "qemu-trace-replay: RED, the diff does not read 12 cases, 0 red" >&2
+if [ "$diff" -ne 0 ] || [ "$(tail -1 <<<"$verdict")" != "$want cases, 0 red" ]; then
+  echo "qemu-trace-replay: RED, the diff does not read $want cases, 0 red" >&2
   exit 1
 fi
-echo "qemu-trace-replay: green, 12 cases, 0 red: every plasticity-off trace replays bit for bit under QEMU riscv64gc"
+echo "qemu-trace-replay: green, $want cases, 0 red: every plasticity-off trace replays bit for bit under QEMU riscv64gc"

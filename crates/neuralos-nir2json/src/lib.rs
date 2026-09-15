@@ -49,13 +49,23 @@
 //! Anything else is refused loudly with the node's name and kind —
 //! a recorded result, never a partial conversion.
 //!
+//! # Freeze
+//!
+//! [`freeze`] builds the converted graph with the library and writes the
+//! arrays a `FixedNetwork` steps, one module, with the trace of its drive
+//! on the host (README § Freeze; `--freeze` on the CLI).
+//!
 //! [`nir_import`]: neuralos_snn::nir::nir_import
 
 use std::fmt;
 use std::path::Path;
 
 use hdf5_pure::{DType, Dataset, File, Group, VlenStringReadOptions};
-use neuralos_snn::nir::{NirBuilder, NirError, NirImportOptions, NirLifParams, nir_export};
+use neuralos_snn::fixed::{freeze as freezer, row};
+use neuralos_snn::nir::{
+    NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, nir_export,
+};
+use neuralos_snn::{FixedSynapse, VoltageResolution};
 
 /// Tool version (sidecar stamp).
 pub const TOOL_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -319,14 +329,7 @@ pub fn convert_file_opts(
     sim_units: bool,
 ) -> Result<Converted, ConvertError> {
     // Effective options: the transform forces the centi grid.
-    let effective = if sim_units {
-        neuralos_snn::nir::NirImportOptions::new(
-            opts.dt_us,
-            neuralos_snn::VoltageResolution::CentiMillivolt,
-        )
-    } else {
-        opts
-    };
+    let effective = effective_options(opts, sim_units);
     let f = File::open(path).map_err(|e| ConvertError::Open(format!("{}: {e}", path.display())))?;
     let root = f.root();
 
@@ -577,6 +580,203 @@ pub fn convert_file_opts(
     }
 }
 
+/// The import options a conversion runs under: `opts`, or under
+/// `--sim-units` the same time step on the centi-mV grid, which the
+/// transform forces. `--freeze` builds the network under the same.
+#[must_use]
+pub fn effective_options(opts: NirImportOptions, sim_units: bool) -> NirImportOptions {
+    if sim_units {
+        NirImportOptions::new(opts.dt_us, VoltageResolution::CentiMillivolt)
+    } else {
+        opts
+    }
+}
+
+/// What `--freeze` writes (README § Freeze): one module of arrays and the
+/// trace of its drive on the host.
+#[derive(Debug)]
+pub struct Frozen {
+    /// One `pub mod`: the arrays a `FixedNetwork<N, S>` steps, written by
+    /// the library's freezer (`neuralos_snn::fixed::freeze::module`).
+    pub module: String,
+    /// `neuralos-trace v1`: the module's header line, then one row per
+    /// step, each written by `neuralos_snn::fixed::row`.
+    pub trace: String,
+    /// The network's neurons.
+    pub neurons: usize,
+    /// The network's synapses.
+    pub synapses: usize,
+}
+
+/// Everything that stops `--freeze`, each nameable in one line.
+#[derive(Debug)]
+pub enum FreezeError {
+    /// The converted JSON does not import: this tool wrote it, so the
+    /// fault is the tool's, not the stranger's.
+    Import(String),
+    /// The graph does not assemble: the library's named refusal
+    /// (`build_network`), e.g. a readout to Output or no LIF at all.
+    Assembly(String),
+    /// More neurons than a `u16` id holds.
+    TooManyNeurons(usize),
+    /// Plasticity on: a `FixedNetwork` has none (never, from NIR:
+    /// `build_network` freezes it).
+    Plasticity,
+    /// `--input` does not give one value per input feature.
+    Input { given: usize, features: usize },
+}
+
+impl fmt::Display for FreezeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Import(m) => write!(f, "the converted JSON does not import: {m}"),
+            Self::Assembly(m) => write!(f, "the graph does not assemble: {m}"),
+            Self::TooManyNeurons(n) => write!(
+                f,
+                "{n} neurons: a FixedNetwork neuron id is a u16, at most 65,535"
+            ),
+            Self::Plasticity => write!(f, "plasticity is on: a FixedNetwork has none"),
+            Self::Input { given, features } => write!(
+                f,
+                "--input gives {given} values; the graph has {features} input features, one value each"
+            ),
+        }
+    }
+}
+
+/// Rust's keywords, strict and reserved: no module takes their name.
+const KEYWORDS: &[&str] = &[
+    "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "crate",
+    "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "gen", "if", "impl",
+    "in", "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub", "ref",
+    "return", "self", "static", "struct", "super", "trait", "true", "try", "type", "typeof",
+    "unsafe", "unsized", "use", "virtual", "where", "while", "yield",
+];
+
+/// The module name `--freeze` gives a file stem: the stem lowercased,
+/// every character but an ASCII letter, digit or `_` made `_`. `None`
+/// when that is no identifier: empty, a digit first, `_` alone, or a
+/// keyword.
+#[must_use]
+pub fn module_name(stem: &str) -> Option<String> {
+    let name: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let starts_well = name.starts_with(|c: char| c.is_ascii_lowercase() || c == '_');
+    (starts_well && name != "_" && !KEYWORDS.contains(&name.as_str())).then_some(name)
+}
+
+/// Freeze a converted graph: import `json` under `opts` (the
+/// conversion's own, [`effective_options`]), build it (`build_network`),
+/// and write one module named `name` (a [`module_name`]) holding its
+/// arrays, `kind=stranger` in its header, and its drive: one run of
+/// `steps` steps of the currents the graph's encoder gives for `input`,
+/// one value per input feature in Input order, `None` meaning 1 for every
+/// feature. With it, the trace of that run on the host.
+///
+/// The trace is the std network's, plasticity off, the network
+/// `FixedNetwork::try_from` would convert, each row written by
+/// `neuralos_snn::fixed::row`. The fixed step equals the std step on
+/// every plasticity-off network (the library's trace tests), and this
+/// crate's test builds the module and steps it to the same rows.
+///
+/// # Errors
+///
+/// Every [`FreezeError`].
+///
+/// # Panics
+///
+/// Never: an assembled network steps, and a `String` takes every write.
+pub fn freeze(
+    json: &[u8],
+    opts: NirImportOptions,
+    name: &str,
+    steps: u32,
+    input: Option<&[i16]>,
+) -> Result<Frozen, FreezeError> {
+    let graph = NirImport::from_json(json, opts).map_err(|e| FreezeError::Import(e.to_string()))?;
+    // one LIF record per neuron; a FixedNetwork's neuron ids are u16
+    if graph.lifs.len() > usize::from(u16::MAX) {
+        return Err(FreezeError::TooManyNeurons(graph.lifs.len()));
+    }
+    let (mut net, enc, _report) = graph
+        .build_network()
+        .map_err(|e| FreezeError::Assembly(e.to_string()))?;
+    if net.plasticity_enabled() {
+        return Err(FreezeError::Plasticity);
+    }
+
+    let features: usize = (0..enc.input_count()).map(|i| enc.input_features(i)).sum();
+    let values = match input {
+        Some(v) if v.len() != features => {
+            return Err(FreezeError::Input {
+                given: v.len(),
+                features,
+            });
+        }
+        Some(v) => v.to_vec(),
+        None => vec![1; features],
+    };
+    let mut per_input: Vec<&[i16]> = Vec::with_capacity(enc.input_count());
+    let mut rest = values.as_slice();
+    for i in 0..enc.input_count() {
+        let (this, others) = rest.split_at(enc.input_features(i));
+        per_input.push(this);
+        rest = others;
+    }
+    let currents = enc.encode(&per_input);
+
+    // the time step is the options': build_network builds the network at
+    // opts.dt_us
+    let header = format!(
+        "# neuralos-trace v1 case={} kind=stranger n={} dt_us={} res={} plasticity=off divisor={} steps={steps} rows=all",
+        name.replace('_', "-"),
+        net.neuron_count(),
+        opts.dt_us,
+        match opts.resolution {
+            VoltageResolution::Millivolt => "mV",
+            VoltageResolution::CentiMillivolt => "cmV",
+        },
+        net.synaptic_input_divisor(),
+    );
+    let synapses = FixedSynapse::from_network(&net);
+    let module = freezer::module(
+        name,
+        net.neurons(),
+        &synapses,
+        opts.dt_us,
+        &header,
+        steps,
+        false,
+        &[(steps, currents.clone())],
+    );
+
+    let mut trace = format!("{header}\n");
+    let mut fired = vec![false; net.neurons().len()];
+    for step in 0..steps {
+        let time_us = net.current_time_us();
+        let spikes = net.step(&currents).expect("an assembled network steps");
+        fired.fill(false);
+        for spike in spikes {
+            fired[usize::from(spike.neuron_id)] = true;
+        }
+        row(&mut trace, step, time_us, &fired, net.neurons()).expect("a String takes every write");
+    }
+    Ok(Frozen {
+        module,
+        trace,
+        neurons: net.neurons().len(),
+        synapses: synapses.len(),
+    })
+}
+
 fn resolution_name(opts: NirImportOptions) -> &'static str {
     match opts.resolution {
         neuralos_snn::VoltageResolution::Millivolt => "mv",
@@ -685,6 +885,22 @@ mod tests {
         match &err {
             ConvertError::UnsupportedNode { kind, .. } => assert_eq!(kind, "Affine"),
             other => panic!("expected UnsupportedNode, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn module_name_is_a_snake_case_identifier_or_none() {
+        assert_eq!(
+            module_name("two_lif_neurons").as_deref(),
+            Some("two_lif_neurons")
+        );
+        assert_eq!(
+            module_name("snnTorch-two.layer").as_deref(),
+            Some("snntorch_two_layer")
+        );
+        assert_eq!(module_name("_x").as_deref(), Some("_x"));
+        for bad in ["", "_", "2layer", "type", "mod", "crate"] {
+            assert_eq!(module_name(bad), None, "{bad:?}");
         }
     }
 
