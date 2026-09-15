@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@6f03e1b (PR #30 merged 2026-09-14 20:28 UTC: round 33, alpha.8 in the tree; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by round 34 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`), alpha.9 open · wrote-from: work/two-layers, round 34 (PR G, alpha.9 opens: five commits), not pushed; the per-commit loop runs over the five before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, one fresh Fable review (tier 2), the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@74712ee (PR #31 merged 2026-09-15 12:26 UTC: round 34, PR G, alpha.9 opens; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by round 34 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`), alpha.9 open · wrote-from: work/one-command, round 35 (PR H, the one command: five commits), not pushed; the per-commit loop runs over the five before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): the board's captures at head (commit 3), the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, one fresh Fable review (tier 2), the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-14T17:00:27Z
+updated: 2026-09-15T15:00:21Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 

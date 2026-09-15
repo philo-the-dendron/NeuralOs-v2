@@ -35,6 +35,7 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `board-r32-network.log` | the sixth entry (ISA round 32, 2026-09-14): the firmware with the network arm and the twelve replays of the frozen traces, built by `build.sh` on 1.98.1 from that entry's sources (ELF `ab7612df…`), 20 s after reset (§ Sixth entry) |
 | `board-r33-alpha8.log` | the seventh entry (ISA round 33, 2026-09-14): the sixth entry's firmware source under the version `0.1.0-alpha.8`, built by `build.sh` on 1.98.1 at 6ddf774 (ELF `a7be3286…`), 20 s after reset (§ Seventh entry) |
 | `host-bench-r33-alpha8.log` | round 33's rider: the host spike-path bench, the alpha.7 tree (a974b9e) against the alpha.8 tree (6ddf774), both built on 1.98.1, three rounds in rotated order, the per-round medians appended by the run itself (§ Host bench, round 33) |
+| `board-r35-base.log` | the eighth entry (ISA round 35, 2026-09-15): the firmware at `74712ee`, PR G's two D8 cases in its replay, built by `build.sh` on 1.98.1 in the main clone (ELF `690024f9…`), 20 s after reset (§ Eighth entry) |
 | `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../tools/esp32c3_trace_diff.py` | the replay diff: every plasticity-off trace of `crates/neuralos-snn/tests/traces/` against its case in a capture, one line per case (§ Sixth entry) |
@@ -715,6 +716,50 @@ faster, and its slowest round (15.274) is below alpha.7's fastest
 cover; not read further. Alpha.6 is not in this run, so round 27's cost
 against it (§ Host bench, round 30) is not re-measured here.
 
+## Eighth entry: round 35, the base and the slot (2026-09-15)
+
+Same SuperMini (MAC `70:af:09:07:f6:3c`, esp32c3 revision v0.4), same
+port, same tool, 20 s after reset, each ELF built and flashed from the
+main clone (a worktree's `.text` diverges at identical source, § Fourth
+entry). Why this entry exists: PR G (ISA round 34) added two cases to
+the frozen set the firmware replays, the D8 witnesses
+`snntorch-two-layer` and `two-lif-neurons`, and moved the `.text` at
+its commits 2 and 3 with no board read; PR H (ISA round 35) adds the
+slot for a stranger's graph and the one command that fills it.
+
+Base: `build.sh` at `74712ee` on 1.98.1 in the main clone: ELF
+`690024f9…`, `.text` `6f8ec538…` → `701490cf…` (§ Rebuild + run), the
+figure PR G's close-out predicted, reproduced before the flash; the
+gate 0 hits, the trim-paths canary still unstable on 1.98.1 (exit
+101). Flashed from a copy of that ELF, `board-r35-base.log`, 53,561
+bytes. As in the sixth and seventh entries, the capture holds two
+boots: it opens with the tail of the boot that followed the flash (a
+bootloader line spliced into the banner, both neuron arms), cut by the
+capture's reset during that boot's network arm, no trace line in it,
+then the full run. Every figure below is from after the `rst:` line.
+
+| Measurement | Round 33 (alpha.8) | Round 35, base (`74712ee`) |
+|---|---|---|
+| Burst, pinned arm | 15,767 µs → 1,576 ns/step | 15,709 µs → **1,570 ns/step** |
+| Burst, free arm | 3,672 µs → 367 ns/step | 3,610 µs → 361 ns/step |
+| Burst spikes, first spike step, checksum, both neuron arms | 147, 55, `0b78b456` | 147, 55, `0b78b456` |
+| Burst, network arm (8 neurons, 6 synapses a step) | 140,586 µs → 14,058 ns/step | 141,007 µs → **14,100 ns/step** |
+| Network arm: spikes, first spike step, checksum | 3,377, 5, `7e700ee1` | 3,377, 5, `7e700ee1` |
+| First spike, real-time loop | step 57, 57,139 µs | step 56, 56,169 µs |
+| Spikes after the reset | 290 | 289 |
+
+The gates hold. The three arms keep their fold, and
+`python3 tools/esp32c3_trace_diff.py evidence/esp32c3-bringup/board-r35-base.log`
+prints the fourteen plasticity-off cases identical, the twelve with the
+sixth entry's row counts and the two D8 witnesses with 150 rows each,
+the end line present, `14 cases, 0 red`: PR G's two cases replay bit
+for bit on the chip, the part of check 2 its tick left to this round.
+The arms are reported, not gated: against round 33 the pinned burst is
+58 µs faster per 10,000 steps, the free 62 µs faster, the network arm
+421 µs slower (+42 ns per step, +0.3 %), on a `.text` that PR G moved;
+not read further. The real-time loop is reported, not gated: its first
+spike lands at step 56, with 289 spikes in the window.
+
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
 ```bash
@@ -751,6 +796,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   61639145c30824f334785f1bd11b88ba60aabe9fee4763dd2514b151b2bb46a1  round 31, the recorder (build.sh at d3adc5b on 1.98.1, main clone: the neuron without its ring, the firmware source unchanged; ISA round 31)
 #   b5351531a8765a5a2aadd41132d64abe366d6115d2137ca9293ae3dab2ec1643  round 32, the network (build.sh on 1.98.1, main clone, from the sixth entry's sources: the network arm and the twelve replays; ISA round 32)
 #   6f8ec5385617a1345d251591d237a77718eed1952686d7ab50a5ca0962a06a77  round 33, the version (build.sh at 6ddf774 on 1.98.1, main clone: the sixth entry's sources under 0.1.0-alpha.8; ISA round 33)
+#   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 34, D8 and the row writer (build.sh at 74712ee on 1.98.1, main clone)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -774,7 +820,9 @@ with the network arm and the replays, on the spine with
 `FixedNetwork`, built from the sixth entry's sources in the main clone
 (§ Sixth entry). The ninth is those sources under the version
 `0.1.0-alpha.8`, built at 6ddf774 in the main clone (§ Seventh entry):
-no source changed, and the `.text` did.
+no source changed, and the `.text` did. The tenth is round 34's tree,
+the row writer in the library and PR G's two D8 cases in the replay,
+built at 74712ee in the main clone (§ Eighth entry).
 
 ### Release asset (the procedure since round 26)
 

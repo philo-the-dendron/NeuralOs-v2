@@ -1793,6 +1793,12 @@ mod std_assembly {
     /// step's `weight / 10` is `trunc(trunc(q/10)/10) = trunc(q/100)`
     /// for every i16 `q` (truncation toward zero composes; pinned over
     /// all 65,536 values), which `FixedSynapse::from_network` carries.
+    /// The band: a `q` with `0 < |q| < LINEAR_GAIN_DIVISOR` still makes
+    /// its synapse, which delivers 0 μA (its std weight is already 0
+    /// under 10), kept on purpose, since an input feature of 1 through
+    /// the same `q` gives 0 μA too and the nonzero composed weights are
+    /// the graph's topology, which the visualizer draws and STDP moves
+    /// but never adds to.
     ///
     /// The grid: D1's rule extends to it. A graph with a LIF→Linear
     /// edge assembles only under `CentiMillivolt` import options;
@@ -1802,7 +1808,10 @@ mod std_assembly {
     /// met by any Linear a spike reaches that has an Output successor,
     /// whatever its other successors (an Input-rooted Linear with an
     /// Output beside its LIF stays legal, decoration as before D8);
-    /// `Input→LIF` (direct drive); encoder-only graphs.
+    /// `Input→LIF` (direct drive); encoder-only graphs. Open beside
+    /// them: whether the freeze drops the band's zero-pulse synapses,
+    /// check 8's (`docs/ROADMAP.md` § 0.1.0), answered with a number in
+    /// PR I.
     pub const LINEAR_GAIN_DIVISOR: i16 = 100;
 
     /// D8's std weight divisor: [`LINEAR_GAIN_DIVISOR`] over the
