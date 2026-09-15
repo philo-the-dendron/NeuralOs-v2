@@ -27,12 +27,12 @@ stranger can run each one. This list is their one home; a tick names
 the PR that made the check hold, as of this tree.
 
 1. [x] Traces from today's network; CI replays them on host, QEMU at release. (Host: CI, PR B, #26. QEMU: PR F, #30, `proofs/qemu-trace-replay/`, the twelve plasticity-off traces bit for bit; PR G, #31, the fourteen, through the library's row writer.)
-2. [x] `FixedNetwork` replays them bit for bit on the ESP32-C3. (PR E, #29: twelve of thirteen; `plasticity-on` is outside `FixedNetwork` by design. PR G's two cases, the D8 witnesses, replay on the board in PR H.)
+2. [x] `FixedNetwork` replays them bit for bit on the ESP32-C3. (PR E, #29: twelve of thirteen; `plasticity-on` is outside `FixedNetwork` by design. PR H, #32: the fourteen on the board, PR G's two D8 witnesses among them.)
 3. [x] No panic path in the step, proven at link time. (PR E, #29.)
 4. [x] No spike ring in the neuron; history is a recorder. (PR D, #28.)
 5. [x] MSRV declared and tested on the bumped pin. (PR C, #27: `rust-version` 1.92 checked on 1.92.0 in CI, three configurations.)
 6. [x] A two-layer snnTorch, norse or rockpool graph builds (LIF→Linear→LIF). (PR G, #31: a two-layer snnTorch graph builds.)
-7. [ ] `.nir` → fixed arrays → firmware, one documented command. (arrays: PR G; firmware: open.)
+7. [x] `.nir` → fixed arrays → firmware, one documented command. (Arrays: PR G, #31. PR H, #32: `stranger.sh run` on the snnTorch witness, fifteen cases bit for bit.)
 8. [ ] Worst case from capacity, measured at that case on the C3.
 9. [ ] STDP behind an unstable feature.
 10. [ ] The README's first example is a real doctest; `missing_docs` on.
@@ -163,7 +163,9 @@ displace substrate + lab bench + gated research.
    `bringup-2026-09-09` (published 2026-09-10, ISA round-21); outreach
    is the principal's call.
    The network on the chip ran in round 32 (PR E, `FixedNetwork`,
-   `evidence/esp32c3-bringup/` § Sixth entry). Next board work (a
+   `evidence/esp32c3-bringup/` § Sixth entry). A stranger's `.nir`
+   reaches it by one command since round 35 (PR H,
+   `firmware/esp32c3/stranger.sh`, § Eighth entry). Next board work (a
    hardware timer instead of the busy-wait) is not opened here. Three
    spare boards in the bag (a 4-pack, one used).
 6. Lock-free ports (A-extension targets only — re-scoped above) — the
