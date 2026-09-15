@@ -14,7 +14,16 @@ not a shorter compare. Any capture with the headers and the end line
 reads the same way, the C3's or QEMU's (proofs/qemu-trace-replay/, the
 same replay on riscv64gc).
 
-usage: tools/esp32c3_trace_diff.py LOG
+`--trace FILE`, repeatable, adds a trace from outside the tree to the
+set: a stranger's graph in the firmware's slot (firmware/esp32c3/
+stranger.sh), replayed after the frozen cases, whose trace
+`neuralos-nir2json --freeze` wrote. Its header must say plasticity=off
+and must not be in the set already. Two files with one header, in the
+tree or given, are a usage error, never one case silently standing for
+two. The last line counts every case of the set.
+
+usage: tools/esp32c3_trace_diff.py [--trace FILE]... LOG
+Exit: 0 every case identical · 1 a difference · 2 usage.
 Standard library only.
 """
 import sys
@@ -23,6 +32,7 @@ from pathlib import Path
 TRACES = Path(__file__).resolve().parent.parent / "crates/neuralos-snn/tests/traces"
 HEAD = "# neuralos-trace v1 case="
 END = "# neuralos-trace end"
+USAGE = "usage: tools/esp32c3_trace_diff.py [--trace FILE]... LOG"
 
 
 def lines_of(text):
@@ -33,20 +43,49 @@ def lines_of(text):
     return lines
 
 
+def usage(why):
+    """A usage error: the reason and the usage line, exit 2."""
+    print(f"esp32c3_trace_diff: {why}", file=sys.stderr)
+    print(USAGE, file=sys.stderr)
+    return 2
+
+
 def main():
-    if len(sys.argv) != 2:
-        print("usage: tools/esp32c3_trace_diff.py LOG", file=sys.stderr)
-        return 2
-    log = lines_of(Path(sys.argv[1]).read_bytes().decode("utf-8", errors="replace"))
+    args, given, logs = sys.argv[1:], [], []
+    while args:
+        arg = args.pop(0)
+        if arg == "--trace":
+            if not args:
+                return usage("--trace needs FILE")
+            given.append(Path(args.pop(0)))
+        elif arg.startswith("--"):
+            return usage(f"unknown flag {arg}")
+        else:
+            logs.append(arg)
+    if len(logs) != 1:
+        return usage("one LOG")
+    log = lines_of(Path(logs[0]).read_bytes().decode("utf-8", errors="replace"))
 
     cases = {}
     for path in sorted(TRACES.glob("*.trace")):
         lines = lines_of(path.read_text())
         if lines and " plasticity=off " in lines[0]:
+            if lines[0] in cases:
+                return usage(f"{path.stem} and {cases[lines[0]][0]} share one header: {lines[0]}")
             cases[lines[0]] = (path.stem, lines)
     if not cases:
         print(f"no plasticity-off trace in {TRACES}", file=sys.stderr)
         return 1
+    for path in given:
+        try:
+            lines = lines_of(path.read_text())
+        except OSError as e:
+            return usage(f"--trace {path}: {e}")
+        if not lines or not lines[0].startswith(HEAD) or " plasticity=off " not in lines[0]:
+            return usage(f"--trace {path}: not a plasticity-off trace header")
+        if lines[0] in cases:
+            return usage(f"--trace {path}: its header is already in the set ({cases[lines[0]][0]})")
+        cases[lines[0]] = (path.stem, lines)
 
     heads = [i for i, line in enumerate(log) if line.startswith(HEAD)]
     ends = [i for i, line in enumerate(log) if line == END]

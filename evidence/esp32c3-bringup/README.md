@@ -797,6 +797,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   b5351531a8765a5a2aadd41132d64abe366d6115d2137ca9293ae3dab2ec1643  round 32, the network (build.sh on 1.98.1, main clone, from the sixth entry's sources: the network arm and the twelve replays; ISA round 32)
 #   6f8ec5385617a1345d251591d237a77718eed1952686d7ab50a5ca0962a06a77  round 33, the version (build.sh at 6ddf774 on 1.98.1, main clone: the sixth entry's sources under 0.1.0-alpha.8; ISA round 33)
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 34, D8 and the row writer (build.sh at 74712ee on 1.98.1, main clone)
+#   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 35, the slot (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line: round 34's .text, unmoved)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -822,7 +823,11 @@ with the network arm and the replays, on the spine with
 `0.1.0-alpha.8`, built at 6ddf774 in the main clone (§ Seventh entry):
 no source changed, and the `.text` did. The tenth is round 34's tree,
 the row writer in the library and PR G's two D8 cases in the replay,
-built at 74712ee in the main clone (§ Eighth entry).
+built at 74712ee in the main clone (§ Eighth entry). The eleventh is
+the slot, the default build of the commit that adds it: the same
+`.text` as the tenth, where a move was expected, since the replay's
+case became a path and the stranger's include is cfg-stripped; the two
+compile to the same code (§ Eighth entry).
 
 ### Release asset (the procedure since round 26)
 

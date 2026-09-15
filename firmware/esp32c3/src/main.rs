@@ -21,10 +21,11 @@
 //!    numbers on the host (the network arm).
 //! 3. replay: every frozen case (`for_each_frozen!`), its trace's header
 //!    line, then its rows through the library's writer
-//!    (`neuralos_snn::fixed::row`) into
-//!    `esp_println::Printer`, then one end line, `# neuralos-trace end`.
+//!    (`neuralos_snn::fixed::row`) into `esp_println::Printer`; then, in
+//!    a build that names a stranger's graph (the slot, below), that graph
+//!    the same way; then one end line, `# neuralos-trace end`.
 //!    `tools/esp32c3_trace_diff.py` diffs a capture against
-//!    `tests/traces/`.
+//!    `tests/traces/`, and against the stranger's trace with `--trace`.
 //! 4. loop: one step every `DT_US`, paced by a busy-wait delay (no hardware
 //!    timer peripheral yet); the LED toggles and a line is printed on each
 //!    spike
@@ -54,7 +55,11 @@
 //! the trim-paths canary (`tools/remap.sh` carries the why; target from
 //! `.cargo/config.toml`, linker script from `build.rs`). Flash + monitor:
 //! `cargo run --release`, a plain dev build with no remap; a release asset
-//! comes from `build.sh` only (evidence README § Release asset).
+//! comes from `build.sh` only (evidence README § Release asset). The
+//! stranger slot: `build.rs` reads `NEURALOS_GRAPH`, the path of a
+//! `neuralos-nir2json --freeze` module, and adds it to the replay
+//! (`cfg(stranger)`; the rules are in its header); unset, the build is the
+//! default one.
 
 #![no_std]
 #![no_main]
@@ -77,6 +82,18 @@ use neuralos_snn::FixedNetwork;
 #[rustfmt::skip]
 #[path = "../../../crates/neuralos-snn/tests/traces/frozen.rs"]
 mod frozen;
+
+// The stranger slot: a `neuralos-nir2json --freeze` module, in a build
+// that names one in NEURALOS_GRAPH. build.rs copies it into OUT_DIR as
+// graph.rs with one line more, `pub use self::<name> as graph;`, and sets
+// `cfg(stranger)` (its header carries the rules). The allow is the one
+// frozen.rs carries and the freezer's module does not: the replay reads
+// only the constants it needs.
+#[cfg(stranger)]
+#[allow(dead_code)]
+mod stranger {
+    include!(concat!(env!("OUT_DIR"), "/graph.rs"));
+}
 
 /// The network arm's drive: `feedforward-8`'s, one constant run, read
 /// from the frozen arrays at compile time.
@@ -231,13 +248,15 @@ fn main() -> ! {
     report("network", elapsed_us, spikes, first_spike_step, checksum);
 
     // 3. The replays: every frozen case, its header line, then its rows
-    //    through the library's writer, then the end line, all before the
-    //    loop below, whose spike lines would otherwise land in the last
-    //    case. tools/esp32c3_trace_diff.py compares them with the host's
-    //    files.
+    //    through the library's writer; then the stranger's graph, in a
+    //    build that names one; then the end line, all before the loop
+    //    below, whose spike lines would otherwise land in the last case.
+    //    tools/esp32c3_trace_diff.py compares them with the host's files.
+    //    The case is a path, so one loop serves both: for_each_frozen!
+    //    passes a name, which replay_frozen! makes a path into frozen.
     macro_rules! replay {
-        ($case:ident) => {{
-            use frozen::$case as c;
+        ($case:path) => {{
+            use $case as c;
             println!("{}", c::HEADER);
             let mut net = FixedNetwork::new(c::NEURONS, c::SYNAPSES, c::DT_US);
             let mut fired = [false; c::N];
@@ -255,7 +274,14 @@ fn main() -> ! {
             }
         }};
     }
-    frozen::for_each_frozen!(replay);
+    macro_rules! replay_frozen {
+        ($case:ident) => {
+            replay!(frozen::$case)
+        };
+    }
+    frozen::for_each_frozen!(replay_frozen);
+    #[cfg(stranger)]
+    replay!(stranger::graph);
     println!("# neuralos-trace end");
 
     // 4. Real-time loop: one step per DT_US of wall time. now_us wraps at
