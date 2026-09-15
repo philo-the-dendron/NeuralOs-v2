@@ -28,7 +28,7 @@ the diff's last line and its exit code:
 
 ```text
 <case>: identical, <rows> rows     one line per case: the library's, then yours
-<stem>: identical, <rows> rows
+<stem> (given): identical, <rows> rows
 <N> cases, 0 red
 ```
 
@@ -51,6 +51,16 @@ not a measured stack, provisional until check 8 of `docs/ROADMAP.md`
 § 0.1.0: the formula counts the arrays alone, and the number is the
 QEMU harness's stack line, not the chip's. The script's header has the
 rest.
+
+The two graphs at the corners of a byte count, the most neurons and
+the most synapses under it, regenerate through snnTorch's own exporter
+in the repo's `.nirenv` (`tools/gen_snnTorch_corner.py`; its docstring
+derives the sizes):
+
+```bash
+.nirenv/bin/python3 tools/gen_snnTorch_corner.py neurons <bytes> firmware/esp32c3/target/stranger/neurons.nir
+.nirenv/bin/python3 tools/gen_snnTorch_corner.py dense <bytes> firmware/esp32c3/target/stranger/dense.nir
+```
 
 ## The default firmware
 

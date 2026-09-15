@@ -18,9 +18,11 @@ same replay on riscv64gc).
 set: a stranger's graph in the firmware's slot (firmware/esp32c3/
 stranger.sh), replayed after the frozen cases, whose trace
 `neuralos-nir2json --freeze` wrote. Its header must say plasticity=off
-and must not be in the set already. Two files with one header, in the
-tree or given, are a usage error, never one case silently standing for
-two. The last line counts every case of the set.
+and must not be in the set already; a file that does not read as text
+is a usage error too. Two files with one header, in the tree or given,
+are a usage error, never one case silently standing for two. A given
+trace prints as `<stem> (given)`, so a stem that matches a tree case
+never reads as a duplicate. The last line counts every case of the set.
 
 usage: tools/esp32c3_trace_diff.py [--trace FILE]... LOG
 Exit: 0 every case identical · 1 a difference · 2 usage.
@@ -79,13 +81,13 @@ def main():
     for path in given:
         try:
             lines = lines_of(path.read_text())
-        except OSError as e:
+        except (OSError, UnicodeDecodeError) as e:
             return usage(f"--trace {path}: {e}")
         if not lines or not lines[0].startswith(HEAD) or " plasticity=off " not in lines[0]:
             return usage(f"--trace {path}: not a plasticity-off trace header")
         if lines[0] in cases:
             return usage(f"--trace {path}: its header is already in the set ({cases[lines[0]][0]})")
-        cases[lines[0]] = (path.stem, lines)
+        cases[lines[0]] = (f"{path.stem} (given)", lines)
 
     heads = [i for i, line in enumerate(log) if line.startswith(HEAD)]
     ends = [i for i, line in enumerate(log) if line == END]
