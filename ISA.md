@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@74712ee (PR #31 merged 2026-09-15 12:26 UTC: round 34, PR G, alpha.9 opens; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by round 34 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`), alpha.9 open · wrote-from: work/one-command, round 35 (PR H, the one command: five commits), not pushed; the per-commit loop runs over the five before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): the board's captures at head (commit 3), the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, one fresh Fable review (tier 2), the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@74712ee (PR #31 merged 2026-09-15 12:26 UTC: round 34, PR G, alpha.9 opens; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 and 35 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7), alpha.9 open · wrote-from: work/one-command, round 35 (PR H, the one command: six commits), not pushed; the per-commit loop runs over the six before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, one fresh Fable review (tier 2), the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-15T15:00:21Z
+updated: 2026-09-15T15:57:24Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9372,5 +9372,35 @@ message keeps its reason; `--freeze` writes the options' `dt_us`
 commit 3 carries it. The principal's answers: the mixed Linear after a
 LIF takes the readout message, an Input-rooted one stays legal; VISION
 item 6 takes its final period; `--freeze`'s trace steps the std network.
+**Guards.** GUARD 1: appended; head line refreshed. GUARD 2: no verdict
+touched. GUARD 3: nothing public.
+
+## Close-out (round 35 — PR H, the one command: a stranger's `.nir` on the ESP32-C3, the slot, the board, check 7 — 2026-09-15)
+
+Branch `work/one-command` from `main@74712ee`, tier 2, six commits,
+the brief as the PR description: `536cbf7` the head line, D8's band,
+the base read (`701490cf…` reproduced, 14 cases, 0 red); `59eb56b` the
+slot (`build.rs`, `NEURALOS_GRAPH`), the replay's path argument,
+`--trace` and the doubled-header refusal; `12c032c` `stranger.sh`, the
+firmware README, the CI and per-commit legs; `5fe9a99` head and
+stranger on the board (14 and 15 cases, 0 red), check 7; `e5d3125`
+clippy's `large_const_arrays` allowed in the slot; this close-out.
+Checks holding: 1 to 7, 13, 14. Record-only: the zero-pulse band is
+documented, its drop check 8's; both D8 traces read membrane 0 on every
+row, so they pin spike timing, not the integration arithmetic, and "bit
+for bit" holds because equality is what is gated; `drive_linears`
+counts the LIF-rooted Linear, so the D6 note fires on every two-layer
+graph, as documented; PR G moved the `.text` to `701490cf…`, reproduced
+at `74712ee` and read on the board; the capacity bar is a floor with
+the QEMU harness's number, replaced by PR I's measurement; the witness
+under the default drive alternates lif1 and lif2 on even and odd steps,
+75 spikes each; the slot left the default `.text` unmoved where the
+brief expected a move. Deviations: a sixth commit (the principal's
+call: a 400-neuron module under the floor failed clippy at 16,384 B);
+`#[allow(dead_code)]` on `mod stranger` (without it `STEPS` stops
+`-D warnings`); a two-line `replay_frozen!`, since `for_each_frozen!`
+passes names; the converter runs from the root, since the firmware's
+cargo config targets the chip; AGENTS § Commands gains the stranger
+line (the principal's word); #32 assumed for check 7 until the PR opens.
 **Guards.** GUARD 1: appended; head line refreshed. GUARD 2: no verdict
 touched. GUARD 3: nothing public.
