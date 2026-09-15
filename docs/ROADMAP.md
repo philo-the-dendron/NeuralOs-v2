@@ -33,7 +33,7 @@ the PR that made the check hold, as of this tree.
 5. [x] MSRV declared and tested on the bumped pin. (PR C, #27: `rust-version` 1.92 checked on 1.92.0 in CI, three configurations.)
 6. [x] A two-layer snnTorch, norse or rockpool graph builds (LIF→Linear→LIF). (PR G, #31: a two-layer snnTorch graph builds.)
 7. [x] `.nir` → fixed arrays → firmware, one documented command. (Arrays: PR G, #31. PR H, #32: `stranger.sh run` on the snnTorch witness, fifteen cases bit for bit.)
-8. [ ] Worst case from capacity, measured at that case on the C3.
+8. [x] Worst case from capacity, measured at that case on the C3. (PR I, #33: the two corners of `44·N + 6·S ≤ 262,144` on the board, 0 red; the worst case measured, the neuron corner, 5,850,980 ns/step mean; all-to-all computed at 5,313,354 ns.)
 9. [ ] STDP behind an unstable feature.
 10. [ ] The README's first example is a real doctest; `missing_docs` on.
 11. [ ] Rustdoc states rounding, saturation, reset, leak, step order; delay is the edge's.
@@ -165,7 +165,10 @@ displace substrate + lab bench + gated research.
    The network on the chip ran in round 32 (PR E, `FixedNetwork`,
    `evidence/esp32c3-bringup/` § Sixth entry). A stranger's `.nir`
    reaches it by one command since round 35 (PR H,
-   `firmware/esp32c3/stranger.sh`, § Eighth entry). Next board work (a
+   `firmware/esp32c3/stranger.sh`, § Eighth entry). Capacity is
+   measured since round 36 (PR I, § Ninth entry): the bar
+   `44·N + 6·S ≤ 262,144`, both of its corners bit for bit on the
+   board, the stack's high-water mark in every capture. Next board work (a
    hardware timer instead of the busy-wait) is not opened here. Three
    spare boards in the bag (a 4-pack, one used).
 6. Lock-free ports (A-extension targets only — re-scoped above) — the

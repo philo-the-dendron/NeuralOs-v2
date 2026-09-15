@@ -99,9 +99,9 @@ mod frozen;
 // the one frozen.rs carries and the freezer's module does not: the replay
 // reads only the constants it needs. large_const_arrays: clippy refuses a
 // const array above 16,384 bytes (from 373 neurons), far inside
-// stranger.sh's capacity floor, and `FixedNetwork::new` takes the arrays
-// by value either way, so the floor stays the one bar (measured at 400
-// neurons).
+// stranger.sh's capacity bar, and `FixedNetwork::new` takes the arrays by
+// value either way, so the capacity bar stays the one limit (measured at
+// 400 neurons, and at the bar's two corners).
 #[cfg(stranger)]
 #[allow(dead_code, clippy::large_const_arrays)]
 mod stranger {
