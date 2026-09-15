@@ -250,6 +250,15 @@ jobs:
             else
               echo "(no firmware/esp32c3 at this commit)"
             fi
+            # The one command's build phase on the snnTorch witness
+            # (firmware/esp32c3/stranger.sh, PR H; the stranger clippy
+            # rides it), guarded like the firmware leg, so commits before
+            # the script stay valid.
+            if [ -f firmware/esp32c3/stranger.sh ]; then
+              firmware/esp32c3/stranger.sh build crates/neuralos-nir2json/tests/fixtures/community/snnTorch_two_layer.nir
+            else
+              echo "(no firmware/esp32c3/stranger.sh at this commit)"
+            fi
             # The no-panic proof (proofs/no-panic-step): its own workspace,
             # like the firmware, on the same chip target; guarded the same
             # way, so commits before the crate stay valid.
@@ -374,9 +383,14 @@ jobs:
           rustup target add riscv32imc-unknown-none-elf
           rustup component add llvm-tools
 
+      # The root workspace too, for stranger.sh's converter (pure Rust,
+      # hdf5-pure; the step below): cold once per lock change, warm
+      # otherwise.
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: firmware/esp32c3
+          workspaces: |
+            firmware/esp32c3
+            .
 
       # firmware/esp32c3 is its own workspace (proofs/ pattern): esp-hal
       # builds only for the chip target, so the root check job never sees
@@ -399,6 +413,14 @@ jobs:
       - name: build.sh clippy (firmware, same flags)
         working-directory: firmware/esp32c3
         run: ./build.sh clippy
+
+      # The one command's build phase (firmware/esp32c3/stranger.sh,
+      # ROADMAP § 0.1.0 check 7) on the snnTorch witness: the converter
+      # from the root workspace, the capacity floor, then build.sh and
+      # build.sh clippy with the graph in the slot, in target/stranger/.
+      # Its `run` phase needs the board and stays on the bench.
+      - name: stranger.sh build (the witness through the slot, build + clippy)
+        run: firmware/esp32c3/stranger.sh build crates/neuralos-nir2json/tests/fixtures/community/snnTorch_two_layer.nir
 
       # The link-time proof that FixedNetwork::step has no panic path
       # (proofs/no-panic-step/build.sh carries the why): its own fmt, then
