@@ -8,7 +8,8 @@
 //!
 //! The fixed network is compared here too: `frozen.rs` regenerates line
 //! for line from `cases::freeze`; every frozen network, stepped from its
-//! arrays, writes its trace file's text through `row.rs`; every
+//! arrays, writes its trace file's text through the library's row
+//! writer, `neuralos_snn::fixed::row`; every
 //! plasticity-off case, converted by `FixedNetwork::try_from`, steps as
 //! the std network; and the frozen `feedforward-8` over 10,000 steps
 //! folds to the values the board's network arm must print.
@@ -22,10 +23,9 @@ mod cases;
 #[rustfmt::skip]
 #[path = "traces/frozen.rs"]
 mod frozen;
-#[path = "traces/row.rs"]
-mod row;
 
 use cases::{Case, Kind, Rows, CASES, DIR, FORMAT};
+use neuralos_snn::fixed::row;
 use neuralos_snn::{FixedNetwork, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
 
 /// The bench record of the firmware's neuron, `evidence/esp32c3-bringup/
@@ -335,7 +335,7 @@ fn every_frozen_network_writes_its_trace() {
                     let time_us = net.time_us();
                     net.step(&input, &mut fired);
                     if !c::SPIKES_ONLY || fired.contains(&true) {
-                        row::row(&mut text, step, time_us, &fired, net.neurons())
+                        row(&mut text, step, time_us, &fired, net.neurons())
                             .expect("a String takes every write");
                     }
                     step += 1;

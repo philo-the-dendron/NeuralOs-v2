@@ -26,13 +26,13 @@ with the host.
 stranger can run each one. This list is their one home; a tick names
 the PR that made the check hold, as of this tree.
 
-1. [x] Traces from today's network; CI replays them on host, QEMU at release. (Host: CI, PR B, #26. QEMU: PR F, #30, `proofs/qemu-trace-replay/`, the twelve plasticity-off traces bit for bit.)
-2. [x] `FixedNetwork` replays them bit for bit on the ESP32-C3. (PR E, #29: twelve of thirteen; `plasticity-on` is outside `FixedNetwork` by design.)
+1. [x] Traces from today's network; CI replays them on host, QEMU at release. (Host: CI, PR B, #26. QEMU: PR F, #30, `proofs/qemu-trace-replay/`, the twelve plasticity-off traces bit for bit; PR G, #31, the fourteen, through the library's row writer.)
+2. [x] `FixedNetwork` replays them bit for bit on the ESP32-C3. (PR E, #29: twelve of thirteen; `plasticity-on` is outside `FixedNetwork` by design. PR G's two cases, the D8 witnesses, replay on the board in PR H.)
 3. [x] No panic path in the step, proven at link time. (PR E, #29.)
 4. [x] No spike ring in the neuron; history is a recorder. (PR D, #28.)
 5. [x] MSRV declared and tested on the bumped pin. (PR C, #27: `rust-version` 1.92 checked on 1.92.0 in CI, three configurations.)
 6. [x] A two-layer snnTorch, norse or rockpool graph builds (LIF→Linear→LIF). (PR G, #31: a two-layer snnTorch graph builds.)
-7. [ ] `.nir` → fixed arrays → firmware, one documented command.
+7. [ ] `.nir` → fixed arrays → firmware, one documented command. (arrays: PR G; firmware: open.)
 8. [ ] Worst case from capacity, measured at that case on the C3.
 9. [ ] STDP behind an unstable feature.
 10. [ ] The README's first example is a real doctest; `missing_docs` on.

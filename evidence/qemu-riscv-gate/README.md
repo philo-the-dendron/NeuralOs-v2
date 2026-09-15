@@ -43,7 +43,8 @@ bare-metal. No libc overclaim in either direction.
 | `leg-a-alpha8.log` | Leg A re-run at the alpha.8 stamp (2026-09-14, `main@6f03e1b`), the same harness: 175/175 cited checks, `LEG A PASS`; two header lines prepended at PR G (§ Leg A) |
 | `leg-b.log` | Leg B full-suite run — 187 unit + 8 integration = 195/195 (matches host count), `cargo_test_exit=0`, wall clock |
 | `replay-alpha8.log` | the trace replay (round 33, 2026-09-14): the twelve plasticity-off traces stepped by `FixedNetwork` on bare-metal riscv64gc, as `proofs/qemu-trace-replay/build.sh` captured them from the UART; identical to the tree's files by `tools/esp32c3_trace_diff.py` (§ The trace replay) |
-| `SHA256SUMS` | pins the four logs and this README |
+| `replay-alpha9-g.log` | the trace replay re-run at PR G (round 34, 2026-09-14): the fourteen plasticity-off traces, the two D8 witnesses among them, every row written by the library's `neuralos_snn::fixed::row`; identical to the tree's files, `14 cases, 0 red` (§ The trace replay) |
+| `SHA256SUMS` | pins the five logs and this README |
 | `../../proofs/qemu-riscv-leg-a/` | the committed, rebuildable Leg A harness crate (standalone workspace; repo workspace untouched) |
 | `../../proofs/qemu-trace-replay/` | the trace replay's crate (standalone workspace, like Leg A's) and its `build.sh` |
 
@@ -148,7 +149,8 @@ Its `build.sh` builds the crate `--release --locked` on the pin
 `qemu-system-riscv64` 8.2.2 (`virt`, `-bios none`, a 120 s timeout),
 and diffs the capture with the board's tool,
 `tools/esp32c3_trace_diff.py`: green only on QEMU exit 0 and
-`12 cases, 0 red`. `replay-alpha8.log` is that capture (1,210 lines,
+`N cases, 0 red`, N the tree's plasticity-off traces, which the script
+counts (twelve at round 33, fourteen since PR G). `replay-alpha8.log` is that capture (1,210 lines,
 35,807 bytes), built from the sources of the commit that adds it: the
 twelve cases identical, with the board's row counts
 (`evidence/esp32c3-bringup/README.md` § Sixth entry), QEMU exit 0.
@@ -158,8 +160,14 @@ is not on the runner image, and Leg A is not one either; it runs by
 hand at a release round and is pinned. Check 1 of `docs/ROADMAP.md`
 § 0.1.0 rests on it.
 
+Re-run at PR G (round 34, 2026-09-14), `replay-alpha9-g.log` is the
+fourteen cases, 0 red, the two D8 witnesses added and every row written
+by the library's `neuralos_snn::fixed::row` (1,512 lines, 41,784 bytes,
+two runs the same bytes); `replay-alpha8.log` stays as pinned, the
+capture of round 33's tree.
+
 ```bash
 rustup target add riscv64gc-unknown-none-elf
 proofs/qemu-trace-replay/build.sh      # the capture into its target/replay.log, the diff, the verdict
-cmp proofs/qemu-trace-replay/target/replay.log evidence/qemu-riscv-gate/replay-alpha8.log
+cmp proofs/qemu-trace-replay/target/replay.log evidence/qemu-riscv-gate/replay-alpha9-g.log   # at the tree that added it; replay-alpha8.log at round 33's
 ```

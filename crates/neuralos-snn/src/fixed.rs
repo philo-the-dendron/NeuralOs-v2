@@ -16,16 +16,27 @@
 //! (`tests/traces/cases.rs`), and `tests/traces.rs` on every
 //! plasticity-off trace.
 //!
+//! A frozen network's rows go through [`row`], the one writer of a
+//! `neuralos-trace v1` row: the trace tests on the host, the ESP32-C3
+//! firmware and the QEMU replay. `freeze` (`std`) writes the arrays
+//! themselves as Rust source.
+//!
 //! # `no_std`
 //!
-//! No allocator, no dependency. `FixedSynapse::from_network` and the
-//! conversion read a `SpikingNeuralNetwork`, so they are `std`, as it is.
+//! No allocator, no dependency. `FixedSynapse::from_network`, the
+//! conversion and `freeze` read a `SpikingNeuralNetwork` or write a
+//! `String`, so they are `std`; [`row`] writes to any `core::fmt::Write`.
+
+use core::fmt::{self, Write};
 
 use crate::lif_neuron::LIFNeuron;
 #[cfg(feature = "std")]
 use crate::network::SpikingNeuralNetwork;
 #[cfg(feature = "std")]
 use crate::{Error, Result};
+
+#[cfg(feature = "std")]
+pub mod freeze;
 
 /// One synapse of a [`FixedNetwork`]: a spike of `pre` adds `pulse_ua` to
 /// the synaptic current of `post`, which `post`'s next step integrates.
@@ -213,6 +224,45 @@ impl<const N: usize, const S: usize> TryFrom<&SpikingNeuralNetwork> for FixedNet
             time_us: net.current_time_us(),
         })
     }
+}
+
+/// One row of `neuralos-trace v1` (the library's `tests/traces/cases.rs`),
+/// its newline included: `<step> <time_us> | <ids of the neurons that
+/// fired, ascending> | <membrane of every neuron>`, all decimal, nothing
+/// between the bars when no neuron fired. The one writer of a frozen
+/// network's rows: the trace tests write them into a `String`, the
+/// ESP32-C3 firmware and the QEMU replay to a serial port.
+///
+/// Provisional until the pub walk.
+///
+/// # Errors
+///
+/// When the writer refuses a write.
+// The body of the trace tests' `row.rs`, moved verbatim: `sep` beside
+// `step`.
+#[allow(clippy::similar_names)]
+pub fn row(
+    out: &mut impl Write,
+    step: u32,
+    time_us: u32,
+    fired: &[bool],
+    neurons: &[LIFNeuron],
+) -> fmt::Result {
+    write!(out, "{step} {time_us} | ")?;
+    let mut sep = "";
+    for (id, &f) in fired.iter().enumerate() {
+        if f {
+            write!(out, "{sep}{id}")?;
+            sep = " ";
+        }
+    }
+    out.write_str(" | ")?;
+    let mut sep = "";
+    for n in neurons {
+        write!(out, "{sep}{}", n.membrane_potential)?;
+        sep = " ";
+    }
+    out.write_char('\n')
 }
 
 #[cfg(test)]

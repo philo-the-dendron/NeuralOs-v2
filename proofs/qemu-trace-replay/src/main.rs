@@ -5,8 +5,9 @@
 //! `# neuralos-trace end`, then exit 0.
 //!
 //! The replay is the firmware's (`firmware/esp32c3/src/main.rs`, step 3):
-//! `frozen.rs` and `row.rs` by `#[path]` from the library's tests
-//! directory, `for_each_frozen!` over the cases. `build.sh` runs it and
+//! `frozen.rs` by `#[path]` from the library's tests directory,
+//! `for_each_frozen!` over the cases, the rows through the library's row
+//! writer, `neuralos_snn::fixed::row`. `build.sh` runs it and
 //! diffs the capture with `tools/esp32c3_trace_diff.py`, the board's
 //! diff, so a wrong writer is red, not trusted.
 //!
@@ -24,16 +25,15 @@ use core::fmt::Write as _;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 
+use neuralos_snn::fixed::row;
 use neuralos_snn::FixedNetwork;
 
-// The frozen cases and the one row writer, by path into the library's
-// tests directory, as the firmware includes them. rustfmt leaves the
-// generated file as written (its head says why).
+// The frozen cases, by path into the library's tests directory, as the
+// firmware includes them. rustfmt leaves the generated file as written
+// (its head says why).
 #[rustfmt::skip]
 #[path = "../../../crates/neuralos-snn/tests/traces/frozen.rs"]
 mod frozen;
-#[path = "../../../crates/neuralos-snn/tests/traces/row.rs"]
-mod row;
 
 const UART_BASE: usize = 0x1000_0000;
 const SIFIVE_TEST: usize = 0x0010_0000;
@@ -108,7 +108,7 @@ pub extern "C" fn rust_main() -> ! {
                     net.step(&input, &mut fired);
                     if !c::SPIKES_ONLY || fired.contains(&true) {
                         // Uart's write_str never fails.
-                        let _ = row::row(&mut Uart, step, time_us, &fired, net.neurons());
+                        let _ = row(&mut Uart, step, time_us, &fired, net.neurons());
                     }
                     step = step.wrapping_add(1);
                 }

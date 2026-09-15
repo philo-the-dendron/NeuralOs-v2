@@ -6,7 +6,7 @@ Rust, no C toolchain** (`hdf5-pure`; dependencies reduce to byteorder
 + miniz_oxide via flate2's rust backend).
 
 ```
-neuralos-nir2json <input.nir> <output.json>
+neuralos-nir2json [--sim-units] [--freeze <out.rs> [--steps N] [--input v1,v2,…]] <input.nir> <output.json>
 ```
 
 Exit codes: `0` converted (a sidecar `<output>.meta.json` carries the
@@ -61,6 +61,46 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   Linear-only graphs (encoders, readout heads) convert cleanly from
   any emitter, no flag needed.
 
+## Freeze: the arrays a `FixedNetwork` steps
+
+```
+neuralos-nir2json [--sim-units] --freeze <out.rs> [--steps N] [--input v1,v2,…] <input.nir> <output.json>
+```
+
+After the conversion, `--freeze` builds the network the JSON describes
+(the library's `NirImport::from_json` under the conversion's own
+options, then `build_network`) and writes, beside the JSON and its
+sidecar:
+
+- **`<out.rs>`**, one `pub mod` named after the file's stem (lowercased,
+  anything but a letter, digit or `_` made `_`): `N` neurons and `S`
+  synapses as the arrays a `neuralos_snn::FixedNetwork<N, S>` steps,
+  the time step, the run, the trace's header line (`kind=stranger`),
+  and `DRIVE`, one run of `--steps` steps (default 150) of the currents
+  the graph's own encoder gives for `--input`: one integer per input
+  feature, in Input order, default 1 for every feature. The library's
+  freezer writes it (`neuralos_snn::fixed::freeze::module`), the one
+  that writes the library's own frozen traces.
+- **`<out>.trace`**, that run on the host in `neuralos-trace v1`: the
+  header line, then one row per step, the spikes and every membrane,
+  written by `neuralos_snn::fixed::row`, the row writer the firmware
+  uses. The host steps the library's std network with plasticity off,
+  the network `FixedNetwork::try_from` converts; the two step alike,
+  bit for bit, on every plasticity-off network (the library's trace
+  tests), and this crate's test builds a module and steps it to the
+  same rows.
+
+Refused by name, exit 2, nothing written: a graph that does not
+assemble (the library names why, e.g. a readout to Output or a graph
+with no LIF), plasticity on (never, from NIR), more than 65,535 neurons
+(a neuron id is a `u16`). A `--input` of the wrong length, a `--steps`
+of 0, or a stem that gives no module name is a usage error, exit 1.
+
+What the module is for: the ESP32-C3 firmware's slot for a stranger's
+graph, which lands next (`docs/ROADMAP.md` § 0.1.0, check 7): the board
+steps the module's arrays, and its rows must equal `<out>.trace`. The
+module needs only `core` and `neuralos-snn`, so it compiles `no_std`.
+
 ## Build (the release artifact)
 
 The prebuilt binary on the Gitea release is this, nothing more:
@@ -107,6 +147,9 @@ Fixture provenance (the stranger files, sha-pinned): see
 fixtures (f32 twins, big graph): `.nirenv/bin/python3
 tools/gen_nir2json_fixtures.py`. Regenerate the snnTorch fallback
 emission: `tools/gen_snnTorch_stranger.py` (throwaway venv; the script
-header carries the exact stack).
+header carries the exact stack), and the two-layer witness of D8:
+`tools/gen_snnTorch_two_layer.py` (the repo's `.nirenv`; not
+byte-stable across runs, so the committed emission is pinned by its
+sha in PROVENANCE.md).
 
 [`neuralos-snn`]: https://crates.io/crates/neuralos-snn

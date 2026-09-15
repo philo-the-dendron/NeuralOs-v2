@@ -20,7 +20,8 @@
 //!    (`× 31 + step`, `× 31 + id`), and `tests/traces.rs` pins its three
 //!    numbers on the host (the network arm).
 //! 3. replay: every frozen case (`for_each_frozen!`), its trace's header
-//!    line, then its rows through the library's writer (`row.rs`) into
+//!    line, then its rows through the library's writer
+//!    (`neuralos_snn::fixed::row`) into
 //!    `esp_println::Printer`, then one end line, `# neuralos-trace end`.
 //!    `tools/esp32c3_trace_diff.py` diffs a capture against
 //!    `tests/traces/`.
@@ -64,18 +65,18 @@ use esp_hal::gpio::{Level, Output, OutputConfig};
 use esp_hal::main;
 use esp_hal::time::Instant;
 use esp_println::{println, Printer};
+use neuralos_snn::fixed::row;
 use neuralos_snn::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
 use neuralos_snn::FixedNetwork;
 
-// The frozen cases and the one row writer, by path into the library's
-// tests directory: the arrays are the cases' derivative and live with
-// them, so the library's package stays self-contained. rustfmt leaves the
-// generated file as written (its head says why).
+// The frozen cases, by path into the library's tests directory: the
+// arrays are the cases' derivative and live with them, so the library's
+// package stays self-contained. rustfmt leaves the generated file as
+// written (its head says why). Their rows go through the library's one
+// row writer, `neuralos_snn::fixed::row`.
 #[rustfmt::skip]
 #[path = "../../../crates/neuralos-snn/tests/traces/frozen.rs"]
 mod frozen;
-#[path = "../../../crates/neuralos-snn/tests/traces/row.rs"]
-mod row;
 
 /// The network arm's drive: `feedforward-8`'s, one constant run, read
 /// from the frozen arrays at compile time.
@@ -247,7 +248,7 @@ fn main() -> ! {
                     net.step(&input, &mut fired);
                     if !c::SPIKES_ONLY || fired.contains(&true) {
                         // Printer's write_str never fails.
-                        let _ = row::row(&mut Printer, step, time_us, &fired, net.neurons());
+                        let _ = row(&mut Printer, step, time_us, &fired, net.neurons());
                     }
                     step = step.wrapping_add(1);
                 }
