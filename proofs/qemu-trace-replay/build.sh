@@ -9,7 +9,8 @@
 # the end line) and the diff's last line is "N cases, 0 red", N the
 # plasticity-off traces of crates/neuralos-snn/tests/traces/ counted here
 # from their header lines, as the diff reads them: every one replayed row
-# for row (12 at round 33, 14 since PR G). A trace file deleted from the
+# for row (12 at round 33, 14 since PR G). The tool takes `--trace` since
+# PR H; this proof never passes it. A trace file deleted from the
 # tree lowers both counts, but the replay still prints that case, and the
 # diff calls a header outside the tree's set red.
 #

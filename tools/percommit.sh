@@ -117,6 +117,16 @@ for c in $commits; do
   else
     echo "(no firmware/esp32c3 at this commit)"
   fi
+  # The one command's build phase on the snnTorch witness
+  # (firmware/esp32c3/stranger.sh, PR H; the stranger clippy rides it),
+  # guarded like the firmware leg, so commits before the script stay
+  # valid. Its target dir, firmware/esp32c3/target/stranger, lives in
+  # the scratch worktree, so it builds cold once per run.
+  if [ -f firmware/esp32c3/stranger.sh ]; then
+    run firmware/esp32c3/stranger.sh build crates/neuralos-nir2json/tests/fixtures/community/snnTorch_two_layer.nir
+  else
+    echo "(no firmware/esp32c3/stranger.sh at this commit)"
+  fi
   # The no-panic proof (proofs/no-panic-step): its own workspace, like the
   # firmware, on the same chip target; the same guard as the job's.
   if [ -f proofs/no-panic-step/build.sh ]; then

@@ -98,8 +98,9 @@ with no LIF), plasticity on (never, from NIR), more than 65,535 neurons
 of 0, or a stem that gives no module name is a usage error, exit 1.
 
 What the module is for: the ESP32-C3 firmware's slot for a stranger's
-graph, which lands next (`docs/ROADMAP.md` § 0.1.0, check 7): the board
-steps the module's arrays, and its rows must equal `<out>.trace`. The
+graph, filled by one command, `firmware/esp32c3/stranger.sh` (its
+README; `docs/ROADMAP.md` § 0.1.0, check 7): the board steps the
+module's arrays, and its rows must equal `<out>.trace`. The
 module needs only `core` and `neuralos-snn`, so it compiles `no_std`.
 
 ## Build (the release artifact)
