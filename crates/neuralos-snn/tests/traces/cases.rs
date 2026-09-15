@@ -325,6 +325,11 @@ fn wired(neurons: Vec<LIFNeuron>, edges: &[(u16, u16, i16)]) -> SpikingNeuralNet
 /// The reference chain of the NIR fixtures (`tests/nir_fixtures/`,
 /// the pinned reference's own emission).
 const NIR_CHAIN: &[u8] = include_bytes!("../nir_fixtures/chain.json");
+/// The two witnesses of D8, the spiking Linear edge, as
+/// `neuralos-nir2json --sim-units` converts them
+/// (`tests/nir_fixtures/README.md`).
+const SNNTORCH_TWO_LAYER: &[u8] = include_bytes!("../nir_fixtures/snntorch_two_layer_sim.json");
+const TWO_LIF_NEURONS: &[u8] = include_bytes!("../nir_fixtures/two_lif_neurons_sim.json");
 
 /// A regression case over every step.
 const fn regression(name: &'static str, steps: u32, build: fn() -> Run) -> Case {
@@ -365,6 +370,8 @@ pub const CASES: &[Case] = &[
     regression("saturation-floor-ceiling", 100, saturation_floor_ceiling),
     regression("nir-chain-fixture", 100, nir_chain_fixture),
     regression("ternary-weights", 100, ternary_weights),
+    regression("snntorch-two-layer", 150, snntorch_two_layer),
+    regression("two-lif-neurons", 150, two_lif_neurons),
 ];
 
 /// The reference vector: one excitatory neuron on the centi-mV grid, no
@@ -673,4 +680,41 @@ fn ternary_weights() -> Run {
         net,
         drive: Box::new(|_| vec![600, 300, 300]),
     }
+}
+
+/// A D8 witness imported on the centi-mV grid, which a spiking Linear
+/// edge requires, and built by `build_network`: two neurons, lif1 → lif2
+/// by one 327 μA synapse, driven through the graph's own encoder with
+/// the one input feature `drive(step)`.
+fn witness(json: &'static [u8], drive: fn(u32) -> i16) -> Run {
+    let g = NirImport::from_json(
+        json,
+        NirImportOptions::new(DT_US, VoltageResolution::CentiMillivolt),
+    )
+    .expect("the converted witness imports");
+    let (net, enc, _report) = g.build_network().expect("the two-layer graph assembles");
+    Run {
+        net,
+        drive: Box::new(move |step| enc.encode(&[&[drive(step)]])),
+    }
+}
+
+/// The framework witness: snnTorch 1.0's own export of `Linear → Leaky →
+/// Linear → Leaky`. Input feature 1 on steps 0–9 and 50–59, else 0, so
+/// the edge shows: lif1 fires on every other driven step (NIR's LIF has
+/// no refractory; the assembly's minimum is one step), lif2 on the step
+/// after each, on the pulse alone, and both are silent between the
+/// bursts and after them.
+fn snntorch_two_layer() -> Run {
+    witness(SNNTORCH_TWO_LAYER, |step| {
+        i16::from(matches!(step, 0..=9 | 50..=59))
+    })
+}
+
+/// The reference witness: the NIR paper's own `two_lif_neurons`, the same
+/// shape, input feature 1 every step. lif1's leak sits above its
+/// threshold, so it would fire with no input; driven, it fires on every
+/// other step, and lif2 on the step after each.
+fn two_lif_neurons() -> Run {
+    witness(TWO_LIF_NEURONS, |_| 1)
 }
