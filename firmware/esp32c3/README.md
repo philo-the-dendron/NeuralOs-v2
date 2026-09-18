@@ -49,12 +49,13 @@ build wins, and the trace beside it is always that build's.
 `44·N + 6·S ≤ 262,144` bytes (a neuron is 44 bytes, a synapse 6). The
 arrays live on the stack, in `main`'s frame, one copy, and the bar is
 a measurement: at both of its corners, the most neurons (one layer of
-5,957) and the most synapses (two layers of 201, all to all between
-them), the stack's high-water mark on the C3 leaves at least 16 KiB
-free and the replay is bit for bit. The evidence README's ninth entry
-holds each corner's frame, mark and ns per step; the worst case is the
-neuron corner, several times slower than a 1 ms step, so a graph at
-the bar replays exactly but not in real time. Every build prints its
+5,957) and the most synapses of the feedforward pair (two layers of
+201, all to all between them), the stack's high-water mark on the C3
+leaves at least 16 KiB free and the replay is bit for bit. The
+evidence README's ninth entry holds each corner's frame, mark and ns
+per step; the worst case is the neuron corner, several times slower
+than a 1 ms step, so a graph at the bar replays exactly but not in
+real time. Every build prints its
 own mark after the replays, `stack: <mark> of <total> bytes
 high-water after the replays`. The script's header has the rest.
 

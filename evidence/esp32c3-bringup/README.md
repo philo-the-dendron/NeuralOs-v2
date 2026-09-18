@@ -915,7 +915,9 @@ needed.
 
 The cost of a step. The stranger arm times each step around the call
 alone, the fold over `fired` between samples, one pair of timer reads
-inside each sample, small against milliseconds. With every weight 1.0
+inside each sample, small against milliseconds. Each sample is read in
+whole µs, so a mean over 100 samples sums 100 truncations and is biased
+low by under 1 µs a step. With every weight 1.0
 each neuron fires on alternate steps, the assembly's 1 ms refractory
 being one step. At the neuron corner all 5,957 fire on the same steps,
 50 times each in the 100 (297,850 spikes), and are refractory on the

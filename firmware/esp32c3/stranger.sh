@@ -52,9 +52,9 @@
 # converter refuses past 65,535 neurons); flash holds the arrays again
 # in .rodata and is never the bound; the link bounds a capture, not a
 # graph (--steps, --seconds). The bar holds because at both of its
-# corners, the most neurons and the most synapses under it
-# (tools/gen_snnTorch_corner.py), the stack's high-water mark on the
-# board leaves at least 16 KiB of .stack free.
+# corners, the most neurons and the most synapses of the feedforward
+# pair under it (tools/gen_snnTorch_corner.py), the stack's high-water
+# mark on the board leaves at least 16 KiB of .stack free.
 set -euo pipefail
 
 usage() {
