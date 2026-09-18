@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(not(feature = "simd"), forbid(unsafe_code))]
 #![cfg_attr(feature = "simd", deny(unsafe_code))]

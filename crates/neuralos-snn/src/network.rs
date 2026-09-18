@@ -85,19 +85,30 @@ const DEFAULT_SYNAPTIC_INPUT_DIVISOR: u16 = 10;
 pub enum NetworkTopology {
     /// Random sparse connectivity. `connectivity ∈ [0.0, 1.0]` is the fraction of
     /// all possible (pre ≠ post) pairs to wire.
-    Random { connectivity: f64 },
+    Random {
+        /// Fraction of the possible (pre ≠ post) pairs to wire.
+        connectivity: f64,
+    },
     /// Watts-Strogatz small-world. Ring lattice with `local_connections` per neuron,
     /// each rewired with probability `rewiring_prob ∈ [0.0, 1.0]`.
     SmallWorld {
+        /// Ring-lattice neighbours per neuron, before rewiring.
         local_connections: u8,
+        /// Probability a local connection is rewired.
         rewiring_prob: f64,
     },
     /// Layered feedforward. `layers` defines the neuron count per layer; layers
     /// must sum to the network's `neuron_count`.
-    Feedforward { layers: &'static [u16] },
+    Feedforward {
+        /// Neuron count per layer, input first.
+        layers: &'static [u16],
+    },
     /// Balanced E/I network with 4 connection classes (E→E, E→I, I→E, I→I).
     /// `excitatory_ratio ∈ (0.0, 1.0)` is the fraction of neurons that are excitatory.
-    Balanced { excitatory_ratio: f64 },
+    Balanced {
+        /// Fraction of the neurons that are excitatory.
+        excitatory_ratio: f64,
+    },
 }
 
 impl Default for NetworkTopology {
