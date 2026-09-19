@@ -367,8 +367,13 @@ jobs:
       # Tool default, nothing ignored: a vulnerability fails, an
       # unmaintained or yanked crate prints a warning and passes. No
       # audit.toml, so the log shows every advisory on every run. Added
-      # 2026-09-07; the five warnings that day were all in the Slint
-      # visualizer's font/SVG tree, none in neuralos-snn or neuralos-rt.
+      # 2026-09-07. On that day's lock (b7a7222), four of the five crates
+      # warned today reach neuralos-app, `instant` is neuralos-rt's alone
+      # and `paste` is shared by both; none of the five reaches
+      # neuralos-snn or neuralos-nir2json, then or now. This line claimed
+      # "none in neuralos-rt" until 2026-09-19: wrong when written, since
+      # all five advisories predate 2026-09-07 and that lock already had
+      # the five crates at today's versions.
       - name: cargo install cargo-audit
         run: cargo install cargo-audit --locked --version 0.22.2
 
