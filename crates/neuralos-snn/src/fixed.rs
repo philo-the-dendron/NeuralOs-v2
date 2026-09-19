@@ -419,7 +419,6 @@ mod tests {
         net.add_synapse(0, 1, 5_000).expect("ids in range");
         net.add_synapse(1, 2, 5_000).expect("ids in range");
         net.finalize_synapses();
-        net.set_plasticity_enabled(false);
         net.set_synaptic_input_divisor(1).expect("nonzero");
         let mut fixed =
             FixedNetwork::<3, 2>::try_from(&net).expect("plasticity off, 3 neurons, 2 synapses");
@@ -526,12 +525,16 @@ mod tests {
         net.add_synapse(0, 1, 100).expect("ids in range");
         net.add_synapse(1, 2, 100).expect("ids in range");
         net.finalize_synapses();
-        assert_eq!(
-            FixedNetwork::<3, 2>::try_from(&net).err(),
-            Some(Error::InvalidParameter),
-            "plasticity on, the default"
-        );
-        net.set_plasticity_enabled(false);
+        #[cfg(feature = "unstable-stdp")]
+        {
+            net.set_plasticity_enabled(true);
+            assert_eq!(
+                FixedNetwork::<3, 2>::try_from(&net).err(),
+                Some(Error::InvalidParameter),
+                "plasticity on"
+            );
+            net.set_plasticity_enabled(false);
+        }
         assert_eq!(
             FixedNetwork::<4, 2>::try_from(&net).err(),
             Some(Error::InvalidParameter),

@@ -24,7 +24,7 @@ path = "src/main.rs"
 [dependencies]
 # The keystone: neuralos-app is now a visualizer ON TOP of the SNN library.
 # This single dependency is what makes "the library connects all" literally true.
-neuralos-snn = { path = "../neuralos-snn", features = ["std"] }
+neuralos-snn = { path = "../neuralos-snn", features = ["std", "unstable-stdp"] }
 # slint: pure-Rust UI toolkit (GPLv3 option, AGPL-compatible). No webview.
 slint = "1.17"
 

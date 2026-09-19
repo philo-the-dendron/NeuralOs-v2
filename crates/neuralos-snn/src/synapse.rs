@@ -125,6 +125,7 @@ impl Synapse {
 
     /// Apply a plastic weight delta. Clamps to `[min_weight, max_weight]`.
     /// Tracks the raw delta and the clamp-absorbed remainder (session G).
+    #[cfg(feature = "unstable-stdp")]
     pub fn update_weight(&mut self, delta_weight: i16) {
         let target = self
             .weight
@@ -187,6 +188,7 @@ fn biological_params(t: SynapseType) -> (u16, u16, i16, i16) {
 /// The audit flagged this as **the better STDP implementation** (vs `stdp_plasticity.rs`):
 /// real exp-decay via fixed-point linear approximation, sign-correct (positive dt → LTD,
 /// negative dt → LTP).
+#[cfg(feature = "unstable-stdp")]
 #[derive(Debug, Clone)]
 pub struct STDPRule {
     /// LTP time constant (μs) — pre-before-post window.
@@ -201,6 +203,7 @@ pub struct STDPRule {
     pub learning_rate: u16,
 }
 
+#[cfg(feature = "unstable-stdp")]
 impl STDPRule {
     /// Default biological STDP: 20ms/20ms tau, asymmetric amplitudes (LTD slightly larger).
     #[must_use]
@@ -275,6 +278,7 @@ impl STDPRule {
     }
 }
 
+#[cfg(feature = "unstable-stdp")]
 impl Default for STDPRule {
     fn default() -> Self {
         Self::new()
@@ -348,6 +352,7 @@ mod tests {
         assert_eq!(s.normalized_weight(), 0, "zero max must not divide by zero");
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn weight_clamped_at_bounds() {
         let mut s = Synapse::new(1, 2, 100).expect("valid ids");
@@ -359,6 +364,7 @@ mod tests {
 
     // ----- STDP rule tests -----
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stdp_ltp_when_pre_before_post() {
         // dt < 0 means pre fired before post → LTP (positive delta).
@@ -371,6 +377,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stdp_ltd_when_post_before_pre() {
         // dt > 0 means post fired before pre → LTD (negative delta).
@@ -383,6 +390,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stdp_zero_outside_window() {
         let rule = STDPRule::new();
@@ -393,6 +401,7 @@ mod tests {
         assert_eq!(rule.calculate_weight_change(far_dt_pos), 0);
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stdp_zero_at_zero_dt() {
         // dt = 0 → simultaneous; LTP branch with decay = 0 → factor = SCALE → a_plus · lr.
@@ -403,6 +412,7 @@ mod tests {
         assert_eq!(delta, expected as i16);
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stdp_decay_monotonic_with_abs_dt() {
         // Larger |dt| → smaller |delta| (within window).
@@ -417,6 +427,7 @@ mod tests {
 
     // ----- R18 rider: the i32 dt-overflow fix, pinned -----
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stdp_zero_just_past_the_old_overflow_boundary() {
         // dt = ±2_200_000 μs: past 10·tau (200 ms) AND past the old
@@ -431,6 +442,7 @@ mod tests {
         assert_eq!(rule.calculate_weight_change(i32::MIN), 0);
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stdp_extreme_learning_rate_does_not_overflow_the_product() {
         // The subsumed tail edge: a · factor · learning_rate in i32
@@ -460,6 +472,7 @@ mod tests {
         }
 
         /// Weight stays within `[min_weight, max_weight]` after any update.
+        #[cfg(feature = "unstable-stdp")]
         #[test]
         fn prop_weight_clamped(
             weight in -2000i16..=2000,
@@ -474,6 +487,7 @@ mod tests {
         }
 
         /// STDP sign convention holds across random dt.
+        #[cfg(feature = "unstable-stdp")]
         #[test]
         fn prop_stdp_sign_convention(dt_us in -200_000i32..=200_000) {
             let rule = STDPRule::new();
@@ -487,6 +501,7 @@ mod tests {
         }
 
         /// STDP decays to zero outside 10× tau window.
+        #[cfg(feature = "unstable-stdp")]
         #[test]
         fn prop_stdp_zero_outside_window(multiplier in 11u32..=100) {
             let rule = STDPRule::new();
@@ -501,6 +516,7 @@ mod tests {
         /// magnitude, either sign), and inside the window the sign
         /// convention holds. The old i32 product wrapped at |dt| >
         /// ~2.15 s, producing spurious in-window-looking deltas.
+        #[cfg(feature = "unstable-stdp")]
         #[test]
         fn prop_stdp_dt_full_i32_range(dt_us in i32::MIN..=i32::MAX) {
             let rule = STDPRule::new();

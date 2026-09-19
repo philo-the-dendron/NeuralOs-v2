@@ -54,7 +54,9 @@ pub use crate::csr::{IncomingIter, SparseSynapseMatrix, SynapseIter};
 pub use crate::stats::NetworkStats;
 
 use crate::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
-use crate::synapse::{STDPRule, Synapse};
+#[cfg(feature = "unstable-stdp")]
+use crate::synapse::STDPRule;
+use crate::synapse::Synapse;
 use crate::{Error, Result};
 use std::collections::VecDeque;
 use std::vec::Vec;
@@ -70,6 +72,7 @@ const DEFAULT_INHIBITORY_WEIGHT: i16 = -150;
 const DEFAULT_SEED: u32 = 0x1234_5678;
 /// LFSR seed for stochastic ternary flips (Stage 1.5b). Independent of the
 /// topology seed so plasticity randomness doesn't correlate with wiring.
+#[cfg(feature = "unstable-stdp")]
 const TERNARY_FLIP_SEED: u32 = 0xA5A5_5A5A;
 /// LFSR Galois tap for 16-bit maximal-length (period `65_535`).
 const LFSR_TAP: u32 = 0xB400;
@@ -137,12 +140,13 @@ pub struct Spike {
 /// corresponding CSR weight slot, so plasticity can update the same synapse the
 /// propagation pass just used.
 /// Drained by [`SpikingNeuralNetwork::update_plasticity`].
+#[cfg(feature = "unstable-stdp")]
 type PlasticityEntry = (u16, u16, usize, u32);
 
 /// Main spiking neural network orchestrator.
 ///
 /// Holds [`LIFNeuron`] + [`Synapse`] collections, a CSR [`SparseSynapseMatrix`]
-/// for fast synaptic transmission, and an [`STDPRule`] for plasticity. One call to
+/// for fast synaptic transmission, and an `STDPRule` for plasticity. One call to
 /// [`step`](Self::step) advances the simulation by `time_step_us` microseconds.
 pub struct SpikingNeuralNetwork {
     neurons: Vec<LIFNeuron>,
@@ -157,6 +161,7 @@ pub struct SpikingNeuralNetwork {
     synapse_matrix: SparseSynapseMatrix,
     time_step_us: u32,
     current_time_us: u32,
+    #[cfg(feature = "unstable-stdp")]
     plasticity_rule: STDPRule,
     stats: NetworkStats,
     spike_history: VecDeque<Spike>,
@@ -164,14 +169,17 @@ pub struct SpikingNeuralNetwork {
     topology: NetworkTopology,
     seed: u32,
     /// Buffer of pending plasticity updates from the most recent step.
+    #[cfg(feature = "unstable-stdp")]
     plasticity_queue: Vec<PlasticityEntry>,
-    /// Whether STDP weight updates are applied each step. Default `true`
-    /// (preserves library behavior). The visualizer disables this for
-    /// sustained-firing mode and toggles it on to watch learning happen.
+    /// Whether STDP weight updates are applied each step. Default `false`
+    /// in both constructors; only `set_plasticity_enabled`, behind
+    /// `unstable-stdp`, can raise it, so a build without the feature never
+    /// learns. The visualizer toggles it on to watch learning happen.
     plasticity_enabled: bool,
     /// LFSR state for stochastic ternary bucket-flips (Stage 1.5b). Advanced
     /// once per active synapse in [`stochastic_ternary_step`]. Independent of
     /// `seed` (topology) so plasticity randomness decorrelates from wiring.
+    #[cfg(feature = "unstable-stdp")]
     ternary_flip_lfsr: u32,
     /// Voltage grid every neuron was constructed on (see
     /// [`LIFNeuron::voltage_resolution`]). Kept at network level so stats can
@@ -264,14 +272,17 @@ impl SpikingNeuralNetwork {
             synapse_matrix: SparseSynapseMatrix::new(neuron_count, estimated_synapses),
             time_step_us,
             current_time_us: 0,
+            #[cfg(feature = "unstable-stdp")]
             plasticity_rule: STDPRule::new(),
             stats: NetworkStats::new(neuron_count),
             spike_history: VecDeque::new(),
             max_spike_history: 10_000,
             topology,
             seed: DEFAULT_SEED,
+            #[cfg(feature = "unstable-stdp")]
             plasticity_queue: Vec::with_capacity(estimated_synapses),
-            plasticity_enabled: true,
+            plasticity_enabled: false,
+            #[cfg(feature = "unstable-stdp")]
             ternary_flip_lfsr: TERNARY_FLIP_SEED,
             voltage_resolution: resolution,
             synaptic_input_divisor: DEFAULT_SYNAPTIC_INPUT_DIVISOR,
@@ -302,14 +313,17 @@ impl SpikingNeuralNetwork {
             synapse_matrix: SparseSynapseMatrix::new(neuron_count, 0),
             time_step_us,
             current_time_us: 0,
+            #[cfg(feature = "unstable-stdp")]
             plasticity_rule: STDPRule::new(),
             stats: NetworkStats::new(neuron_count),
             spike_history: VecDeque::new(),
             max_spike_history: 10_000,
             topology: NetworkTopology::Random { connectivity: 0.0 },
             seed: DEFAULT_SEED,
+            #[cfg(feature = "unstable-stdp")]
             plasticity_queue: Vec::new(),
-            plasticity_enabled: true,
+            plasticity_enabled: false,
+            #[cfg(feature = "unstable-stdp")]
             ternary_flip_lfsr: TERNARY_FLIP_SEED,
             voltage_resolution: resolution,
             synaptic_input_divisor: DEFAULT_SYNAPTIC_INPUT_DIVISOR,
@@ -326,6 +340,7 @@ impl SpikingNeuralNetwork {
     pub fn build_topology(&mut self) -> Result<()> {
         self.synapses.clear();
         self.synapse_matrix.clear();
+        #[cfg(feature = "unstable-stdp")]
         self.plasticity_queue.clear();
         match self.topology {
             NetworkTopology::Random { connectivity } => self.build_random(connectivity)?,
@@ -407,6 +422,7 @@ impl SpikingNeuralNetwork {
         for n in &mut self.neurons {
             n.decay_adaptation_current();
         }
+        #[cfg(feature = "unstable-stdp")]
         self.plasticity_queue.clear();
 
         // Phase 1: integrate-and-fire all neurons (O(n)). This READS the
@@ -453,14 +469,19 @@ impl SpikingNeuralNetwork {
                 if let Some(post_n) = self.neurons.get_mut(post_id as usize) {
                     post_n.add_synaptic_current(weight / input_divisor);
                 }
+                #[cfg(feature = "unstable-stdp")]
                 self.plasticity_queue
                     .push((pre_id, post_id, syn_idx, self.current_time_us));
+                // The queue is `syn_idx`'s one reader in the step.
+                #[cfg(not(feature = "unstable-stdp"))]
+                let _ = syn_idx;
             }
         }
 
         // Phase 3: apply pairwise STDP plasticity (LTD + LTP passes).
         // Gated so callers (e.g. the visualizer) can run in a sustained-firing
         // mode with fixed weights, toggling learning on to observe it.
+        #[cfg(feature = "unstable-stdp")]
         if self.plasticity_enabled {
             self.update_plasticity(&firing_neurons);
         }
@@ -505,6 +526,7 @@ impl SpikingNeuralNetwork {
     /// events); the LTP half is added here.
     ///
     /// [`SparseSynapseMatrix::incoming`]: SparseSynapseMatrix::incoming
+    #[cfg(feature = "unstable-stdp")]
     fn update_plasticity(&mut self, firing_neurons: &[u16]) {
         if self.plasticity_queue.is_empty() && firing_neurons.is_empty() {
             return;
@@ -675,6 +697,7 @@ impl SpikingNeuralNetwork {
     /// Enable or disable STDP weight updates. When disabled, `step()` still
     /// propagates spikes and advances time, but synapse weights stay fixed —
     /// useful for sustained-firing visualization or as a control baseline.
+    #[cfg(feature = "unstable-stdp")]
     pub fn set_plasticity_enabled(&mut self, enabled: bool) {
         self.plasticity_enabled = enabled;
     }
@@ -784,6 +807,7 @@ impl SpikingNeuralNetwork {
     /// Returns the number of ternary bucket transitions (flips) this call.
     ///
     /// [`reproject_ternary`]: Self::reproject_ternary
+    #[cfg(feature = "unstable-stdp")]
     pub fn stochastic_ternary_step(&mut self, gamma: i16) -> u32 {
         if gamma == 0 {
             return 0;
@@ -821,8 +845,11 @@ impl SpikingNeuralNetwork {
         self.stats.total_spikes = 0;
         self.stats.plasticity_events = 0;
         self.spike_history.clear();
-        self.plasticity_queue.clear();
-        self.ternary_flip_lfsr = TERNARY_FLIP_SEED;
+        #[cfg(feature = "unstable-stdp")]
+        {
+            self.plasticity_queue.clear();
+            self.ternary_flip_lfsr = TERNARY_FLIP_SEED;
+        }
     }
 
     /// Read-only access to the synapse collection (for analysis / visualization).
@@ -1238,12 +1265,19 @@ mod tests {
         let mut net =
             SpikingNeuralNetwork::new(20, 1000, NetworkTopology::default()).expect("valid");
         net.build_topology().expect("build");
+        #[cfg(feature = "unstable-stdp")]
+        net.set_plasticity_enabled(true);
         let inputs = vec![1000; 20];
         for _ in 0..5 {
             let _ = net.step(&inputs).expect("step");
         }
         assert!(net.current_time_us() > 0);
         assert!(net.stats().total_spikes > 0);
+        #[cfg(feature = "unstable-stdp")]
+        assert!(
+            net.stats().plasticity_events > 0,
+            "the counter must have moved, or the reset below clears a 0"
+        );
         net.reset();
         assert_eq!(net.current_time_us(), 0);
         assert_eq!(net.stats().total_spikes, 0);
@@ -1403,6 +1437,8 @@ mod tests {
         net.neurons[2].noise_amplitude_ua = 0;
         net.add_synapse(1, 2, 0).expect("add");
         net.finalize_synapses();
+        #[cfg(feature = "unstable-stdp")]
+        net.set_plasticity_enabled(true);
 
         let mut raw =
             SpikingNeuralNetwork::new(4, 1000, NetworkTopology::Random { connectivity: 0.0 })
@@ -1411,6 +1447,8 @@ mod tests {
         raw.neurons[1].noise_amplitude_ua = 0;
         raw.neurons[2].noise_amplitude_ua = 0;
         raw.add_synapse(1, 2, 0).expect("add");
+        #[cfg(feature = "unstable-stdp")]
+        raw.set_plasticity_enabled(true);
 
         // Drive: pre (neuron 1) steps 0..6, then post (neuron 2) steps 7..17.
         // Pre fires ≈step 6 (integer LIF integration needs 7 driven steps to
@@ -1432,11 +1470,13 @@ mod tests {
             net.neurons[1].last_spike_time_us,
             net.neurons[2].last_spike_time_us
         );
+        #[cfg(feature = "unstable-stdp")]
         assert!(
             net.synapses[0].weight > 0,
             "finalized external wiring must allow LTP: weight {} (started 0)",
             net.synapses[0].weight
         );
+        #[cfg(feature = "unstable-stdp")]
         assert_eq!(
             raw.synapses[0].weight, 0,
             "without finalize the reverse CSR is empty — LTP unreachable, weight frozen at 0"
@@ -1515,6 +1555,9 @@ mod tests {
             .iter()
             .map(|s| Trit::from_weight(s.weight, gamma))
             .collect();
+        // Without the feature no weight moves: what this pins then is that
+        // `reproject_ternary` leaves an on-grid network alone.
+        #[cfg(feature = "unstable-stdp")]
         net.set_plasticity_enabled(true);
         let inputs = vec![600_i16; 128];
         let mut flips = 0u64;
@@ -1535,6 +1578,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn ternary_gate_stage1_5b_stochastic_unfreezes_learning() {
         // Stage 1.5b CANARY — stochastic bucket-flips reopen ternary learning.
@@ -1577,6 +1621,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn ternary_gate_stage1_5c_selectivity_under_structured_input() {
@@ -1655,7 +1700,6 @@ mod tests {
             SpikingNeuralNetwork::new(neurons, 1000, NetworkTopology::default()).expect("valid");
         net.build_topology().expect("build");
         let (intra, inter) = classify(&net);
-        net.set_plasticity_enabled(false);
         for inp in &inputs[..init_steps] {
             let _ = net.step(inp).expect("init");
         }
@@ -1676,7 +1720,6 @@ mod tests {
             SpikingNeuralNetwork::new(neurons, 1000, NetworkTopology::default()).expect("valid");
         tnet.build_topology().expect("build");
         let (tintra, tinter) = classify(&tnet);
-        tnet.set_plasticity_enabled(false);
         for inp in &inputs[..init_steps] {
             let _ = tnet.step(inp).expect("init");
         }
@@ -1709,6 +1752,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn same_step_cofire_biases_toward_ltd() {
         let mut net = SpikingNeuralNetwork::new(
@@ -1734,6 +1778,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn plasticity_updated_weight_affects_future_propagation() {
         let mut net = SpikingNeuralNetwork::new(
@@ -1782,9 +1827,20 @@ mod tests {
         net.neurons[0].noise_amplitude_ua = 0;
         net.neurons[1].noise_amplitude_ua = 0;
         net.add_synapse(0, 1, 100).expect("synapse");
+        #[cfg(feature = "unstable-stdp")]
+        net.set_plasticity_enabled(true);
 
-        let _ = net.step(&[1000, 1000]).expect("plasticity step");
+        // Four steps: at 1000 μA the post fires at step 2 and the pre at
+        // step 3, the first pairing (LTD). One step pairs nothing.
+        for _ in 0..4 {
+            let _ = net.step(&[1000, 1000]).expect("plasticity step");
+        }
         let synapse_weight = net.synapses[0].weight;
+        #[cfg(feature = "unstable-stdp")]
+        assert_ne!(
+            synapse_weight, 100,
+            "the step must move the weight, or the mirror below compares 100 with 100"
+        );
         let csr_edge = net
             .synapse_matrix
             .connections(0)
@@ -1805,6 +1861,7 @@ mod tests {
     // in this change makes the rule genuinely bidirectional. These tests pin
     // both halves and the invariants that keep them from interfering.
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn ltp_post_firing_strengthens_synapse_when_pre_fired_earlier() {
         // The focused proof that LTP is now reachable in orchestration: a
@@ -1857,6 +1914,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn ltp_pass_does_not_double_count_same_step_cofire() {
         // a9a2679 invariant under full STDP: when pre and post both fire in the
@@ -1891,6 +1949,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn ltd_pre_after_post_still_depresses_under_full_stdp() {
         // LTD half still works under the now-bidirectional rule: pre fires this
@@ -1924,6 +1983,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn full_stdp_is_bidirectional_in_orchestration() {
         // Orchestration-level proof that both branches are reachable in a real
@@ -1964,6 +2024,9 @@ mod tests {
         let mut net =
             SpikingNeuralNetwork::new(64, 1000, NetworkTopology::default()).expect("valid");
         net.build_topology().expect("build");
+        // Without the feature nothing writes a weight: what this pins then
+        // is the two counting sorts, not `weight_index_of`.
+        #[cfg(feature = "unstable-stdp")]
         net.set_plasticity_enabled(true);
         let inputs = vec![600_i16; 64];
         for _ in 0..50 {
@@ -2118,7 +2181,6 @@ mod tests {
             SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
                 .expect("constructs");
         net.build_topology().expect("empty build");
-        net.set_plasticity_enabled(false);
         for n in &mut net.neurons {
             n.noise_amplitude_ua = 0;
         }
@@ -2524,12 +2586,11 @@ mod tests {
             net.synapse_matrix.finalize();
             net
         };
-        // init cycle plasticity-OFF with both neurons firing (the
-        // harness recipe: makes last_spike times real), then one
-        // pre-only step → LTD pairing at dt = +1000 μs (inside the
+        // init cycle plasticity-OFF (the default) with both neurons
+        // firing (the harness recipe: makes last_spike times real), then
+        // one pre-only step → LTD pairing at dt = +1000 μs (inside the
         // 20 ms window)
-        let run = |net: &mut SpikingNeuralNetwork, enable: bool| {
-            net.set_plasticity_enabled(false);
+        let init = |net: &mut SpikingNeuralNetwork| {
             for _ in 0..4 {
                 net.step(&[600, 600]).expect("init step");
             }
@@ -2537,28 +2598,30 @@ mod tests {
                 net.synapses[0].weight, 100,
                 "the OFF init cycle must not touch the weight"
             );
-            if enable {
-                net.set_plasticity_enabled(true);
-            }
-            net.step(&[1000, 0]).expect("pairing step")
         };
 
-        let mut on = build();
-        let on_spikes = run(&mut on, true);
-        assert_eq!(
-            on_spikes.len(),
-            1,
-            "the pre neuron must fire the pairing step"
-        );
-        assert!(
-            on.synapses[0].weight < 100,
-            "ON leg adapts (post-leads LTD at dt=+1000): weight now {}",
-            on.synapses[0].weight
-        );
-        assert!(on.stats().plasticity_events > 0);
+        #[cfg(feature = "unstable-stdp")]
+        {
+            let mut on = build();
+            init(&mut on);
+            on.set_plasticity_enabled(true);
+            let on_spikes = on.step(&[1000, 0]).expect("pairing step");
+            assert_eq!(
+                on_spikes.len(),
+                1,
+                "the pre neuron must fire the pairing step"
+            );
+            assert!(
+                on.synapses[0].weight < 100,
+                "ON leg adapts (post-leads LTD at dt=+1000): weight now {}",
+                on.synapses[0].weight
+            );
+            assert!(on.stats().plasticity_events > 0);
+        }
 
         let mut off = build();
-        let off_spikes = run(&mut off, false);
+        init(&mut off);
+        let off_spikes = off.step(&[1000, 0]).expect("pairing step");
         assert_eq!(off_spikes.len(), 1, "spiking is plasticity-independent");
         assert_eq!(
             off.synapses[0].weight, 100,

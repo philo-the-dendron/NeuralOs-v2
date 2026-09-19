@@ -44,7 +44,9 @@ pub use nir::{
     NirNote, NirReport, NirScan, EXPORT_VERSION, NIR_NOTE_KINDS, NIR_REF_SHA,
 };
 pub use spike_recorder::{SpikeRecorder, MAX_SPIKE_HISTORY};
-pub use synapse::{STDPRule, Synapse, SynapseType, SCALE};
+#[cfg(feature = "unstable-stdp")]
+pub use synapse::STDPRule;
+pub use synapse::{Synapse, SynapseType, SCALE};
 pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternarize, Trit};
 
 /// Crate-level error type.

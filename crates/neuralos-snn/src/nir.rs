@@ -1920,7 +1920,6 @@ mod std_assembly {
                     1_000,
                 )
                 .expect("two neurons");
-                net.set_plasticity_enabled(false); // the assembly convention
                 net.add_synapse(0, 1, EDGE_PULSE_QUANTA).expect("edge");
                 net.finalize_synapses();
 
@@ -3087,7 +3086,8 @@ mod std_assembly {
                 synapses += 1;
             }
             net.finalize_synapses();
-            net.set_plasticity_enabled(false); // NIR has no plasticity term
+            // NIR has no plasticity term, and none to switch off: a network
+            // starts with plasticity off (both constructors).
 
             let undriven = self.undriven_notes(&inputs, &rooted);
             let encoder = NirGraphEncoder {
@@ -3108,7 +3108,7 @@ mod std_assembly {
                 fused,
                 undriven,
                 multi_linear_gain: drive_linears > 1,
-                plasticity_frozen: true,
+                plasticity_frozen: !net.plasticity_enabled(),
             };
             Ok((net, encoder, report))
         }
