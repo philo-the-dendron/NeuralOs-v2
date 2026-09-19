@@ -36,7 +36,7 @@ the PR that made the check hold, as of this tree.
 8. [x] Worst case from capacity, measured at that case on the C3. (PR I, #33: the two corners of `44·N + 6·S ≤ 262,144` on the board, 0 red; the worst case measured, the neuron corner, 5,850,980 ns/step mean; all-to-all computed at 5,313,354 ns.)
 9. [ ] STDP behind an unstable feature.
 10. [x] The README's first example is a real doctest; `missing_docs` on. (PR J, #34: § Quick start is the board's own neuron, asserting the 147 spikes and the first spike's index 55 the C3 prints; § Usage sketch compiles too; `missing_docs` on with 53 fields documented.)
-11. [ ] Rustdoc states rounding, saturation, reset, leak, step order; delay is the edge's.
+11. [x] Rustdoc states rounding, saturation, reset, leak, step order, the one-step delay. (PR K, #36: `LIFNeuron::integrate_and_fire` § Semantics and `SpikingNeuralNetwork::step` § Order, each sentence a doctest or a named test, the pulse a refractory `post` drops among them; `cargo doc -D warnings` is a gate. Reworded from "delay is the edge's": no edge carries a delay in this code.)
 12. [x] The default build forbids `unsafe` (only `simd` has it). (PR J, #34: the library forbids `unsafe_code` with the feature off and denies it with the feature on, `pub mod simd` carrying the one `allow`; both falsifiers in the commit.)
 13. [x] Grep gate on release texts: no "golden", "conformance", "successor", Lava. (Ticked at a stamp, by the grep in that release draft's § Procedure: alpha.8 stamp, 0 hits.)
 14. [x] Zero runtime dependencies (`cargo tree -e normal`) at each release. (PR F, #30: `cargo tree -e normal -p neuralos-snn` prints the crate alone, with `std` and without.)

@@ -129,7 +129,42 @@ impl<const N: usize, const S: usize> FixedNetwork<N, S> {
     /// order; advance the time, saturating.
     ///
     /// A pulse is read by the next step's integration: the one-step
-    /// synaptic delay of the std network.
+    /// synaptic delay of the std network. A spike at step t reaches `post`
+    /// at step t + 1. A `post` that is refractory at step t + 1 integrates
+    /// nothing, and the clear drops the pulse: it is lost, not deferred.
+    ///
+    /// ```
+    /// use neuralos_snn::fixed::{FixedNetwork, FixedSynapse};
+    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    ///
+    /// let quiet = |id| {
+    ///     let mut n = LIFNeuron::new(id);
+    ///     n.noise_amplitude_ua = 0;
+    ///     n
+    /// };
+    /// let synapse = [FixedSynapse { pre: 0, post: 1, pulse_ua: 400 }];
+    /// let mut fired = [false; 2];
+    ///
+    /// // `pre` fires at step 0 (3,000 μA: +15 mV, onto the threshold).
+    /// let mut net = FixedNetwork::new([quiet(0), quiet(1)], synapse, 1_000);
+    /// net.step(&[3_000, 0], &mut fired);
+    /// assert_eq!(fired, [true, false]);
+    /// assert_eq!(net.neurons()[1].membrane_potential, -70); // not yet
+    /// net.step(&[0, 0], &mut fired);
+    /// assert_eq!(net.neurons()[1].membrane_potential, -68); // one step later
+    ///
+    /// // The same, `post` refractory through step 1.
+    /// let mut post = quiet(1);
+    /// post.refractory_time_us = 2_000;
+    /// let mut net = FixedNetwork::new([quiet(0), post], synapse, 1_000);
+    /// net.step(&[3_000, 0], &mut fired);
+    /// assert_eq!(net.neurons()[1].synaptic_current_ua, 400); // delivered
+    /// net.step(&[0, 0], &mut fired); // not read, then cleared
+    /// assert_eq!(net.neurons()[1].synaptic_current_ua, 0);
+    /// assert_eq!(net.neurons()[1].refractory_time_us, 0);
+    /// net.step(&[0, 0], &mut fired); // integrates, and nothing is left
+    /// assert_eq!(net.neurons()[1].membrane_potential, -70);
+    /// ```
     pub fn step(&mut self, input: &[i16; N], fired: &mut [bool; N]) {
         for n in &mut self.neurons {
             n.decay_adaptation_current();

@@ -86,7 +86,7 @@ pub struct Synapse {
     pub raw_stdp_delta: i64,
     /// Cumulative delta ABSORBED by the `[min_weight, max_weight]` clamp:
     /// `Σ(delta − applied)`. When |absorbed| is large relative to
-    /// [`raw_stdp_delta`], bounds asymmetry — not pairing — shaped the
+    /// [`raw_stdp_delta`](Self::raw_stdp_delta), bounds asymmetry — not pairing — shaped the
     /// trajectory.
     pub absorbed_delta: i64,
 }

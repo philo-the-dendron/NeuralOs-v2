@@ -89,6 +89,8 @@ RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features   # s
 RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd         # same gate, the simd configuration
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
 cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings  # simd lint gate: workspace clippy never compiles the feature-gated module (2026-08-30)
+RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps                  # the rustdoc gate (2026-09-19): the docs state the semantics (ROADMAP § 0.1.0, check 11), so an unresolved link is a defect
+RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd  # same gate, the simd configuration
 cargo test -p neuralos-snn --release --features simd -- --include-ignored   # simd release gate: the slice-length contract is assert_eq!, its regression test only fails in release (2026-08-30); --include-ignored pulls the two exhaustive sweeps in, ~12 s in release (round 12, 2026-09-02)
 PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # the hdf5 gate (vendored HDF5; cmake from .nirenv; 116 green)
 PATH="$PWD/.nirenv/bin:$PATH" cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate  # THE NIR HDF5 EVIDENCE GATE (5/5)

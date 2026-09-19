@@ -4,7 +4,8 @@
 //!
 //! - After [`LIFNeuron::reset`], membrane potential = resting potential, no currents,
 //!   no refractory.
-//! - After a spike, the neuron is refractory for exactly `tau_refractory_us`.
+//! - After a spike, the neuron is refractory for `ceil(tau_refractory_us / dt_us)`
+//!   steps: exactly `tau_refractory_us` when `dt_us` divides it.
 //! - Membrane potential is always in `[``MEMBRANE_MV_MIN``, ``MEMBRANE_MV_MAX``]` mV.
 //! - Firing rate cannot exceed `1_000_000 / tau_refractory_us` Hz (refractory bound).
 //! - With zero input and large dt, membrane → resting (leak convergence).
@@ -21,8 +22,10 @@
 //!
 //! # The voltage grid and the dead zone (why resolution is configurable)
 //!
-//! `delta_v = dt_over_tau · (leak + R·I/1000) / 1000` truncates to whole
-//! quanta. On the default mV grid at default params (dt=1 ms, R=100 MΩ), a
+//! `delta_v = dt_over_tau · (leak + R·I·s/1000) / 1000` truncates to whole
+//! quanta, `s` the grid's scale: 1 on the mV grid, 100 on the centi-mV one
+//! ([`LIFNeuron::integrate_and_fire`] § Semantics has the whole step). On
+//! the default mV grid at default params (dt=1 ms, R=100 MΩ), a
 //! steady total current at rest below ~**200 μA (E, τ=20 ms)** or ~**100 μA
 //! (I, τ=10 ms)** — the dead zone scales as `τ`/`dt_over_tau` — moves the
 //! membrane exactly zero, forever. The ternary substrate's recurrent pulses
@@ -342,6 +345,199 @@ impl LIFNeuron {
     /// - `input_current_ua`: external input current (μA)
     /// - `dt_us`: time step (μs)
     /// - `current_time_us`: simulation time (μs) — **owned by the caller**, not the neuron
+    ///
+    /// # Semantics
+    ///
+    /// One call is one step, in the order below. Every `/` is Rust's integer
+    /// division and truncates toward zero. No step can panic, for any value
+    /// of any field or argument: `proofs/no-panic-step` proves at link time
+    /// that a release build has no panic path, and the proptest named under
+    /// Saturation runs the chain with overflow checks on. Given the current
+    /// of item 3, the membrane update equals the one an unbounded integer
+    /// would give (the two tests named under Saturation).
+    ///
+    /// 1. **The clock is the caller's.** `current_time_us` is stored as
+    ///    `last_update_time_us`, seeds the noise and stamps a spike. The
+    ///    neuron keeps no clock and does not compare it with `dt_us`.
+    /// 2. **Refractory.** While `refractory_time_us > 0` the step subtracts
+    ///    `dt_us` from it, saturating at 0, and returns `false`: nothing is
+    ///    integrated, the input and the synaptic current are ignored, the
+    ///    membrane does not move. The step that brings the counter to 0 is
+    ///    one of these, so a spike is followed by
+    ///    `ceil(tau_refractory_us / dt_us)` silent steps: 2 at the defaults
+    ///    (2 ms, stepped by 1 ms).
+    /// 3. **The current** is `input_current_ua + synaptic_current_ua + noise
+    ///    − adaptation_current_ua`, in that order, each operation saturating
+    ///    in `i16`. The step reads the synaptic current and does not clear
+    ///    it: [`clear_synaptic_current`](Self::clear_synaptic_current) is the
+    ///    caller's, and both networks call it after every integration.
+    /// 4. **Noise** is `(b − 128) · noise_amplitude_ua / 128`, `b` a byte of
+    ///    a 16-bit LFSR seeded by `id XOR current_time_us`. It is a function
+    ///    of those three values and of nothing else, so two runs, or a host
+    ///    and a board, agree bit for bit. It lies in `−amp ..= 127·amp/128`:
+    ///    −5..=4 at the default 5. Amplitude 0 is silent
+    ///    (`noise_lies_in_minus_amp_to_127_amp_over_128`,
+    ///    `noise_is_zero_when_amplitude_is_zero`).
+    /// 5. **The leak and the update.** With `I` the current, `V` the
+    ///    membrane and `s` the grid's scale
+    ///    ([`VoltageResolution::scale`]: 1 on mV, 100 on centi-mV):
+    ///
+    ///    ```text
+    ///    dt_over_tau  = dt_us · 1000 / tau_membrane_us
+    ///    current_term = I · resistance_mohm · s / 1000
+    ///    delta_v      = dt_over_tau · (resting_potential − V + current_term) / 1000
+    ///    ```
+    ///
+    ///    The leak is the `resting_potential − V` term: each step closes
+    ///    `dt/τ` of the gap to rest. [`dt_over_tau`] is the first line.
+    /// 6. **Rounding.** The three divisions truncate, so a small term moves
+    ///    nothing. A small current is the dead zone of the
+    ///    [module doc](crate::lif_neuron#the-voltage-grid-and-the-dead-zone-why-resolution-is-configurable).
+    ///    A small gap leaks nothing, while `dt_over_tau · gap` is under
+    ///    1000. On the mV grid an excitatory neuron at its defaults
+    ///    (τ = 20 ms) leaks 0 from a gap under 20 mV, so after a spike it
+    ///    stays at `reset_potential`, 10 mV under rest, until a current
+    ///    moves it; an inhibitory one (τ = 10 ms) leaks 0 under 10 mV, so
+    ///    from reset it climbs one quantum, to −79, and stays.
+    ///    And `dt_over_tau` is 0 when `tau_membrane_us` is above
+    ///    `1000 · dt_us`, or is 0: the membrane is frozen, with no error.
+    ///    The clamp and the threshold test below still run.
+    /// 7. **Saturation.** `V + delta_v` is clamped to
+    ///    [`MEMBRANE_MV_MIN`]`..=`[`MEMBRANE_MV_MAX`], times `s`. The
+    ///    multiply in `delta_v` saturates in `i64`, and a product that large
+    ///    is far past the clamp on the same side, so the result is exact
+    ///    (`prop_integrate_and_fire_is_exact_over_the_whole_domain` on the
+    ///    domain it reaches,
+    ///    `the_saturating_multiply_lands_where_an_unbounded_integer_would` on
+    ///    the saturating branch).
+    /// 8. **The spike.** If the clamped membrane is `>= threshold`: the
+    ///    membrane goes to `reset_potential`, `refractory_time_us` to
+    ///    `tau_refractory_us`, `last_spike_time_us` to `current_time_us`,
+    ///    `adaptation_current_ua` gains 2 μA (saturating), and the step
+    ///    returns `true`. Nothing in this step decays the adaptation:
+    ///    [`decay_adaptation_current`](Self::decay_adaptation_current) is
+    ///    the caller's, and both networks call it once per step. A neuron
+    ///    stepped alone without it keeps 2 μA more per spike, forever.
+    ///
+    /// # Examples
+    ///
+    /// The update, the dead zone and the grid: 600 μA moves the membrane
+    /// 3 mV, ±12 μA moves nothing on the mV grid and 6 quanta on the
+    /// centi-mV one.
+    /// ```
+    /// use neuralos_snn::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
+    ///
+    /// let quiet = |r| {
+    ///     let mut n = LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, r);
+    ///     n.noise_amplitude_ua = 0;
+    ///     n
+    /// };
+    /// // dt_over_tau = 50, current_term = 600·100/1000 = 60, 50·60/1000 = 3.
+    /// let mut n = quiet(VoltageResolution::Millivolt);
+    /// n.integrate_and_fire(600, 1_000, 0);
+    /// assert_eq!(n.membrane_potential, -67);
+    ///
+    /// // current_term = ±1, and 50·1/1000 truncates to 0 from both sides.
+    /// for i in [12, -12] {
+    ///     let mut n = quiet(VoltageResolution::Millivolt);
+    ///     n.integrate_and_fire(i, 1_000, 0);
+    ///     assert_eq!(n.membrane_potential, -70);
+    /// }
+    /// // s = 100: current_term = 120, 50·120/1000 = 6.
+    /// let mut n = quiet(VoltageResolution::CentiMillivolt);
+    /// n.integrate_and_fire(12, 1_000, 0);
+    /// assert_eq!(n.membrane_potential, -7_000 + 6);
+    /// ```
+    ///
+    /// The spike at `>=`, what it resets, the two silent steps, and the
+    /// membrane that stays at the reset potential, or one quantum above it.
+    /// ```
+    /// use neuralos_snn::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
+    ///
+    /// let mut n = LIFNeuron::new(0);
+    /// n.noise_amplitude_ua = 0;
+    /// n.membrane_potential = -56; // one quantum under the threshold, -55
+    /// // leak = -14, current_term = 40, 50·26/1000 = 1: the membrane lands ON it.
+    /// assert!(n.integrate_and_fire(400, 1_000, 5_000));
+    /// assert_eq!(n.membrane_potential, n.reset_potential);
+    /// assert_eq!(n.refractory_time_us, n.tau_refractory_us);
+    /// assert_eq!(n.last_spike_time_us, 5_000);
+    /// assert_eq!(n.adaptation_current_ua, 2);
+    ///
+    /// // Two silent steps: the input is ignored, the second one ends at 0.
+    /// assert!(!n.integrate_and_fire(30_000, 1_000, 6_000));
+    /// assert!(!n.integrate_and_fire(30_000, 1_000, 7_000));
+    /// assert_eq!((n.membrane_potential, n.refractory_time_us), (-80, 0));
+    ///
+    /// // Integrating again, with no input: the 10 mV gap leaks 50·10/1000 = 0.
+    /// assert!(!n.integrate_and_fire(0, 1_000, 8_000));
+    /// assert_eq!(n.membrane_potential, -80);
+    /// assert_eq!(n.adaptation_current_ua, 2); // and nothing decayed it
+    ///
+    /// // An inhibitory neuron, from reset: dt_over_tau = 100, so the same gap
+    /// // leaks 100·10/1000 = 1, once. Then 100·9/1000 = 0.
+    /// let mut i = LIFNeuron::new_with_type_resolution(
+    ///     1,
+    ///     NeuronType::Inhibitory,
+    ///     VoltageResolution::Millivolt,
+    /// );
+    /// i.noise_amplitude_ua = 0;
+    /// i.membrane_potential = i.reset_potential;
+    /// i.integrate_and_fire(0, 1_000, 0);
+    /// assert_eq!(i.membrane_potential, -79);
+    /// i.integrate_and_fire(0, 1_000, 1_000);
+    /// assert_eq!(i.membrane_potential, -79);
+    /// ```
+    ///
+    /// The current saturates term by term, and the synaptic current is the
+    /// caller's to clear.
+    /// ```
+    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    ///
+    /// let mut n = LIFNeuron::new(0);
+    /// n.noise_amplitude_ua = 0;
+    /// n.threshold = i16::MAX; // no spike in this example
+    /// // MAX + MAX saturates to MAX, then MAX − MAX is 0: nothing moves,
+    /// // where an unbounded sum would leave 32,767 μA.
+    /// n.synaptic_current_ua = i16::MAX;
+    /// n.adaptation_current_ua = i16::MAX;
+    /// n.integrate_and_fire(i16::MAX, 1_000, 0);
+    /// assert_eq!(n.membrane_potential, -70);
+    ///
+    /// let mut n = LIFNeuron::new(0);
+    /// n.noise_amplitude_ua = 0;
+    /// n.add_synaptic_current(600);
+    /// n.integrate_and_fire(0, 1_000, 0);
+    /// assert_eq!(n.membrane_potential, -67);
+    /// n.integrate_and_fire(0, 1_000, 1_000); // the 600 μA is still there
+    /// assert_eq!(n.membrane_potential, -65);
+    /// n.clear_synaptic_current();
+    /// n.integrate_and_fire(0, 1_000, 2_000); // a 5 mV gap leaks nothing
+    /// assert_eq!(n.membrane_potential, -65);
+    /// ```
+    ///
+    /// The clamp at both ends, and the frozen membrane.
+    /// ```
+    /// use neuralos_snn::lif_neuron::{LIFNeuron, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
+    ///
+    /// let mut n = LIFNeuron::new(0);
+    /// n.noise_amplitude_ua = 0;
+    /// n.threshold = i16::MAX;
+    /// n.integrate_and_fire(-30_000, 1_000, 0); // delta_v = -150
+    /// assert_eq!(n.membrane_potential, MEMBRANE_MV_MIN);
+    /// n.integrate_and_fire(30_000, 1_000, 1_000); // delta_v = +151
+    /// assert_eq!(n.membrane_potential, MEMBRANE_MV_MAX);
+    ///
+    /// for tau in [0, 1_000_001] {
+    ///     let mut n = LIFNeuron::new(0);
+    ///     n.noise_amplitude_ua = 0;
+    ///     n.tau_membrane_us = tau; // dt_over_tau = 0
+    ///     assert!(!n.integrate_and_fire(30_000, 1_000, 0));
+    ///     assert_eq!(n.membrane_potential, -70);
+    ///     n.membrane_potential = n.threshold; // the threshold test still runs
+    ///     assert!(n.integrate_and_fire(0, 1_000, 1_000));
+    /// }
+    /// ```
     ///
     /// # Bug fix vs v0.1
     ///
@@ -715,8 +911,12 @@ mod tests {
         n.integrate_and_fire(300, 1000, 101);
         assert_eq!(n.membrane_potential, -58, "positive pulse ratchets +1 mV");
 
-        // −12 μA pulse at the NEW sticking point (gap 18 → 18.8/20 → 0):
-        // absorbed, no ratchet down.
+        // −12 μA pulse at the NEW sticking point (leak −12 + 28 = 16, and
+        // 16/20 → 0): absorbed, no ratchet down. The clear first, as the
+        // network does after every integration: the step does not clear
+        // the accumulator, so without it the +12 is still there and this
+        // step would integrate 12 − 12 = 0, not a −12 pulse.
+        n.clear_synaptic_current();
         n.add_synaptic_current(-12);
         n.integrate_and_fire(300, 1000, 102);
         assert_eq!(n.membrane_potential, -58, "negative pulse absorbed");
@@ -810,6 +1010,26 @@ mod tests {
         n.noise_amplitude_ua = 0;
         for t in 0..1000_u32 {
             assert_eq!(n.generate_noise(t), 0);
+        }
+    }
+
+    /// The range the rustdoc states: `(b − 128) · amp / 128` truncates toward
+    /// zero, so the floor is `−amp` and the ceiling `127·amp/128`, which is
+    /// `amp − 1` up to amplitude 128 and less above it. Both ends are
+    /// reached within one LFSR period.
+    #[test]
+    fn noise_lies_in_minus_amp_to_127_amp_over_128() {
+        for (amp, lo, hi) in [(5_u8, -5_i16, 4_i16), (128, -128, 127), (255, -255, 253)] {
+            let mut n = LIFNeuron::new(0);
+            n.noise_amplitude_ua = amp;
+            let (mut min, mut max) = (i16::MAX, i16::MIN);
+            for t in 0..=u32::from(u16::MAX) {
+                let v = n.generate_noise(t);
+                min = min.min(v);
+                max = max.max(v);
+            }
+            assert_eq!((min, max), (lo, hi), "amplitude {amp}");
+            assert_eq!(hi, (127 * i16::from(amp)) / 128);
         }
     }
 

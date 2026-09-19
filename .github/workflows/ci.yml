@@ -86,6 +86,19 @@ jobs:
       - name: simd lint gate (neuralos-snn)
         run: cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
 
+      # The rustdoc gate: the library's docs are where its semantics are
+      # stated (ROADMAP § 0.1.0, check 11), so a link that does not resolve
+      # is a defect. Default and `simd`, the two builds a reader of the
+      # published docs can meet; `main` carried 15 and 2 more such links
+      # the day this was added (2026-09-19), none of them looked at by
+      # any gate. `--no-deps`: this crate's docs, not its dependencies'.
+      - name: rustdoc gate (neuralos-snn)
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: |
+          cargo doc -p neuralos-snn --no-deps
+          cargo doc -p neuralos-snn --no-deps --features simd
+
       # The slice-length contract is assert_eq!; its regression test is only
       # distinguishable from debug_assert_eq! in release. Added 2026-08-30.
       - name: simd release gate (neuralos-snn)
@@ -222,6 +235,8 @@ jobs:
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd
             cargo test -p neuralos-snn --features simd
             cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
+            RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps
+            RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd
             cargo test -p neuralos-snn --release --features simd -- --include-ignored
             cargo test -p neuralos-rt --features hdf5
             cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate
@@ -380,7 +395,10 @@ jobs:
       # chose. The default is to fix (bump, patch, drop the dependency).
       # An `--ignore <RUSTSEC-ID>` on a run line is the principal's
       # ruling, written here with a dated why, and deleted when the
-      # dependency moves.
+      # dependency moves. Where no fix exists the ruling is the only
+      # path that day: `rustybuzz` and `ttf-parser`, two of the root
+      # scan's warnings, are unmaintained under Slint (through `resvg`),
+      # and nothing here can bump, patch or drop them.
       - name: cargo audit (firmware, its own workspace and lock)
         run: cargo audit --file firmware/esp32c3/Cargo.lock
 

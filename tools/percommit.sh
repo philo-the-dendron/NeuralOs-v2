@@ -90,6 +90,8 @@ for c in $commits; do
   run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd
   run cargo test -p neuralos-snn --features simd
   run cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
+  run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps
+  run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd
   run cargo test -p neuralos-snn --release --features simd -- --include-ignored
   run cargo test -p neuralos-rt --features hdf5
   run cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate

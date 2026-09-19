@@ -11,7 +11,8 @@
 //! # Invariants (testable)
 //!
 //! - `SpikingNeuralNetwork::new(0, ...)` always returns `Err`.
-//! - `step()` advances `current_time_us` by exactly `time_step_us`.
+//! - `step()` advances `current_time_us` by exactly `time_step_us`, until the
+//!   `u32` ceiling, where it saturates.
 //! - Topology builders never create self-connections.
 //! - LFSR RNG is deterministic: same seed → same network connectivity.
 //! - Synapse weights respect the presynaptic neuron's type (E → positive, I → negative).
@@ -315,7 +316,7 @@ impl SpikingNeuralNetwork {
         })
     }
 
-    /// Build the configured topology. Must be called before [`step`].
+    /// Build the configured topology. Must be called before [`step`](Self::step).
     ///
     /// Idempotent: a second call clears any existing synapses, CSR state, and
     /// pending plasticity entries before rebuilding, so repeated calls produce
@@ -349,6 +350,51 @@ impl SpikingNeuralNetwork {
 
     /// Advance the simulation by one `time_step_us`. Returns the spikes emitted
     /// this step in chronological (neuron-id) order.
+    ///
+    /// # Order
+    ///
+    /// 1. Every neuron's adaptation current decays by 1 μA toward 0: one at
+    ///    or under 0 stays ([`LIFNeuron::decay_adaptation_current`]).
+    /// 2. Every neuron integrates, in id order, at the current time: step 0
+    ///    runs at time 0. Its current is `input_currents[id]` plus the pulses
+    ///    the step before delivered ([`LIFNeuron::integrate_and_fire`]
+    ///    § Semantics). A missing entry of `input_currents` reads as 0 and an
+    ///    entry past the last neuron is ignored.
+    /// 3. Every neuron's synaptic current is cleared.
+    /// 4. Each neuron that fired, in id order, adds `weight / divisor` μA to
+    ///    each of its targets, in the CSR's order: the division truncates
+    ///    toward zero, the add saturates in `i16`
+    ///    ([`synaptic_input_divisor`](Self::synaptic_input_divisor)).
+    /// 5. With plasticity enabled, the STDP passes run on this step's spikes.
+    /// 6. The time advances by `time_step_us`, saturating at `u32::MAX`: a
+    ///    step at the ceiling runs at the same time again
+    ///    (`the_clock_saturates_at_the_u32_ceiling`).
+    ///
+    /// [`FixedNetwork::step`](crate::fixed::FixedNetwork::step) is this order
+    /// without item 5.
+    ///
+    /// # The one-step delay
+    ///
+    /// A spike at step t reaches `post` at step t + 1: a step integrates the
+    /// pulses of the step before it, then clears them, then propagates its
+    /// own (the three `transmission_*` tests). A `post` that is refractory at
+    /// step t + 1 integrates nothing, and the clear drops the pulse: it is
+    /// lost, not deferred
+    /// (`a_pulse_to_a_refractory_post_is_dropped_not_deferred`).
+    ///
+    /// # Errors
+    ///
+    /// None today: no path of the step returns `Err`.
+    ///
+    /// # Panics
+    ///
+    /// The pulse is `weight / divisor as i16`, so a divisor above 32,767
+    /// wraps negative and flips the pulse's sign
+    /// (`a_divisor_above_i16_max_flips_the_pulse`). At 65,535 it is `-1`, and
+    /// when a neuron fires into a synapse of weight `i16::MIN` the division
+    /// overflows and the step panics
+    /// (`the_divisor_minus_one_panics_on_the_weight_i16_min`).
+    /// [`add_synapse`](Self::add_synapse) accepts that weight.
     pub fn step(&mut self, input_currents: &[i16]) -> Result<Vec<Spike>> {
         let mut output_spikes: Vec<Spike> = Vec::new();
         let mut firing_neurons: Vec<u16> = Vec::new();
@@ -600,9 +646,9 @@ impl SpikingNeuralNetwork {
 
     /// Rebuild the CSR layout (authoritative forward sort + reverse CSR +
     /// inverse permutation) after wiring the network externally via
-    /// [`add_synapse`].
+    /// [`add_synapse`](Self::add_synapse).
     ///
-    /// [`build_topology`] already does this for its own builders; this method
+    /// [`build_topology`](Self::build_topology) already does this for its own builders; this method
     /// is the path for callers that construct synapse wiring themselves —
     /// e.g. importing a pretrained weight matrix edge by edge. Without it:
     ///
@@ -2060,6 +2106,93 @@ mod tests {
         );
     }
 
+    /// The exception to the one-step delay: a `post` refractory at the step
+    /// that would read the pulse. mV grid, the +200 μA pulse of the test
+    /// above, which moves a listening `post` to −68. Here `post` is
+    /// refractory for two steps from step 0: the pulse sits in its
+    /// accumulator through step 1, unread, and step 1's clear drops it.
+    /// Step 2 integrates, and finds nothing: lost, not deferred.
+    #[test]
+    fn a_pulse_to_a_refractory_post_is_dropped_not_deferred() {
+        let mut net =
+            SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                .expect("constructs");
+        net.build_topology().expect("empty build");
+        net.set_plasticity_enabled(false);
+        for n in &mut net.neurons {
+            n.noise_amplitude_ua = 0;
+        }
+        net.neurons[1].refractory_time_us = 2_000;
+        net.add_synapse(0, 1, 2000).expect("edge");
+        net.finalize_synapses();
+
+        let spikes = net.step(&[3000, 0]).expect("step 0");
+        assert_eq!(spikes.len(), 1, "pre fires on step 0");
+        assert_eq!(net.neurons[1].synaptic_current_ua, 200, "delivered");
+
+        net.step(&[0, 0]).expect("step 1");
+        assert_eq!(net.neurons[1].membrane_potential, -70, "refractory");
+        assert_eq!(net.neurons[1].synaptic_current_ua, 0, "cleared unread");
+        assert_eq!(net.neurons[1].refractory_time_us, 0);
+
+        net.step(&[0, 0]).expect("step 2");
+        assert_eq!(
+            net.neurons[1].membrane_potential, -70,
+            "step 2 integrates and no pulse is left: dropped, not deferred"
+        );
+    }
+
+    /// `weight / divisor as i16`: 65,534 is `-2`, so a +2000 weight delivers
+    /// −1000 μA. The wart as it is, stated in the step's `# Panics`.
+    #[test]
+    fn a_divisor_above_i16_max_flips_the_pulse() {
+        let mut net =
+            SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                .expect("constructs");
+        net.build_topology().expect("empty build");
+        for n in &mut net.neurons {
+            n.noise_amplitude_ua = 0;
+        }
+        net.set_synaptic_input_divisor(65_534).expect("nonzero");
+        net.add_synapse(0, 1, 2000).expect("edge");
+        net.finalize_synapses();
+        let spikes = net.step(&[3000, 0]).expect("step 0");
+        assert_eq!(spikes.len(), 1, "pre fires on step 0");
+        assert_eq!(net.neurons[1].synaptic_current_ua, -1000);
+    }
+
+    /// Divisor 65,535 is `-1`, and `i16::MIN / -1` overflows: a panic inside
+    /// a function that returns `Result`, when the synapse's `pre` fires.
+    #[test]
+    #[should_panic(expected = "attempt to divide with overflow")]
+    fn the_divisor_minus_one_panics_on_the_weight_i16_min() {
+        let mut net =
+            SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                .expect("constructs");
+        net.build_topology().expect("empty build");
+        for n in &mut net.neurons {
+            n.noise_amplitude_ua = 0; // 3000 μA lands ON the threshold: pre fires
+        }
+        net.set_synaptic_input_divisor(65_535).expect("nonzero");
+        net.add_synapse(0, 1, i16::MIN)
+            .expect("add_synapse accepts it");
+        net.finalize_synapses();
+        let _ = net.step(&[3000, 0]);
+    }
+
+    /// The time saturates: a step at the ceiling runs at the same time again.
+    #[test]
+    fn the_clock_saturates_at_the_u32_ceiling() {
+        let mut net =
+            SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                .expect("constructs");
+        net.current_time_us = u32::MAX - 400;
+        net.step(&[0, 0]).expect("step");
+        assert_eq!(net.current_time_us(), u32::MAX);
+        net.step(&[0, 0]).expect("step");
+        assert_eq!(net.current_time_us(), u32::MAX);
+    }
+
     #[test]
     fn transmission_pulses_sum_across_presynaptic_spikes() {
         // Two presynaptic neurons firing the same step ⇒ both pulses land
@@ -2166,7 +2299,9 @@ mod tests {
             prop_assert!(result.is_ok(), "valid n+topology must construct");
         }
 
-        /// step() advances time by exactly time_step_us, regardless of input.
+        /// step() advances time by exactly time_step_us, regardless of input,
+        /// from time 0: far from the `u32` ceiling, where the time saturates
+        /// (`the_clock_saturates_at_the_u32_ceiling`).
         #[test]
         fn prop_step_advances_time(
             n in 5u16..=50,

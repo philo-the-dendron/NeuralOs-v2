@@ -285,7 +285,9 @@ impl SparseSynapseMatrix {
     }
 
     /// Drop all stored edges, keeping the neuron-count sizing and capacity.
-    /// Used by [`SpikingNeuralNetwork::build_topology`] to make rebuilds
+    /// Used by
+    /// [`SpikingNeuralNetwork::build_topology`](crate::network::SpikingNeuralNetwork::build_topology)
+    /// to make rebuilds
     /// idempotent.
     pub fn clear(&mut self) {
         self.weights.clear();
