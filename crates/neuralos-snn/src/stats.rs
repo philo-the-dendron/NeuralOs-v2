@@ -1,4 +1,5 @@
-//! Network-level statistics — computed after each [`step`].
+//! Network-level statistics — computed after each
+//! [`step`](crate::network::SpikingNeuralNetwork::step).
 //!
 //! Split from `network.rs` at R4(ii) (2026-08-20): the orchestrator file
 //! held three responsibilities; this module owns the statistics surface.

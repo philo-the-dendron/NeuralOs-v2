@@ -25,8 +25,8 @@
 //! module reads and writes (the historical NIR container). HDF5 `.nir`
 //! file IO is slice-2 work and lands std-side (needs the hdf5 crate).
 //!
-//! LIF (`nir/ir/neuron.py`): `tau` [s], `r` [Ω], `v_leak` [V],
-//! `v_threshold` [V], `v_reset` [V] — per-neuron arrays; `v_reset`
+//! LIF (`nir/ir/neuron.py`): `tau` \[s\], `r` \[Ω\], `v_leak` \[V\],
+//! `v_threshold` \[V\], `v_reset` \[V\] — per-neuron arrays; `v_reset`
 //! may be absent (defaults to zeros, reference `from_dict`
 //! semantics). Linear (`nir/ir/linear.py`): `weight` (2-D,
 //! `y = W·x`, rows = outputs). Input/Output: `shape`.
@@ -782,7 +782,7 @@ pub fn quantize_lif(
 ///
 /// # Errors
 ///
-/// [`NirError::BadShape("weight")`] unless `values.len()` is exactly
+/// [`NirError::BadShape("weight")`](NirError::BadShape) unless `values.len()` is exactly
 /// `rows·cols` with both nonzero; [`NirError::BufferOverflow`] when
 /// the arena cannot hold `offset + rows·cols`; [`NirError::BadNumber`]
 /// on any non-finite value or a `scale` that underflows to 0 (denormal
@@ -3811,7 +3811,7 @@ mod std_assembly {
         ///
         /// # Errors
         ///
-        /// [`NirError::BadShape("shape")`] beyond 4 dims.
+        /// [`NirError::BadShape("shape")`](NirError::BadShape) beyond 4 dims.
         pub fn add_input(&mut self, name: &'a str, shape: &[u32]) -> Result<usize, NirError<'a>> {
             self.push_node(name, NirNodeKind::Input, shape)
         }
@@ -3820,7 +3820,7 @@ mod std_assembly {
         ///
         /// # Errors
         ///
-        /// [`NirError::BadShape("shape")`] beyond 4 dims.
+        /// [`NirError::BadShape("shape")`](NirError::BadShape) beyond 4 dims.
         pub fn add_output(&mut self, name: &'a str, shape: &[u32]) -> Result<usize, NirError<'a>> {
             self.push_node(name, NirNodeKind::Output, shape)
         }
@@ -3917,7 +3917,7 @@ mod std_assembly {
         ///
         /// # Errors
         ///
-        /// [`NirError::BadShape("edges")`] when an index names no
+        /// [`NirError::BadShape("edges")`](NirError::BadShape) when an index names no
         /// node (the builder twin of import's endpoint resolution).
         pub fn add_edge(&mut self, from: usize, to: usize) -> Result<(), NirError<'a>> {
             let end = self.nodes.len();

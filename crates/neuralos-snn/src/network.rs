@@ -315,7 +315,7 @@ impl SpikingNeuralNetwork {
         })
     }
 
-    /// Build the configured topology. Must be called before [`step`].
+    /// Build the configured topology. Must be called before [`step`](Self::step).
     ///
     /// Idempotent: a second call clears any existing synapses, CSR state, and
     /// pending plasticity entries before rebuilding, so repeated calls produce
@@ -600,9 +600,9 @@ impl SpikingNeuralNetwork {
 
     /// Rebuild the CSR layout (authoritative forward sort + reverse CSR +
     /// inverse permutation) after wiring the network externally via
-    /// [`add_synapse`].
+    /// [`add_synapse`](Self::add_synapse).
     ///
-    /// [`build_topology`] already does this for its own builders; this method
+    /// [`build_topology`](Self::build_topology) already does this for its own builders; this method
     /// is the path for callers that construct synapse wiring themselves —
     /// e.g. importing a pretrained weight matrix edge by edge. Without it:
     ///

@@ -59,7 +59,7 @@
 //! the 15 mV between rest and threshold — enough to decide whether a neuron
 //! ever fires.
 //!
-//! Fixed by [`div1024_toward_zero`], which biases negatives before the shift so
+//! Fixed by `div1024_toward_zero`, which biases negatives before the shift so
 //! both sites truncate toward zero like the scalar. The scale stays ÷1024; only
 //! the rounding direction changed.
 //!
@@ -221,7 +221,7 @@
 //!   `dt_over_tau_max_is_the_documented_bound` computes.
 //! - `current_term`: `|P| / 1000 ≤ 1_073_741` (scalar), `|P| ÷ 1024 ≤ 1_048_576`
 //!   (AVX2). The scalar is the larger, so it binds. The toward-zero bias in
-//!   [`div1024_toward_zero`] only ever moves a negative value closer to zero, so
+//!   `div1024_toward_zero` only ever moves a negative value closer to zero, so
 //!   it cannot widen any of these magnitudes and the bound is unaffected.
 //! - `sum = leak + current_term`: `|sum| ≤ 65_535 + 1_073_741 = 1_139_276`.
 //! - `sum × dt_over_tau` must fit `i32`: `|dt_over_tau| ≤ i32::MAX / 1_139_276 = 1884`.
