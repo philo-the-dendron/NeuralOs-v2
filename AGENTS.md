@@ -471,11 +471,13 @@ claims, reopening frozen records.
   traces prove): CI green, no brief, no review round, one ISA line.
   Six cuts: (1) one number, one home, the evidence README; other files
   point to it, and release notes and the crate README's version notes
-  freeze at publish; (2) the brief is the PR description, one screen;
-  (3) at most 30 lines of ISA per PR; (4) 3 to 6 commits per PR; (5)
-  state in two places, the ISA head line and TODO.md; (6) doctrine one
-  in, one out. The brief's Who line names the review count, and the
-  tier sets it: tier 3 none, tier 2 one fresh review plus the per-commit
-  loop, tier 1 that plus the second model family and the sweep. No
-  reviewer joins mid-PR unless the tier changes or a finding reopens
-  the design (PR H had three reviews that agreed, 2026-09-15).
+  freeze at publish; (2) the brief is the PR description, one screen,
+  less its Who line — the body states the work and its facts, never who
+  reviewed it (philo, 2026-09-18); (3) at most 30 lines of ISA per PR;
+  (4) 3 to 6 commits per PR; (5) state in two places, the ISA head line
+  and TODO.md; (6) doctrine one in, one out. The brief's Who line names
+  the review count, and the tier sets it: tier 3 none, tier 2 one fresh
+  review plus the per-commit loop, tier 1 that plus the second model
+  family and the sweep. No reviewer joins mid-PR unless the tier
+  changes or a finding reopens the design (PR H had three reviews that
+  agreed, 2026-09-15).

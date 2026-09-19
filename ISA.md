@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@d9f2559 (PR #33 merged 2026-09-15 23:47 UTC: round 36, PR I, capacity, check 8; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34, 35, 36 and 37 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12), alpha.9 open · wrote-from: work/doctest-forbid, round 37 (PR J, checks 10 and 12: five commits), not pushed; the per-commit loop runs over the five before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): two reviews of the build before the push (tier 2, the principal's call), the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@60d6855 (PR #34 merged 2026-09-19 03:24 UTC: round 37, PR J, checks 10 and 12; mirror synced, branch and both backups deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 37 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12), alpha.9 open; checks 9 and 11 are what 0.1.0 still wants · wrote-from: work/audit-firmware, round 38 (the audit gate reaches the firmware's own lock, tier 3: five commits), not pushed; `tools/percommit.sh` ran over the five one at a time, all green on their own · open(session): the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-18T23:35:07Z
+updated: 2026-09-19T05:28:07Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9462,5 +9462,36 @@ cost was the 64-bit routine; CI's firmware `.text` at `7038f69`
 (`c228766a…`) against the main clone's pin, the fourth entry's known
 divergence. Deviations: the sketch binds `_spikes`; commit 0 re-pins
 the evidence README in `SHA256SUMS`; #34 assumed. **Guards.** GUARD 1:
+appended, head line refreshed. GUARD 2: no verdict touched. GUARD 3:
+nothing public.
+
+## Close-out (round 38 — the audit gate reaches the firmware's own lock; the insurance PR opened before PR K, unlettered — 2026-09-19)
+
+Branch `work/audit-firmware` from `main@60d6855`, tier 3, five
+commits: `3f22aa7` the head line; `866116f` the firmware's own lock
+scanned, a second scan step in the same `audit` job so the seven
+required contexts are unchanged — 633 crates on the root lock, 139 on
+the firmware's, 0 vulnerabilities and 1 warning (`paste` 1.0.15,
+RUSTSEC-2024-0436) under the pinned cargo-audit 0.22.2 — with a remedy
+that routes rather than pre-authorizes: fixing is the default, an
+`--ignore` is the principal's ruling, dated and deleted when the
+dependency moves. Measured: a scratch lock on `time` 0.1.43 exits 1
+bare, 0 under `--ignore RUSTSEC-2020-0071`, 1 under another ID — per
+advisory. `ba1dfd2` corrects that comment's 2026-09-07 note (`Fixes:
+b7a7222`): `instant` reaches neuralos-rt alone and `paste` both, so
+"none in neuralos-rt" was wrong when written, while none of the five
+reaches neuralos-snn or neuralos-nir2json; `3cea956` narrows cut (2),
+the Who line staying in the brief, swept on `Who line` and `brief is
+the PR description`; this close-out. Checks holding: 1 to 8, 10, 12 to
+14 — this PR ticks none. Record-only: `tools/percommit.sh` never runs
+`cargo audit`, so the loop did not cover this change; the local run
+and the `audit (pull_request)` context prove it. The firmware step
+carries no `if: always()`, so a red root scan skips it — deferred,
+untestable without a failing audit. The five entered the database
+2024-11-10 to 2026-07-12 (`git log --diff-filter=A`; `Date:` is the
+advisory's, not the entry's), all before 2026-09-07; that day's log
+was not read. The remedy's "fix" default is a dead letter for its
+named trigger, `rustybuzz` and `ttf-parser` being unmaintained under
+Slint; the clause rides PR K's commit 1. **Guards.** GUARD 1:
 appended, head line refreshed. GUARD 2: no verdict touched. GUARD 3:
 nothing public.
