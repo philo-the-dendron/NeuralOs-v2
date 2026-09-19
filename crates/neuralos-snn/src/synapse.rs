@@ -8,6 +8,10 @@
 //! # Invariants (testable)
 //!
 //! - `Synapse::new(id, id, _)` always returns `Err(Error::InvalidParameter)` (no self-connections).
+//!
+//! With the `unstable-stdp` feature (`update_weight` and `STDPRule` exist in
+//! no other build, and may change or go in a minor release):
+//!
 //! - Weight stays within `[min_weight, max_weight]` after every `update_weight` call.
 //! - `STDPRule::calculate_weight_change(dt)` returns 0 for `|dt| ≥ 10·tau` (decay floor).
 //! - LTP (pre before post, dt < 0) returns a non-negative delta.
@@ -82,12 +86,14 @@ pub struct Synapse {
     /// instrumentation — the mechanism-label evidence): the signed sum of
     /// every plasticity delta BEFORE clamping. Read it per class (intra vs
     /// inter assemblies) to decide whether a realized bucket movement was
-    /// pairing-driven or clamp/flip-machinery-driven.
+    /// pairing-driven or clamp/flip-machinery-driven. Reads 0 in a build
+    /// without `unstable-stdp`: `update_weight` is behind it.
     pub raw_stdp_delta: i64,
     /// Cumulative delta ABSORBED by the `[min_weight, max_weight]` clamp:
     /// `Σ(delta − applied)`. When |absorbed| is large relative to
     /// [`raw_stdp_delta`](Self::raw_stdp_delta), bounds asymmetry — not pairing — shaped the
-    /// trajectory.
+    /// trajectory. Reads 0 in a build without `unstable-stdp`, as
+    /// `raw_stdp_delta` does.
     pub absorbed_delta: i64,
 }
 
@@ -123,6 +129,7 @@ impl Synapse {
         })
     }
 
+    /// Unstable: behind `unstable-stdp`.
     /// Apply a plastic weight delta. Clamps to `[min_weight, max_weight]`.
     /// Tracks the raw delta and the clamp-absorbed remainder (session G).
     #[cfg(feature = "unstable-stdp")]
@@ -183,6 +190,7 @@ fn biological_params(t: SynapseType) -> (u16, u16, i16, i16) {
     }
 }
 
+/// Unstable: behind `unstable-stdp`.
 /// Spike-Timing-Dependent Plasticity rule.
 ///
 /// The audit flagged this as **the better STDP implementation** (vs `stdp_plasticity.rs`):

@@ -236,7 +236,9 @@ impl<const N: usize, const S: usize> TryFrom<&SpikingNeuralNetwork> for FixedNet
     ///
     /// [`Error::InvalidParameter`] when `net` has plasticity enabled (a
     /// fixed network has none), or not exactly `N` neurons and `S`
-    /// synapses.
+    /// synapses. A network starts with plasticity off, and only a build with
+    /// the `unstable-stdp` feature can turn it on: without the feature the
+    /// first refusal is never met.
     fn try_from(net: &SpikingNeuralNetwork) -> Result<Self> {
         if net.plasticity_enabled()
             || usize::from(net.neuron_count()) != N

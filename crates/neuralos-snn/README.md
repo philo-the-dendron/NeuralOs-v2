@@ -1,8 +1,8 @@
 # neuralos-snn
 
 > `no_std`, i16 fixed-point spiking neural networks for edge and RISC-V
-> silicon — LIF neurons, pairwise STDP, CSR synapses, ternary weight
-> codecs, and an AVX2 batch kernel.
+> silicon — LIF neurons, CSR synapses, ternary weight codecs, an AVX2
+> batch kernel, and pairwise STDP behind an unstable feature.
 
 Published on crates.io as `0.1.0-alpha.8` (AGPL-3.0-or-later).
 
@@ -61,8 +61,8 @@ the chip.
 |---|---|
 | `lif_neuron` | Leaky-Integrate-and-Fire neuron, fixed-point, per-neuron voltage grid (`VoltageResolution`: mV default, opt-in centi-mV) |
 | `spike_recorder` | `SpikeRecorder`, the spike history a caller keeps when it wants one: a `[u32; MAX_SPIKE_HISTORY]` ring (64 entries, the oldest overwritten), fed from `integrate_and_fire`'s return; the neuron keeps none |
-| `synapse` | Synapse + pairwise STDP rule (a₊ 50 / a₋ −53 / lr 100), weight scale `SCALE = 1000` |
-| `network` *(std)* | `SpikingNeuralNetwork` orchestration (`step()`), CSR `SparseSynapseMatrix` with forward + reverse iteration, 4 topology builders (Random, Small-World, Feedforward, Balanced E/I), plasticity passes (LTD + LTP), per-step stats |
+| `synapse` | Synapse, weight scale `SCALE = 1000`; with `unstable-stdp`, the pairwise STDP rule (a₊ 50 / a₋ −53 / lr 100) |
+| `network` *(std)* | `SpikingNeuralNetwork` orchestration (`step()`), CSR `SparseSynapseMatrix` with forward + reverse iteration, 4 topology builders (Random, Small-World, Feedforward, Balanced E/I), per-step stats; with `unstable-stdp`, the plasticity passes (LTD + LTP), off until `set_plasticity_enabled(true)` |
 | `fixed` | `FixedNetwork<N, S>`: `N` neurons and `S` synapses in arrays, no heap, no plasticity, the std step's order; its step has no `Result`, no index and no division of its own. `TryFrom<&SpikingNeuralNetwork>` *(std)* converts a plasticity-off network of the same size |
 | `trit` | Ternary weight type `{-1, 0, +1}` + scale, ternarizer, stochastic bucket-flip (LFSR, integer-only) |
 | `bridge` | `BitNet` `i2_s` encode/decode (bit-exact round-trip), Prism `q1_0`/`q2_0` import + `q2_0` export, integer fp16 widening — layouts pinned from reference sources, loud errors on impossible input |
@@ -84,6 +84,16 @@ keeps every historically recorded result bit-exact.
 
 - `std` *(default)* — enables the `network` orchestration module
 - `simd` — implies `std`, x86_64-only AVX2 batch kernel
+- `unstable-stdp` — STDP: `STDPRule`, `Synapse::update_weight`,
+  `SpikingNeuralNetwork::set_plasticity_enabled` and
+  `stochastic_ternary_step`. Works with and without `std`.
+
+"Unstable" means one thing: anything behind `unstable-stdp` may change or
+go in a minor release. It is outside the semver promise, and the rest of
+the crate is inside it. A default build does not learn: a network starts
+with plasticity off, and only `set_plasticity_enabled`, behind the
+feature, turns it on. The getter `plasticity_enabled()` and the STDP
+counter fields are stable; without the feature they read `false` and 0.
 
 Without `std` the crate builds `no_std` (neurons, the spike recorder,
 synapses, the fixed network, trit, bridge, kernel, nir) — the embedded
@@ -108,7 +118,8 @@ fn main() -> neuralos_snn::Result<()> {
     let inputs = [0i16; 128];
     for _ in 0..100 {
         // decay → integrate → clear → propagate; the step returns its
-        // `Vec<Spike>`, and plasticity applies pairwise STDP when enabled
+        // `Vec<Spike>`. Weights stay fixed: a default build does not learn
+        // (§ Features, `unstable-stdp`)
         let _spikes = net.step(&inputs)?;
     }
     Ok(())

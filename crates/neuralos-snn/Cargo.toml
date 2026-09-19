@@ -29,6 +29,11 @@ simd = ["std"]
 # minor release. Off by default: a default build does not learn.
 unstable-stdp = []
 
+# docs.rs builds the default features alone; the gated items' docs exist
+# only with the feature on.
+[package.metadata.docs.rs]
+features = ["unstable-stdp"]
+
 [dependencies]
 # None. The spike history is a [u32; N] ring, SpikeRecorder in
 # spike_recorder.rs (alpha.8; a field of the neuron in lif_neuron.rs

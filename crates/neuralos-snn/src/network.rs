@@ -146,8 +146,12 @@ type PlasticityEntry = (u16, u16, usize, u32);
 /// Main spiking neural network orchestrator.
 ///
 /// Holds [`LIFNeuron`] + [`Synapse`] collections, a CSR [`SparseSynapseMatrix`]
-/// for fast synaptic transmission, and an `STDPRule` for plasticity. One call to
-/// [`step`](Self::step) advances the simulation by `time_step_us` microseconds.
+/// for fast synaptic transmission, and, with the `unstable-stdp` feature, an
+/// `STDPRule` for plasticity. One call to [`step`](Self::step) advances the
+/// simulation by `time_step_us` microseconds.
+///
+/// A network starts with plasticity off and does not learn. Only
+/// `set_plasticity_enabled`, behind `unstable-stdp`, turns it on.
 pub struct SpikingNeuralNetwork {
     neurons: Vec<LIFNeuron>,
     /// Parallel to CSR insertion order. Indexed via the plasticity queue and the
@@ -380,13 +384,16 @@ impl SpikingNeuralNetwork {
     ///    each of its targets, in the CSR's order: the division truncates
     ///    toward zero, the add saturates in `i16`
     ///    ([`synaptic_input_divisor`](Self::synaptic_input_divisor)).
-    /// 5. With plasticity enabled, the STDP passes run on this step's spikes.
+    /// 5. With the `unstable-stdp` feature and plasticity enabled
+    ///    (`set_plasticity_enabled`; a network starts with it off), the STDP
+    ///    passes run on this step's spikes. A build without the feature has
+    ///    no item 5.
     /// 6. The time advances by `time_step_us`, saturating at `u32::MAX`: a
     ///    step at the ceiling runs at the same time again
     ///    (`the_clock_saturates_at_the_u32_ceiling`).
     ///
     /// [`FixedNetwork::step`](crate::fixed::FixedNetwork::step) is this order
-    /// without item 5.
+    /// without item 5, in every build.
     ///
     /// # The one-step delay
     ///
@@ -694,9 +701,12 @@ impl SpikingNeuralNetwork {
         self.stats.total_synapses = self.synapses.len() as u32;
     }
 
-    /// Enable or disable STDP weight updates. When disabled, `step()` still
-    /// propagates spikes and advances time, but synapse weights stay fixed —
-    /// useful for sustained-firing visualization or as a control baseline.
+    /// Unstable: behind `unstable-stdp`.
+    /// Enable or disable STDP weight updates. Disabled is the default, in
+    /// both constructors: `step()` propagates spikes and advances time, and
+    /// synapse weights stay fixed — the sustained-firing visualization, the
+    /// control baseline, and the one state
+    /// [`FixedNetwork`](crate::fixed::FixedNetwork) converts from.
     #[cfg(feature = "unstable-stdp")]
     pub fn set_plasticity_enabled(&mut self, enabled: bool) {
         self.plasticity_enabled = enabled;
@@ -725,7 +735,10 @@ impl SpikingNeuralNetwork {
         self.synaptic_input_divisor
     }
 
-    /// Whether STDP weight updates are currently applied each step.
+    /// Whether STDP weight updates are currently applied each step. `false`
+    /// from both constructors, and always `false` in a build without
+    /// `unstable-stdp`, where nothing can turn it on. Stable, unlike its
+    /// setter: `FixedNetwork::try_from` reads it.
     #[must_use]
     pub fn plasticity_enabled(&self) -> bool {
         self.plasticity_enabled
@@ -784,6 +797,7 @@ impl SpikingNeuralNetwork {
         snapped
     }
 
+    /// Unstable: behind `unstable-stdp`.
     /// Stochastic ternary bucket-flip step (Stage 1.5b).
     ///
     /// For every synapse, the STDP delta applied during [`step`](Self::step)
