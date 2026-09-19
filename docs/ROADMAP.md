@@ -12,7 +12,7 @@
 |---|---|---|
 | **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again** — NIR DONE through general assembly (slices 1+2 + `build_network`, 2026-08-22 @ alpha.5), QEMU proof landed 2026-08-21; lock-free (re-scoped, below) remains; **SIMD hardening DONE 2026-08-31** (ten-commit branch, ISA § Close-out). |
 | **2** | `neuralos-app` — Slint visualizer / lab bench | Untouched since 2026-08-08; Phase-2 items re-opened. |
-| **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). **ESP32-C3 silicon DONE 2026-09-09** (`evidence/esp32c3-bringup/`: one LIF neuron on a SuperMini, first spike step 56, 14.7 spikes/s, exact host match). Per-step cost, round 27 (alpha.7, published 2026-09-13, ISA round 27): the neuron as a network holds it (in memory, dt at run time) **3,878 ns/step on alpha.6 → 1,579 on alpha.7**, the free loop 2,863 → 563, behavior bit-identical; the host bench about 2 to 2.5 ns/step slower, recorded. The earlier figures, true when written: 1,501 on alpha.5 and 2,842 on alpha.6 (ISA round-23), both the free loop under the firmware's constant dt. HiFive only if a session names it. |
+| **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). **ESP32-C3 silicon DONE 2026-09-09** (`evidence/esp32c3-bringup/`: one LIF neuron on a SuperMini, first spike step 56 (the real-time loop, wall-clock paced; the burst prints 55, as the host does), 14.7 spikes/s, exact host match). Per-step cost, round 27 (alpha.7, published 2026-09-13, ISA round 27): the neuron as a network holds it (in memory, dt at run time) **3,878 ns/step on alpha.6 → 1,579 on alpha.7**, the free loop 2,863 → 563, behavior bit-identical; the host bench about 2 to 2.5 ns/step slower, recorded. The earlier figures, true when written: 1,501 on alpha.5 and 2,842 on alpha.6 (ISA round-23), both the free loop under the firmware's constant dt. HiFive only if a session names it. |
 | **4** | Paper track | The Branch B article (in `paper/`) — finish, gate, submit. Must not displace 1–3. |
 | **5** | Bridge follow-ups | **Frozen record.** Reopening is the principal's call on the recorded forks. The one active bridge-adjacent task is R4 (harness extraction) below. |
 
@@ -35,9 +35,9 @@ the PR that made the check hold, as of this tree.
 7. [x] `.nir` → fixed arrays → firmware, one documented command. (Arrays: PR G, #31. PR H, #32: `stranger.sh run` on the snnTorch witness, fifteen cases bit for bit.)
 8. [x] Worst case from capacity, measured at that case on the C3. (PR I, #33: the two corners of `44·N + 6·S ≤ 262,144` on the board, 0 red; the worst case measured, the neuron corner, 5,850,980 ns/step mean; all-to-all computed at 5,313,354 ns.)
 9. [ ] STDP behind an unstable feature.
-10. [ ] The README's first example is a real doctest; `missing_docs` on.
+10. [x] The README's first example is a real doctest; `missing_docs` on. (PR J, #34: § Quick start is the board's own neuron, asserting the 147 spikes and the first spike's index 55 the C3 prints; § Usage sketch compiles too; `missing_docs` on with 53 fields documented.)
 11. [ ] Rustdoc states rounding, saturation, reset, leak, step order; delay is the edge's.
-12. [ ] The default build forbids `unsafe` (only `simd` has it).
+12. [x] The default build forbids `unsafe` (only `simd` has it). (PR J, #34: the library forbids `unsafe_code` with the feature off and denies it with the feature on, `pub mod simd` carrying the one `allow`; both falsifiers in the commit.)
 13. [x] Grep gate on release texts: no "golden", "conformance", "successor", Lava. (Ticked at a stamp, by the grep in that release draft's § Procedure: alpha.8 stamp, 0 hits.)
 14. [x] Zero runtime dependencies (`cargo tree -e normal`) at each release. (PR F, #30: `cargo tree -e normal -p neuralos-snn` prints the crate alone, with `std` and without.)
 
@@ -146,9 +146,10 @@ displace substrate + lab bench + gated research.
    CLOSED until a new instrument exists.
 5. **ESP32-C3 bring-up — RAN 2026-09-09** (board decided 2026-08-22,
    arrived 2026-09-09): one LIF neuron on a SuperMini, first spike
-   step 56, 147 burst spikes = 14.7/s (exact host match), blue LED
-   blinking; the 10,000-step burst cost 1,501 ns/step on the alpha.5
-   spine and 2,842 ns/step on alpha.6 (re-measured 2026-09-10, ISA
+   step 56 (the real-time loop, wall-clock paced; the burst prints 55,
+   as the host does), 147 burst spikes = 14.7/s (exact host match),
+   blue LED blinking; the 10,000-step burst cost 1,501 ns/step on the
+   alpha.5 spine and 2,842 ns/step on alpha.6 (re-measured 2026-09-10, ISA
    round-23; true when written: both the free loop under the
    firmware's constant dt, and a network's run-time dt costs more).
    **Round 27 (2026-09-12, alpha.7 in the tree) narrowed the

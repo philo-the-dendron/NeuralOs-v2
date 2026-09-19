@@ -350,12 +350,18 @@
     clippy::missing_panics_doc
 )]
 // SIMD intrinsics are inherently unsafe; this module is OS-dev territory.
-// Nothing denies `unsafe_code` here — there is no `[lints]` table in the
-// workspace or in any member manifest, so the rustc default (allow) stands.
+// `lib.rs` forbids `unsafe_code` when the `simd` feature is off and denies it
+// when the feature is on; `pub mod simd` carries the `#[allow(unsafe_code)]`
+// this module needs. The `deny` is what lets that allow work — a `forbid`
+// refuses an `allow` below it — and the default build, which CI runs, is what
+// holds the line: an `allow(unsafe_code)` written outside this module is
+// refused there by name (E0453). The hole that leaves: the default build
+// only sees the code it compiles, so an item under `simd`'s own `cfg` that
+// carried its own `allow` would pass every gate. None exists; the gap is
+// accepted on record, with no CI grep (ISA round 37).
 // (This comment claimed a workspace `unsafe_code = "allow"` until 2026-09-01.
 // That table has never existed; the permission was real, its stated source was
-// not. If a `[lints]` table is ever added, `unsafe_code` has to be allowed for
-// this module explicitly or the crate stops compiling.)
+// not. Since 2026-09-18 the permission is the pair of attributes above.)
 #![allow(clippy::missing_safety_doc)]
 // Canonical SIMD idiom: `use std::arch::x86_64::*` brings in hundreds of
 // intrinsics by design; listing them explicitly is noise.

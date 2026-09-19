@@ -156,7 +156,12 @@ pub enum NirError<'a> {
     UnsupportedTopology(&'static str),
     /// A per-edge type-shape mismatch (reference `check_types`
     /// parity): the `src → dst` edge's tensor shapes disagree.
-    EdgeShapeMismatch { src: &'a str, dst: &'a str },
+    EdgeShapeMismatch {
+        /// The source node's key in the document.
+        src: &'a str,
+        /// The destination node's key in the document.
+        dst: &'a str,
+    },
     /// The export byte buffer is too small.
     ExportTooSmall,
 }
@@ -421,22 +426,37 @@ pub enum NirNodeKind {
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct NirLif {
     // provenance (source units: s, Ω, V)
+    /// Source `tau`, seconds.
     pub tau_s: f64,
+    /// Source `r`, ohms.
     pub r_ohm: f64,
+    /// Source `v_leak`, volts.
     pub v_leak_v: f64,
+    /// Source `v_threshold`, volts.
     pub v_threshold_v: f64,
+    /// Source `v_reset`, volts.
     pub v_reset_v: f64,
+    /// [`NirNote::VResetDefaulted`].
     pub v_reset_defaulted: bool,
     // derived (substrate units)
+    /// `tau` on the substrate's clock, μs.
     pub tau_us: u32,
+    /// `r` on the substrate's grid, MΩ.
     pub resistance_mohm: u16,
+    /// `tau / r` on the substrate's grid, pF.
     pub capacitance_pf: u16,
+    /// [`NirNote::CapacitanceClamped`].
     pub capacitance_clamped: bool,
+    /// `v_leak` on the voltage grid, quanta.
     pub leak_q: i16,
+    /// `v_threshold` on the voltage grid, quanta.
     pub threshold_q: i16,
+    /// `v_reset` on the voltage grid, quanta.
     pub reset_q: i16,
     // quantization record
+    /// [`NirNote::TauTruncated`], in seconds.
     pub tau_err_s: f64,
+    /// [`NirNote::PotentialTruncated`], in volts.
     pub max_v_err_v: f64,
 }
 
@@ -458,17 +478,25 @@ pub struct NirLifPopulation {
 /// zeros semantics.
 #[derive(Debug, Clone, Copy)]
 pub struct NirLifParams<'v> {
+    /// Source `tau`, one per neuron, seconds.
     pub tau_s: &'v [f64],
+    /// Source `r`, one per neuron, ohms.
     pub r_ohm: &'v [f64],
+    /// Source `v_leak`, one per neuron, volts.
     pub v_leak_v: &'v [f64],
+    /// Source `v_threshold`, one per neuron, volts.
     pub v_threshold_v: &'v [f64],
+    /// Source `v_reset`, one per neuron, volts; `None` as the struct
+    /// doc says.
     pub v_reset_v: Option<&'v [f64]>,
 }
 
 /// A quantized Linear node: weights live in the shared i16 arena.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NirLinear {
+    /// The `weight` tensor's out dimension.
     pub rows: usize,
+    /// The `weight` tensor's in dimension.
     pub cols: usize,
     /// Arena view `[offset, offset + rows·cols)`, row-major
     /// (`weight[out][in]`, the reference layout).
@@ -479,6 +507,7 @@ pub struct NirLinear {
     pub absmax: f64,
     /// `max |w − q·scale|` over the tensor.
     pub max_abs_err: f64,
+    /// [`NirNote::ZeroWeightTensor`].
     pub zero_tensor: bool,
 }
 
@@ -487,11 +516,17 @@ pub struct NirLinear {
 /// view into the lifs buffer.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NirNode<'a> {
+    /// This node's key in the document's `nodes` object.
     pub name: &'a str,
+    /// Which of the four slice-1 kinds the document's `type` named.
     pub kind: NirNodeKind,
+    /// The document's `shape`, its first `shape_len` entries used.
     pub shape: [u32; 4],
+    /// Dimensions carried in `shape` (0 to 4).
     pub shape_len: usize,
+    /// The population view of a `LIF` node, `None` on any other kind.
     pub lif: Option<NirLifPopulation>,
+    /// The quantized tensor of a `Linear` node, `None` on any other kind.
     pub linear: Option<NirLinear>,
 }
 
@@ -520,12 +555,19 @@ pub const NIR_NOTE_KINDS: usize = 6;
 /// The loud import report.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NirReport {
+    /// `Input` nodes.
     pub inputs: usize,
+    /// `Output` nodes.
     pub outputs: usize,
+    /// `Linear` nodes.
     pub linears: usize,
+    /// `LIF` nodes; [`NirScan::lif_neurons`] counts the neurons.
     pub lifs: usize,
+    /// Entries of the document's `edges` list.
     pub edges: usize,
+    /// Cells written into the weight arena.
     pub weight_cells: usize,
+    /// One counter per [`NirNote`], indexed by the variant.
     pub notes: [usize; NIR_NOTE_KINDS],
 }
 
@@ -544,9 +586,13 @@ impl NirReport {
 /// First pass: buffer sizes + the version string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NirScan<'a> {
+    /// The document's `version` string, borrowed from the JSON.
     pub version: &'a str,
+    /// Entries of the document's `nodes` object.
     pub node_count: usize,
+    /// Entries of the document's `edges` list.
     pub edge_count: usize,
+    /// Cells the weight arena needs.
     pub weight_cells: usize,
     /// Total per-neuron LIF records (`sum` of the param array
     /// lengths). Foreign `tau`-like arrays on non-LIF nodes may
@@ -566,7 +612,9 @@ pub struct NirScan<'a> {
 pub struct NirBuffers<'buf, 'a> {
     /// `bufs` borrow lifetime (`'buf`) and json-data lifetime (`'a`).
     pub nodes: &'buf mut [NirNode<'a>],
+    /// Edges as `(from, to)` indices into `nodes`.
     pub edges: &'buf mut [(u32, u32)],
+    /// The shared i16 weight arena, `NirLinear` views into it.
     pub weights: &'buf mut [i16],
     /// Quantized LIF records (one per neuron; population views
     /// index into this).
@@ -3606,7 +3654,9 @@ mod std_assembly {
     /// quantization scale.
     #[derive(Debug, Clone, PartialEq)]
     pub struct LinearFusedRecord<'a> {
+        /// The composed nodes' names, root first, target last.
         pub chain: Vec<&'a str>,
+        /// Each component tensor's quantization scale, in `chain` order.
         pub scales: Vec<f64>,
     }
 

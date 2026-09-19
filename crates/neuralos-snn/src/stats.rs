@@ -18,13 +18,14 @@ pub struct NetworkStats {
     pub plasticity_events: u64,
     /// STDP pairing histogram (session F instrumentation): in-window
     /// pairings by category — the Hebbian-attribution evidence.
-    /// `same_step` = a9a2679 co-fire tie-break (dt = +1, LTD branch);
-    /// `post_leads` = post-before-pre within the window (LTD branch);
+    /// `same_step` = a9a2679 co-fire tie-break (dt = +1, LTD branch).
+    /// Out-of-window pairings contribute delta 0 and are counted in none
+    /// of the three `stdp_pairs_*` fields this histogram splits over.
+    pub stdp_pairs_same_step: u64,
+    /// `post_leads` = post-before-pre within the window (LTD branch).
+    pub stdp_pairs_post_leads: u64,
     /// `pre_leads` = pre-before-post within the window (LTP branch —
     /// the Hebbian channel live transmission opened in session F).
-    /// Out-of-window pairings contribute delta 0 and are not counted.
-    pub stdp_pairs_same_step: u64,
-    pub stdp_pairs_post_leads: u64,
     pub stdp_pairs_pre_leads: u64,
     /// Mean membrane potential across all neurons (mV). Computed post-step.
     pub avg_membrane_potential_mv: f64,

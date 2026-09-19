@@ -15,6 +15,46 @@ core, `no_std` by default. Designed for FPU-less edge targets
 (ESP32-C3, `HiFive`, QEMU `riscv64gc`) and validated against the IEEE 2025
 "Full-Integer SNN Inference with RISC-V ISA" design axis.
 
+## Quick start
+
+One LIF neuron on the centi-mV grid, driven by a constant 160 μA at a
+1 ms step. It is the neuron `firmware/esp32c3` runs on the ESP32-C3, and
+the asserts are what the board prints over serial: `147 spikes, first
+spike step 55`. Those come from the firmware's burst arm, where
+simulated time advances exactly 1 ms a step, so the board and the host
+agree spike for spike — the captures are in
+`evidence/esp32c3-bringup/README.md`. The firmware's real-time loop is a
+second arm, paced by the wall clock, and its first spike moves between
+runs — 54 to 59 across the record, the 56 the version notes below print
+among them. The assert here is the burst's 55.
+
+```rust
+use neuralos_snn::{LIFNeuron, NeuronType, VoltageResolution};
+
+let mut neuron = LIFNeuron::new_with_type_resolution(
+    0,
+    NeuronType::Excitatory,
+    VoltageResolution::CentiMillivolt,
+);
+
+let mut spikes = 0u32;
+let mut first_spike_step = None;
+
+for step in 0..10_000u32 {
+    neuron.decay_adaptation_current();
+    if neuron.integrate_and_fire(160, 1_000, step * 1_000) {
+        spikes += 1;
+        first_spike_step.get_or_insert(step);
+    }
+}
+
+assert_eq!(spikes, 147);
+assert_eq!(first_spike_step, Some(55));
+```
+
+Every item in it is `no_std`, so the same code runs on the host and on
+the chip.
+
 ## Modules
 
 | Module | What it holds |
@@ -50,17 +90,27 @@ posture CI enforces.
 
 ## Usage sketch
 
-```text
-use neuralos_snn::{SpikingNeuralNetwork, NetworkTopology};
+```rust
+use neuralos_snn::{NetworkTopology, SpikingNeuralNetwork};
 
-let mut net = SpikingNeuralNetwork::new_with_voltage_resolution(
-    128, 1_000, NetworkTopology::Balanced { excitatory_ratio: 0.8 },
-    Default::default(),
-)?;
-net.build_topology()?;
-loop {
-    let spikes = net.step(&inputs)?;   // decay → integrate → clear → propagate
-    // spikes: Vec<Spike>; plasticity applies pairwise STDP when enabled
+fn main() -> neuralos_snn::Result<()> {
+    let mut net = SpikingNeuralNetwork::new_with_voltage_resolution(
+        128,
+        1_000,
+        NetworkTopology::Balanced {
+            excitatory_ratio: 0.8,
+        },
+        Default::default(),
+    )?;
+    net.build_topology()?;
+
+    let inputs = [0i16; 128];
+    for _ in 0..100 {
+        // decay → integrate → clear → propagate; the step returns its
+        // `Vec<Spike>`, and plasticity applies pairwise STDP when enabled
+        let _spikes = net.step(&inputs)?;
+    }
+    Ok(())
 }
 ```
 

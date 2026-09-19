@@ -16,7 +16,7 @@ that number alone:
              neurons (the first Linear is the drive, not a synapse);
     dense    Linear(1,n) → Leaky(n) → Linear(n,n) → Leaky(n): N = 2n,
              S = n², the largest n with 88·n + 6·n² ≤ bytes, the most
-             synapses.
+             synapses of the feedforward pair.
 
 A step costs a·N + b·S + c, linear in both, so over the graphs under the
 bar its largest value sits at one of these two.

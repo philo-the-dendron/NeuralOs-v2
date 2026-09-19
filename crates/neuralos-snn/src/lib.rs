@@ -1,5 +1,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
+#![cfg_attr(not(feature = "simd"), forbid(unsafe_code))]
+#![cfg_attr(feature = "simd", deny(unsafe_code))]
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
 #![doc = include_str!("../README.md")]
@@ -14,6 +17,7 @@ pub mod lif_neuron;
 pub mod network;
 pub mod nir;
 #[cfg(feature = "simd")]
+#[allow(unsafe_code)]
 pub mod simd;
 pub mod spike_recorder;
 #[cfg(feature = "std")]

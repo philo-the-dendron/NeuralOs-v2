@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@fbc2bd7 (PR #32 merged 2026-09-15 17:36 UTC: round 35, PR H, the one command; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34, 35 and 36 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8), alpha.9 open · wrote-from: work/capacity, round 36 (PR I, check 8, capacity: five commits), not pushed; the per-commit loop runs over the five before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): one fresh Fable review before the push (tier 2), the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, the merge on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@d9f2559 (PR #33 merged 2026-09-15 23:47 UTC: round 36, PR I, capacity, check 8; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34, 35, 36 and 37 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12), alpha.9 open · wrote-from: work/doctest-forbid, round 37 (PR J, checks 10 and 12: five commits), not pushed; the per-commit loop runs over the five before the first push, its result in TODO.md (the principal's state file, outside git) · open(session): two reviews of the build before the push (tier 2, the principal's call), the push and the PR on the principal's word, then the seven (pull_request) contexts green in the full listing, the merge on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-15T22:22:00Z
+updated: 2026-09-18T23:35:07Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9433,3 +9433,34 @@ review, 363 as built, against cut 2's one screen. Deviations:
 const`; paint and scan `#[inline(never)]`; both corners built before
 any flash; #33 assumed. **Guards.** GUARD 1: appended; head line
 refreshed. GUARD 2: no verdict touched. GUARD 3: nothing public.
+
+## Close-out (round 37 — PR J, checks 10 and 12: the README's first example a real doctest, `missing_docs` on, the default build forbids `unsafe` — 2026-09-18)
+
+Branch `work/doctest-forbid` from `main@d9f2559`, tier 2, five commits:
+`1fd91c9` the head line, PR I's two cosmetic items at all three sites,
+the `esp32c3-bringup/` row 702 words to 182 (description column 612 to
+136) with its contract in the row, `Found-by:` narrowed; `cfbb508`
+check 12, `forbid` off `simd` and `deny` under it, the `allow` on
+`pub mod simd`, the policy comment, both falsifiers in the message;
+`49deb66` check 10, § Quick start asserting the burst arm's 147 and 55,
+the sketch compiled, `missing_docs` on with 53 field docs (46, 5, 2);
+`09e66df` the two ticks, the two "step 56" naming their arm, the sweep;
+this close-out. Checks holding: 1 to 8, 10, 12 to 14. Numbers: doctests
+2 → 4 by default, 4 → 6 under `simd`; `missing_docs` 53, 44 without
+`std`; rustdoc 15 + 2 errors, unmoved; the firmware `.text` `9e2e6ef1…`
+before and after the lint, read twice in the main clone. Record-only:
+the `simd` hole — an item under `simd`'s `cfg` with its own `allow`
+would pass every gate — accepted, no CI grep; rustdoc red on `main`,
+15 links and 2 more under `simd`, check 11's; the qemu gate README's
+"Doctests: the crate has 0", true when written, not touched; the crate
+README § Status says "Tree == published" against the head line, out of
+scope; the ELF sha follows the commit date through the app descriptor,
+`.text` alone is comparable (`tools/remap.sh`); `Found-by:` now credits
+an outside reviewer, the author's own sessions riding `Fixes:` alone;
+PR I's round-23 "divider-less" is loose, rv32imc has M and the round-27
+cost was the 64-bit routine; CI's firmware `.text` at `7038f69`
+(`c228766a…`) against the main clone's pin, the fourth entry's known
+divergence. Deviations: the sketch binds `_spikes`; commit 0 re-pins
+the evidence README in `SHA256SUMS`; #34 assumed. **Guards.** GUARD 1:
+appended, head line refreshed. GUARD 2: no verdict touched. GUARD 3:
+nothing public.

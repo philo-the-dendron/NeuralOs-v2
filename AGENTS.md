@@ -450,7 +450,10 @@ claims, reopening frozen records.
   Branches are deleted after merge (git history is the archive).
 - **Commit trailers, machine-readable.** A commit that corrects an
   earlier one carries `Fixes: <sha> ("<subject>")`; a change that
-  answers a reviewer's finding carries `Found-by: <handle> (PR #N)`.
+  answers an outside reviewer's finding — a person other than the
+  author — carries `Found-by: <handle> (PR #N)`, while a finding from
+  the author's own review sessions rides `Fixes:` alone (narrowed
+  2026-09-18; trailers written before that stand as written).
   Both are git trailers (`git interpret-trailers`, `git log
   --format=%(trailers)`), so "which commit corrected which" is a query,
   not a search through prose. Adopted 2026-09-02; prose credit stays
