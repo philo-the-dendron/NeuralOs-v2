@@ -375,6 +375,24 @@ jobs:
       - name: cargo audit
         run: cargo audit
 
+      # The firmware is its own workspace with its own lock, so the scan
+      # above never reaches it — `esp-hal` appears zero times in the root
+      # Cargo.lock — and the only code that runs on silicon went unaudited
+      # until this step was added (2026-09-19). First run: 139 crates, 0
+      # vulnerabilities, 1 warning (paste 1.0.15, RUSTSEC-2024-0436,
+      # unmaintained), so the job stays green. The four proofs/* locks are
+      # deliberately not scanned: local harnesses, shipped to nobody, run
+      # on no board.
+      #
+      # Remedy, decided before it is needed: this job is a required
+      # context, so a new advisory can block every merge on a day nobody
+      # chose. The default is to fix (bump, patch, drop the dependency).
+      # An `--ignore <RUSTSEC-ID>` on a run line is the principal's
+      # ruling, written here with a dated why, and deleted when the
+      # dependency moves.
+      - name: cargo audit (firmware, its own workspace and lock)
+        run: cargo audit --file firmware/esp32c3/Cargo.lock
+
   firmware:
     name: firmware esp32c3 (riscv32imc build + fmt + clippy)
     runs-on: ubuntu-latest
