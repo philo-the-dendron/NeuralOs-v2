@@ -15,7 +15,9 @@ pub struct NetworkStats {
     pub total_synapses: u32,
     /// Cumulative spikes emitted since construction or last `reset`.
     pub total_spikes: u64,
-    /// Cumulative plasticity updates applied.
+    /// Cumulative plasticity updates applied. Reads 0 in a build without
+    /// `unstable-stdp`, as the three `stdp_pairs_*` fields do: a network
+    /// learns only there, once `set_plasticity_enabled(true)` was called.
     pub plasticity_events: u64,
     /// STDP pairing histogram (session F instrumentation): in-window
     /// pairings by category — the Hebbian-attribution evidence.

@@ -107,8 +107,11 @@ binfmt (`qemu-riscv64-static` 8.2.2 underneath):
 rustup target add riscv64gc-unknown-linux-musl
 CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_LINKER=rust-lld \
 CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C link-self-contained=yes -C target-feature=+crt-static" \
-  cargo test -p neuralos-snn --target riscv64gc-unknown-linux-musl
+  cargo test -p neuralos-snn --features unstable-stdp --target riscv64gc-unknown-linux-musl
 # gate: exit 0; 187 + 8 = 195 passed, 0 failed; ~14 s wall under TCG
+# `--features unstable-stdp` since PR L (2026-09-19): STDP is behind it, and
+# without the flag the suite runs with the STDP tests compiled out. The
+# recorded run had no flag to give; Leg B was not re-run at PR L.
 ```
 
 Named tests that crossed the border (in `leg-b.log`): the

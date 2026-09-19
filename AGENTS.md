@@ -83,14 +83,19 @@ cargo fmt    --all -- --check                    # formatting gate (2026-09-02):
 cargo check  --workspace --all-targets
 cargo test   --workspace                          # offline; the count is the CI log's (one number, one home) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
+cargo test   -p neuralos-snn                      # the default config gate (PR L): `--workspace` unifies features, and rt and the app ask for `unstable-stdp`, so the lines above build the library with STDP on; this one builds what crates.io users get
+cargo clippy -p neuralos-snn --all-targets -- -D warnings  # same gate, the lints
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
+cargo build --no-default-features --features unstable-stdp -p neuralos-snn  # same gate with STDP: `STDPRule` and `update_weight` are `no_std`
 RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib                         # the MSRV gate (PR C): rust-version is the crate's promise, the pin is ours; needs `rustup toolchain install 1.92.0 --profile minimal`
 RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features   # same gate, the no_std configuration
 RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd         # same gate, the simd configuration
+RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-stdp  # same gate, the STDP configuration
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
 cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings  # simd lint gate: workspace clippy never compiles the feature-gated module (2026-08-30)
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps                  # the rustdoc gate (2026-09-19): the docs state the semantics (ROADMAP § 0.1.0, check 11), so an unresolved link is a defect
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd  # same gate, the simd configuration
+RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp  # same gate, the STDP configuration: the gated items' docs exist in no other
 cargo test -p neuralos-snn --release --features simd -- --include-ignored   # simd release gate: the slice-length contract is assert_eq!, its regression test only fails in release (2026-08-30); --include-ignored pulls the two exhaustive sweeps in, ~12 s in release (round 12, 2026-09-02)
 PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # the hdf5 gate (vendored HDF5; cmake from .nirenv; 116 green)
 PATH="$PWD/.nirenv/bin:$PATH" cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate  # THE NIR HDF5 EVIDENCE GATE (5/5)
@@ -126,8 +131,13 @@ is only worth the multi-minute link when you want real smoothness.
 ## Features
 
 - `neuralos-snn`: `default = ["std"]`, `std`, `simd` (implies std,
-  x86_64-only, AVX2 batch LIF kernel). The published crate's default
-  config is what CI tests.
+  x86_64-only, AVX2 batch LIF kernel), `unstable-stdp` (STDP, outside
+  the semver promise: `STDPRule`, `Synapse::update_weight`,
+  `set_plasticity_enabled`, `stochastic_ternary_step`; works without
+  std; rt, the app and `proofs/qemu-riscv-leg-a` ask for it, so every
+  `--workspace` line builds the library with it on). The published
+  crate's default config is what CI tests, by `cargo test -p
+  neuralos-snn` and its clippy (§ Commands, PR L).
 - `neuralos-rt`: `hdf5` (first feature gate, simd-precedent posture):
   NIR `.nir` HDF5 container support — vendored static HDF5 via
   `hdf5-sys { static, zlib }`; needs `cmake` on PATH (the repo-local
@@ -322,8 +332,10 @@ ordering: adaptation decay → integrate (reads last step's pulses) →
 clear → propagate. The clear must stay AFTER the read or recurrent
 transmission dies silently (the 2026-08-18 bug that invalidated four
 sessions' findings; see the transmission tests in `network.rs`). There
-is also a `set_plasticity_enabled(bool)` toggle (default ON in the lib,
-OFF in the visualizer's sustained-firing mode) and an opt-in
+is also a `set_plasticity_enabled(bool)` toggle, behind the
+`unstable-stdp` feature: a network starts with plasticity OFF, feature
+or not, so a default build does not learn, and the visualizer's
+sustained-firing mode is that default. And an opt-in
 centi-mV `VoltageResolution` grid (default mV is bit-identical —
 pinned by tests).
 

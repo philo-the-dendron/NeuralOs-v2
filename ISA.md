@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@db245e4 (PR #35 merged 2026-09-19 15:26 UTC: round 38, tier 3, the audit gate reaches the firmware's own lock; mirror synced, branch and both backups deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 38 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check), alpha.9 open; check 9 is what 0.1.0 still wants · wrote-from: work/rustdoc-semantics, round 39 (PR K, check 11, tier 2: the rustdoc states the semantics and `cargo doc` becomes a gate: five commits, check 11 ticked and reworded to "the one-step delay"), not pushed; `tools/percommit.sh` green on the first four one at a time, the firmware `.text` unmoved · open(session): `tools/percommit.sh` on the close-out commit (the one review is in: one blocking, four cosmetic, fixed inside their commits, one rewrite), then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@0856f1d (PR #36 merged 2026-09-19 18:46 UTC: PR K, round 39, tier 2, check 11: the rustdoc states the semantics and `cargo doc` is a gate; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 39 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11), alpha.9 open; with round 40 merged the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/unstable-stdp, round 40 (PR L, check 9, tier 2: STDP behind `unstable-stdp`, off by default, and a network that starts with plasticity off: four commits, check 9 ticked), not pushed; `tools/percommit.sh` green on the first three one at a time, the firmware `.text` unmoved · open(session): `tools/percommit.sh` on the close-out commit (the one review is in: no blocking, four cosmetic, fixed inside their commits, one rewrite), then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-19T17:14:00Z
+updated: 2026-09-19T21:40:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9528,3 +9528,36 @@ errors (`nir.rs` links to std-only items); the noise byte reads bits
 512 steps; `dt_us = 0` freezes a refractory counter, not stated; the
 README's alpha.6 "step 56" is frozen at publish. **Guards.** GUARD 1:
 appended, head line refreshed. GUARD 2: no verdict; 3: nothing public.
+
+## Close-out (round 40 — PR L, check 9: STDP behind `unstable-stdp`, a network starts with plasticity off — 2026-09-19)
+
+Branch `work/unstable-stdp` from `main@0856f1d`, tier 2, four commits.
+`21cae7c`: the feature, off by default, over `STDPRule`,
+`Synapse::update_weight`, `set_plasticity_enabled`,
+`stochastic_ternary_step` and the private machinery; both constructors
+start with plasticity OFF, feature or not (breaking: alpha.9's notes
+carry it); the getter and the six counter fields stay stable; five gate
+lines, the default config tested at last. `b01b66a` the head line.
+`86a613a` the docs: § Features, "unstable" in one sentence, § Order item
+5, the docs.rs metadata. Then this close-out, ROADMAP's tick (#37 free),
+the sweep. **Tests**: 17 `false` calls deleted, 20 tests whole under the
+`cfg`, 7 by their gated lines; `-p neuralos-snn` 261 → 241 off, 261 on;
+`--workspace` 395 before and after. **Found by the build**:
+`csr_weight_stays_in_sync_with_synapse_after_plasticity` compared 100
+with 100 on `main` too (nothing fires before step 2): four steps now,
+100 → 95; `reset_clears_time_and_spikes`'s last assert went vacuous with
+the flip, fixed the same way. **Unmoved**: no `.trace`, no `frozen.rs`
+line; firmware `.text` `9e2e6ef1` before and after; Leg A by hand,
+`checks: 175 failed: 0`. `nir2json/build.sh` builds, 0 hits, and stops
+at its guard: `dist/` holds round 26's binary (`a35b44af`, before
+`--freeze`); `main` builds `94dc102c`, this head `9fdfa5a9`; left in
+place. **Review**, one, pre-push: no blocking, four cosmetic, each fixed
+inside its commit, one rewrite; its `set_weight` wrong-slot mutation is
+red only with the feature on. **Record-only.** `frozen.rs` line 1
+(`fixed/freeze.rs`'s `PREAMBLE`) prints the trace command without
+`--features unstable-stdp`; cargo refuses it and names the flag. Stale
+by ruling, its home the rename PR. Only `build_network` froze
+plasticity; the flip freezes every NIR path. `reset()` zeroes
+`plasticity_events`, not the three `stdp_pairs_*`. A build without the
+feature still builds the reverse CSR. **Guards.** 1: appended. 2: no
+verdict moved, no frozen example's source touched. 3: nothing public.

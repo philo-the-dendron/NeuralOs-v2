@@ -84,14 +84,19 @@ for c in $commits; do
   run cargo check --workspace --all-targets
   run cargo test --workspace
   run cargo clippy --workspace --all-targets -- -D warnings
+  run cargo test -p neuralos-snn
+  run cargo clippy -p neuralos-snn --all-targets -- -D warnings
   run cargo build --no-default-features -p neuralos-snn
+  run cargo build --no-default-features --features unstable-stdp -p neuralos-snn
   run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib
   run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features
   run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd
+  run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-stdp
   run cargo test -p neuralos-snn --features simd
   run cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd
+  run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp
   run cargo test -p neuralos-snn --release --features simd -- --include-ignored
   run cargo test -p neuralos-rt --features hdf5
   run cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate

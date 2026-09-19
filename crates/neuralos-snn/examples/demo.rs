@@ -3,7 +3,7 @@
 //! Creates a balanced E/I spiking neural network, runs a simulation, and prints
 //! a spike raster + learning statistics. This is the RVO Ottawa hallway artifact.
 //!
-//! Run: `cargo run --example demo`
+//! Run: `cargo run -p neuralos-snn --features unstable-stdp --example demo`
 //!
 //! Everything here uses real computation — no hardcoded results, no fake numbers.
 
@@ -59,6 +59,8 @@ fn run_demo() {
     );
 
     net.build_topology().expect("topology build");
+    // A network starts with plasticity off; the demo shows learning.
+    net.set_plasticity_enabled(true);
     println!(
         "│ Balanced E/I topology — {} synapses wired                 │",
         net.synapse_count()
