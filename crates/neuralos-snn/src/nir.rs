@@ -511,16 +511,19 @@ pub struct NirLinear {
     pub zero_tensor: bool,
 }
 
-/// One imported node. Shapes are `[u32; 4]` + length (≤ 4 dims,
+/// One node, imported or built. Shapes are `[u32; 4]` + length (≤ 4 dims,
 /// reference shapes are 1–4-D). A LIF node carries a population
 /// view into the lifs buffer.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NirNode<'a> {
-    /// This node's key in the document's `nodes` object.
+    /// This node's key in the document's `nodes` object, or the name a
+    /// `NirBuilder` caller gave it.
     pub name: &'a str,
-    /// Which of the four slice-1 kinds the document's `type` named.
+    /// Which of the four slice-1 kinds: the one the document's `type`
+    /// named, or the one the `NirBuilder` method makes.
     pub kind: NirNodeKind,
-    /// The document's `shape`, its first `shape_len` entries used.
+    /// The document's `shape`, or the builder caller's, its first
+    /// `shape_len` entries used.
     pub shape: [u32; 4],
     /// Dimensions carried in `shape` (0 to 4).
     pub shape_len: usize,
