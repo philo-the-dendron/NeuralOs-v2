@@ -131,8 +131,13 @@ is only worth the multi-minute link when you want real smoothness.
 ## Features
 
 - `neuralos-snn`: `default = ["std"]`, `std`, `simd` (implies std,
-  x86_64-only, AVX2 batch LIF kernel). The published crate's default
-  config is what CI tests.
+  x86_64-only, AVX2 batch LIF kernel), `unstable-stdp` (STDP, outside
+  the semver promise: `STDPRule`, `Synapse::update_weight`,
+  `set_plasticity_enabled`, `stochastic_ternary_step`; works without
+  std; rt, the app and `proofs/qemu-riscv-leg-a` ask for it, so every
+  `--workspace` line builds the library with it on). The published
+  crate's default config is what CI tests, by `cargo test -p
+  neuralos-snn` and its clippy (§ Commands, PR L).
 - `neuralos-rt`: `hdf5` (first feature gate, simd-precedent posture):
   NIR `.nir` HDF5 container support — vendored static HDF5 via
   `hdf5-sys { static, zlib }`; needs `cmake` on PATH (the repo-local
@@ -327,8 +332,10 @@ ordering: adaptation decay → integrate (reads last step's pulses) →
 clear → propagate. The clear must stay AFTER the read or recurrent
 transmission dies silently (the 2026-08-18 bug that invalidated four
 sessions' findings; see the transmission tests in `network.rs`). There
-is also a `set_plasticity_enabled(bool)` toggle (default ON in the lib,
-OFF in the visualizer's sustained-firing mode) and an opt-in
+is also a `set_plasticity_enabled(bool)` toggle, behind the
+`unstable-stdp` feature: a network starts with plasticity OFF, feature
+or not, so a default build does not learn, and the visualizer's
+sustained-firing mode is that default. And an opt-in
 centi-mV `VoltageResolution` grid (default mV is bit-identical —
 pinned by tests).
 
