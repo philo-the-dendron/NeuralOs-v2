@@ -72,8 +72,9 @@ the chip.
 
 ## The voltage grid story
 
-`delta_v = dt_over_tau · (leak + R·I/1000) / 1000` truncates to whole
-quanta. On the default mV grid a steady sub-threshold current inside the
+`delta_v = dt_over_tau · (leak + R·I·s/1000) / 1000` truncates to whole
+quanta, `s` the grid's scale (1 on mV, 100 on centi-mV). On the default
+mV grid a steady sub-threshold current inside the
 ~200 μA dead zone moves the membrane exactly zero — recorded, tested,
 and the reason `VoltageResolution::CentiMillivolt` exists (100× finer
 dead zone, same i16, bit-identical arithmetic shape). The mV default
