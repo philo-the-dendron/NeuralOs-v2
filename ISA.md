@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@db245e4 (PR #35 merged 2026-09-19 15:26 UTC: round 38, tier 3, the audit gate reaches the firmware's own lock; mirror synced, branch and both backups deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 38 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check), alpha.9 open; checks 9 and 11 are what 0.1.0 still wants · wrote-from: work/rustdoc-semantics, round 39 (PR K, check 11, tier 2: the rustdoc states the semantics and `cargo doc` becomes a gate), not pushed · open(session): the build, `tools/percommit.sh` over each commit, one fresh review before the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@db245e4 (PR #35 merged 2026-09-19 15:26 UTC: round 38, tier 3, the audit gate reaches the firmware's own lock; mirror synced, branch and both backups deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 38 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check), alpha.9 open; check 9 is what 0.1.0 still wants · wrote-from: work/rustdoc-semantics, round 39 (PR K, check 11, tier 2: the rustdoc states the semantics and `cargo doc` becomes a gate: five commits, check 11 ticked and reworded to "the one-step delay"), not pushed; `tools/percommit.sh` green on the first four one at a time, the firmware `.text` unmoved · open(session): `tools/percommit.sh` on the close-out commit (the one review is in: one blocking, four cosmetic, fixed inside their commits, one rewrite), then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-19T16:11:00Z
+updated: 2026-09-19T17:14:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9495,3 +9495,36 @@ named trigger, `rustybuzz` and `ttf-parser` being unmaintained under
 Slint; the clause rides PR K's commit 1. **Guards.** GUARD 1:
 appended, head line refreshed. GUARD 2: no verdict touched. GUARD 3:
 nothing public.
+
+## Close-out (round 39 — PR K, check 11: the rustdoc states the semantics, `cargo doc` a gate — 2026-09-19)
+
+Branch `work/rustdoc-semantics` from `main@db245e4`, tier 2, five
+commits. `6eb7664`: the 17 rustdoc link errors (15 default, 2 more
+under `simd`) and the gate, first so no commit is red under it; it
+carries the `audit` remedy clause round 38 placed in "commit 1", true
+when written, the commits reordered after. `7f8ad8f` the head line.
+`04c1a0b`: `integrate_and_fire` § Semantics, eight items, four
+doctests. `3e3965d`: `SpikingNeuralNetwork::step` § Order, the
+one-step delay with its exception (a `post` refractory at t + 1 drops
+the pulse), `# Panics` for the divisor, NirNode's three lines. Then
+this close-out and ROADMAP's tick. **Check 11 reworded** to "the
+one-step delay" on the principal's word: "delay is the edge's" came
+from a plan file (`f4a7c6d`), and no edge carries a delay since F5a.
+**The code against the brief**: the noise range is `−amp ..=
+127·amp/128`; the leak truncates too, so on the mV grid a spiked
+excitatory neuron stays at `reset_potential` and an inhibitory one at
+−79; `rectification_at_the_sticking_point` never tested a −12 μA
+pulse (the +12 was still in the accumulator), fixed by the clear
+(`Fixes: 412fbe2`). Five new tests: the refractory drop, the
+divisor's sign flip and its panic, the clock's ceiling, the noise
+range. The formula gained the scale `s`, module doc and crate README.
+**Review**, one, pre-push: one blocking (the leak sentence held for
+the excitatory default alone), four cosmetic, each fixed inside its
+commit, one rewrite. Firmware `.text` `9e2e6ef1` at `main` and at
+`3e3965d`. `tools/percommit.sh` green on the four. Checks holding: 1
+to 8, 10 to 14. Record-only: `--no-default-features` keeps 3 rustdoc
+errors (`nir.rs` links to std-only items); the noise byte reads bits
+0 and 4 to 11 of `id XOR time`, so at dt = 1,000 μs it repeats every
+512 steps; `dt_us = 0` freezes a refractory counter, not stated; the
+README's alpha.6 "step 56" is frozen at publish. **Guards.** GUARD 1:
+appended, head line refreshed. GUARD 2: no verdict; 3: nothing public.
