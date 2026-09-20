@@ -684,8 +684,8 @@ pub fn module_name(stem: &str) -> Option<String> {
 /// The trace is the std network's, plasticity off, the network
 /// `FixedNetwork::try_from` would convert, each row written by
 /// `neuralos_snn::fixed::row`. The fixed step equals the std step on
-/// every plasticity-off network (the library's trace tests), and this
-/// crate's test builds the module and steps it to the same rows.
+/// every network `try_from` converts (the library's trace tests), and
+/// this crate's test builds the module and steps it to the same rows.
 ///
 /// # Errors
 ///

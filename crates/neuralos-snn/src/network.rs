@@ -697,6 +697,54 @@ impl SpikingNeuralNetwork {
         self.stats.total_synapses = self.synapses.len() as u32;
     }
 
+    /// Whether the CSR delivers every synapse under its own `pre`, in the
+    /// order it was added: exactly what
+    /// [`FixedSynapse::from_network`](crate::fixed::FixedSynapse::from_network)
+    /// lists, and what [`connections`] yields on a finalized matrix.
+    ///
+    /// False once a caller has lost that property: by adding edges out of
+    /// `pre` order with no [`finalize`] after them, for example, or by
+    /// finalizing such edges a second time ([`finalize`] is not
+    /// idempotent, and `build_topology` already calls it). `row_ptrs` is
+    /// exact either way — [`add`]'s bump and [`finalize`]'s prefix sum
+    /// count the same edges — so the slices have the right length and the
+    /// wrong members, and the step delivers a spike's pulse under another
+    /// synapse's edge. True on a network with no edges, on a finalized
+    /// one, and on one whose edges were added in `pre` order: each steps
+    /// as its own CSR reads.
+    ///
+    /// It reads each slot's synapse index alone. A slot's `post` and
+    /// `weight` are written from its synapse by [`add`] and kept there by
+    /// [`set_weight`], so no state a caller can reach parts them from it;
+    /// a slot that disagreed would be a bug of this crate, and refusing
+    /// the caller for it would name the wrong culprit. The weight half is
+    /// pinned by `ternary_writes_reach_their_csr_slot` below.
+    ///
+    /// O(S), once per conversion. `pub(crate)`: read by
+    /// `FixedNetwork::try_from`, which refuses what it denies.
+    ///
+    /// [`add`]: SparseSynapseMatrix::add
+    /// [`finalize`]: SparseSynapseMatrix::finalize
+    /// [`connections`]: SparseSynapseMatrix::connections
+    /// [`set_weight`]: SparseSynapseMatrix::set_weight
+    pub(crate) fn csr_delivers_its_synapses(&self) -> bool {
+        let mut seen = 0usize;
+        for pre in 0..self.neuron_count() {
+            let mut last: Option<usize> = None;
+            for (_post, _weight, idx) in self.synapse_matrix.connections(pre) {
+                let Some(s) = self.synapses.get(idx) else {
+                    return false;
+                };
+                if s.pre_neuron_id != pre || last.is_some_and(|l| idx <= l) {
+                    return false;
+                }
+                last = Some(idx);
+                seen += 1;
+            }
+        }
+        seen == self.synapses.len()
+    }
+
     /// Unstable: behind `unstable-stdp`.
     /// Enable or disable STDP weight updates. Disabled is the default, in
     /// both constructors: `step()` propagates spikes and advances time, and
@@ -2035,7 +2083,9 @@ mod tests {
             SpikingNeuralNetwork::new(64, 1000, NetworkTopology::default()).expect("valid");
         net.build_topology().expect("build");
         // Without the feature nothing writes a weight: what this pins then
-        // is the two counting sorts, not `weight_index_of`.
+        // is the two counting sorts, not `weight_index_of`. The
+        // default-build pin on the inverse permutation is
+        // `ternary_writes_reach_their_csr_slot` below.
         #[cfg(feature = "unstable-stdp")]
         net.set_plasticity_enabled(true);
         let inputs = vec![600_i16; 64];
@@ -2069,6 +2119,99 @@ mod tests {
             rv_mismatches, 0,
             "every reverse-CSR edge must match its synapse's (pre, post)"
         );
+    }
+
+    /// A ternary write reaches its own CSR slot. The five edges of
+    /// `fixed::tests::from_network_is_the_csr_order`, finalized: the
+    /// counting sort moves four of the five slots, so a `set_weight`
+    /// writing `weights[synapse_index]` — the bd5b098 bug — would reach
+    /// the wrong slot for every one of them. `ternarize_weights` writes
+    /// once, `reproject_ternary` again, and this reads both back; no other
+    /// test reads `reproject_ternary`'s write in either build.
+    ///
+    /// Its limit: five edges over three ternary values force two equal
+    /// pairs, so a wrong-slot write between synapses 0 and 2 (both −109,
+    /// then −54) leaves the same final state — an equivalent mutant on
+    /// this fixture.
+    #[test]
+    fn ternary_writes_reach_their_csr_slot() {
+        // (synapse index, that slot's weight, that synapse's weight), pre
+        // by pre: the CSR as the step reads it, beside the list.
+        fn mirror_slots(net: &SpikingNeuralNetwork) -> Vec<(usize, i16, i16)> {
+            let mut slots = Vec::new();
+            for pre in 0..net.neuron_count() {
+                for (_post, weight, idx) in net.synapse_matrix.connections(pre) {
+                    slots.push((idx, weight, net.synapses[idx].weight));
+                }
+            }
+            slots
+        }
+        fn every_slot_mirrors_its_synapse(net: &SpikingNeuralNetwork, after: &str) {
+            let slots = mirror_slots(net);
+            assert_eq!(
+                slots.len(),
+                net.synapses().len(),
+                "{after}: the mirror loop must read every slot, or it pins nothing"
+            );
+            let wrong: Vec<(usize, i16, i16)> = slots
+                .into_iter()
+                .filter(|&(_idx, slot, synapse)| slot != synapse)
+                .collect();
+            assert!(
+                wrong.is_empty(),
+                "{after}: (synapse, its CSR slot, its weight): {wrong:?}"
+            );
+        }
+
+        let edges: [(u16, u16, i16); 5] = [
+            (2, 0, -125),
+            (0, 2, 7),
+            (2, 3, -250),
+            (1, 3, 40),
+            (0, 1, 125),
+        ];
+        let mut net =
+            SpikingNeuralNetwork::from_neurons((0..4).map(LIFNeuron::new).collect(), 1_000)
+                .expect("four neurons, 1 ms");
+        for &(pre, post, weight) in &edges {
+            net.add_synapse(pre, post, weight)
+                .expect("ids in range, no self edge");
+        }
+        net.finalize_synapses();
+
+        let order: Vec<usize> = mirror_slots(&net).iter().map(|&(idx, ..)| idx).collect();
+        assert_eq!(
+            order,
+            [1, 4, 3, 0, 2],
+            "the CSR order, pre by pre: four of the five slots moved"
+        );
+
+        let gamma = net.ternarize_weights();
+        assert_eq!(gamma, 109, "γ = mean|w| over the five edges");
+        assert_eq!(
+            net.synapses()
+                .iter()
+                .map(|s| s.weight)
+                .collect::<Vec<i16>>(),
+            [-109, 0, -109, 0, 109],
+            "the ternary images, by synapse index"
+        );
+        every_slot_mirrors_its_synapse(&net, "ternarize_weights");
+
+        assert_eq!(
+            net.reproject_ternary(gamma / 2),
+            3,
+            "γ/2 = 54 snaps the three nonzero weights"
+        );
+        assert_eq!(
+            net.synapses()
+                .iter()
+                .map(|s| s.weight)
+                .collect::<Vec<i16>>(),
+            [-54, 0, -54, 0, 54],
+            "the new grid, by synapse index"
+        );
+        every_slot_mirrors_its_synapse(&net, "reproject_ternary");
     }
 
     #[test]

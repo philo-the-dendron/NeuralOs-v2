@@ -87,7 +87,7 @@ sidecar:
   written by `neuralos_snn::fixed::row`, the row writer the firmware
   uses. The host steps the library's std network with plasticity off,
   the network `FixedNetwork::try_from` converts; the two step alike,
-  bit for bit, on every plasticity-off network (the library's trace
+  bit for bit, on every network it converts (the library's trace
   tests), and this crate's test builds a module and steps it to the
   same rows.
 
