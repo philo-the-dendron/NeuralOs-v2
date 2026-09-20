@@ -30,7 +30,8 @@ pub struct NetworkStats {
     /// `pre_leads` = pre-before-post within the window (LTP branch —
     /// the Hebbian channel live transmission opened in session F).
     pub stdp_pairs_pre_leads: u64,
-    /// Mean membrane potential across all neurons (mV). Computed post-step.
+    /// Mean membrane potential across all neurons (mV). Computed post-step;
+    /// reads `-70.0` until the first step.
     pub avg_membrane_potential_mv: f64,
     /// Mean firing rate per neuron (Hz). Computed post-step.
     pub firing_rate_hz: f64,
