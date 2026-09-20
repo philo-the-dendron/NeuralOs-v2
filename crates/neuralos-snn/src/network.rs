@@ -634,25 +634,21 @@ impl SpikingNeuralNetwork {
         }
     }
 
-    /// Update running statistics (sampling every 10th neuron for averages).
+    /// Update running statistics — the membrane average over every neuron.
     fn update_stats(&mut self) {
         let n = self.neurons.len();
         if n == 0 {
             return;
         }
-        let mut total_v: i64 = 0;
-        let mut sampled = 0u32;
-        for i in (0..n).step_by(10) {
-            total_v += i64::from(self.neurons[i].membrane_potential);
-            sampled += 1;
-        }
-        if sampled > 0 {
-            // Convert native quanta → mV for the stat (÷scale; identity on
-            // the default grid, so historical numbers are unchanged).
-            let s = self.voltage_resolution.scale();
-            self.stats.avg_membrane_potential_mv =
-                (total_v as f64 * 10.0) / (n as f64 * f64::from(s));
-        }
+        let total_v: i64 = self
+            .neurons
+            .iter()
+            .map(|x| i64::from(x.membrane_potential))
+            .sum();
+        // Convert native quanta → mV for the stat (÷scale; identity on
+        // the default grid).
+        let s = self.voltage_resolution.scale();
+        self.stats.avg_membrane_potential_mv = total_v as f64 / (n as f64 * f64::from(s));
         let time_sec = self.current_time_us as f64 / 1_000_000.0;
         if time_sec > 0.0 {
             self.stats.firing_rate_hz = self.stats.total_spikes as f64 / (time_sec * n as f64);
@@ -2723,6 +2719,83 @@ mod tests {
         assert_eq!(
             net2.neurons[0].adaptation_current_ua, 1,
             "decay 2→1, no spike"
+        );
+    }
+
+    // ----- The membrane average: every neuron, in mV -----
+
+    #[test]
+    fn membrane_average_reads_rest_after_a_step() {
+        // The mean over EVERY neuron reads the rest value at any n, not
+        // only at a multiple of 10. Noise off, zero input: the leak term
+        // and the current term are both 0, so −70 is exact by
+        // construction, not by truncation luck. After a step, because an
+        // unstepped network reads the −70.0 that `NetworkStats` starts
+        // at, whatever the body does.
+        for n in [5_u16, 15, 20, 100] {
+            let mut net =
+                SpikingNeuralNetwork::new(n, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                    .expect("constructs");
+            net.build_topology().expect("empty build");
+            for neuron in &mut net.neurons {
+                neuron.noise_amplitude_ua = 0;
+            }
+            let spikes = net.step(&[]).expect("step at zero input");
+            assert_eq!(spikes.len(), 0, "n = {n}: zero input fires nothing");
+            assert_eq!(
+                net.stats().avg_membrane_potential_mv,
+                -70.0,
+                "n = {n}: every neuron sits at rest"
+            );
+        }
+    }
+
+    #[test]
+    fn membrane_average_is_the_mean_of_all_neurons() {
+        // A ramp: each neuron carries a different potential, so a strided
+        // sample and the mean cannot agree by accident. The stride of 10
+        // reads indices 0 and 10 at both n below — with the RIGHT divisor
+        // that is −65.0 twice; the mean is −63.0 and −60.5. n = 20 is a
+        // multiple of 10, where the old divisor was "right": the stride
+        // is wrong there too.
+        for (n, want) in [(15_u16, -63.0_f64), (20, -60.5)] {
+            let mut net =
+                SpikingNeuralNetwork::new(n, 1000, NetworkTopology::Random { connectivity: 0.0 })
+                    .expect("constructs");
+            net.build_topology().expect("empty build");
+            for (i, neuron) in net.neurons.iter_mut().enumerate() {
+                neuron.membrane_potential = -70 + (i as i16);
+            }
+            net.update_stats();
+            assert_eq!(
+                net.stats().avg_membrane_potential_mv,
+                want,
+                "n = {n}: the mean of −70 + i over all n"
+            );
+        }
+    }
+
+    #[test]
+    fn membrane_average_is_in_mv_on_the_centi_grid() {
+        // The stat is mV whatever the grid. Five neurons at −7_000 + 50·i
+        // quanta sum to −34_500 → −6_900 quanta → −69.0 mV. Nothing else
+        // pins the ÷scale: drop it and this reads −6900.0.
+        let mut net = SpikingNeuralNetwork::new_with_voltage_resolution(
+            5,
+            1000,
+            NetworkTopology::Random { connectivity: 0.0 },
+            VoltageResolution::CentiMillivolt,
+        )
+        .expect("constructs");
+        net.build_topology().expect("empty build");
+        for (i, neuron) in net.neurons.iter_mut().enumerate() {
+            neuron.membrane_potential = -7_000 + 50 * (i as i16);
+        }
+        net.update_stats();
+        assert_eq!(
+            net.stats().avg_membrane_potential_mv,
+            -69.0,
+            "centi-mV quanta must be reported in mV"
         );
     }
 }
