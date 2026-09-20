@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@61caa5f (PR #37 merged 2026-09-19 23:41 UTC: PR L, round 40, tier 2, check 9: STDP behind `unstable-stdp`, off by default, and a network that starts with plasticity OFF, breaking for an alpha.8 user; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 40 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: fix/membrane-average, round 41 (unlettered, tier 2: `NetworkStats::avg_membrane_potential_mv` is the mean of all neurons, as its rustdoc always said; two commits, no check ticked), not pushed; `tools/percommit.sh` green on the fix commit, the firmware `.text` unmoved · open(session): `tools/percommit.sh` on the close-out commit, then one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@ea7486e (PR #38 merged 2026-09-20 15:40 UTC: round 41, unlettered, tier 2, `NetworkStats::avg_membrane_potential_mv` is the mean of all neurons; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 41 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: fix/csr-agrees, round 42 (unlettered, tier 2: `FixedNetwork::try_from` refuses a network whose CSR no longer delivers its synapses, and a default-build test reads the two ternary writes back from their CSR slots; three commits, no check ticked), not pushed; `tools/percommit.sh` green on the three commits, the traces unmoved, the firmware `.text` unmoved · open(session): `tools/percommit.sh` on this close-out commit, then one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-20T04:10:00Z
+updated: 2026-09-20T17:50:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9594,3 +9594,35 @@ rustdoc, true now. **Record-only**: `firing_rate_hz`, the same fn's
 other stat, is read and correct. No check ticks. **Guards.** GUARD 1:
 appended, head line refreshed. GUARD 2: no verdict moved. GUARD 3:
 nothing public.
+
+## Close-out (round 42 — the CSR agrees with the synapse list; unlettered, before the walk — 2026-09-20)
+
+Branch `fix/csr-agrees` from `main@ea7486e`, tier 2, three commits.
+`83d401a`: `FixedNetwork::try_from` took a network whose CSR no longer
+delivered each synapse under its `pre`, in the order added (edges out of
+`pre` order not finalized since, or finalized twice), and the two can
+part: chain-3's `(1,2)` then `(0,1)` spike `[9,0,9]` in 100 steps
+against `[9,9,9]`, fields at 5, spikes at 6. `csr_delivers_its_synapses`
+(`pub(crate)`, O(S)) checks it, last in `try_from`; a flag would wrongly
+refuse the no-edge and `pre`-ordered networks that step right.
+`52ed06d`: `ternary_writes_reach_their_csr_slot`, the first
+default-build pin on `weight_index_of` and the first on
+`reproject_ternary`'s write. **Measured**: 218 → 219 → 220 tests (238 →
+239 → 240 with STDP); test 1 red on the parent (`left: None`); test 2
+under three mutations: **A** (`set_weight` past the inverse permutation)
+five slots; **B** (`ternarize_weights` unsynced) five and 2 of 9 in
+`tests/traces.rs`; **C** (`reproject_ternary` unsynced) three, nothing
+else red. **Unmoved**: traces' diff empty, 9 of 9 both builds; `.text`
+`9e2e6ef1`. **Tombstoned** (GUARD 1: appended, head refreshed): round
+32's "`try_from` assumes a finalized network, as the std step does",
+true when written. **Record-only**: `step` on a stale CSR, the root,
+goes to the LIFNeuron dive with `finalize`'s idempotence and the
+unpinned clause (`idx <= l`): every test is green without it, its one
+reachable family needs three finalizes; no pin now (philo). TODO's P2 is
+blind to A (the sort keeps `build_balanced`'s blocks in place); it
+over-refuses equal weights (`[(2,1), (0,1)]` unfinalized steps alike);
+`row_ptrs` is exact, not `csr.rs`' best-effort estimate; the stale
+chain-3 wires neuron 1 to itself, which `Synapse::new` refuses;
+`nir2json`'s freeze reaches `from_network` unrefused, safe on
+`build_network`'s lone finalize; a rustdoc link unresolved under
+`--document-private-items`, no gate. No check ticks.
