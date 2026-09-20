@@ -10,11 +10,11 @@
 //! divides only by a constant or a `NonZero`. An id past the arrays is no
 //! spike and no target.
 //!
-//! On the host, `FixedNetwork::try_from(&net)` converts a plasticity-off,
-//! finalized `SpikingNeuralNetwork` of the same size, and the two step
-//! alike, bit for bit: the tests below pin it on the network of `chain-3`
-//! (`tests/traces/cases.rs`), and `tests/traces.rs` on every
-//! plasticity-off trace.
+//! On the host, `FixedNetwork::try_from(&net)` converts a plasticity-off
+//! `SpikingNeuralNetwork` of the same size whose CSR delivers its
+//! synapses, and the two step alike, bit for bit: the tests below pin it
+//! on the network of `chain-3` (`tests/traces/cases.rs`), and
+//! `tests/traces.rs` on every plasticity-off trace.
 //!
 //! A frozen network's rows go through [`row`], the one writer of a
 //! `neuralos-trace v1` row: the trace tests on the host, the ESP32-C3
@@ -56,12 +56,20 @@ pub struct FixedSynapse {
 
 #[cfg(feature = "std")]
 impl FixedSynapse {
-    /// The synapses of `net` in the order its step delivers them: by `pre`,
-    /// ascending, and within one `pre` in the order they were added. That
-    /// is a stable sort of [`SpikingNeuralNetwork::synapses`] by `pre`, the
-    /// order the counting sort of
+    /// The synapses of `net` by `pre`, ascending, and within one `pre` in
+    /// the order they were added: a stable sort of
+    /// [`SpikingNeuralNetwork::synapses`] by `pre`, the order the counting
+    /// sort of
     /// [`SparseSynapseMatrix::finalize`](crate::network::SparseSynapseMatrix::finalize)
     /// gives the CSR.
+    ///
+    /// That is the order `net`'s own step delivers them in exactly when
+    /// its CSR delivers each synapse under its own `pre` — see
+    /// `FixedNetwork::try_from` § Errors. On a network where it does not,
+    /// this list is the sorted one, the std step reads the stale CSR, and
+    /// the two can part. Returning a `Vec`, this cannot refuse such a
+    /// network; `FixedNetwork::try_from` does, and is the way to convert
+    /// one.
     ///
     /// Each pulse is the std step's own expression, `weight / divisor as
     /// i16`, so a divisor above 32,767 wraps negative here as it does there.
@@ -96,7 +104,8 @@ impl FixedSynapse {
 ///
 /// Built by [`new`](Self::new) from any arrays, or on the host by
 /// `FixedNetwork::try_from(&net)` from a plasticity-off
-/// `SpikingNeuralNetwork` of the same size.
+/// `SpikingNeuralNetwork` of the same size whose CSR agrees with its
+/// synapse list — exactly what that conversion refuses is its § Errors.
 #[derive(Debug, Clone)]
 pub struct FixedNetwork<const N: usize, const S: usize> {
     neurons: [LIFNeuron; N],
@@ -227,22 +236,27 @@ impl<const N: usize, const S: usize> TryFrom<&SpikingNeuralNetwork> for FixedNet
     /// by [`FixedSynapse::from_network`], its time step and its current
     /// time.
     ///
-    /// Assumes a finalized network (`finalize_synapses`, or
-    /// `build_topology`), as `net`'s own step does: on synapses added out
-    /// of `pre` order and never finalized, the std step delivers through a
-    /// stale CSR and the two networks part.
-    ///
     /// # Errors
     ///
     /// [`Error::InvalidParameter`] when `net` has plasticity enabled (a
-    /// fixed network has none), or not exactly `N` neurons and `S`
-    /// synapses. A network starts with plasticity off, and only a build with
-    /// the `unstable-stdp` feature can turn it on: without the feature the
+    /// fixed network has none); when it has not exactly `N` neurons and
+    /// `S` synapses; or when its CSR does not deliver each synapse under
+    /// its own `pre`, in the order added. A caller gets there, for
+    /// example, by adding edges out of `pre` order with no
+    /// `finalize_synapses` after them, or by finalizing such edges a
+    /// second time (`finalize_synapses` is not idempotent, and
+    /// `build_topology` already finalizes). That network steps through a
+    /// stale CSR, delivering a pulse under another synapse's edge, and
+    /// this one, always sorted, can part from it in silence.
+    ///
+    /// A network starts with plasticity off, and only a build with the
+    /// `unstable-stdp` feature can turn it on: without the feature the
     /// first refusal is never met.
     fn try_from(net: &SpikingNeuralNetwork) -> Result<Self> {
         if net.plasticity_enabled()
             || usize::from(net.neuron_count()) != N
             || usize::try_from(net.synapse_count()) != Ok(S)
+            || !net.csr_delivers_its_synapses()
         {
             return Err(Error::InvalidParameter);
         }
@@ -397,14 +411,10 @@ mod tests {
         assert_eq!(net.time_us(), 1_000);
     }
 
-    /// The fixed step against the std step on the network of `chain-3`
-    /// (`tests/traces/cases.rs`): three excitatory neurons in a line,
-    /// centi-mV, no noise, 5,000-weight edges at divisor 1, neuron 0 driven
-    /// at 600 μA. Every spike and every field a step writes, at each of the
-    /// 100 steps, and all three neurons fire.
+    /// The network of `chain-3` (`tests/traces/cases.rs`) without its
+    /// edges: three excitatory neurons, centi-mV, no noise, divisor 1.
     #[cfg(feature = "std")]
-    #[test]
-    fn the_step_is_the_std_step_on_chain_3() {
+    fn chain_3() -> SpikingNeuralNetwork {
         let neurons = (0..3)
             .map(|id| {
                 let mut n = LIFNeuron::new_with_type_resolution(
@@ -418,13 +428,16 @@ mod tests {
             .collect();
         let mut net =
             SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("three neurons, 1 ms");
-        net.add_synapse(0, 1, 5_000).expect("ids in range");
-        net.add_synapse(1, 2, 5_000).expect("ids in range");
-        net.finalize_synapses();
         net.set_synaptic_input_divisor(1).expect("nonzero");
-        let mut fixed =
-            FixedNetwork::<3, 2>::try_from(&net).expect("plasticity off, 3 neurons, 2 synapses");
+        net
+    }
 
+    /// The two networks side by side for 100 steps, neuron 0 driven at 600
+    /// μA: every spike, every field a step writes, and the time, at each
+    /// step. Returns how many times each neuron fired.
+    #[cfg(feature = "std")]
+    #[must_use]
+    fn steps_alike(net: &mut SpikingNeuralNetwork, fixed: &mut FixedNetwork<3, 2>) -> [u32; 3] {
         let mut spiked = [false; 3];
         let mut counts = [0u32; 3];
         for step in 0..100 {
@@ -449,6 +462,55 @@ mod tests {
                 counts[usize::from(id)] += 1;
             }
         }
+        counts
+    }
+
+    /// The fixed step against the std step on the network of `chain-3`
+    /// (`tests/traces/cases.rs`): three excitatory neurons in a line,
+    /// centi-mV, no noise, 5,000-weight edges at divisor 1, neuron 0 driven
+    /// at 600 μA. Every spike and every field a step writes, at each of the
+    /// 100 steps, and all three neurons fire.
+    #[cfg(feature = "std")]
+    #[test]
+    fn the_step_is_the_std_step_on_chain_3() {
+        let mut net = chain_3();
+        net.add_synapse(0, 1, 5_000).expect("ids in range");
+        net.add_synapse(1, 2, 5_000).expect("ids in range");
+        net.finalize_synapses();
+        let mut fixed =
+            FixedNetwork::<3, 2>::try_from(&net).expect("plasticity off, 3 neurons, 2 synapses");
+
+        let counts = steps_alike(&mut net, &mut fixed);
+        assert!(
+            counts.iter().all(|&n| n > 0),
+            "all three fire, 1 and 2 through the chain: {counts:?}"
+        );
+    }
+
+    /// `try_from` refuses a network whose CSR does not deliver its
+    /// synapses. One way to lose that property: the same chain-3, its two
+    /// edges added out of `pre` order and never finalized. Its std step
+    /// then reads slot 0 for neuron 0, which holds the 1→2 edge, and this
+    /// pair does part — the fields at step 5, the spike lists at step 6.
+    /// One `finalize_synapses` and the two are the same network again,
+    /// for 100 steps.
+    #[cfg(feature = "std")]
+    #[test]
+    fn try_from_refuses_a_stale_csr() {
+        let mut net = chain_3();
+        net.add_synapse(1, 2, 5_000).expect("ids in range");
+        net.add_synapse(0, 1, 5_000).expect("ids in range");
+
+        assert_eq!(
+            FixedNetwork::<3, 2>::try_from(&net).err(),
+            Some(Error::InvalidParameter),
+            "the edges were added out of pre order and never finalized"
+        );
+
+        net.finalize_synapses();
+        let mut fixed =
+            FixedNetwork::<3, 2>::try_from(&net).expect("finalized: 3 neurons, 2 synapses");
+        let counts = steps_alike(&mut net, &mut fixed);
         assert!(
             counts.iter().all(|&n| n > 0),
             "all three fire, 1 and 2 through the chain: {counts:?}"

@@ -697,6 +697,53 @@ impl SpikingNeuralNetwork {
         self.stats.total_synapses = self.synapses.len() as u32;
     }
 
+    /// Whether the CSR delivers every synapse under its own `pre`, in the
+    /// order it was added: exactly what
+    /// [`FixedSynapse::from_network`](crate::fixed::FixedSynapse::from_network)
+    /// lists, and what [`connections`] yields on a finalized matrix.
+    ///
+    /// False once a caller has lost that property: by adding edges out of
+    /// `pre` order with no [`finalize`] after them, for example, or by
+    /// finalizing such edges a second time ([`finalize`] is not
+    /// idempotent, and `build_topology` already calls it). `row_ptrs` is
+    /// exact either way — [`add`]'s bump and [`finalize`]'s prefix sum
+    /// count the same edges — so the slices have the right length and the
+    /// wrong members, and the step delivers a spike's pulse under another
+    /// synapse's edge. True on a network with no edges, on a finalized
+    /// one, and on one whose edges were added in `pre` order: each steps
+    /// as its own CSR reads.
+    ///
+    /// It reads each slot's synapse index alone. A slot's `post` and
+    /// `weight` are written from its synapse by [`add`] and kept there by
+    /// [`set_weight`], so no state a caller can reach parts them from it;
+    /// a slot that disagreed would be a bug of this crate, and refusing
+    /// the caller for it would name the wrong culprit.
+    ///
+    /// O(S), once per conversion. `pub(crate)`: read by
+    /// `FixedNetwork::try_from`, which refuses what it denies.
+    ///
+    /// [`add`]: SparseSynapseMatrix::add
+    /// [`finalize`]: SparseSynapseMatrix::finalize
+    /// [`connections`]: SparseSynapseMatrix::connections
+    /// [`set_weight`]: SparseSynapseMatrix::set_weight
+    pub(crate) fn csr_delivers_its_synapses(&self) -> bool {
+        let mut seen = 0usize;
+        for pre in 0..self.neuron_count() {
+            let mut last: Option<usize> = None;
+            for (_post, _weight, idx) in self.synapse_matrix.connections(pre) {
+                let Some(s) = self.synapses.get(idx) else {
+                    return false;
+                };
+                if s.pre_neuron_id != pre || last.is_some_and(|l| idx <= l) {
+                    return false;
+                }
+                last = Some(idx);
+                seen += 1;
+            }
+        }
+        seen == self.synapses.len()
+    }
+
     /// Unstable: behind `unstable-stdp`.
     /// Enable or disable STDP weight updates. Disabled is the default, in
     /// both constructors: `step()` propagates spikes and advances time, and
