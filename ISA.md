@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@0856f1d (PR #36 merged 2026-09-19 18:46 UTC: PR K, round 39, tier 2, check 11: the rustdoc states the semantics and `cargo doc` is a gate; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 39 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11), alpha.9 open; with round 40 merged the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/unstable-stdp, round 40 (PR L, check 9, tier 2: STDP behind `unstable-stdp`, off by default, and a network that starts with plasticity off: four commits, check 9 ticked), not pushed; `tools/percommit.sh` green on the first three one at a time, the firmware `.text` unmoved · open(session): `tools/percommit.sh` on the close-out commit (the one review is in: no blocking, four cosmetic, fixed inside their commits, one rewrite), then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@61caa5f (PR #37 merged 2026-09-19 23:41 UTC: PR L, round 40, tier 2, check 9: STDP behind `unstable-stdp`, off by default, and a network that starts with plasticity OFF, breaking for an alpha.8 user; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 40 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: fix/membrane-average, round 41 (unlettered, tier 2: `NetworkStats::avg_membrane_potential_mv` is the mean of all neurons, as its rustdoc always said; two commits, no check ticked), not pushed; `tools/percommit.sh` green on the fix commit, the firmware `.text` unmoved · open(session): `tools/percommit.sh` on the close-out commit, then one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-19T21:40:00Z
+updated: 2026-09-20T04:10:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9561,3 +9561,36 @@ plasticity; the flip freezes every NIR path. `reset()` zeroes
 `plasticity_events`, not the three `stdp_pairs_*`. A build without the
 feature still builds the reverse CSR. **Guards.** 1: appended. 2: no
 verdict moved, no frozen example's source touched. 3: nothing public.
+
+## Close-out (round 41 — the membrane average reads every neuron; unlettered, before the walk — 2026-09-19)
+
+Branch `fix/membrane-average` from `main@61caa5f`, tier 2, two commits.
+`49df56f`: `update_stats` sampled one neuron in ten and divided that sum
+by `n` with a hardcoded `* 10.0`, so the public
+`NetworkStats::avg_membrane_potential_mv` was the mean at no `n` — every
+neuron at −70 reads −140.0 at n = 5 and −93.3 at 15 — while its rustdoc
+always said the field is the mean over all of them. `sampled` was a dead
+guard: with `n > 0` the stride always yields index 0. The body sums
+every neuron now, divides by `n`, converts quanta to mV by the grid's
+scale; the fn's comment and its "historical numbers are unchanged"
+half-sentence went with the stride, which came in with the v0.1 port,
+`87e9ec5`, the `* 10.0` in the same commit. **Three tests**, the field's
+first, red on the old body, green on the new: rest after one step at n ∈
+{5, 15, 20, 100} (red −140.0); the mean of a −70 + i ramp at n = 15 and
+20, which separates the mean from a stride with the right divisor, −65.0
+at both (red −86.66666666666667 against −63.0); the centi grid, the only
+pin on the ÷scale (red −140.0 against −69.0). The rustdoc gains "reads
+−70.0 until the first step"; then this close-out. **Numbers**: the
+library's unit-test line 215 → 218 by default, 235 → 238 under
+`--workspace`. **Unmoved**: `git diff --stat
+crates/neuralos-snn/tests/traces/` empty; firmware `.text` `9e2e6ef1`.
+**Contained**: four hits on `main` — its declaration, its default, this
+write, and `examples/demo.rs`, which prints it. No test pinned it;
+nothing in `docs/`, `evidence/`, the paper or either README quotes it.
+No recorded number moves; the demo's line at n = 50 changes. **Sweeps**,
+outside this entry (it quotes both patterns): `every 10th|step_by\(10\)`
+0 hits, was 2, both in `update_stats`; `across all neurons` 1, the
+rustdoc, true now. **Record-only**: `firing_rate_hz`, the same fn's
+other stat, is read and correct. No check ticks. **Guards.** GUARD 1:
+appended, head line refreshed. GUARD 2: no verdict moved. GUARD 3:
+nothing public.
