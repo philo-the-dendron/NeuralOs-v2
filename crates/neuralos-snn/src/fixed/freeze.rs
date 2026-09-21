@@ -28,9 +28,11 @@ const PREAMBLE: &str = "\
 // Every plasticity-off case of tests/traces/ as the arrays a FixedNetwork
 // steps: N neurons and S synapses, the time step, the run, whether the
 // trace keeps spiking steps only, the trace's header line verbatim, the
-// neurons as built (every field), the synapses in the CSR order, and the
-// drive as runs of equal steps, (count, currents). plasticity-on is not
-// here: a FixedNetwork has no plasticity.
+// neurons as built, each one a constructor call and one setter per
+// parameter (every parameter written, default or not), the synapses in
+// the CSR order, and the drive as runs of equal steps, (count,
+// currents). plasticity-on is not here: a FixedNetwork has no
+// plasticity.
 //
 // Included by #[path] with #[rustfmt::skip] on the `mod frozen;` line, so
 // rustfmt leaves it as written: by tests/traces.rs, and by firmware, since
@@ -52,16 +54,28 @@ pub fn preamble() -> &'static str {
 }
 
 /// One `pub mod name { … }`, its last newline included: `N`, `S`,
-/// `DT_US`, `STEPS`, `SPIKES_ONLY`, `HEADER` (verbatim), `NEURONS` (every
-/// field, as given, before the first step), `SYNAPSES` (as given: the
+/// `DT_US`, `STEPS`, `SPIKES_ONLY`, `HEADER` (verbatim), `NEURONS` (one
+/// constructor call and one setter per parameter each, every parameter
+/// written, as given, before the first step), `SYNAPSES` (as given: the
 /// delivery order, which [`FixedSynapse::from_network`] gives as the
 /// CSR's) and `DRIVE`, runs of equal steps, `(count, currents)`.
+///
+/// No state is emitted: a frozen neuron is its parameters, at rest. The
+/// eight setters are written default or not, so a frozen file does not
+/// move when a default does — the per-type table and the per-grid
+/// scaling are what an old file would otherwise be silently rebound to.
 ///
 /// Provisional until the pub walk.
 ///
 /// # Panics
 ///
-/// When a run of `drive` does not hold one current per neuron.
+/// When a run of `drive` does not hold one current per neuron; when a
+/// neuron is not at rest, since no state is written (the assert in
+/// `neuron_chain` carries the reasons it cannot fire on the stranger
+/// path); when a neuron's `id` is not its position in `neurons`, since
+/// the id is what a `FixedNetwork` indexes it by and what seeds its
+/// noise; and when the chain written for a neuron does not rebuild it,
+/// which is this module's own defect and not the caller's.
 #[must_use]
 #[allow(clippy::too_many_arguments)] // one argument per constant of the module
 pub fn module(
@@ -93,8 +107,44 @@ pub fn module(
     ));
     out.push_str(&format!("    pub const HEADER: &str = {header:?};\n"));
     out.push_str("    pub const NEURONS: [LIFNeuron; N] = [\n");
-    for neuron in neurons {
-        out.push_str(&format!("        {},\n", neuron_literal(neuron)));
+    for (i, neuron) in neurons.iter().enumerate() {
+        let (chain, rebuilt) = neuron_chain(name, i, neuron);
+        // THE GUARD IS A CORPUS TEST, NOT A TRIPWIRE. It fires when a
+        // frozen neuron carries a value the chain does not write, which
+        // is what "the emitted list of setters is complete" means here.
+        // It is not the tripwire a field added to `LIFNeuron` trips:
+        // that one is `neuron_chain`'s destructure, and behind it
+        // `the_neuron_has_seventeen_fields`, whose neuron is a literal.
+        // WHAT IT ALONE COVERS, since the test lines in `tests/traces.rs`
+        // catch a missing setter in-tree too: the stranger path, where
+        // no test line exists, and an earlier error, at regeneration.
+        //
+        // Three limits, since a reader will want to lean on it. (1) It
+        // proves the chain's LIST is complete, not that a setter is
+        // right: where the source neuron was itself built by the chain
+        // (`nir::substrate_neuron`), the rebuild shares its setters and
+        // cannot see an error inside one — what sees that is the at-rest
+        // assert below and the trace. (2) A neuron whose
+        // `voltage_resolution` was assigned alone rebuilds equal to
+        // itself and is frozen as it is: this is a completeness check on
+        // the chain, never a validity check on the neuron. (3) It reads
+        // the DERIVED `Debug` of `LIFNeuron`, `NeuronType` and
+        // `VoltageResolution` (the crate's own habit for a field-by-field
+        // compare, `nir::chain_equivalence_both_builders_bit_exact`); a
+        // hand-written `Debug` on any of the three would blind it, and
+        // the field count with it — but not that test's literal, which
+        // is the compiler's own check and reads no `Debug` at all.
+        assert_eq!(
+            format!("{rebuilt:?}"),
+            format!("{neuron:?}"),
+            "{name}, neuron {i}: the emitted chain does not rebuild the neuron"
+        );
+        assert!(
+            usize::from(neuron.id) == i,
+            "{name}, neuron {i}: a neuron's id is its position in the array, \
+             which is what indexes it and what seeds its noise"
+        );
+        out.push_str(&format!("        {chain},\n"));
     }
     out.push_str("    ];\n");
     if synapses.is_empty() {
@@ -103,7 +153,7 @@ pub fn module(
         out.push_str("    pub const SYNAPSES: [FixedSynapse; S] = [\n");
         for s in synapses {
             out.push_str(&format!(
-                "        FixedSynapse {{ pre: {}, post: {}, pulse_ua: {} }},\n",
+                "        FixedSynapse::new({}, {}, {}),\n",
                 s.pre, s.post, s.pulse_ua
             ));
         }
@@ -136,10 +186,26 @@ pub fn tail(modules: &[String]) -> String {
     out
 }
 
-/// A neuron as a struct literal, every field by name. The pattern lists
-/// every field too, so a field added to `LIFNeuron` fails to compile here
-/// until the freezer writes it.
-fn neuron_literal(n: &LIFNeuron) -> String {
+/// A neuron as the constructor call and the setters that write its
+/// parameters, and the neuron those same calls build.
+///
+/// The pattern lists every field, so a field added to `LIFNeuron` fails
+/// to compile here until the freezer BINDS it — and binding it is a
+/// decision: emit a setter for the field, or state why its default is
+/// right for every frozen file ever written. THIS DESTRUCTURE IS THE
+/// FIRST TRIPWIRE, and it is only as strong as its bindings' readers: a
+/// binding with no reader can be answered with `..` and the tripwire is
+/// gone. Every one of the seventeen has one — the eight parameters and
+/// the three constructor arguments below, the six state fields in the
+/// at-rest assert. The second tripwire does not come through here at
+/// all: it is `the_neuron_has_seventeen_fields`, whose neuron is a
+/// `LIFNeuron { … }` literal, so a field added is the compiler's error
+/// there whatever this pattern says.
+///
+/// `name` and `i` are the module's name and the neuron's index, for the
+/// assert below: the two asserts in [`module`]'s loop name both, and a
+/// caller that trips this one wants them as much.
+fn neuron_chain(name: &str, i: usize, n: &LIFNeuron) -> (String, LIFNeuron) {
     let LIFNeuron {
         id,
         neuron_type,
@@ -159,15 +225,54 @@ fn neuron_literal(n: &LIFNeuron) -> String {
         noise_amplitude_ua,
         adaptation_current_ua,
     } = n;
-    format!(
-        "LIFNeuron {{ id: {id}, neuron_type: NeuronType::{neuron_type:?}, \
-         membrane_potential: {membrane_potential}, resting_potential: {resting_potential}, \
-         threshold: {threshold}, reset_potential: {reset_potential}, \
-         voltage_resolution: VoltageResolution::{voltage_resolution:?}, \
-         tau_membrane_us: {tau_membrane_us}, tau_refractory_us: {tau_refractory_us}, \
-         refractory_time_us: {refractory_time_us}, last_update_time_us: {last_update_time_us}, \
-         last_spike_time_us: {last_spike_time_us}, synaptic_current_ua: {synaptic_current_ua}, \
-         capacitance_pf: {capacitance_pf}, resistance_mohm: {resistance_mohm}, \
-         noise_amplitude_ua: {noise_amplitude_ua}, adaptation_current_ua: {adaptation_current_ua} }}"
-    )
+    // A frozen neuron is parameters, at rest: no state is written, so a
+    // neuron carrying state would be frozen as another neuron in
+    // silence. This cannot fire on the stranger path, for two
+    // independent reasons: `neuralos-nir2json`'s `freeze` writes the
+    // module before its stepping loop, and `nir::substrate_neuron`
+    // builds the membrane at the leak.
+    //
+    // "At rest" means "before the first step" for every caller in the
+    // tree: `integrate_and_fire` writes `last_update_time_us =
+    // current_time_us`, 0 at the first step, so a network stepped once
+    // at time 0 with nothing moving passes — and the freezer is handed
+    // neurons, never the network's clock.
+    assert!(
+        membrane_potential == resting_potential
+            && *refractory_time_us == 0
+            && *last_update_time_us == 0
+            && *last_spike_time_us == 0
+            && *synaptic_current_ua == 0
+            && *adaptation_current_ua == 0,
+        "{name}, neuron {i}: the freezer writes a neuron at rest, before the first step"
+    );
+    let mut text = format!(
+        "LIFNeuron::new_with_type_resolution({id}, NeuronType::{neuron_type:?}, \
+         VoltageResolution::{voltage_resolution:?})"
+    );
+    let mut rebuilt = LIFNeuron::new_with_type_resolution(*id, *neuron_type, *voltage_resolution);
+    // ONE LIST for the two halves. `stringify!` writes the setter's name
+    // into the text and the same name is called on the rebuild, so a
+    // renamed setter cannot part from the text it writes, and a setter
+    // dropped from the list takes its binding's reader with it (the
+    // gate turns that into `error: unused variable`).
+    macro_rules! chain {
+        ($($setter:ident => $value:expr),+ $(,)?) => {{
+            $(
+                text.push_str(&format!(".{}({})", stringify!($setter), $value));
+                rebuilt = rebuilt.$setter($value);
+            )+
+        }};
+    }
+    chain! {
+        with_resting_potential => *resting_potential,
+        with_threshold => *threshold,
+        with_reset_potential => *reset_potential,
+        with_tau_membrane_us => *tau_membrane_us,
+        with_tau_refractory_us => *tau_refractory_us,
+        with_capacitance_pf => *capacitance_pf,
+        with_resistance_mohm => *resistance_mohm,
+        with_noise_amplitude_ua => *noise_amplitude_ua,
+    }
+    (text, rebuilt)
 }

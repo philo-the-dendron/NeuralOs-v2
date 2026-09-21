@@ -125,15 +125,20 @@ pub fn frozen_path() -> PathBuf {
 /// The text of `frozen.rs` (module doc): every plasticity-off case, built,
 /// as one module named after it (`-` becomes `_`) holding `N`, `S`,
 /// `DT_US`, `STEPS`, `SPIKES_ONLY`, `HEADER` (the trace's first line,
-/// verbatim), `NEURONS` (every field, as built, before the first step),
-/// `SYNAPSES` (`FixedSynapse::from_network`: the CSR order) and `DRIVE`
-/// (runs of equal steps). Then `for_each_frozen!`, which applies a
-/// caller's macro to every module, so no list is kept by hand.
+/// verbatim), `NEURONS` (one constructor call and one setter per
+/// parameter each, as built, before the first step), `SYNAPSES`
+/// (`FixedSynapse::from_network`: the CSR order) and `DRIVE` (runs of
+/// equal steps). Then `for_each_frozen!`, which applies a caller's macro
+/// to every module, so no list is kept by hand.
 ///
 /// # Panics
 ///
 /// When a case's drive is not one current per neuron, which no case here
-/// is.
+/// is; and with every refusal of `freeze::module` — a neuron that is not
+/// at rest, an `id` that is not the neuron's position, a chain that does
+/// not rebuild its neuron — none of which a case here trips: each is
+/// built and frozen before its first step, and each numbers its neurons
+/// from 0.
 pub fn freeze() -> String {
     let mut out = String::from(freeze::preamble());
     let mut modules = Vec::new();

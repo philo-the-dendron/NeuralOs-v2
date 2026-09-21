@@ -693,7 +693,16 @@ pub fn module_name(stem: &str) -> Option<String> {
 ///
 /// # Panics
 ///
-/// Never: an assembled network steps, and a `String` takes every write.
+/// Never, and not by luck: an assembled network steps, a `String` takes
+/// every write, and the library's freezer refuses nothing it is handed
+/// here. Its three refusals, each ruled out at its source: a neuron that
+/// is not at rest — the module is written before the stepping loop
+/// below, and `build_network` builds every membrane at its leak; an
+/// `id` that is not the neuron's position — `build_network` numbers the
+/// neurons as it pushes them; and a chain that does not rebuild its
+/// neuron, which would be a defect of the library, not of a stranger's
+/// graph. The drive it is given is the encoder's output, one current per
+/// neuron.
 pub fn freeze(
     json: &[u8],
     opts: NirImportOptions,

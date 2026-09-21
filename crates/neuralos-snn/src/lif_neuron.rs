@@ -1673,4 +1673,84 @@ mod tests {
     fn the_neuron_is_44_bytes() {
         assert_eq!(core::mem::size_of::<LIFNeuron>(), 44);
     }
+
+    /// The neuron's field count, pinned — **the second tripwire of the
+    /// freezer**, and the one that does not go through it. A field added
+    /// to `LIFNeuron` turns this red whatever `fixed::freeze`'s pattern
+    /// says, so answering that pattern with a lazy `..` is no longer
+    /// silent (that pattern, the first tripwire, is answerable that way
+    /// and the traces, clippy and the size pin above all stay green:
+    /// `LIFNeuron` has three bytes of padding, and a `bool` or a `u16`
+    /// fits).
+    ///
+    /// TWO CHECKS, the literal first. The neuron below is built from a
+    /// `LIFNeuron { … }` literal naming all seventeen fields, so a field
+    /// added or removed is `E0063` or `E0560` HERE, at the compiler,
+    /// with the message below in front of whoever answers it. That is
+    /// what the 31 literals of a frozen `frozen.rs` used to give and no
+    /// longer do. Two compiler-enforced sites are left besides it — the
+    /// constructor's own exhaustive `Self { … }` (an edit the author
+    /// cannot avoid, and which says nothing of frozen files) and the
+    /// freezer's destructure, which a `..` answers — so this literal is
+    /// the one that stands between a new field and a silent frozen file.
+    /// Its values are ARBITRARY on purpose: the defaults have their home
+    /// in `new_excitatory_neuron_has_default_params`, and one of them
+    /// moves when the noise default is decided. An in-crate literal
+    /// closes no door: it stays legal under `#[non_exhaustive]` and with
+    /// private fields.
+    ///
+    /// The count is the second check, on that same neuron. HOW IT
+    /// COUNTS: the field lines of the derived pretty `Debug` — the lines
+    /// at exactly one level of indent that name something. One line per
+    /// field whatever the value's shape, since the formatter indents a
+    /// value's own lines deeper: a nested struct, a list, a string
+    /// holding `": "` or an escaped newline all count once (measured).
+    /// WHAT WOULD FOOL IT: a hand-written `Debug` on `LIFNeuron`, which
+    /// would blind the freezer's guard with it — and neither of them the
+    /// literal above. The number can be edited, like any pin, with the
+    /// same message in front of whoever edits it.
+    ///
+    /// `17` has one home: this test.
+    #[test]
+    fn the_neuron_has_seventeen_fields() {
+        // Arbitrary values, not the constructor's (doc above).
+        let neuron = LIFNeuron {
+            id: 9,
+            neuron_type: NeuronType::Inhibitory,
+            membrane_potential: -6_612,
+            resting_potential: -6_612,
+            threshold: -4_900,
+            reset_potential: -7_100,
+            voltage_resolution: VoltageResolution::CentiMillivolt,
+            tau_membrane_us: 12_345,
+            tau_refractory_us: 987,
+            refractory_time_us: 3,
+            last_update_time_us: 41,
+            last_spike_time_us: 40,
+            synaptic_current_ua: -17,
+            capacitance_pf: 222,
+            resistance_mohm: 33,
+            noise_amplitude_ua: 7,
+            adaptation_current_ua: 6,
+        };
+        let pretty = format!("{neuron:#?}");
+        let fields = pretty
+            .lines()
+            .filter(|line| {
+                line.strip_prefix("    ").is_some_and(|field| {
+                    field.starts_with(|c: char| c.is_ascii_alphabetic()) && field.contains(": ")
+                })
+            })
+            .count();
+        assert_eq!(
+            fields, 17,
+            "a field was added to or taken from LIFNeuron (and the literal above compiled, \
+             so this count is the second word, not the first). Adding one is a decision in \
+             `fixed::freeze` (`neuron_chain`'s destructure, and its doc): bind it there \
+             and emit a setter for it, or state why its default is right for every \
+             frozen file ever written — and then PROVE that default, by replaying one frozen \
+             module kept in the old emitted form against its pinned trace (the obligation the \
+             ISA's round-43 close-out records). This number is edited last."
+        );
+    }
 }
