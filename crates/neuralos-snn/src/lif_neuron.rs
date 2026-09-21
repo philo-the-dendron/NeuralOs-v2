@@ -290,15 +290,22 @@ pub struct LIFNeuron {
 
 impl LIFNeuron {
     /// New excitatory neuron with default biological parameters.
+    ///
+    /// `const`, like the constructor it forwards to: see
+    /// [`new_with_type_resolution`](Self::new_with_type_resolution) for
+    /// the chain, its two rules and what `const` costs.
     #[must_use]
-    pub fn new(id: u16) -> Self {
+    pub const fn new(id: u16) -> Self {
         Self::new_with_type(id, NeuronType::Excitatory)
     }
 
     /// New neuron with specific biological type. Type sets threshold, tau, capacitance.
     /// Voltage grid = mV (the historical default).
+    ///
+    /// `const` because [`new`](Self::new) forwards to it; private, so it
+    /// is no promise of its own.
     #[must_use]
-    fn new_with_type(id: u16, neuron_type: NeuronType) -> Self {
+    const fn new_with_type(id: u16, neuron_type: NeuronType) -> Self {
         Self::new_with_type_resolution(id, neuron_type, VoltageResolution::Millivolt)
     }
 
@@ -306,8 +313,33 @@ impl LIFNeuron {
     ///
     /// All four potentials are constructed on the chosen grid (e.g. resting
     /// `-70` mV / `-7_000` centi-mV). Currents and times are grid-independent.
+    ///
+    /// # The chain
+    ///
+    /// This call is the head of the `with_*` chain: it and the eight
+    /// setters below are how a network is written as Rust source
+    /// ([`fixed::freeze`](crate::fixed::freeze)), so every one of them is
+    /// `const`. What `const` costs, in one line: no formatted panic
+    /// message can ever live in them, and un-`const`-ing one is a
+    /// breaking change, because every frozen file ever written is a
+    /// `const`.
+    ///
+    /// Two rules hold the chain together.
+    ///
+    /// 1. **There is no `with_voltage_resolution`, `with_id` or
+    ///    `with_neuron_type`, on purpose.** The grid is chosen once,
+    ///    here, with the four potentials that live on it; `id` is the
+    ///    neuron's position in its network and seeds its noise; the type
+    ///    picks the three parameters this constructor derives from it.
+    ///    All three fields are `pub`, so this is the chain's rule and not
+    ///    a wall: a caller can still assign any of them, and only a field
+    ///    made private would stop that.
+    /// 2. **A `with_*` assigns, never computes.** Arithmetic in a `const`
+    ///    setter turns an out-of-range value in a stranger's frozen file
+    ///    into a compile error inside their crate, far from the graph
+    ///    that produced the value.
     #[must_use]
-    pub fn new_with_type_resolution(
+    pub const fn new_with_type_resolution(
         id: u16,
         neuron_type: NeuronType,
         resolution: VoltageResolution,
@@ -336,6 +368,128 @@ impl LIFNeuron {
             noise_amplitude_ua: 5,
             adaptation_current_ua: 0,
         }
+    }
+
+    /// The resting potential, in this neuron's quanta — **and the membrane
+    /// potential with it**: a neuron is built at rest.
+    ///
+    /// The one setter that touches two fields, which is why the order the
+    /// eight are called in cannot matter. A second such setter would end
+    /// that, and the order
+    /// [`fixed::freeze`](crate::fixed::freeze) emits them in would become
+    /// load-bearing.
+    ///
+    /// ```
+    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    ///
+    /// let n = LIFNeuron::new(0).with_resting_potential(-65);
+    /// assert_eq!(n.resting_potential, -65);
+    /// assert_eq!(n.membrane_potential, -65, "built at rest");
+    /// ```
+    #[must_use]
+    pub const fn with_resting_potential(mut self, quanta: i16) -> Self {
+        self.resting_potential = quanta;
+        self.membrane_potential = quanta;
+        self
+    }
+
+    /// The spike threshold, in this neuron's quanta.
+    ///
+    /// ```
+    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    ///
+    /// assert_eq!(LIFNeuron::new(0).with_threshold(-40).threshold, -40);
+    /// ```
+    #[must_use]
+    pub const fn with_threshold(mut self, quanta: i16) -> Self {
+        self.threshold = quanta;
+        self
+    }
+
+    /// The potential a spike resets the membrane to, in this neuron's
+    /// quanta.
+    ///
+    /// ```
+    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    ///
+    /// assert_eq!(LIFNeuron::new(0).with_reset_potential(-75).reset_potential, -75);
+    /// ```
+    #[must_use]
+    pub const fn with_reset_potential(mut self, quanta: i16) -> Self {
+        self.reset_potential = quanta;
+        self
+    }
+
+    /// The membrane time constant (μs).
+    ///
+    /// ```
+    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    ///
+    /// assert_eq!(LIFNeuron::new(0).with_tau_membrane_us(5_000).tau_membrane_us, 5_000);
+    /// ```
+    #[must_use]
+    pub const fn with_tau_membrane_us(mut self, us: u32) -> Self {
+        self.tau_membrane_us = us;
+        self
+    }
+
+    /// The refractory period (μs).
+    ///
+    /// ```
+    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    ///
+    /// assert_eq!(LIFNeuron::new(0).with_tau_refractory_us(1_000).tau_refractory_us, 1_000);
+    /// ```
+    #[must_use]
+    pub const fn with_tau_refractory_us(mut self, us: u32) -> Self {
+        self.tau_refractory_us = us;
+        self
+    }
+
+    /// The membrane capacitance (pF).
+    ///
+    /// No computation of this crate reads `capacitance_pf` — the membrane
+    /// update divides by neither it nor `tau/C` (§ Semantics of
+    /// [`integrate_and_fire`](Self::integrate_and_fire)). The field is
+    /// carried because an imported graph's value is part of what was
+    /// imported, and this setter lives and dies with it: the field's fate
+    /// is open before 0.1.0, and the day it goes, this goes with it.
+    ///
+    /// ```
+    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    ///
+    /// assert_eq!(LIFNeuron::new(0).with_capacitance_pf(200).capacitance_pf, 200);
+    /// ```
+    #[must_use]
+    pub const fn with_capacitance_pf(mut self, pf: u16) -> Self {
+        self.capacitance_pf = pf;
+        self
+    }
+
+    /// The membrane resistance (MΩ): the R of the current term.
+    ///
+    /// ```
+    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    ///
+    /// assert_eq!(LIFNeuron::new(0).with_resistance_mohm(50).resistance_mohm, 50);
+    /// ```
+    #[must_use]
+    pub const fn with_resistance_mohm(mut self, mohm: u16) -> Self {
+        self.resistance_mohm = mohm;
+        self
+    }
+
+    /// The noise amplitude (μA); `0` is a deterministic neuron.
+    ///
+    /// ```
+    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    ///
+    /// assert_eq!(LIFNeuron::new(0).with_noise_amplitude_ua(0).noise_amplitude_ua, 0);
+    /// ```
+    #[must_use]
+    pub const fn with_noise_amplitude_ua(mut self, ua: u8) -> Self {
+        self.noise_amplitude_ua = ua;
+        self
     }
 
     /// Integrate the membrane equation for one time step, return `true` if a spike fired.
