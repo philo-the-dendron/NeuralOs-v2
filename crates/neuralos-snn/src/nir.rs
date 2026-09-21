@@ -3704,21 +3704,34 @@ mod std_assembly {
      NirImportOptions { resolution: VoltageResolution::CentiMillivolt, \
      ..NirImportOptions::default() }";
 
-    /// The assembly's neuron mapping (`build_chain_network`'s, shared):
-    /// per-neuron quantized params onto an Excitatory substrate
-    /// neuron, deterministic (noise 0), minimum refractory.
+    /// The assembly's neuron mapping: per-neuron quantized params onto
+    /// an Excitatory substrate neuron, deterministic (noise 0), minimum
+    /// refractory.
+    ///
+    /// Written as the constructor chain, which is also what the freezer
+    /// emits (`fixed::freeze`), so an imported neuron and its frozen
+    /// copy are built by the same calls. `build_chain_network`'s inline
+    /// block is a SECOND implementation of this mapping, by assignment,
+    /// and is deliberately not shared with this one:
+    /// `chain_equivalence_both_builders_bit_exact` holds the two against
+    /// each other on `chain.json`, which is only a comparison while they
+    /// are written twice. What that test sees is narrow — of the nine
+    /// assignments, three differ from the constructor's defaults on that
+    /// fixture, and the membrane coupling is not among them (its
+    /// `v_leak` is the default −70 on the mV grid). The coupling is
+    /// pinned by the traces of `snntorch-two-layer` and
+    /// `two-lif-neurons`, by the freezer's at-rest assert, and by
+    /// `with_resting_potential`'s doctest.
     fn substrate_neuron(id: u16, p: &NirLif, res: VoltageResolution) -> LIFNeuron {
-        let mut n = LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, res);
-        n.resting_potential = p.leak_q;
-        n.membrane_potential = p.leak_q;
-        n.threshold = p.threshold_q;
-        n.reset_potential = p.reset_q;
-        n.tau_membrane_us = p.tau_us;
-        n.tau_refractory_us = 1_000; // NIR LIF has no refractory → minimum
-        n.resistance_mohm = p.resistance_mohm;
-        n.capacitance_pf = p.capacitance_pf;
-        n.noise_amplitude_ua = 0; // import is deterministic
-        n
+        LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, res)
+            .with_resting_potential(p.leak_q) // the membrane with it: built at rest
+            .with_threshold(p.threshold_q)
+            .with_reset_potential(p.reset_q)
+            .with_tau_membrane_us(p.tau_us)
+            .with_tau_refractory_us(1_000) // NIR LIF has no refractory → minimum
+            .with_capacitance_pf(p.capacitance_pf)
+            .with_resistance_mohm(p.resistance_mohm)
+            .with_noise_amplitude_ua(0) // import is deterministic
     }
 
     fn mat_zero(r: usize, c: usize) -> Vec<Vec<f64>> {
