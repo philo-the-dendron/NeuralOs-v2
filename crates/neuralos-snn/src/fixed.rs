@@ -316,6 +316,37 @@ pub fn row(
     out.write_char('\n')
 }
 
+// After the last `impl` of this module, and not before one: a v0 symbol
+// carries its `impl` block's index in its module, so a block inserted
+// earlier renumbers the blocks after it and relays the firmware's
+// `.text` with no code change (measured, ISA round 43).
+impl FixedSynapse {
+    /// A synapse from its three values: a spike of `pre` adds `pulse_ua`
+    /// to the synaptic current of `post`.
+    ///
+    /// `const`, and not `std`: a frozen network's synapse array is a
+    /// `const` of these calls, written by [`freeze::module`] and
+    /// compiled outside this crate — by the firmware, which has no
+    /// `std`. The call is positional with the two ids side by side, so
+    /// which is which is pinned by a test, not by the types: the frozen
+    /// cases' synapse line in `tests/traces.rs`.
+    ///
+    /// ```
+    /// use neuralos_snn::fixed::FixedSynapse;
+    ///
+    /// let s = FixedSynapse::new(0, 1, 400);
+    /// assert_eq!((s.pre, s.post, s.pulse_ua), (0, 1, 400));
+    /// ```
+    #[must_use]
+    pub const fn new(pre: u16, post: u16, pulse_ua: i16) -> Self {
+        Self {
+            pre,
+            post,
+            pulse_ua,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
