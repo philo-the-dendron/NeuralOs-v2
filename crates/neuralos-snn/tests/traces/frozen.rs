@@ -5,9 +5,11 @@
 // Every plasticity-off case of tests/traces/ as the arrays a FixedNetwork
 // steps: N neurons and S synapses, the time step, the run, whether the
 // trace keeps spiking steps only, the trace's header line verbatim, the
-// neurons as built (every field), the synapses in the CSR order, and the
-// drive as runs of equal steps, (count, currents). plasticity-on is not
-// here: a FixedNetwork has no plasticity.
+// neurons as built, each one a constructor call and one setter per
+// parameter (every parameter written, default or not), the synapses in
+// the CSR order, and the drive as runs of equal steps, (count,
+// currents). plasticity-on is not here: a FixedNetwork has no
+// plasticity.
 //
 // Included by #[path] with #[rustfmt::skip] on the `mod frozen;` line, so
 // rustfmt leaves it as written: by tests/traces.rs, and by firmware, since
@@ -25,7 +27,7 @@ pub mod neuron_reference {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=neuron-reference kind=reference n=1 dt_us=1000 res=cmV plasticity=off divisor=10 steps=150 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: 32767, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(32767).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [];
     pub const DRIVE: &[(u32, [i16; N])] = &[
@@ -46,7 +48,7 @@ pub mod one_neuron_board {
     pub const SPIKES_ONLY: bool = true;
     pub const HEADER: &str = "# neuralos-trace v1 case=one-neuron-board kind=regression n=1 dt_us=1000 res=cmV plasticity=off divisor=10 steps=10000 rows=spikes";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 5, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(5),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [];
     pub const DRIVE: &[(u32, [i16; N])] = &[
@@ -64,13 +66,13 @@ pub mod chain_3 {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=chain-3 kind=regression n=3 dt_us=1000 res=cmV plasticity=off divisor=1 steps=100 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
-        LIFNeuron { id: 1, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
-        LIFNeuron { id: 2, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(2, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse { pre: 0, post: 1, pulse_ua: 5000 },
-        FixedSynapse { pre: 1, post: 2, pulse_ua: 5000 },
+        FixedSynapse::new(0, 1, 5000),
+        FixedSynapse::new(1, 2, 5000),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
         (100, [600, 0, 0]),
@@ -87,22 +89,22 @@ pub mod feedforward_8 {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=feedforward-8 kind=regression n=8 dt_us=1000 res=cmV plasticity=off divisor=1 steps=150 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 5, adaptation_current_ua: 0 },
-        LIFNeuron { id: 1, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 5, adaptation_current_ua: 0 },
-        LIFNeuron { id: 2, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 5, adaptation_current_ua: 0 },
-        LIFNeuron { id: 3, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 5, adaptation_current_ua: 0 },
-        LIFNeuron { id: 4, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 5, adaptation_current_ua: 0 },
-        LIFNeuron { id: 5, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 5, adaptation_current_ua: 0 },
-        LIFNeuron { id: 6, neuron_type: NeuronType::Inhibitory, membrane_potential: -7000, resting_potential: -7000, threshold: -5000, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 10000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 80, resistance_mohm: 100, noise_amplitude_ua: 5, adaptation_current_ua: 0 },
-        LIFNeuron { id: 7, neuron_type: NeuronType::Inhibitory, membrane_potential: -7000, resting_potential: -7000, threshold: -5000, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 10000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 80, resistance_mohm: 100, noise_amplitude_ua: 5, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(5),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(5),
+        LIFNeuron::new_with_type_resolution(2, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(5),
+        LIFNeuron::new_with_type_resolution(3, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(5),
+        LIFNeuron::new_with_type_resolution(4, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(5),
+        LIFNeuron::new_with_type_resolution(5, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(5),
+        LIFNeuron::new_with_type_resolution(6, NeuronType::Inhibitory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5000).with_reset_potential(-8000).with_tau_membrane_us(10000).with_tau_refractory_us(2000).with_capacitance_pf(80).with_resistance_mohm(100).with_noise_amplitude_ua(5),
+        LIFNeuron::new_with_type_resolution(7, NeuronType::Inhibitory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5000).with_reset_potential(-8000).with_tau_membrane_us(10000).with_tau_refractory_us(2000).with_capacitance_pf(80).with_resistance_mohm(100).with_noise_amplitude_ua(5),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse { pre: 0, post: 3, pulse_ua: 100 },
-        FixedSynapse { pre: 1, post: 4, pulse_ua: 100 },
-        FixedSynapse { pre: 2, post: 5, pulse_ua: 100 },
-        FixedSynapse { pre: 3, post: 6, pulse_ua: 100 },
-        FixedSynapse { pre: 4, post: 7, pulse_ua: 100 },
-        FixedSynapse { pre: 5, post: 6, pulse_ua: 100 },
+        FixedSynapse::new(0, 3, 100),
+        FixedSynapse::new(1, 4, 100),
+        FixedSynapse::new(2, 5, 100),
+        FixedSynapse::new(3, 6, 100),
+        FixedSynapse::new(4, 7, 100),
+        FixedSynapse::new(5, 6, 100),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
         (150, [600, 600, 600, 148, 148, 148, 199, 199]),
@@ -119,11 +121,11 @@ pub mod recurrent_transmission {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=recurrent-transmission kind=regression n=2 dt_us=1000 res=mV plasticity=off divisor=10 steps=30 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -70, resting_potential: -70, threshold: -55, reset_potential: -80, voltage_resolution: VoltageResolution::Millivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
-        LIFNeuron { id: 1, neuron_type: NeuronType::Inhibitory, membrane_potential: -70, resting_potential: -70, threshold: -50, reset_potential: -80, voltage_resolution: VoltageResolution::Millivolt, tau_membrane_us: 10000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 80, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::Millivolt).with_resting_potential(-70).with_threshold(-55).with_reset_potential(-80).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Inhibitory, VoltageResolution::Millivolt).with_resting_potential(-70).with_threshold(-50).with_reset_potential(-80).with_tau_membrane_us(10000).with_tau_refractory_us(2000).with_capacitance_pf(80).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse { pre: 0, post: 1, pulse_ua: 200 },
+        FixedSynapse::new(0, 1, 200),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
         (1, [3000, 0]),
@@ -141,11 +143,11 @@ pub mod centi_mv_grid {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=centi-mv-grid kind=regression n=2 dt_us=1000 res=cmV plasticity=off divisor=10 steps=30 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
-        LIFNeuron { id: 1, neuron_type: NeuronType::Inhibitory, membrane_potential: -7000, resting_potential: -7000, threshold: -5000, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 10000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 80, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Inhibitory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5000).with_reset_potential(-8000).with_tau_membrane_us(10000).with_tau_refractory_us(2000).with_capacitance_pf(80).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse { pre: 0, post: 1, pulse_ua: 12 },
+        FixedSynapse::new(0, 1, 12),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
         (1, [3000, 0]),
@@ -163,11 +165,11 @@ pub mod inhibitory {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=inhibitory kind=regression n=2 dt_us=1000 res=cmV plasticity=off divisor=10 steps=100 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Inhibitory, membrane_potential: -7000, resting_potential: -7000, threshold: -5000, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 10000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 80, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
-        LIFNeuron { id: 1, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Inhibitory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5000).with_reset_potential(-8000).with_tau_membrane_us(10000).with_tau_refractory_us(2000).with_capacitance_pf(80).with_resistance_mohm(100).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse { pre: 0, post: 1, pulse_ua: -1000 },
+        FixedSynapse::new(0, 1, -1000),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
         (100, [250, 250]),
@@ -184,7 +186,7 @@ pub mod refractory {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=refractory kind=regression n=1 dt_us=1000 res=cmV plasticity=off divisor=10 steps=40 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [];
     pub const DRIVE: &[(u32, [i16; N])] = &[
@@ -202,11 +204,11 @@ pub mod plasticity_off {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=plasticity-off kind=regression n=2 dt_us=1000 res=cmV plasticity=off divisor=1 steps=150 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
-        LIFNeuron { id: 1, neuron_type: NeuronType::Excitatory, membrane_potential: -7000, resting_potential: -7000, threshold: -5500, reset_potential: -8000, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse { pre: 0, post: 1, pulse_ua: 1000 },
+        FixedSynapse::new(0, 1, 1000),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
         (150, [600, 200]),
@@ -223,7 +225,7 @@ pub mod saturation_floor_ceiling {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=saturation-floor-ceiling kind=regression n=1 dt_us=1000 res=mV plasticity=off divisor=10 steps=100 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -70, resting_potential: -70, threshold: 32767, reset_potential: -80, voltage_resolution: VoltageResolution::Millivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::Millivolt).with_resting_potential(-70).with_threshold(32767).with_reset_potential(-80).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [];
     pub const DRIVE: &[(u32, [i16; N])] = &[
@@ -244,7 +246,7 @@ pub mod nir_chain_fixture {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=nir-chain-fixture kind=regression n=1 dt_us=1000 res=mV plasticity=off divisor=10 steps=100 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -70, resting_potential: -70, threshold: -55, reset_potential: -80, voltage_resolution: VoltageResolution::Millivolt, tau_membrane_us: 20000, tau_refractory_us: 1000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 200, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::Millivolt).with_resting_potential(-70).with_threshold(-55).with_reset_potential(-80).with_tau_membrane_us(20000).with_tau_refractory_us(1000).with_capacitance_pf(200).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [];
     pub const DRIVE: &[(u32, [i16; N])] = &[
@@ -262,14 +264,14 @@ pub mod ternary_weights {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=ternary-weights kind=regression n=3 dt_us=1000 res=mV plasticity=off divisor=1 steps=100 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: -70, resting_potential: -70, threshold: -55, reset_potential: -80, voltage_resolution: VoltageResolution::Millivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
-        LIFNeuron { id: 1, neuron_type: NeuronType::Excitatory, membrane_potential: -70, resting_potential: -70, threshold: -55, reset_potential: -80, voltage_resolution: VoltageResolution::Millivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
-        LIFNeuron { id: 2, neuron_type: NeuronType::Excitatory, membrane_potential: -70, resting_potential: -70, threshold: -55, reset_potential: -80, voltage_resolution: VoltageResolution::Millivolt, tau_membrane_us: 20000, tau_refractory_us: 2000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 100, resistance_mohm: 100, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::Millivolt).with_resting_potential(-70).with_threshold(-55).with_reset_potential(-80).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::Millivolt).with_resting_potential(-70).with_threshold(-55).with_reset_potential(-80).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(2, NeuronType::Excitatory, VoltageResolution::Millivolt).with_resting_potential(-70).with_threshold(-55).with_reset_potential(-80).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse { pre: 0, post: 1, pulse_ua: 1600 },
-        FixedSynapse { pre: 0, post: 2, pulse_ua: 1600 },
-        FixedSynapse { pre: 1, post: 2, pulse_ua: -1600 },
+        FixedSynapse::new(0, 1, 1600),
+        FixedSynapse::new(0, 2, 1600),
+        FixedSynapse::new(1, 2, -1600),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
         (100, [600, 300, 300]),
@@ -286,11 +288,11 @@ pub mod snntorch_two_layer {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=snntorch-two-layer kind=regression n=2 dt_us=1000 res=cmV plasticity=off divisor=10 steps=150 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: 0, resting_potential: 0, threshold: 100, reset_potential: 0, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 5000, tau_refractory_us: 1000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 0, resistance_mohm: 50000, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
-        LIFNeuron { id: 1, neuron_type: NeuronType::Excitatory, membrane_potential: 0, resting_potential: 0, threshold: 100, reset_potential: 0, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 5000, tau_refractory_us: 1000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 0, resistance_mohm: 50000, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(0).with_threshold(100).with_reset_potential(0).with_tau_membrane_us(5000).with_tau_refractory_us(1000).with_capacitance_pf(0).with_resistance_mohm(50000).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(0).with_threshold(100).with_reset_potential(0).with_tau_membrane_us(5000).with_tau_refractory_us(1000).with_capacitance_pf(0).with_resistance_mohm(50000).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse { pre: 0, post: 1, pulse_ua: 327 },
+        FixedSynapse::new(0, 1, 327),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
         (10, [327, 0]),
@@ -310,11 +312,11 @@ pub mod two_lif_neurons {
     pub const SPIKES_ONLY: bool = false;
     pub const HEADER: &str = "# neuralos-trace v1 case=two-lif-neurons kind=regression n=2 dt_us=1000 res=cmV plasticity=off divisor=10 steps=150 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron { id: 0, neuron_type: NeuronType::Excitatory, membrane_potential: 120, resting_potential: 120, threshold: 100, reset_potential: 0, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 10000, tau_refractory_us: 1000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 10, resistance_mohm: 1000, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
-        LIFNeuron { id: 1, neuron_type: NeuronType::Excitatory, membrane_potential: 0, resting_potential: 0, threshold: 2000, reset_potential: 0, voltage_resolution: VoltageResolution::CentiMillivolt, tau_membrane_us: 10000, tau_refractory_us: 1000, refractory_time_us: 0, last_update_time_us: 0, last_spike_time_us: 0, synaptic_current_ua: 0, capacitance_pf: 10, resistance_mohm: 1000, noise_amplitude_ua: 0, adaptation_current_ua: 0 },
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(120).with_threshold(100).with_reset_potential(0).with_tau_membrane_us(10000).with_tau_refractory_us(1000).with_capacitance_pf(10).with_resistance_mohm(1000).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(0).with_threshold(2000).with_reset_potential(0).with_tau_membrane_us(10000).with_tau_refractory_us(1000).with_capacitance_pf(10).with_resistance_mohm(1000).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse { pre: 0, post: 1, pulse_ua: 327 },
+        FixedSynapse::new(0, 1, 327),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
         (150, [327, 0]),

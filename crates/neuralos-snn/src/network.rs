@@ -709,8 +709,8 @@ impl SpikingNeuralNetwork {
     /// exact either way — [`add`]'s bump and [`finalize`]'s prefix sum
     /// count the same edges — so the slices have the right length and the
     /// wrong members, and the step delivers a spike's pulse under another
-    /// synapse's edge. True on a network with no edges, on a finalized
-    /// one, and on one whose edges were added in `pre` order: each steps
+    /// synapse's edge. True on a network with no edges, on one finalized
+    /// ONCE, and on one whose edges were added in `pre` order: each steps
     /// as its own CSR reads.
     ///
     /// It reads each slot's synapse index alone. A slot's `post` and

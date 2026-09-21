@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@ea7486e (PR #38 merged 2026-09-20 15:40 UTC: round 41, unlettered, tier 2, `NetworkStats::avg_membrane_potential_mv` is the mean of all neurons; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 41 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: fix/csr-agrees, round 42 (unlettered, tier 2: `FixedNetwork::try_from` refuses a network whose CSR no longer delivers its synapses, and a default-build test reads the two ternary writes back from their CSR slots; three commits, no check ticked), not pushed; `tools/percommit.sh` green on the three commits, the traces unmoved, the firmware `.text` unmoved · open(session): `tools/percommit.sh` on this close-out commit, then one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@dcab5ac (PR #39 merged 2026-09-20 20:45 UTC: round 42, unlettered, tier 2, `FixedNetwork::try_from` refuses a network whose CSR no longer delivers each synapse under its own `pre`, in the order added; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 42 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/frozen-constructors, round 43 (unlettered, tier 2: the freezer writes constructor calls, not struct literals, so a frozen file survives a field added with a default; `LIFNeuron`'s three constructors and the eight new `with_*` are `const`, `FixedSynapse::new` is new; six commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all six, the six falsifiers run in scratch · open(session): `tools/percommit.sh` on the six commits, then one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-20T17:50:00Z
+updated: 2026-09-21T00:45:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9626,3 +9626,36 @@ chain-3 wires neuron 1 to itself, which `Synapse::new` refuses;
 `nir2json`'s freeze reaches `from_network` unrefused, safe on
 `build_network`'s lone finalize; a rustdoc link unresolved under
 `--document-private-items`, no gate. No check ticks.
+
+## Close-out (round 43 — the frozen file is built by constructors; unlettered, before the walk — 2026-09-20)
+
+Branch `work/frozen-constructors` from `main@dcab5ac`, tier 2, six
+commits: the `const` chain; `FixedSynapse::new`; the freezer's emission,
+its two refusals, ONE LIST, the guard, the field count, the test lines;
+`substrate_neuron` on the chain; the order clause's pin with its two doc
+sentences; this. **The promise**: a field added and bound, the
+chain-form `frozen.rs` NOT regenerated replays 9 of 9; the literal, 31 ×
+`E0063`. **Numbers**: 220 → 222 tests, 240 → 242 with STDP; `frozen.rs`
++53/−51 = 31 neurons, 17 synapses, the head's sentence; no `.trace`
+moved; `.text` `9e2e6ef1` at all six. By hand: QEMU 14/0 red, the
+stranger witness, nir2json green. **Falsifiers** (scratch): a setter
+dropped, clippy `error: unused variable` where `check` only warns;
+silenced `_`, the guard at regeneration (`nir_chain_fixture, neuron 0`,
+100/200); the TEXT half alone, only the new test line (`8 passed; 1
+failed`); the synapse text swapped (`6 passed; 3 failed`); the order
+clause dropped, the pin alone (`241 passed; 1 failed`); without its
+first assert `try_from` converts it (`left: None`); a `bool` added, the
+pattern answered `..`: `--lib` clippy clean, the build stopped at the
+literal's `E0063`; the literal answered, the count red, 18/17.
+**Record-only.** A PR adding a field owes a default meaning today's
+behaviour, PROVEN by a frozen module kept in the old form and replayed
+(Call 4). F1: the chain alone loses a tripwire; the count test's literal
+buys it back, the count its second word. WHERE an `impl` block goes
+moves `.text`: a v0 symbol carries its block's index. Call 9 NO: it
+would promise the same spikes across library versions, unruled, with
+nothing to replay an old module. F15: `44` gets seven homes the day a
+wider field lands. The firmware ELF sha moves at every commit
+(`SOURCE_DATE_EPOCH`); `.text` does not. No home yet: `step` on a stale
+CSR, `finalize` not idempotent, `tau == 0`. No check ticks. **Guards.**
+1: appended, head refreshed. 2: no verdict moved; `frozen.rs` is
+generated test input. 3: nothing public.

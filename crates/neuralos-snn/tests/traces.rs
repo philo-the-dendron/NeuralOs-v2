@@ -26,7 +26,7 @@ mod frozen;
 
 use cases::{Case, Kind, Rows, CASES, DIR, FORMAT};
 use neuralos_snn::fixed::row;
-use neuralos_snn::{FixedNetwork, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
+use neuralos_snn::{FixedNetwork, FixedSynapse, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
 
 /// The bench record of the firmware's neuron, `evidence/esp32c3-bringup/
 /// README.md`: the spike count, the first spike's step, and the wrapping
@@ -370,6 +370,31 @@ fn every_plasticity_off_case_steps_as_the_std_network() {
             let cases::Run { mut net, drive } = (case.build)();
             let mut fixed = FixedNetwork::<{ c::N }, { c::S }>::try_from(&net)
                 .unwrap_or_else(|e| panic!("{}: {e}", case.name));
+            // THE EMITTED TEXT, before the first step: this is the only
+            // test that holds both sides (the compiled constants and the
+            // case that wrote them), so for a field no step reads —
+            // `neuron_type`, `capacitance_pf` — these two lines are the
+            // only pin the text has. Each message names the case: the
+            // panic location is the macro's one call site for all of
+            // them and says nothing.
+            assert_eq!(
+                c::NEURONS
+                    .iter()
+                    .map(|n| format!("{n:?}"))
+                    .collect::<Vec<_>>(),
+                net.neurons()
+                    .iter()
+                    .map(|n| format!("{n:?}"))
+                    .collect::<Vec<_>>(),
+                "{}: the frozen neurons are the case's",
+                case.name
+            );
+            assert_eq!(
+                c::SYNAPSES.as_slice(),
+                FixedSynapse::from_network(&net).as_slice(),
+                "{}: the frozen synapses are the case's",
+                case.name
+            );
             let mut fired = [false; c::N];
             for step in 0..case.steps {
                 let input = drive(step);
