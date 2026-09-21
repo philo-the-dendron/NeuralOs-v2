@@ -64,12 +64,12 @@ impl FixedSynapse {
     /// gives the CSR.
     ///
     /// That is the order `net`'s own step delivers them in exactly when
-    /// its CSR delivers each synapse under its own `pre` — see
-    /// `FixedNetwork::try_from` § Errors. On a network where it does not,
-    /// this list is the sorted one, the std step reads the stale CSR, and
-    /// the two can part. Returning a `Vec`, this cannot refuse such a
-    /// network; `FixedNetwork::try_from` does, and is the way to convert
-    /// one.
+    /// its CSR delivers each synapse under its own `pre`, in the order
+    /// added — see `FixedNetwork::try_from` § Errors. On a network
+    /// where it does not, this list is the sorted one, the std step
+    /// reads the stale CSR, and the two can part. Returning a `Vec`,
+    /// this cannot refuse such a network; `FixedNetwork::try_from`
+    /// does, and is the way to convert one.
     ///
     /// Each pulse is the std step's own expression, `weight / divisor as
     /// i16`, so a divisor above 32,767 wraps negative here as it does there.
@@ -545,6 +545,70 @@ mod tests {
         assert!(
             counts.iter().all(|&n| n > 0),
             "all three fire, 1 and 2 through the chain: {counts:?}"
+        );
+    }
+
+    /// The order clause of `csr_delivers_its_synapses`, the half of that
+    /// method no test reached until now (round 42 left it open): a CSR
+    /// that holds every synapse under its own `pre` and one `pre`'s two
+    /// slots in the wrong ORDER.
+    ///
+    /// The witness, on four default neurons: `add(3→2, 100)`,
+    /// `add(2→3, 200)`, finalize, `add(2→3, 300)`, finalize, finalize.
+    /// `finalize` is not idempotent, and the last two walk a list whose
+    /// order they no longer match, so pre 2 ends up holding its own two
+    /// synapses newest first. The mirror below is what makes that a
+    /// measured fact of this test and not a claim of its comment: every
+    /// slot sits under its own `pre`, 3 of 3, so every other clause of
+    /// the method passes and the order clause alone refuses the network
+    /// — and `FixedNetwork::try_from`, which reads the method, refuses
+    /// it with them.
+    #[cfg(feature = "std")]
+    #[test]
+    fn slots_out_of_order_under_one_pre_are_refused() {
+        let edges: [(u16, u16, i16); 3] = [(3, 2, 100), (2, 3, 200), (2, 3, 300)];
+        let mut net =
+            SpikingNeuralNetwork::from_neurons((0..4).map(LIFNeuron::new).collect(), 1_000)
+                .expect("four neurons, 1 ms");
+        net.add_synapse(3, 2, 100).expect("ids in range");
+        net.add_synapse(2, 3, 200).expect("ids in range");
+        net.finalize_synapses();
+        net.add_synapse(2, 3, 300).expect("ids in range");
+        net.finalize_synapses();
+        net.finalize_synapses();
+
+        // The same calls on a bare matrix — `add_synapse` is `add` with
+        // the running synapse index, `finalize_synapses` is `finalize` —
+        // so the slots this witness produces are read, not assumed.
+        let mut csr = SparseSynapseMatrix::new(4, edges.len());
+        for (i, &(pre, post, weight)) in edges.iter().enumerate().take(2) {
+            csr.add(pre, post, weight, i);
+        }
+        csr.finalize();
+        csr.add(2, 3, 300, 2);
+        csr.finalize();
+        csr.finalize();
+        let slots: Vec<Vec<(u16, i16, usize)>> =
+            (0..4).map(|pre| csr.connections(pre).collect()).collect();
+        assert_eq!(
+            slots,
+            vec![
+                vec![],
+                vec![],
+                vec![(3, 300, 2), (3, 200, 1)],
+                vec![(2, 100, 0)],
+            ],
+            "every slot under its own pre, 3 of 3, and pre 2's two descending"
+        );
+
+        assert!(
+            !net.csr_delivers_its_synapses(),
+            "pre 2 delivers its own synapses, in the reverse of the order they were added"
+        );
+        assert_eq!(
+            FixedNetwork::<4, 3>::try_from(&net).err(),
+            Some(Error::InvalidParameter),
+            "and try_from refuses the network for it"
         );
     }
 
