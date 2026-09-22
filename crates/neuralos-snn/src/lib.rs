@@ -55,14 +55,12 @@ pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternar
 /// accessors return plain values. No `unwrap()` / `expect()` outside tests
 /// (v0.1 lesson).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Error {
     /// Invalid parameter (e.g. zero time constant, zero neuron count).
     InvalidParameter,
     /// Index out of bounds (e.g. neuron id ≥ network size).
     IndexOutOfBounds,
-    /// Missing spike-history entry (e.g. no presynaptic spike recorded inside
-    /// the STDP window).
-    SpikeHistoryMissing,
 }
 
 impl core::fmt::Display for Error {
@@ -70,13 +68,20 @@ impl core::fmt::Display for Error {
         match self {
             Self::InvalidParameter => write!(f, "invalid parameter"),
             Self::IndexOutOfBounds => write!(f, "index out of bounds"),
-            Self::SpikeHistoryMissing => write!(f, "spike history entry missing"),
         }
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}
+
+// `core` and not `std`: the trait moved to `core` in 1.81, below the 1.92
+// floor, so the impl holds in a `no_std` build — the target this library
+// exists for. The assertion is its pin: without the impl it is `E0277`, in
+// every configuration.
+const _: fn() = || {
+    fn a<T: core::error::Error>() {}
+    a::<Error>();
+};
 
 /// Crate-wide `Result` alias.
 pub type Result<T> = core::result::Result<T, Error>;

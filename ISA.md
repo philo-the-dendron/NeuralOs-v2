@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@dcab5ac (PR #39 merged 2026-09-20 20:45 UTC: round 42, unlettered, tier 2, `FixedNetwork::try_from` refuses a network whose CSR no longer delivers each synapse under its own `pre`, in the order added; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 42 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/frozen-constructors, round 43 (unlettered, tier 2: the freezer writes constructor calls, not struct literals, so a frozen file survives a field added with a default; `LIFNeuron`'s three constructors and the eight new `with_*` are `const`, `FixedSynapse::new` is new; six commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all six, the six falsifiers run in scratch · open(session): `tools/percommit.sh` on the six commits, then one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@9cedddb (PR #40 merged 2026-09-21 04:58 UTC: round 43, unlettered, tier 2, the freezer writes constructor calls, not struct literals, so a frozen file survives a field added with a default; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 43 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/error-shape, round 44 (unlettered, tier 2: the three error enums are `#[non_exhaustive]`, the never-constructed `Error::SpikeHistoryMissing` is gone, and `core::error::Error` is unconditional on all three; six commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all six, the falsifiers run in scratch · open(session): `tools/percommit.sh` on the six commits, then one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-21T00:45:00Z
+updated: 2026-09-22T16:58:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9659,3 +9659,36 @@ wider field lands. The firmware ELF sha moves at every commit
 CSR, `finalize` not idempotent, `tau == 0`. No check ticks. **Guards.**
 1: appended, head refreshed. 2: no verdict moved; `frozen.rs` is
 generated test input. 3: nothing public.
+
+## Close-out (round 44 — the error types take their 0.1.0 shape; unlettered, before the walk — 2026-09-22)
+
+Branch `work/error-shape` from `main@9cedddb`, tier 2, six commits:
+`ea618a6` the attribute on the three error enums; `ed78e2d` the
+dead variant and its `Display` arm; `5bcdfde` `core::error::Error`
+unconditional, a `const _` pin per impl, ROADMAP check 5 naming PR
+L's fourth MSRV leg; `d614897` the qemu-riscv README row; `04a585c`
+`remap.sh`'s header; this. **Falsifiers** (scratch): 3 × `E0004`
+from a no-`_` match per enum outside; `E0599` on the variant;
+`E0277` on each pin minus its impl; `sha256sum -c` 6/6, was 5/6;
+both `rg` falsifiers empty. **Unmoved**: 222 tests, 242 with STDP; no
+`.trace` or `frozen.rs`; `.text` `9e2e6ef1` at all six. **DISCHARGED
+2026-09-22**, appended, the 2026-08-15 entry untouched (GUARD 1):
+`:947` item (b)'s `#[non_exhaustive]` on all error enums, by `ea618a6`;
+its two siblings stay open — the bridge consts' const-hoisting
+policy and the `decode_q1_0` `scale_bits_out` decision. **The dropped
+variant**: public since `f738036`, never constructed — at `9cedddb`
+two tracked hits, `-G` two commits, `-S` one. **Owed by round 43,
+the firmware `.text`** (`dbb25b4`, three paths, two shas): it follows
+the source's ABSOLUTE PATH — the same functions and sizes in another
+order, `.text` laid out in symbol-name order, and of 73 crates only
+`neuralos_snn` and `neuralos_esp32c3` change crate hash with the
+path. `remap.sh`'s "the same `.text` — wherever it runs" was false
+(path strings are remapped; the hash is cargo's, before rustc),
+fixed here. PR C's "worktree builds differ from the main clone's,
+not one path from another" (`evidence/esp32c3-bringup/README.md`) and
+round 23's "makes the `.text` pin path-independent" (`ISA.md:7663`)
+are **tombstoned as true-when-written**: a third worktree gave the
+clone's sha. The rule: compare at one path only, so every ISA "unmoved"
+line, a same-path comparison, stays true. **Record-only**: Calls 1,
+4, 6 and the mislabel, reasons in the PR. No check ticks. **Guards.**
+1: appended, head refreshed; 2 and 3 not in play.

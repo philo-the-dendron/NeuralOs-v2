@@ -114,6 +114,7 @@ const I16_FS: f64 = 32_767.0;
 /// Everything that can go wrong importing/exporting NIR. Copy +
 /// borrowed strings only (no alloc).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NirError<'a> {
     /// Malformed JSON at byte `pos`.
     Json(usize),
@@ -208,8 +209,14 @@ impl core::fmt::Display for NirError<'_> {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for NirError<'_> {}
+impl core::error::Error for NirError<'_> {}
+
+// The same pin as the crate `Error`'s, in every configuration (lib.rs
+// carries the why).
+const _: fn() = || {
+    fn a<T: core::error::Error>() {}
+    a::<NirError<'_>>();
+};
 
 // ---------------------------------------------------------------------------
 // JSON reader — the documented subset, zero alloc, borrowed strings

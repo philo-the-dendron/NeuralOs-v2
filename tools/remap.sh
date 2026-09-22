@@ -32,8 +32,11 @@
 #   $(git rev-parse --show-toplevel) -> ~/projets/NeuralOs-v2
 #                                     (the spine, a path dependency)
 # The aliases are fixed strings, identical on every machine, so a
-# remapped build yields the same path strings — and the same .text —
-# wherever it runs. They follow the banking convention of the record
+# remapped build yields the same path strings on any of them. NOT the
+# same .text: that sha follows a crate hash cargo computes from the
+# absolute path of the source before rustc runs, and no remap reaches
+# it, so .text compares at one path only (ISA round 44). The aliases
+# follow the banking convention of the record
 # (`/home/<user>/` -> `~/`, ISA round 24). ORDER MATTERS: $HOME first,
 # the specific roots after, because rustc applies the LAST matching
 # prefix (measured on 1.92.0, ISA round 26: general-then-specific maps

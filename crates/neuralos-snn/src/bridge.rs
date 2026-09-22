@@ -72,6 +72,7 @@ pub const Q2_0_BLOCK: usize = 128;
 /// pads, or guesses. A short buffer, a wrong length, or an impossible code
 /// is an [`Err`], never best-effort output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BridgeError {
     /// The trit slice length is not a multiple of the format's block size
     /// (`i2_s`/`q1_0`: 128, `q2_0`: 64).
@@ -97,8 +98,14 @@ impl core::fmt::Display for BridgeError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for BridgeError {}
+impl core::error::Error for BridgeError {}
+
+// The same pin as the crate `Error`'s, in every configuration (lib.rs
+// carries the why).
+const _: fn() = || {
+    fn a<T: core::error::Error>() {}
+    a::<BridgeError>();
+};
 
 // ---------------------------------------------------------------------------
 // Code <-> Trit tables (shared 2-bit encoding: 00=-1, 01=0, 10=+1)
