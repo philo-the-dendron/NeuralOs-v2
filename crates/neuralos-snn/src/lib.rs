@@ -61,9 +61,6 @@ pub enum Error {
     InvalidParameter,
     /// Index out of bounds (e.g. neuron id ≥ network size).
     IndexOutOfBounds,
-    /// Missing spike-history entry (e.g. no presynaptic spike recorded inside
-    /// the STDP window).
-    SpikeHistoryMissing,
 }
 
 impl core::fmt::Display for Error {
@@ -71,7 +68,6 @@ impl core::fmt::Display for Error {
         match self {
             Self::InvalidParameter => write!(f, "invalid parameter"),
             Self::IndexOutOfBounds => write!(f, "index out of bounds"),
-            Self::SpikeHistoryMissing => write!(f, "spike history entry missing"),
         }
     }
 }
