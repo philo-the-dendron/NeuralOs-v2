@@ -47,6 +47,7 @@ pub const SCALE: i32 = 1000;
 
 /// Synapse type — biological neurotransmitter classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum SynapseType {
     /// Excitatory (glutamate / AMPA). Weight ≥ 0.
     #[default]

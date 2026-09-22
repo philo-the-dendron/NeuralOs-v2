@@ -381,6 +381,7 @@ use std::arch::x86_64::*;
 
 /// SIMD instruction set detected at runtime (x86_64 only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SimdSupport {
     /// No usable SIMD — the scalar fallback runs.
     None,

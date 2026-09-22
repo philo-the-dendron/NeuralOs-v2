@@ -230,6 +230,7 @@ impl VoltageResolution {
 
 /// Biological neuron classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum NeuronType {
     /// Excitatory pyramidal neuron (~80% of cortical neurons).
     #[default]

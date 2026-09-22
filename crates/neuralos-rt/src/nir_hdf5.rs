@@ -771,6 +771,12 @@ fn write_node(
         NirNodeKind::Output => "Output",
         NirNodeKind::Linear => "Linear",
         NirNodeKind::Lif => "LIF",
+        other => {
+            return Err(NirHdfError::Open(format!(
+                "node '{}': kind {other:?} unknown to this writer",
+                node.name
+            )))
+        }
     };
     write_str_scalar(&ng, "type", type_name)?;
     match node.kind {
@@ -900,6 +906,12 @@ fn write_node(
             write_i64_scalar(&quant, "dt_us", i64::from(g.opts.dt_us))?;
             write_f64_array(&quant, "tau_err_s", &tau_err)?;
             write_f64_array(&quant, "max_v_err_v", &v_err)?;
+        }
+        other => {
+            return Err(NirHdfError::Open(format!(
+                "node '{}': kind {other:?} unknown to this writer",
+                node.name
+            )))
         }
     }
     Ok(())
