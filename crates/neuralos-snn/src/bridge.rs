@@ -72,6 +72,7 @@ pub const Q2_0_BLOCK: usize = 128;
 /// pads, or guesses. A short buffer, a wrong length, or an impossible code
 /// is an [`Err`], never best-effort output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BridgeError {
     /// The trit slice length is not a multiple of the format's block size
     /// (`i2_s`/`q1_0`: 128, `q2_0`: 64).

@@ -55,6 +55,7 @@ pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternar
 /// accessors return plain values. No `unwrap()` / `expect()` outside tests
 /// (v0.1 lesson).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Error {
     /// Invalid parameter (e.g. zero time constant, zero neuron count).
     InvalidParameter,

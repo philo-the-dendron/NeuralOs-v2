@@ -114,6 +114,7 @@ const I16_FS: f64 = 32_767.0;
 /// Everything that can go wrong importing/exporting NIR. Copy +
 /// borrowed strings only (no alloc).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NirError<'a> {
     /// Malformed JSON at byte `pos`.
     Json(usize),
