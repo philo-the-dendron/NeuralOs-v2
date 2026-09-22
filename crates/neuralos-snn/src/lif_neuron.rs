@@ -207,6 +207,11 @@ fn div_1000_wide(x: i64) -> i64 {
 ///
 /// The membrane/threshold/resting/reset fields hold quanta of this grid.
 /// See the module doc's "dead zone" section for why this exists.
+///
+/// Exhaustive on purpose: the neuron stores its potentials on one of these
+/// two grids and the freezer writes the grid into every frozen file, so a
+/// caller may match a `VoltageResolution` without a wildcard arm, and a
+/// third grid would be a breaking release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VoltageResolution {
     /// 1 mV grid — the historical default. Dead zone ≈ 200 μA at rest.
