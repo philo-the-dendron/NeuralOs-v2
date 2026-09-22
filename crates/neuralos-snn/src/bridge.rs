@@ -98,8 +98,14 @@ impl core::fmt::Display for BridgeError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for BridgeError {}
+impl core::error::Error for BridgeError {}
+
+// The same pin as the crate `Error`'s, in every configuration (lib.rs
+// carries the why).
+const _: fn() = || {
+    fn a<T: core::error::Error>() {}
+    a::<BridgeError>();
+};
 
 // ---------------------------------------------------------------------------
 // Code <-> Trit tables (shared 2-bit encoding: 00=-1, 01=0, 10=+1)

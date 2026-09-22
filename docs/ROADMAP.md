@@ -30,7 +30,7 @@ the PR that made the check hold, as of this tree.
 2. [x] `FixedNetwork` replays them bit for bit on the ESP32-C3. (PR E, #29: twelve of thirteen; `plasticity-on` is outside `FixedNetwork` by design. PR H, #32: the fourteen on the board, PR G's two D8 witnesses among them.)
 3. [x] No panic path in the step, proven at link time. (PR E, #29.)
 4. [x] No spike ring in the neuron; history is a recorder. (PR D, #28.)
-5. [x] MSRV declared and tested on the bumped pin. (PR C, #27: `rust-version` 1.92 checked on 1.92.0 in CI, three configurations.)
+5. [x] MSRV declared and tested on the bumped pin. (PR C, #27: `rust-version` 1.92 checked on 1.92.0 in CI, in the `std`, `no_std` and `simd` configurations; PR L, #37, added the fourth, `unstable-stdp`.)
 6. [x] A two-layer snnTorch, norse or rockpool graph builds (LIF→Linear→LIF). (PR G, #31: a two-layer snnTorch graph builds.)
 7. [x] `.nir` → fixed arrays → firmware, one documented command. (Arrays: PR G, #31. PR H, #32: `stranger.sh run` on the snnTorch witness, fifteen cases bit for bit.)
 8. [x] Worst case from capacity, measured at that case on the C3. (PR I, #33: the two corners of `44·N + 6·S ≤ 262,144` on the board, 0 red; the worst case measured, the neuron corner, 5,850,980 ns/step mean; all-to-all computed at 5,313,354 ns.)

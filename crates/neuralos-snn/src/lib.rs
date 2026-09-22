@@ -72,8 +72,16 @@ impl core::fmt::Display for Error {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}
+
+// `core` and not `std`: the trait moved to `core` in 1.81, below the 1.92
+// floor, so the impl holds in a `no_std` build — the target this library
+// exists for. The assertion is its pin: without the impl it is `E0277`, in
+// every configuration.
+const _: fn() = || {
+    fn a<T: core::error::Error>() {}
+    a::<Error>();
+};
 
 /// Crate-wide `Result` alias.
 pub type Result<T> = core::result::Result<T, Error>;

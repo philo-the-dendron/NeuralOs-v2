@@ -209,8 +209,14 @@ impl core::fmt::Display for NirError<'_> {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for NirError<'_> {}
+impl core::error::Error for NirError<'_> {}
+
+// The same pin as the crate `Error`'s, in every configuration (lib.rs
+// carries the why).
+const _: fn() = || {
+    fn a<T: core::error::Error>() {}
+    a::<NirError<'_>>();
+};
 
 // ---------------------------------------------------------------------------
 // JSON reader — the documented subset, zero alloc, borrowed strings
