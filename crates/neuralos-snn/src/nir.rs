@@ -561,9 +561,6 @@ pub enum NirNote {
     QuantizationLoss,
 }
 
-/// Number of note kinds ([`NirReport::notes`] length).
-pub const NIR_NOTE_KINDS: usize = 6;
-
 /// The loud import report.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NirReport {
@@ -579,19 +576,83 @@ pub struct NirReport {
     pub edges: usize,
     /// Cells written into the weight arena.
     pub weight_cells: usize,
-    /// One counter per [`NirNote`], indexed by the variant.
-    pub notes: [usize; NIR_NOTE_KINDS],
+    /// One counter per [`NirNote`]; the accessor is `notes()`.
+    notes: NoteCounts,
 }
 
 impl NirReport {
     /// Total noted events (0 = a fully lossless import).
     #[must_use]
     pub fn note_count(&self) -> usize {
-        self.notes.iter().sum()
+        self.notes.total()
+    }
+
+    /// How many times the import noted `n`, 0 when it never did.
+    #[must_use]
+    pub fn notes(&self, n: NirNote) -> usize {
+        self.notes.get(n)
     }
 
     fn note(&mut self, n: NirNote) {
-        self.notes[n as usize] += 1;
+        *self.notes.slot(n) += 1;
+    }
+}
+
+/// The report's note counters, one named field per [`NirNote`], and the
+/// guard that a new note does not compile without its counter. `slot`
+/// and `get` are each one exhaustive `match` on `NirNote`, which
+/// `#[non_exhaustive]` does not loosen inside this crate, so a new
+/// variant fails both until each has its arm; `total` destructures every
+/// field with no `..`, so a new field it leaves out fails too. No array,
+/// so no length to keep in step with the variants.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct NoteCounts {
+    v_reset_defaulted: usize,
+    capacitance_clamped: usize,
+    tau_truncated: usize,
+    potential_truncated: usize,
+    zero_weight_tensor: usize,
+    quantization_loss: usize,
+}
+
+impl NoteCounts {
+    fn slot(&mut self, n: NirNote) -> &mut usize {
+        match n {
+            NirNote::VResetDefaulted => &mut self.v_reset_defaulted,
+            NirNote::CapacitanceClamped => &mut self.capacitance_clamped,
+            NirNote::TauTruncated => &mut self.tau_truncated,
+            NirNote::PotentialTruncated => &mut self.potential_truncated,
+            NirNote::ZeroWeightTensor => &mut self.zero_weight_tensor,
+            NirNote::QuantizationLoss => &mut self.quantization_loss,
+        }
+    }
+
+    fn get(&self, n: NirNote) -> usize {
+        match n {
+            NirNote::VResetDefaulted => self.v_reset_defaulted,
+            NirNote::CapacitanceClamped => self.capacitance_clamped,
+            NirNote::TauTruncated => self.tau_truncated,
+            NirNote::PotentialTruncated => self.potential_truncated,
+            NirNote::ZeroWeightTensor => self.zero_weight_tensor,
+            NirNote::QuantizationLoss => self.quantization_loss,
+        }
+    }
+
+    fn total(&self) -> usize {
+        let Self {
+            v_reset_defaulted,
+            capacitance_clamped,
+            tau_truncated,
+            potential_truncated,
+            zero_weight_tensor,
+            quantization_loss,
+        } = *self;
+        v_reset_defaulted
+            + capacitance_clamped
+            + tau_truncated
+            + potential_truncated
+            + zero_weight_tensor
+            + quantization_loss
     }
 }
 
@@ -4122,7 +4183,7 @@ mod tests {
         // scale = 1/32767 is non-dyadic: dequant error ≤ scale/2 and
         // the loss note fires — loud lossiness doing its job
         assert!(lin.max_abs_err > 0.0 && lin.max_abs_err <= lin.scale / 2.0);
-        assert!(report.notes[NirNote::QuantizationLoss as usize] >= 1);
+        assert!(report.notes(NirNote::QuantizationLoss) >= 1);
     }
 
     #[test]
@@ -4574,7 +4635,7 @@ mod tests {
             scratch: &mut scratch,
         };
         let rep = nir_import(doc.as_bytes(), NirImportOptions::default(), &mut bufs).unwrap();
-        assert!(rep.notes[NirNote::ZeroWeightTensor as usize] >= 1);
+        assert!(rep.notes(NirNote::ZeroWeightTensor) >= 1);
         assert_eq!(nodes[0].linear.unwrap().scale, 1.0);
 
         // a lossy tensor (0.1 is not dyadic) is noted
@@ -4587,7 +4648,7 @@ mod tests {
             scratch: &mut scratch,
         };
         let rep2 = nir_import(doc2.as_bytes(), NirImportOptions::default(), &mut bufs2).unwrap();
-        assert!(rep2.notes[NirNote::QuantizationLoss as usize] >= 1);
+        assert!(rep2.notes(NirNote::QuantizationLoss) >= 1);
     }
 
     #[test]
@@ -4616,7 +4677,7 @@ mod tests {
             scratch: &mut scratch,
         };
         let rep = nir_import(doc.as_bytes(), NirImportOptions::default(), &mut bufs).unwrap();
-        assert!(rep.notes[NirNote::VResetDefaulted as usize] >= 1);
+        assert!(rep.notes(NirNote::VResetDefaulted) >= 1);
         let pop = nodes[0].lif.unwrap();
         assert_eq!(pop.len, 1);
         let lif = lifs[pop.offset];

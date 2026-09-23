@@ -109,9 +109,9 @@ fn absent_v_reset_is_reference_semantics_with_note() {
     let rec = lifs[lif.offset];
     assert!(rec.v_reset_defaulted);
     assert_eq!(rec.reset_q, 0);
-    assert!(report.notes[NirNote::VResetDefaulted as usize] >= 1);
+    assert!(report.notes(NirNote::VResetDefaulted) >= 1);
     assert!(
-        report.notes[NirNote::QuantizationLoss as usize] >= 1,
+        report.notes(NirNote::QuantizationLoss) >= 1,
         "0.1 is not dyadic"
     );
 }

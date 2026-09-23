@@ -37,7 +37,7 @@ pub use network::{NetworkStats, NetworkTopology, Spike, SpikingNeuralNetwork};
 pub use nir::{
     nir_export, nir_import, nir_scan, quantize_lif, quantize_linear, NirBuffers, NirError,
     NirImportOptions, NirLif, NirLifParams, NirLifPopulation, NirLinear, NirNode, NirNodeKind,
-    NirNote, NirReport, NirScan, EXPORT_VERSION, NIR_NOTE_KINDS, NIR_REF_SHA,
+    NirNote, NirReport, NirScan, EXPORT_VERSION, NIR_REF_SHA,
 };
 pub use spike_recorder::{SpikeRecorder, MAX_SPIKE_HISTORY};
 #[cfg(feature = "unstable-stdp")]

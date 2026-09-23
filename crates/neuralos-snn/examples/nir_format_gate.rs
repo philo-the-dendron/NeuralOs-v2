@@ -178,10 +178,10 @@ fn main() {
         neuralos_snn::nir::nir_import(CHAIN_VRESET.as_bytes(), opts, &mut bufs)
             .unwrap_or_else(|e| fail(&format!("absent-v_reset import: {e}")))
     };
-    if report.notes[NirNote::VResetDefaulted as usize] == 0 {
+    if report.notes(NirNote::VResetDefaulted) == 0 {
         fail("absent v_reset must default with a note");
     }
-    if report.notes[NirNote::QuantizationLoss as usize] == 0 {
+    if report.notes(NirNote::QuantizationLoss) == 0 {
         fail("non-dyadic weights (0.1) must note their loss");
     }
     println!("gate 1b : PASS — absent v_reset defaults (noted), lossy weights noted ({} loss notes total)",
