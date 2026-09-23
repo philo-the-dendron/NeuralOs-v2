@@ -45,7 +45,9 @@ pub use spike_recorder::{SpikeRecorder, MAX_SPIKE_HISTORY};
 #[cfg(feature = "unstable-stdp")]
 pub use synapse::STDPRule;
 pub use synapse::{Synapse, SynapseType, SCALE};
-pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternarize, Trit};
+#[cfg(feature = "unstable-stdp")]
+pub use trit::stochastic_ternary_flip;
+pub use trit::{project_to_ternary, tensor_scale, ternarize, Trit};
 
 /// Crate-level error type.
 ///
