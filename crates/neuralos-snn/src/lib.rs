@@ -30,9 +30,7 @@ pub use bridge::{
     half_to_milli, repack_i2s_to_kernel, wire_gamma_to_substrate, BridgeError,
 };
 pub use fixed::{FixedNetwork, FixedSynapse};
-pub use kernel::{
-    absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit, Q15_MAX, TRITS_PER_BYTE,
-};
+pub use kernel::{absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit};
 pub use lif_neuron::{LIFNeuron, NeuronType, VoltageResolution, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
 #[cfg(feature = "std")]
 pub use network::{
