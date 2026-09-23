@@ -94,8 +94,9 @@ impl SimRunner {
             .neurons()
             .iter()
             .map(|n| match n.neuron_type {
-                NeuronType::Excitatory => E_SPIKE,
                 NeuronType::Inhibitory => I_SPIKE,
+                // Excitatory, and a type this crate does not know, draw as excitatory.
+                _ => E_SPIKE,
             })
             .collect();
 

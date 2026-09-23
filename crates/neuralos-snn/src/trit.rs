@@ -38,6 +38,11 @@
 /// A ternary value `{-1, 0, +1}` — the bucket class of a constrained synapse
 /// weight. The stored weight remains `i16` (= [`Trit::to_weight`] at the
 /// per-tensor scale); this enum exists to classify and count transitions.
+///
+/// Exhaustive on purpose: the three values are the definition (the wire
+/// format's fourth 2-bit code is an error, not a value), so a caller may
+/// match a `Trit` without a wildcard arm, and a fourth value would be a
+/// breaking release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Trit {
     /// The negative bucket — stored weight `−γ`.

@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@9cedddb (PR #40 merged 2026-09-21 04:58 UTC: round 43, unlettered, tier 2, the freezer writes constructor calls, not struct literals, so a frozen file survives a field added with a default; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 43 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/error-shape, round 44 (unlettered, tier 2: the three error enums are `#[non_exhaustive]`, the never-constructed `Error::SpikeHistoryMissing` is gone, and `core::error::Error` is unconditional on all three; six commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all six, the falsifiers run in scratch · open(session): `tools/percommit.sh` on the six commits, then one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@b524ae3 (PR #41 merged 2026-09-22 20:24 UTC: round 44, unlettered, tier 2, the error types take their 0.1.0 shape: the three error enums `#[non_exhaustive]`, `Error::SpikeHistoryMissing` gone, `core::error::Error` in every build; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 44 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/enum-shape, round 45 (M-hide's first half, tier 2: `#[non_exhaustive]` on the six public enums that are subsets today, `Trit` and `VoltageResolution` exhaustive on purpose and documented so; three commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all three · open(session): one fresh review of the build BEFORE the push, then the push and the PR on the principal's word; the hides are M-hide's second half, their own brief · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-22T16:58:00Z
+updated: 2026-09-22T23:56:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9692,3 +9692,36 @@ clone's sha. The rule: compare at one path only, so every ISA "unmoved"
 line, a same-path comparison, stays true. **Record-only**: Calls 1,
 4, 6 and the mislabel, reasons in the PR. No check ticks. **Guards.**
 1: appended, head refreshed; 2 and 3 not in play.
+
+## Close-out (round 45 — the eight public enums take their 0.1.0 shape; unlettered, before the walk — 2026-09-22)
+
+Branch `work/enum-shape` from `main@b524ae3`, tier 2, three commits:
+`95fdffc` `#[non_exhaustive]` on the six public enums that
+are subsets today — `NirNodeKind`, `NirNote`, `SynapseType`,
+`NeuronType`, `NetworkTopology` (enum level: four out-of-crate
+struct literals stay legal, one a README doctest), `SimdSupport`
+— and the three `_` arms; `1004fd5` `Trit` and `VoltageResolution`
+documented as exhaustive on purpose; this. **Declined** (Call 2):
+`Trit`, closed by definition, the wire's fourth 2-bit code an error;
+`VoltageResolution`, the grid the neuron stores and every frozen
+file names, a third one a format change. **Arms**: app `lib.rs:96`,
+an unknown `NeuronType` draws excitatory (the `Excitatory` arm folds
+into `_`: pedantic `match_same_arms`); rt `write_node`'s two matches,
+`nir_hdf5.rs:769`, `:776` at `b524ae3`, an unknown `NirNodeKind`
+is an error. `NirHdfError::Open`'s doc names a reader failure; the
+arms reuse it as `write_node` does for `create_group`, a writer
+variant a later question. **Falsifiers** (scratch): 6 × `E0004`
+from a no-`_` match per enum outside, compiling against `main`; the
+hdf5 check green, 2 × `E0004` without the rt arms. `NirNote` is free
+for a `match` only: a new note moves `NIR_NOTE_KINDS`, so the public
+`NirReport::notes` changes length; its shape is for M-hide's second
+half. **Unmoved**: 222 + 8 + 9 + 18 tests, 242 with STDP; no `.trace`
+or `frozen.rs`; `.text` `9e2e6ef1` at all three. **Record-only**:
+the `no_std` rustdoc build prints SIX unresolved links, not three:
+`fixed::freeze` from `fixed.rs:328`, `lif_neuron.rs:321`, `:379`,
+and the std-gated `NirBuilder`, `NirImport::build_chain_network`,
+`NirImport::lifs` from `nir.rs:81`, `:154`, `:472` (at `b524ae3`);
+no gate runs it. `neuralos-app` has no `publish = false`. The M-hide
+inventory's moved figures: leg-A 35 names, not 36; 76 attacked against
+69 flagged; 59 root names, 73 items; mutation B2 two edits. No check
+ticks. **Guards.** 1: appended, head refreshed; 2 and 3 not in play.

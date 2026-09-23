@@ -416,6 +416,7 @@ impl<'a> Reader<'a> {
 
 /// Node kinds of the slice-1 subset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NirNodeKind {
     /// Virtual input plumbing (shape carrier).
     Input,
@@ -543,6 +544,7 @@ pub struct NirNode<'a> {
 /// Import notes (loud lossiness — each counted, none silent).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
+#[non_exhaustive]
 pub enum NirNote {
     /// `v_reset` absent — defaulted to 0 V (reference semantics).
     VResetDefaulted = 0,

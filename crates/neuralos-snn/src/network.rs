@@ -86,6 +86,7 @@ const DEFAULT_SYNAPTIC_INPUT_DIVISOR: u16 = 10;
 /// `f64` fields are configuration-time parameters (not hot-path), so floating-point
 /// is acceptable here — the `no_std` constraint applies to per-step computation only.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum NetworkTopology {
     /// Random sparse connectivity. `connectivity ∈ [0.0, 1.0]` is the fraction of
     /// all possible (pre ≠ post) pairs to wire.
