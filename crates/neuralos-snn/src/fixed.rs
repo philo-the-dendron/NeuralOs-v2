@@ -2,7 +2,7 @@
 //! heap, no plasticity, the std step's order verbatim.
 //!
 //! [`FixedNetwork::step`] is `SpikingNeuralNetwork::step` without the
-//! plasticity passes, the stats and the spike history, in the same order:
+//! plasticity passes and the stats, in the same order:
 //! the adaptation decay of every neuron; integrate-and-fire, which reads
 //! the pulses the previous step delivered; the clear; then the pulses of
 //! this step's spikes, in the synapse array's order. The step has no

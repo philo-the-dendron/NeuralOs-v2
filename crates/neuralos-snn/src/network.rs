@@ -3,7 +3,7 @@
 //! # Module placement
 //!
 //! This module is `std`-gated. The hot-path primitives ([`LIFNeuron`], [`Synapse`])
-//! are `no_std`-compatible; this orchestrator uses `Vec` and `VecDeque`
+//! are `no_std`-compatible; this orchestrator uses `Vec`
 //! for desktop/server simulation. For bare-metal RISC-V deployment,
 //! [`FixedNetwork`](crate::fixed::FixedNetwork) steps the same network in arrays,
 //! `no_std`, without plasticity.
@@ -58,7 +58,6 @@ use crate::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
 use crate::synapse::STDPRule;
 use crate::synapse::Synapse;
 use crate::{Error, Result};
-use std::collections::VecDeque;
 use std::vec::Vec;
 
 /// Default biological E/I ratio (80% excitatory, 20% inhibitory — cortical).
@@ -169,8 +168,6 @@ pub struct SpikingNeuralNetwork {
     #[cfg(feature = "unstable-stdp")]
     plasticity_rule: STDPRule,
     stats: NetworkStats,
-    spike_history: VecDeque<Spike>,
-    max_spike_history: usize,
     topology: NetworkTopology,
     seed: u32,
     /// Buffer of pending plasticity updates from the most recent step.
@@ -280,8 +277,6 @@ impl SpikingNeuralNetwork {
             #[cfg(feature = "unstable-stdp")]
             plasticity_rule: STDPRule::new(),
             stats: NetworkStats::new(neuron_count),
-            spike_history: VecDeque::new(),
-            max_spike_history: 10_000,
             topology,
             seed: DEFAULT_SEED,
             #[cfg(feature = "unstable-stdp")]
@@ -321,8 +316,6 @@ impl SpikingNeuralNetwork {
             #[cfg(feature = "unstable-stdp")]
             plasticity_rule: STDPRule::new(),
             stats: NetworkStats::new(neuron_count),
-            spike_history: VecDeque::new(),
-            max_spike_history: 10_000,
             topology: NetworkTopology::Random { connectivity: 0.0 },
             seed: DEFAULT_SEED,
             #[cfg(feature = "unstable-stdp")]
@@ -451,10 +444,6 @@ impl SpikingNeuralNetwork {
                 };
                 output_spikes.push(spike);
                 firing_neurons.push(neuron_id);
-                self.spike_history.push_back(spike);
-                if self.spike_history.len() > self.max_spike_history {
-                    self.spike_history.pop_front();
-                }
             }
         }
 
@@ -903,7 +892,6 @@ impl SpikingNeuralNetwork {
         self.current_time_us = 0;
         self.stats.total_spikes = 0;
         self.stats.plasticity_events = 0;
-        self.spike_history.clear();
         #[cfg(feature = "unstable-stdp")]
         {
             self.plasticity_queue.clear();
@@ -953,12 +941,6 @@ impl SpikingNeuralNetwork {
     #[must_use]
     pub fn synapse_count(&self) -> u32 {
         self.synapses.len() as u32
-    }
-
-    /// Read-only access to spike history (most recent first; back = oldest).
-    #[must_use]
-    pub fn spike_history(&self) -> &VecDeque<Spike> {
-        &self.spike_history
     }
 
     // ----- Topology builders (private) -----
