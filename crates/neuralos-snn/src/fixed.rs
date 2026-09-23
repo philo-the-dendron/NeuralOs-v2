@@ -59,9 +59,7 @@ impl FixedSynapse {
     /// The synapses of `net` by `pre`, ascending, and within one `pre` in
     /// the order they were added: a stable sort of
     /// [`SpikingNeuralNetwork::synapses`] by `pre`, the order the counting
-    /// sort of
-    /// [`SparseSynapseMatrix::finalize`](crate::network::SparseSynapseMatrix::finalize)
-    /// gives the CSR.
+    /// sort of [`SpikingNeuralNetwork::finalize_synapses`] gives the CSR.
     ///
     /// That is the order `net`'s own step delivers them in exactly when
     /// its CSR delivers each synapse under its own `pre`, in the order
@@ -351,9 +349,9 @@ impl FixedSynapse {
 mod tests {
     use super::*;
     #[cfg(feature = "std")]
-    use crate::lif_neuron::{NeuronType, VoltageResolution};
+    use crate::csr::SparseSynapseMatrix;
     #[cfg(feature = "std")]
-    use crate::network::SparseSynapseMatrix;
+    use crate::lif_neuron::{NeuronType, VoltageResolution};
 
     /// An excitatory neuron on the mV grid, no noise.
     fn quiet(id: u16) -> LIFNeuron {

@@ -9,7 +9,7 @@
 
 pub mod bridge;
 #[cfg(feature = "std")]
-pub mod csr;
+mod csr;
 pub mod fixed;
 pub mod kernel;
 pub mod lif_neuron;
@@ -33,9 +33,7 @@ pub use fixed::{FixedNetwork, FixedSynapse};
 pub use kernel::{absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit};
 pub use lif_neuron::{LIFNeuron, NeuronType, VoltageResolution, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
 #[cfg(feature = "std")]
-pub use network::{
-    NetworkStats, NetworkTopology, SparseSynapseMatrix, Spike, SpikingNeuralNetwork,
-};
+pub use network::{NetworkStats, NetworkTopology, Spike, SpikingNeuralNetwork};
 pub use nir::{
     nir_export, nir_import, nir_scan, quantize_lif, quantize_linear, NirBuffers, NirError,
     NirImportOptions, NirLif, NirLifParams, NirLifPopulation, NirLinear, NirNode, NirNodeKind,

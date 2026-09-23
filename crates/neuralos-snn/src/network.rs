@@ -50,7 +50,7 @@
     clippy::similar_names
 )]
 
-pub use crate::csr::{IncomingIter, SparseSynapseMatrix, SynapseIter};
+use crate::csr::SparseSynapseMatrix;
 pub use crate::stats::NetworkStats;
 
 use crate::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
@@ -145,7 +145,7 @@ type PlasticityEntry = (u16, u16, usize, u32);
 
 /// Main spiking neural network orchestrator.
 ///
-/// Holds [`LIFNeuron`] + [`Synapse`] collections, a CSR [`SparseSynapseMatrix`]
+/// Holds [`LIFNeuron`] + [`Synapse`] collections, a CSR synapse matrix
 /// for fast synaptic transmission, and, with the `unstable-stdp` feature, an
 /// `STDPRule` for plasticity. One call to [`step`](Self::step) advances the
 /// simulation by `time_step_us` microseconds.
@@ -645,7 +645,7 @@ impl SpikingNeuralNetwork {
         }
     }
 
-    /// Append a synapse. Both `SparseSynapseMatrix` and `synapses` vec get a copy.
+    /// Append a synapse. Both the CSR and the `synapses` vec get a copy.
     pub fn add_synapse(&mut self, pre_id: u16, post_id: u16, weight: i16) -> Result<()> {
         if pre_id as usize >= self.neurons.len() || post_id as usize >= self.neurons.len() {
             return Err(Error::IndexOutOfBounds);
@@ -667,21 +667,20 @@ impl SpikingNeuralNetwork {
     /// is the path for callers that construct synapse wiring themselves —
     /// e.g. importing a pretrained weight matrix edge by edge. Without it:
     ///
-    /// - `connections(pre)` returns slices with the right count but the wrong
-    ///   members whenever edges were added out of `pre_id` order (the
-    ///   incremental `row_ptrs` is only correct for sorted insertion), and
-    /// - `incoming(post)` returns nothing (the reverse CSR is empty until a
-    ///   finalize), silently regressing plasticity to the pre-1.5d LTD-only
-    ///   substrate — the post-firing LTP pass becomes unreachable.
+    /// - the step delivers spikes to the wrong targets whenever edges were
+    ///   added out of `pre_id` order (before the sort, the forward CSR is
+    ///   only right for sorted insertion), and
+    /// - with `unstable-stdp`, the post-firing LTP pass finds no incoming
+    ///   edge (the reverse CSR is empty until a finalize), silently
+    ///   regressing plasticity to the pre-1.5d LTD-only substrate.
     ///
     /// Contract: call **exactly once**, after all `add_synapse` calls and
-    /// before the first [`step`]. Like [`SparseSynapseMatrix::finalize`], it
+    /// before the first [`step`]. Like the CSR's own finalize, it
     /// is not idempotent on an already-finalized matrix (the counting sort's
     /// source arrays hold insertion order); rebuilding external wiring means
     /// clearing and re-adding. Also refreshes `stats.total_synapses`.
     ///
     /// [`step`]: Self::step
-    /// [`SparseSynapseMatrix::finalize`]: SparseSynapseMatrix::finalize
     pub fn finalize_synapses(&mut self) {
         self.synapse_matrix.finalize();
         self.stats.total_synapses = self.synapses.len() as u32;
