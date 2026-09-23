@@ -24,8 +24,9 @@ std = []
 # `#[cfg(target_feature)]` for embedded RISC-V.
 simd = ["std"]
 # STDP, outside the semver promise: `STDPRule`, `Synapse::update_weight`,
-# `SpikingNeuralNetwork::set_plasticity_enabled` and
-# `stochastic_ternary_step`. Anything behind it may change or go in a
+# `SpikingNeuralNetwork::set_plasticity_enabled`,
+# `stochastic_ternary_step`, `trit::stochastic_ternary_flip` and
+# `trit::STOCHASTIC_FLIP_RATE`. Anything behind it may change or go in a
 # minor release. Off by default: a default build does not learn.
 unstable-stdp = []
 

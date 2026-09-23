@@ -62,9 +62,9 @@ the chip.
 | `lif_neuron` | Leaky-Integrate-and-Fire neuron, fixed-point, per-neuron voltage grid (`VoltageResolution`: mV default, opt-in centi-mV) |
 | `spike_recorder` | `SpikeRecorder`, the spike history a caller keeps when it wants one: a `[u32; MAX_SPIKE_HISTORY]` ring (64 entries, the oldest overwritten), fed from `integrate_and_fire`'s return; the neuron keeps none |
 | `synapse` | Synapse, weight scale `SCALE = 1000`; with `unstable-stdp`, the pairwise STDP rule (a₊ 50 / a₋ −53 / lr 100) |
-| `network` *(std)* | `SpikingNeuralNetwork` orchestration (`step()`), CSR `SparseSynapseMatrix` with forward + reverse iteration, 4 topology builders (Random, Small-World, Feedforward, Balanced E/I), per-step stats; with `unstable-stdp`, the plasticity passes (LTD + LTP), off until `set_plasticity_enabled(true)` |
+| `network` *(std)* | `SpikingNeuralNetwork` orchestration (`step()`), a CSR synapse store (forward and reverse), 4 topology builders (Random, Small-World, Feedforward, Balanced E/I), per-step stats; with `unstable-stdp`, the plasticity passes (LTD + LTP), off until `set_plasticity_enabled(true)` |
 | `fixed` | `FixedNetwork<N, S>`: `N` neurons and `S` synapses in arrays, no heap, no plasticity, the std step's order; its step has no `Result`, no index and no division of its own. `TryFrom<&SpikingNeuralNetwork>` *(std)* converts a plasticity-off network of the same size, and refuses one whose CSR no longer matches its synapse list (edges added out of `pre` order and not finalized since, or finalized twice) |
-| `trit` | Ternary weight type `{-1, 0, +1}` + scale, ternarizer, stochastic bucket-flip (LFSR, integer-only) |
+| `trit` | Ternary weight type `{-1, 0, +1}` + scale, ternarizer; with `unstable-stdp`, the stochastic bucket-flip (LFSR, integer-only) |
 | `bridge` | `BitNet` `i2_s` encode/decode (bit-exact round-trip), Prism `q1_0`/`q2_0` import + `q2_0` export, integer fp16 widening — layouts pinned from reference sources, loud errors on impossible input |
 | `nir` | NIR (Neuromorphic Intermediate Representation) slice 1 — JSON import/export of `Input`/`Linear`/`LIF`/`Output` graphs, explicit per-node quantization records, loud lossiness, byte-stable export. Schema pinned verbatim to the reference implementation (`neuromorphs/NIR` @ `7883c3c`); fixtures are the reference's own emissions (`tools/gen_nir_fixtures.py`) |
 | `kernel` | Shared `no_std` ternary matvec: sequential 2-bit packed trits × Q15 activations → i32, absmax normalization, wire→compute repack seam |
@@ -85,8 +85,9 @@ keeps every historically recorded result bit-exact.
 - `std` *(default)* — enables the `network` orchestration module
 - `simd` — implies `std`, x86_64-only AVX2 batch kernel
 - `unstable-stdp` — STDP: `STDPRule`, `Synapse::update_weight`,
-  `SpikingNeuralNetwork::set_plasticity_enabled` and
-  `stochastic_ternary_step`. Works with and without `std`.
+  `SpikingNeuralNetwork::set_plasticity_enabled`,
+  `stochastic_ternary_step`, `trit::stochastic_ternary_flip` and
+  `trit::STOCHASTIC_FLIP_RATE`. Works with and without `std`.
 
 "Unstable" means one thing: anything behind `unstable-stdp` may change or
 go in a minor release. It is outside the semver promise, and the rest of

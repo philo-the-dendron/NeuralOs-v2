@@ -9,7 +9,7 @@
 
 pub mod bridge;
 #[cfg(feature = "std")]
-pub mod csr;
+mod csr;
 pub mod fixed;
 pub mod kernel;
 pub mod lif_neuron;
@@ -30,24 +30,22 @@ pub use bridge::{
     half_to_milli, repack_i2s_to_kernel, wire_gamma_to_substrate, BridgeError,
 };
 pub use fixed::{FixedNetwork, FixedSynapse};
-pub use kernel::{
-    absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit, Q15_MAX, TRITS_PER_BYTE,
-};
+pub use kernel::{absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit};
 pub use lif_neuron::{LIFNeuron, NeuronType, VoltageResolution, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
 #[cfg(feature = "std")]
-pub use network::{
-    NetworkStats, NetworkTopology, SparseSynapseMatrix, Spike, SpikingNeuralNetwork,
-};
+pub use network::{NetworkStats, NetworkTopology, Spike, SpikingNeuralNetwork};
 pub use nir::{
     nir_export, nir_import, nir_scan, quantize_lif, quantize_linear, NirBuffers, NirError,
     NirImportOptions, NirLif, NirLifParams, NirLifPopulation, NirLinear, NirNode, NirNodeKind,
-    NirNote, NirReport, NirScan, EXPORT_VERSION, NIR_NOTE_KINDS, NIR_REF_SHA,
+    NirNote, NirReport, NirScan, EXPORT_VERSION, NIR_REF_SHA,
 };
 pub use spike_recorder::{SpikeRecorder, MAX_SPIKE_HISTORY};
 #[cfg(feature = "unstable-stdp")]
 pub use synapse::STDPRule;
 pub use synapse::{Synapse, SynapseType, SCALE};
-pub use trit::{project_to_ternary, stochastic_ternary_flip, tensor_scale, ternarize, Trit};
+#[cfg(feature = "unstable-stdp")]
+pub use trit::stochastic_ternary_flip;
+pub use trit::{project_to_ternary, tensor_scale, ternarize, Trit};
 
 /// Crate-level error type.
 ///

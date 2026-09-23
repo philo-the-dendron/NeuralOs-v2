@@ -37,10 +37,10 @@ use crate::bridge::BridgeError;
 use crate::trit::Trit;
 
 /// Sequential packing: 4 trits per byte.
-pub const TRITS_PER_BYTE: usize = 4;
+const TRITS_PER_BYTE: usize = 4;
 
 /// Q15 full scale (1.0 in the activation fixed-point).
-pub const Q15_MAX: i16 = i16::MAX;
+const Q15_MAX: i16 = i16::MAX;
 
 /// Pack a ternary slice into the kernel's sequential compute layout.
 ///

@@ -1,15 +1,14 @@
 //! Compressed Sparse Row (CSR) synapse storage — O(1) per-presynaptic
 //! iteration, forward + reverse.
 //!
-//! Split from `network.rs` at R4(ii) (2026-08-20). Re-exported through
-//! `network` — the published paths
-//! (`neuralos_snn::network::SparseSynapseMatrix` etc.) are unchanged.
+//! Split from `network.rs` at R4(ii) (2026-08-20). Private to the crate
+//! since round 46: the network's storage, not API.
 
 /// Compressed Sparse Row (CSR) synapse storage — O(1) per-presynaptic iteration.
 ///
 /// Forward direction: row key = presynaptic neuron. [`connections`]`(pre_id)`
 /// iterates that neuron's outgoing edges.
-/// Reverse direction: row key = postsynaptic neuron. [`incoming`]`(post_id)`
+/// Reverse direction: row key = postsynaptic neuron. `incoming(post_id)`
 /// iterates that neuron's incoming edges (used by the post-firing LTP half of
 /// pairwise STDP).
 ///
@@ -46,7 +45,6 @@
 ///
 /// [`finalize`]: SparseSynapseMatrix::finalize
 /// [`connections`]: SparseSynapseMatrix::connections
-/// [`incoming`]: SparseSynapseMatrix::incoming
 /// [`add`]: SparseSynapseMatrix::add
 /// [`set_weight`]: SparseSynapseMatrix::set_weight
 #[derive(Debug, Clone)]
@@ -74,10 +72,9 @@ pub struct SparseSynapseMatrix {
     /// [`set_weight`]: SparseSynapseMatrix::set_weight
     weight_index_of: Vec<usize>,
     /// Reverse CSR (by postsynaptic neuron). Built alongside the forward sort
-    /// in [`finalize`]. Empty until then; [`incoming`] returns nothing.
+    /// in [`finalize`]. Empty until then; `incoming` returns nothing.
     ///
     /// [`finalize`]: SparseSynapseMatrix::finalize
-    /// [`incoming`]: SparseSynapseMatrix::incoming
     rv_row_ptrs: Vec<u32>,
     rv_pre_ids: Vec<u16>,
     rv_syn_indices: Vec<usize>,
@@ -140,11 +137,10 @@ impl SparseSynapseMatrix {
     /// contiguous, rebuilds `row_ptrs` from real per-neuron out-degrees,
     /// builds the inverse permutation `weight_index_of` (so [`set_weight`]
     /// stays correct post-sort), and builds the reverse CSR (by `post_id`) so
-    /// [`incoming`] works.
+    /// `incoming` works.
     ///
     /// [`add`]: Self::add
     /// [`connections`]: Self::connections
-    /// [`incoming`]: Self::incoming
     /// [`set_weight`]: Self::set_weight
     pub fn finalize(&mut self) {
         let n = self.neuron_count as usize;
@@ -252,6 +248,7 @@ impl SparseSynapseMatrix {
     /// Empty until [`finalize`] is called.
     ///
     /// [`finalize`]: Self::finalize
+    #[cfg(any(test, feature = "unstable-stdp"))]
     #[must_use]
     pub fn incoming(&self, post_id: u16) -> IncomingIter<'_> {
         if self.rv_row_ptrs.is_empty() {
@@ -306,12 +303,6 @@ impl SparseSynapseMatrix {
     pub fn len(&self) -> usize {
         self.weights.len()
     }
-
-    /// Is the matrix empty?
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.weights.is_empty()
-    }
 }
 
 /// Iterator over a single presynaptic neuron's outgoing synapses.
@@ -342,6 +333,7 @@ impl Iterator for SynapseIter<'_> {
 }
 
 /// Iterator over a single postsynaptic neuron's incoming synapses (reverse CSR).
+#[cfg(any(test, feature = "unstable-stdp"))]
 #[derive(Debug, Clone)]
 pub struct IncomingIter<'a> {
     pre_ids: &'a [u16],
@@ -349,6 +341,7 @@ pub struct IncomingIter<'a> {
     pos: usize,
 }
 
+#[cfg(any(test, feature = "unstable-stdp"))]
 impl Iterator for IncomingIter<'_> {
     type Item = (u16, usize); // (pre_id, synapse_index)
 

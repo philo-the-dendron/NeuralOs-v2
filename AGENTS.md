@@ -133,9 +133,10 @@ is only worth the multi-minute link when you want real smoothness.
 - `neuralos-snn`: `default = ["std"]`, `std`, `simd` (implies std,
   x86_64-only, AVX2 batch LIF kernel), `unstable-stdp` (STDP, outside
   the semver promise: `STDPRule`, `Synapse::update_weight`,
-  `set_plasticity_enabled`, `stochastic_ternary_step`; works without
-  std; rt, the app and `proofs/qemu-riscv-leg-a` ask for it, so every
-  `--workspace` line builds the library with it on). The published
+  `set_plasticity_enabled`, `stochastic_ternary_step`,
+  `trit::stochastic_ternary_flip`, `trit::STOCHASTIC_FLIP_RATE`; works
+  without std; rt, the app and `proofs/qemu-riscv-leg-a` ask for it, so
+  every `--workspace` line builds the library with it on). The published
   crate's default config is what CI tests, by `cargo test -p
   neuralos-snn` and its clippy (§ Commands, PR L).
 - `neuralos-rt`: `hdf5` (first feature gate, simd-precedent posture):

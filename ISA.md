@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@b524ae3 (PR #41 merged 2026-09-22 20:24 UTC: round 44, unlettered, tier 2, the error types take their 0.1.0 shape: the three error enums `#[non_exhaustive]`, `Error::SpikeHistoryMissing` gone, `core::error::Error` in every build; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 44 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/enum-shape, round 45 (M-hide's first half, tier 2: `#[non_exhaustive]` on the six public enums that are subsets today, `Trit` and `VoltageResolution` exhaustive on purpose and documented so; three commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all three · open(session): one fresh review of the build BEFORE the push, then the push and the PR on the principal's word; the hides are M-hide's second half, their own brief · next-work: ROADMAP § Practical next moves"
+head: "main@8929493 (PR #42 merged 2026-09-23 03:15 UTC: round 45, unlettered, tier 2, the eight public enums take their 0.1.0 shape: `#[non_exhaustive]` on the six that are subsets today, `Trit` and `VoltageResolution` exhaustive on purpose; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 45 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/hides, round 46 (M-hide's second half, tier 2: `spike_history()` gone, the two kernel constants private, the stochastic flip behind `unstable-stdp`, the CSR types private, `NirReport::notes` behind `notes(NirNote)` and `NIR_NOTE_KINDS` gone; six commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all six · open(session): one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-22T23:56:00Z
+updated: 2026-09-23T17:32:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9725,3 +9725,35 @@ no gate runs it. `neuralos-app` has no `publish = false`. The M-hide
 inventory's moved figures: leg-A 35 names, not 36; 76 attacked against
 69 flagged; 59 root names, 73 items; mutation B2 two edits. No check
 ticks. **Guards.** 1: appended, head refreshed; 2 and 3 not in play.
+
+## Close-out (round 46 — what stops being public before 0.1.0; unlettered, M-hide's second half — 2026-09-23)
+
+Branch `work/hides` from `main@8929493`, tier 2, six commits: `20ae618`
+`spike_history()` and its `VecDeque` go (doc inverted, no caller;
+`step` returns the spikes); `9796e03` `Q15_MAX` and `TRITS_PER_BYTE`
+private, off the root; `7f22101` `stochastic_ternary_flip` and
+`STOCHASTIC_FLIP_RATE` behind `unstable-stdp`, their eleven tests
+gated, five texts; `5c9cadb` `SparseSynapseMatrix`, `SynapseIter`,
+`IncomingIter` private with `mod csr`, `is_empty` gone, `incoming` and
+`IncomingIter` for tests and STDP only; `adbd0af` `NirReport::notes`
+behind `notes(NirNote)`, named counters; this. **Rulings** (philo):
+private, not `#[doc(hidden)]`; the CSR types hidden, not only their
+path; the accessor `notes`; named counters, no array, no length;
+`NIR_NOTE_KINDS` deleted, not private: no reader left, red under
+`-D warnings` ("never used", measured). **Kept**: `SpikeRecorder`,
+a `no_std` type a caller keeps; the NIR scan cluster, the machinery
+under `NirImport::from_json`; `simd` and `simd::DT_OVER_TAU_MAX`,
+which two doctests and the bench use. **Falsifiers**: a scratch
+crate compiles each removed use at `8929493` and refuses it from
+its commit; the default rustdoc gate red with `trit.rs`'s old link;
+`incoming`, `is_empty`, `IncomingIter` dead before the `cfg`, silent
+after, a planted dead fn still warning; a seventh `NirNote` is 2 ×
+`E0004`, left out of `total` `E0027`. **Unmoved**: no `.trace` or
+`frozen.rs`, no regeneration, no board round; `.text` `9e2e6ef1`
+in the clone at all six; leg-A builds; the `no_std` rustdoc build
+keeps its six unresolved links. **Counts**: 211 + 8 + 9 + 18 tests,
+222 before (the flip's eleven gated), 242 with STDP. **Record-only**:
+the private-items doc build with `unstable-stdp` is red at `8929493`
+already, `network.rs:185` linking `stochastic_ternary_step` with
+no path; no gate runs it. No check ticks. **Guards.** 1: appended,
+head refreshed; 2 and 3 not in play.

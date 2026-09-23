@@ -3,7 +3,7 @@
 //! # Module placement
 //!
 //! This module is `std`-gated. The hot-path primitives ([`LIFNeuron`], [`Synapse`])
-//! are `no_std`-compatible; this orchestrator uses `Vec` and `VecDeque`
+//! are `no_std`-compatible; this orchestrator uses `Vec`
 //! for desktop/server simulation. For bare-metal RISC-V deployment,
 //! [`FixedNetwork`](crate::fixed::FixedNetwork) steps the same network in arrays,
 //! `no_std`, without plasticity.
@@ -50,7 +50,7 @@
     clippy::similar_names
 )]
 
-pub use crate::csr::{IncomingIter, SparseSynapseMatrix, SynapseIter};
+use crate::csr::SparseSynapseMatrix;
 pub use crate::stats::NetworkStats;
 
 use crate::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
@@ -58,7 +58,6 @@ use crate::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
 use crate::synapse::STDPRule;
 use crate::synapse::Synapse;
 use crate::{Error, Result};
-use std::collections::VecDeque;
 use std::vec::Vec;
 
 /// Default biological E/I ratio (80% excitatory, 20% inhibitory — cortical).
@@ -146,7 +145,7 @@ type PlasticityEntry = (u16, u16, usize, u32);
 
 /// Main spiking neural network orchestrator.
 ///
-/// Holds [`LIFNeuron`] + [`Synapse`] collections, a CSR [`SparseSynapseMatrix`]
+/// Holds [`LIFNeuron`] + [`Synapse`] collections, a CSR synapse matrix
 /// for fast synaptic transmission, and, with the `unstable-stdp` feature, an
 /// `STDPRule` for plasticity. One call to [`step`](Self::step) advances the
 /// simulation by `time_step_us` microseconds.
@@ -169,8 +168,6 @@ pub struct SpikingNeuralNetwork {
     #[cfg(feature = "unstable-stdp")]
     plasticity_rule: STDPRule,
     stats: NetworkStats,
-    spike_history: VecDeque<Spike>,
-    max_spike_history: usize,
     topology: NetworkTopology,
     seed: u32,
     /// Buffer of pending plasticity updates from the most recent step.
@@ -280,8 +277,6 @@ impl SpikingNeuralNetwork {
             #[cfg(feature = "unstable-stdp")]
             plasticity_rule: STDPRule::new(),
             stats: NetworkStats::new(neuron_count),
-            spike_history: VecDeque::new(),
-            max_spike_history: 10_000,
             topology,
             seed: DEFAULT_SEED,
             #[cfg(feature = "unstable-stdp")]
@@ -321,8 +316,6 @@ impl SpikingNeuralNetwork {
             #[cfg(feature = "unstable-stdp")]
             plasticity_rule: STDPRule::new(),
             stats: NetworkStats::new(neuron_count),
-            spike_history: VecDeque::new(),
-            max_spike_history: 10_000,
             topology: NetworkTopology::Random { connectivity: 0.0 },
             seed: DEFAULT_SEED,
             #[cfg(feature = "unstable-stdp")]
@@ -451,10 +444,6 @@ impl SpikingNeuralNetwork {
                 };
                 output_spikes.push(spike);
                 firing_neurons.push(neuron_id);
-                self.spike_history.push_back(spike);
-                if self.spike_history.len() > self.max_spike_history {
-                    self.spike_history.pop_front();
-                }
             }
         }
 
@@ -656,7 +645,7 @@ impl SpikingNeuralNetwork {
         }
     }
 
-    /// Append a synapse. Both `SparseSynapseMatrix` and `synapses` vec get a copy.
+    /// Append a synapse. Both the CSR and the `synapses` vec get a copy.
     pub fn add_synapse(&mut self, pre_id: u16, post_id: u16, weight: i16) -> Result<()> {
         if pre_id as usize >= self.neurons.len() || post_id as usize >= self.neurons.len() {
             return Err(Error::IndexOutOfBounds);
@@ -678,21 +667,20 @@ impl SpikingNeuralNetwork {
     /// is the path for callers that construct synapse wiring themselves —
     /// e.g. importing a pretrained weight matrix edge by edge. Without it:
     ///
-    /// - `connections(pre)` returns slices with the right count but the wrong
-    ///   members whenever edges were added out of `pre_id` order (the
-    ///   incremental `row_ptrs` is only correct for sorted insertion), and
-    /// - `incoming(post)` returns nothing (the reverse CSR is empty until a
-    ///   finalize), silently regressing plasticity to the pre-1.5d LTD-only
-    ///   substrate — the post-firing LTP pass becomes unreachable.
+    /// - the step delivers spikes to the wrong targets whenever edges were
+    ///   added out of `pre_id` order (before the sort, the forward CSR is
+    ///   only right for sorted insertion), and
+    /// - with `unstable-stdp`, the post-firing LTP pass finds no incoming
+    ///   edge (the reverse CSR is empty until a finalize), silently
+    ///   regressing plasticity to the pre-1.5d LTD-only substrate.
     ///
     /// Contract: call **exactly once**, after all `add_synapse` calls and
-    /// before the first [`step`]. Like [`SparseSynapseMatrix::finalize`], it
+    /// before the first [`step`]. Like the CSR's own finalize, it
     /// is not idempotent on an already-finalized matrix (the counting sort's
     /// source arrays hold insertion order); rebuilding external wiring means
     /// clearing and re-adding. Also refreshes `stats.total_synapses`.
     ///
     /// [`step`]: Self::step
-    /// [`SparseSynapseMatrix::finalize`]: SparseSynapseMatrix::finalize
     pub fn finalize_synapses(&mut self) {
         self.synapse_matrix.finalize();
         self.stats.total_synapses = self.synapses.len() as u32;
@@ -903,7 +891,6 @@ impl SpikingNeuralNetwork {
         self.current_time_us = 0;
         self.stats.total_spikes = 0;
         self.stats.plasticity_events = 0;
-        self.spike_history.clear();
         #[cfg(feature = "unstable-stdp")]
         {
             self.plasticity_queue.clear();
@@ -953,12 +940,6 @@ impl SpikingNeuralNetwork {
     #[must_use]
     pub fn synapse_count(&self) -> u32 {
         self.synapses.len() as u32
-    }
-
-    /// Read-only access to spike history (most recent first; back = oldest).
-    #[must_use]
-    pub fn spike_history(&self) -> &VecDeque<Spike> {
-        &self.spike_history
     }
 
     // ----- Topology builders (private) -----

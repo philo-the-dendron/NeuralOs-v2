@@ -13,13 +13,13 @@
 //! methods `ternarize_weights` / `reproject_ternary` apply it; the
 //! `ternary_gate` example runs the falsifier and prints the verdict evidence.
 //!
-//! Stage 1.5b adds [`stochastic_ternary_flip`]: a pure, `no_std` Bernoulli
-//! bucket-flip driven by the STDP residual. Under deterministic per-step
-//! re-projection (Stage 1), STDP deltas max ±5 cannot cross the γ/2 ≈ 62
-//! bucket boundary → 0 flips. The stochastic rule dissolves that boundary:
-//! crossing becomes a probabilistic event whose rate reflects STDP evidence,
-//! not a magnitude contest. Literature: Wu-Saxena 1801.02797, Mohan 2103.01271,
-//! Camuñas-Mesa 2209.06068, `ReStoCNet` 1902.04161.
+//! Stage 1.5b adds `stochastic_ternary_flip`, behind `unstable-stdp`: a pure,
+//! `no_std` Bernoulli bucket-flip driven by the STDP residual. Under
+//! deterministic per-step re-projection (Stage 1), STDP deltas max ±5 cannot
+//! cross the γ/2 ≈ 62 bucket boundary → 0 flips. The stochastic rule dissolves
+//! that boundary: crossing becomes a probabilistic event whose rate reflects
+//! STDP evidence, not a magnitude contest. Literature: Wu-Saxena 1801.02797,
+//! Mohan 2103.01271, Camuñas-Mesa 2209.06068, `ReStoCNet` 1902.04161.
 //!
 //! # Stored representation
 //!
@@ -139,6 +139,7 @@ pub fn ternarize(weights: &mut [i16]) -> i16 {
     scale
 }
 
+/// Unstable: behind `unstable-stdp`.
 /// Base rate for stochastic ternary bucket-flips (Stage 1.5b).
 ///
 /// `P(flip) = |residual| × STOCHASTIC_FLIP_RATE / 65536`. The residual is the
@@ -148,8 +149,10 @@ pub fn ternarize(weights: &mut [i16]) -> i16 {
 ///
 /// Tunable — raise for more aggressive learning, lower for stability. The
 /// Stage 1.5b gate tunes this against the flip-rate / spiking-stability tradeoff.
+#[cfg(feature = "unstable-stdp")]
 pub const STOCHASTIC_FLIP_RATE: u32 = 3000;
 
+/// Unstable: behind `unstable-stdp`.
 /// Stochastic ternary bucket-flip (Stage 1.5b).
 ///
 /// Given a current on-grid ternary weight, the per-tensor scale `γ`, the STDP
@@ -177,6 +180,7 @@ pub const STOCHASTIC_FLIP_RATE: u32 = 3000;
 ///
 /// No float in the hot path. The probability is realized as a fixed-point
 /// threshold compared against a 16-bit LFSR draw.
+#[cfg(feature = "unstable-stdp")]
 #[must_use]
 pub fn stochastic_ternary_flip(current_weight: i16, gamma: i16, residual: i16, draw: u16) -> i16 {
     if gamma <= 0 || residual == 0 {
@@ -308,6 +312,7 @@ mod tests {
 
     // ----- Stochastic ternary flip (Stage 1.5b) -----
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stochastic_flip_zero_residual_is_no_op() {
         let g = 125_i16;
@@ -317,12 +322,14 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stochastic_flip_zero_gamma_is_no_op() {
         assert_eq!(stochastic_ternary_flip(100, 0, 5, 0), 0);
         assert_eq!(stochastic_ternary_flip(100, -1, 5, 0), 0);
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stochastic_flip_draw_zero_always_flips() {
         // draw = 0 is below any nonzero threshold → always flips.
@@ -335,6 +342,7 @@ mod tests {
         assert_eq!(stochastic_ternary_flip(-g, g, -1, 0), -g); // -γ → -γ (saturate)
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stochastic_flip_draw_max_never_flips() {
         // draw = 65535 ≥ any threshold (max threshold = 5×3000 = 15000 < 65535).
@@ -345,6 +353,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stochastic_flip_sign_correctness() {
         let g = 125_i16;
@@ -356,6 +365,7 @@ mod tests {
         assert_eq!(stochastic_ternary_flip(0, g, -3, 0), -g);
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stochastic_flip_saturates_at_extremes() {
         let g = 125_i16;
@@ -365,6 +375,7 @@ mod tests {
         assert_eq!(stochastic_ternary_flip(-g, g, -5, 0), -g);
     }
 
+    #[cfg(feature = "unstable-stdp")]
     #[test]
     fn stochastic_flip_output_always_on_grid() {
         let g = 125_i16;
@@ -443,6 +454,7 @@ mod tests {
         }
 
         /// Stochastic flip output is always in {-γ, 0, +γ}.
+        #[cfg(feature = "unstable-stdp")]
         #[test]
         fn prop_stochastic_flip_output_on_grid(
             bucket in prop_oneof![Just(-1_i16), Just(0), Just(1)],
@@ -460,6 +472,7 @@ mod tests {
 
         /// Stochastic flip sign-correctness: LTP (residual > 0) never moves
         /// toward -γ; LTD (residual < 0) never moves toward +γ.
+        #[cfg(feature = "unstable-stdp")]
         #[test]
         fn prop_stochastic_flip_sign_correct(
             bucket in prop_oneof![Just(-1_i16), Just(0), Just(1)],
@@ -477,6 +490,7 @@ mod tests {
         }
 
         /// Zero residual is always a no-op (identity projection).
+        #[cfg(feature = "unstable-stdp")]
         #[test]
         fn prop_stochastic_flip_zero_residual_noop(
             bucket in prop_oneof![Just(-1_i16), Just(0), Just(1)],
@@ -489,6 +503,7 @@ mod tests {
 
         /// P(flip) is in [0, 1): the threshold never exceeds 65535, so draw=max
         /// never flips, and draw=0 always flips (for nonzero residual).
+        #[cfg(feature = "unstable-stdp")]
         #[test]
         fn prop_stochastic_flip_p_range(
             gamma in 1_i16..=2000,
