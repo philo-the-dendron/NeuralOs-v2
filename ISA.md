@@ -4,7 +4,7 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@8929493 (PR #42 merged 2026-09-23 03:15 UTC: round 45, unlettered, tier 2, the eight public enums take their 0.1.0 shape: `#[non_exhaustive]` on the six that are subsets today, `Trit` and `VoltageResolution` exhaustive on purpose; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 45 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/hides, round 46 (M-hide's second half, tier 2: `spike_history()` gone, the two kernel constants private, the stochastic flip behind `unstable-stdp`, the CSR types private, `NirReport::notes` behind `notes(NirNote)` and `NIR_NOTE_KINDS` gone; six commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all six · open(session): one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@8f0d87b (PR #43 merged 2026-09-23 19:43 UTC: round 46, unlettered, tier 2, what stops being public before 0.1.0: `spike_history()` gone, two kernel constants private, the stochastic flip behind `unstable-stdp`, the CSR types private, the report's notes behind `notes(NirNote)`; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 46 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/next-moves, round 47 (tier 3: ROADMAP § Practical next moves is the chapter, three lines; the stale ROADMAP lines; the calibration row in evidence/INDEX.md; three commits, docs only, no check ticked) · open(session): the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
 updated: 2026-09-23T17:32:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
@@ -9757,3 +9757,18 @@ the private-items doc build with `unstable-stdp` is red at `8929493`
 already, `network.rs:185` linking `stochastic_ternary_step` with
 no path; no gate runs it. No check ticks. **Guards.** 1: appended,
 head refreshed; 2 and 3 not in play.
+
+## Close-out (round 47 — § Practical next moves is the chapter, not the history; tier 3 — 2026-09-24)
+
+Branch `work/next-moves` from `main@8f0d87b`, tier 3, three commits:
+`9e58796` the section is three lines (alpha.9's walk, 0.1.0's stamp,
+the learning chapter's pointer), the seven items' records the ISA and
+`evidence/INDEX.md`, which gains `step5-calibration/`, the lock-free
+row its named target and its trigger (ruled 2026-09-24: after 0.1.0, a
+multi-core board with atomics); `b8450bb` the stale lines (the SIMD
+row DONE 2026-09-02, the app row, R4 closed in § Priority order and
+Phase 5); this. Record-only: `evidence/esp32c3-bringup/README.md:3`
+says "ROADMAP step 5", pinned by its SHA256SUMS, true when written;
+round 16 wrote "ROADMAP item 5" for what was item 4 at `8f0d87b`, so
+the section had renumbered once before. No check ticks. Guards: 1
+appended, head refreshed; 2 and 3 not in play.
