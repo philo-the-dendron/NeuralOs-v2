@@ -11,10 +11,10 @@
 | # | Component | Status |
 |---|---|---|
 | **1** | `neuralos-snn` — `no_std` SNN substrate | Active spine. The 2026-08-08 near-term list (NIR, lock-free, SIMD hardening) was starved by the bridge arc and is **first-class again** — NIR DONE through general assembly (slices 1+2 + `build_network`, 2026-08-22 @ alpha.5), QEMU proof landed 2026-08-21; lock-free (re-scoped, below) remains; **SIMD hardening DONE 2026-08-31** (ten-commit branch, ISA § Close-out). |
-| **2** | `neuralos-app` — Slint visualizer / lab bench | Untouched since 2026-08-08; Phase-2 items re-opened. |
+| **2** | `neuralos-app` — Slint visualizer / lab bench | No feature work since 2026-08-08, mechanical commits only; Phase-2 items re-opened. |
 | **3** | RISC-V deployment proof | **QEMU riscv64gc DONE 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`). **ESP32-C3 silicon DONE 2026-09-09** (`evidence/esp32c3-bringup/`: one LIF neuron on a SuperMini, first spike step 56 (the real-time loop, wall-clock paced; the burst prints 55, as the host does), 14.7 spikes/s, exact host match). Per-step cost, round 27 (alpha.7, published 2026-09-13, ISA round 27): the neuron as a network holds it (in memory, dt at run time) **3,878 ns/step on alpha.6 → 1,579 on alpha.7**, the free loop 2,863 → 563, behavior bit-identical; the host bench about 2 to 2.5 ns/step slower, recorded. The earlier figures, true when written: 1,501 on alpha.5 and 2,842 on alpha.6 (ISA round-23), both the free loop under the firmware's constant dt. HiFive only if a session names it. |
 | **4** | Paper track | The Branch B article (in `paper/`) — finish, gate, submit. Must not displace 1–3. |
-| **5** | Bridge follow-ups | **Frozen record.** Reopening is the principal's call on the recorded forks. The one active bridge-adjacent task is R4 (harness extraction) below. |
+| **5** | Bridge follow-ups | **Frozen record.** Reopening is the principal's call on the recorded forks. The last bridge-adjacent task, R4 (harness extraction), closed 2026-08-21 (below). |
 
 ## 0.1.0
 
@@ -74,8 +74,8 @@ Strict order — nothing new opens until the rung above is 100%.
 | Work item | Why it matters |
 |---|---|
 | NIR import/export | Interop with snnTorch/SpikingJelly; the #1 ecosystem recommendation. **DONE through general graph assembly (slices 1+2 2026-08-21, `build_network` 2026-08-22 @ alpha.5; gates: format 4/4, hdf5 5/5, assembly 6/6 + cross-container 3/3 — evidence/INDEX.md).** The spiking edge LIF→Linear→LIF is named and built (D8, PR G). Remaining: the R18 deferral family — the readout to Output (LIF→Linear→Output), direct drive (Input→LIF), encoder-only (lowest pull). |
-| Lock-free ports from v0.1 archive | Throughput and future concurrency experiments. Re-scoped (2026-08-22 ruling): A-extension-capable targets only — rv32imc / ESP32-C3 are NOT (no atomics); name the target before porting |
-| SIMD follow-up / hardening | **IN REVIEW 2026-09-01** (core landed 2026-08-31; two follow-up branches carry review fixes — `fix/lif-scalar-domain` then `fix/simd-fixture-and-record`, in that order) — slice-length contract enforced, overflow domain pinned (`DT_OVER_TAU_MAX`), floor-vs-truncate parking bias fixed (19 mV → ≤ 8 mV, cost +11.7 % of the vector path, scalar-controlled and identical across both benchmark runs; the raw spread is 8–13 %, machine load — corrected 2026-09-01 from "12–15 %", which was one run quoted as if it were both), every rounding-dependent number pinned exactly and reproducible from the tree (`cargo test -p neuralos-snn --features simd -- --ignored`); forks (b) exact ÷1000 and (c) half-cost recorded with triggers in the module doc; record in ISA § Close-out, evidence in `evidence/simd-hardening/` |
+| Lock-free ports from v0.1 archive | Throughput and future concurrency experiments. Re-scoped (2026-08-22 ruling): A-extension-capable targets only — rv32imc / ESP32-C3 are NOT (no atomics); the target named 2026-09-09 (ISA round-20): QEMU riscv64gc; parked until after 0.1.0, opens when a multi-core board with atomics enters |
+| SIMD follow-up / hardening | **DONE 2026-09-02** (core landed 2026-08-31; the two review-fix branches merged as PR #2 `3868abb` then PR #3 `f971c19`) — slice-length contract enforced, overflow domain pinned (`DT_OVER_TAU_MAX`), floor-vs-truncate parking bias fixed (19 mV → ≤ 8 mV, cost +11.7 % of the vector path, scalar-controlled and identical across both benchmark runs; the raw spread is 8–13 %, machine load — corrected 2026-09-01 from "12–15 %", which was one run quoted as if it were both), every rounding-dependent number pinned exactly and reproducible from the tree (`cargo test -p neuralos-snn --features simd -- --ignored`); forks (b) exact ÷1000 and (c) half-cost recorded with triggers in the module doc; record in ISA § Close-out, evidence in `evidence/simd-hardening/` |
 | Additional regression/property tests | The transmission-wire lesson: no unit test had ever exercised live transmission until session F. **Traces since 2026-09-13 (PR B, alpha.8): `crates/neuralos-snn/tests/traces/`, 14 regression cases and 1 reference vector, compared by the test gate, regenerated by `cargo run -p neuralos-snn --features unstable-stdp --example trace -- write`; C, D and E prove "behavior unchanged" by that compare.** |
 | `no_std` discipline checks | Preserve the embedded/RISC-V posture (CI gate already green) |
 
@@ -101,7 +101,7 @@ Strict order — nothing new opens until the rung above is 100%.
    `evidence/qemu-riscv-gate/README.md`)
 
 Silicon landed 2026-09-09 (ESP32-C3, `evidence/esp32c3-bringup/`);
-nothing of this phase remains but the lock-free ports (step 6).
+nothing of this phase remains but the lock-free ports (Phase 1's row above).
 CI leg parked as a named follow-up (runner cost under TCG unmeasured).
 
 ## Phase 5 — Paper + bridge follow-ups (gated, frozen)
@@ -113,10 +113,8 @@ CI leg parked as a named follow-up (runner cost under TCG unmeasured).
 - **Bridge record:** frozen. Any reopening (criterion forks, 8B/Q2_0
   capacity bets, model-informed coupling) is a recorded fork in the
   ISA — the principal's call, scoped before any session opens.
-- **R4 harness extraction** is the one active task: dedupe
-  `hybrid_*`/`null_patches` (~1,864 duplicated lines, measured pairwise)
-  into a shared rt harness module; acceptance = deterministic re-runs
-  reproduce the recorded verdicts; tag `examples-pre-extraction` first.
+- **R4 harness extraction:** closed 2026-08-21, every re-pin exact
+  (`evidence/r4-closeout/`, the R-ladder above).
 
 ## What is no longer the center of gravity
 
@@ -126,53 +124,15 @@ displace substrate + lab bench + gated research.
 
 ## Practical next moves
 
-1. R4 (harness extraction) — closed 2026-08-21
-2. NIR import/export — **DONE through general graph assembly
-   (2026-08-22, alpha.5)**; the spiking edge LIF→Linear→LIF is built
-   (D8, PR G); the R18 deferral family remains (the readout to Output,
-   LIF→Linear→Output / direct drive / encoder-only)
-3. QEMU proof — **done 2026-08-21** (both legs; `evidence/qemu-riscv-gate/`)
-4. Readout benchmark — **RAN 2026-08-24/27, adjudicated
-   PRE-REGISTRATION-UNDEFINED** (1/5 SEPARATED · 2 MIXED; Tier 3 not
-   demonstrated, "rests evidenced" not claimed — ISA ruling +
-   `evidence/step5-readout/`). Binding constraint is CORPUS LENGTH,
-   not replicate count. **The lesion/graft positive control RAN
-   2026-09-05, verdict UNINFORMATIVE** (PREREG §6 rule 6; Ls=0 of 4
-   lesions, Gs=0 of 3 grafts vs their primary families —
-   `evidence/step5-calibration/`, ISA round-16). It was this
-   benchmark's named first arm; it is no longer outstanding, and it did
-   not clear the pre-registered bar. The paper's "uncalibrated
-   instrument" limitation therefore stays as written, and step 8 stays
-   CLOSED until a new instrument exists.
-5. **ESP32-C3 bring-up — RAN 2026-09-09** (board decided 2026-08-22,
-   arrived 2026-09-09): one LIF neuron on a SuperMini, first spike
-   step 56 (the real-time loop, wall-clock paced; the burst prints 55,
-   as the host does), 147 burst spikes = 14.7/s (exact host match),
-   blue LED blinking; the 10,000-step burst cost 1,501 ns/step on the
-   alpha.5 spine and 2,842 ns/step on alpha.6 (re-measured 2026-09-10, ISA
-   round-23; true when written: both the free loop under the
-   firmware's constant dt, and a network's run-time dt costs more).
-   **Round 27 (2026-09-12, alpha.7 in the tree) narrowed the
-   divisions and masked the ring index:** the neuron as a network
-   holds it (in memory, dt at run time) 3,878 → **1,579 ns/step**,
-   the free loop 2,863 → 563, every behavior figure identical, no ROM
-   division left in the pinned loop; the host bench is about 2 to 2.5
-   ns/step slower, recorded —
-   `evidence/esp32c3-bringup/`, ISA rounds 19, 23 and 27. One blocking fix rode
-   the session (the ESP-IDF app descriptor, 427b6cb). The board half
-   of GUARD 3 is landed, and the exporter half closed with the release
-   `bringup-2026-09-09` (published 2026-09-10, ISA round-21); outreach
-   is the principal's call.
-   The network on the chip ran in round 32 (PR E, `FixedNetwork`,
-   `evidence/esp32c3-bringup/` § Sixth entry). A stranger's `.nir`
-   reaches it by one command since round 35 (PR H,
-   `firmware/esp32c3/stranger.sh`, § Eighth entry). Capacity is
-   measured since round 36 (PR I, § Ninth entry): the bar
-   `44·N + 6·S ≤ 262,144`, both of its corners bit for bit on the
-   board, the stack's high-water mark in every capture. Next board work (a
-   hardware timer instead of the busy-wait) is not opened here. Three
-   spare boards in the bag (a 4-pack, one used).
-6. Lock-free ports (A-extension targets only — re-scoped above) — the
-   last Phase-1 remainder; **SIMD hardening DONE 2026-08-31** (ISA § Close-out)
-7. Visualizer Phase-2 — the lab bench catches up to the substrate the
-   bridge arc hardened; also the named instrument for any step-8 arm
+The chapter, not the history. Closed work lives in `ISA.md` and the
+records it names in `evidence/INDEX.md`. Three lines, in order:
+
+1. **alpha.9: the pub walk.** What stops being public before the
+   crate's surface is promised: paths and re-exports, `LIFNeuron` with
+   its noise default, the rest of the field walk. No pinned value
+   moves: the traces bit for bit, the firmware `.text` unmoved. Then
+   the rename, the front door, the stamp.
+2. **0.1.0: the stamp.** The principal's call, once the fourteen checks
+   of § 0.1.0 hold again at the final tree, after the rename.
+3. **After 0.1.0: the learning chapter** (`docs/VISION.md` § Realistic
+   near-term path, item 6).
