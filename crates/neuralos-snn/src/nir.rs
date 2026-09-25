@@ -61,8 +61,8 @@
 //!
 //! # `no_std`, zero-alloc, zero new deps
 //!
-//! Everything is buffer-based, like [`crate::bridge`]: the caller owns
-//! all memory. Two-pass protocol — [`nir_scan`] counts,
+//! Everything is buffer-based, like `bridge` (behind `unstable-bridge`):
+//! the caller owns all memory. Two-pass protocol — [`nir_scan`] counts,
 //! [`NirBuffers`] + [`nir_import`] fills (the import itself walks the
 //! document twice: nodes, then edges — edge endpoints may appear
 //! before their nodes in key order). During import each Linear's

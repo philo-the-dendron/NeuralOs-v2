@@ -22,10 +22,10 @@
 //! tonic inhibitory drive); chance = 25%, gate = 4/4 groups classified
 //! with printed margins. The numbers this prints ARE the gate evidence.
 
-use neuralos_snn::{
-    absmax_normalize_q15, encode_i2_s, repack_i2s_to_kernel, ternary_matvec, NetworkTopology,
-    SpikingNeuralNetwork, Trit,
-};
+use neuralos_snn::bridge::{encode_i2_s, repack_i2s_to_kernel};
+use neuralos_snn::kernel::{absmax_normalize_q15, ternary_matvec};
+use neuralos_snn::trit::Trit;
+use neuralos_snn::{NetworkTopology, SpikingNeuralNetwork};
 
 const NEURONS: u16 = 128;
 const GROUPS: u16 = 4;
@@ -148,7 +148,7 @@ fn main() {
 
         // Kernel-side: counts → Q15 absmax → shared matvec.
         let mut acts = vec![0_i16; NEURONS as usize];
-        let absmax = absmax_normalize_q15(&counts, &mut acts);
+        let absmax = absmax_normalize_q15(&counts, &mut acts).expect("kernel absmax");
         let mut out = [0_i32; 4];
         ternary_matvec(&kernel_w, &acts, 4, &mut out).expect("kernel matvec");
         let arg = out

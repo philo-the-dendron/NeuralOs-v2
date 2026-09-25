@@ -11,8 +11,8 @@
 //! Activations are `i16` (Q15-style, same as the SNN kernel); weights are
 //! Q1_0 blocks (fp16 scale + sign bits, see `docs/TERNARY_FORMAT.md`);
 //! scales enter arithmetic only through their milli view
-//! ([`neuralos_snn::half_to_milli`]): `±γ` per element, per-block partials
-//! accumulated in `i64`, each block's contribution
+//! ([`neuralos_snn::bridge::half_to_milli`]): `±γ` per element,
+//! per-block partials accumulated in `i64`, each block's contribution
 //! `round(partial × γ_milli / 1000)`, final saturation to `i32`
 //! documented. Bounds: `|partial| ≤ 128·32768 = 4_194_304` (i16::MIN is
 //! reachable); `|γ_milli| ≤ 65_504_000` finite / `2^31` when the fp16
@@ -23,7 +23,7 @@
 //! 16 blocks (2048-wide rows), 10.7 at 48 blocks (6144-wide) — and then
 //! saturates at the row level, never silently wraps.
 
-use neuralos_snn::half_to_milli;
+use neuralos_snn::bridge::half_to_milli;
 
 /// Q1_0 block size (weights per block — one fp16 scale + 16 sign bytes).
 /// Single-sourced from the published codec ([`neuralos_snn::bridge`]);
@@ -265,7 +265,7 @@ pub fn matvec_scaled(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neuralos_snn::Trit;
+    use neuralos_snn::trit::Trit;
 
     /// Build one Q1_0 row (n values, one block per 128) from a trit-ish
     /// pattern (true = +γ, false = −γ) and per-block fp16 scales.
@@ -312,7 +312,7 @@ mod tests {
                 let row = &data[j * (n / Q1_0_BLOCK * Q1_0_BLOCK_BYTES)..];
                 let mut trits = vec![Trit::Zero; n];
                 let mut scales = vec![0_u16; n / Q1_0_BLOCK];
-                neuralos_snn::decode_q1_0(row, &mut trits, &mut scales).unwrap();
+                neuralos_snn::bridge::decode_q1_0(row, &mut trits, &mut scales).unwrap();
                 let mut acc: f64 = 0.0;
                 for b in 0..n / Q1_0_BLOCK {
                     // Mirror production semantics exactly: fp16-exact for

@@ -24,7 +24,7 @@ publish = false
 hdf5 = ["dep:hdf5", "dep:hdf5-sys", "dep:ndarray"]
 
 [dependencies]
-neuralos-snn = { path = "../neuralos-snn", features = ["unstable-stdp"] }
+neuralos-snn = { path = "../neuralos-snn", features = ["unstable-stdp", "unstable-bridge"] }
 hdf5 = { version = "0.8", optional = true }
 # Direct dep for the filter-census FFI (H5Dget_create_plist et al.);
 # features live here so the static+zlib pin has exactly one home.

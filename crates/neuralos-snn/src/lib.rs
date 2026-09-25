@@ -7,10 +7,12 @@
 #![allow(clippy::missing_errors_doc)]
 #![doc = include_str!("../README.md")]
 
+#[cfg(feature = "unstable-bridge")]
 pub mod bridge;
 #[cfg(feature = "std")]
 mod csr;
 pub mod fixed;
+#[cfg(feature = "unstable-bridge")]
 pub mod kernel;
 pub mod lif_neuron;
 #[cfg(feature = "std")]
@@ -25,12 +27,7 @@ pub mod stats;
 pub mod synapse;
 pub mod trit;
 
-pub use bridge::{
-    decode_i2_s, decode_q1_0, decode_q2_0, encode_i2_s, encode_q2_0, half_to_f32_bits,
-    half_to_milli, repack_i2s_to_kernel, wire_gamma_to_substrate, BridgeError,
-};
 pub use fixed::{FixedNetwork, FixedSynapse};
-pub use kernel::{absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit};
 pub use lif_neuron::{LIFNeuron, NeuronType, VoltageResolution, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
 #[cfg(feature = "std")]
 pub use network::{NetworkStats, NetworkTopology, Spike, SpikingNeuralNetwork};

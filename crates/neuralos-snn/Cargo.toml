@@ -29,11 +29,16 @@ simd = ["std"]
 # `trit::STOCHASTIC_FLIP_RATE`. Anything behind it may change or go in a
 # minor release. Off by default: a default build does not learn.
 unstable-stdp = []
+# The ternary bridge's closed chapter, outside the semver promise: the
+# `bridge` codecs (Stage 2) and the `kernel` matvec (Stage 3). Anything
+# behind it may change or go in a minor release. Off by default; works
+# with and without `std`.
+unstable-bridge = []
 
 # docs.rs builds the default features alone; the gated items' docs exist
-# only with the feature on.
+# only with the features on.
 [package.metadata.docs.rs]
-features = ["unstable-stdp"]
+features = ["unstable-stdp", "unstable-bridge"]
 
 [dependencies]
 # None. The spike history is a [u32; N] ring, SpikeRecorder in
@@ -70,7 +75,13 @@ required-features = ["unstable-stdp"]
 
 [[example]]
 name = "ternary_hybrid_gate"
-required-features = ["unstable-stdp"]
+required-features = ["unstable-stdp", "unstable-bridge"]
+
+# The closed chapter's Stage 2 gate, behind `unstable-bridge` with the
+# codecs; rt asks for the feature, so the workspace build covers it.
+[[example]]
+name = "ternary_format_gate"
+required-features = ["unstable-bridge"]
 
 [[example]]
 name = "trace"

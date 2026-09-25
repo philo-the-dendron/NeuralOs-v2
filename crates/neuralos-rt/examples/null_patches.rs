@@ -29,7 +29,7 @@
 //! models/null-flip-<s>.gguf, all S2-asserted.
 
 use neuralos_rt::harness::{decode_slice, splice_and_verify, tix, xorshift64, ExperimentParams};
-use neuralos_snn::Trit;
+use neuralos_snn::trit::Trit;
 
 #[allow(non_snake_case)]
 fn main() {

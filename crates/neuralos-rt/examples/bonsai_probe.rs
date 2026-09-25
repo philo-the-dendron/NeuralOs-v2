@@ -12,7 +12,8 @@
 //! (default `models/Bonsai-1.7B-Q1_0.gguf`).
 
 use neuralos_rt::{GgufFile, GGML_TYPE_Q1_0, GGML_TYPE_Q2_0};
-use neuralos_snn::{decode_q1_0, decode_q2_0, half_to_milli, Trit};
+use neuralos_snn::bridge::{decode_q1_0, decode_q2_0, half_to_milli};
+use neuralos_snn::trit::Trit;
 
 fn type_name(ty: u32) -> String {
     match ty {

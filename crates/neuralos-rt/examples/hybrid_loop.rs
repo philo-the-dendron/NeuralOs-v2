@@ -60,7 +60,7 @@ use neuralos_rt::harness::{
     ExperimentParams,
 };
 use neuralos_rt::GgufFile;
-use neuralos_snn::Trit;
+use neuralos_snn::trit::Trit;
 
 // ----- D-2 pinned state (session F re-run on the live-wire substrate —
 // the surgery runs only on the exact recorded adapted state). The pre-fix

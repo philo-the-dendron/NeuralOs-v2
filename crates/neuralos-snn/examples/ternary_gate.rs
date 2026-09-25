@@ -21,7 +21,8 @@
 //! (non-collapsed vs baseline). The YES/NO call is recorded in the commit
 //! message and `docs/VISION.md`.
 
-use neuralos_snn::{NetworkTopology, SpikingNeuralNetwork, Trit};
+use neuralos_snn::trit::Trit;
+use neuralos_snn::{NetworkTopology, SpikingNeuralNetwork};
 
 const NEURONS: u16 = 128;
 const DT_US: u32 = 1000; // 1 ms sim per step

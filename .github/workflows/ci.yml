@@ -53,27 +53,30 @@ jobs:
       - name: cargo clippy --workspace
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      # The published default config: `unstable-stdp` off. Cargo unifies
-      # features across a `--workspace` build, and rt and the app ask for
-      # the feature, so the two lines above build the library with STDP
-      # on. These two build it as a crates.io user does, tests and lints
-      # (PR L, ROADMAP § 0.1.0, check 9).
+      # The published default config: the `unstable-` features off. Cargo
+      # unifies features across a `--workspace` build: rt and the app ask
+      # for `unstable-stdp` and rt for `unstable-bridge`, so the two lines
+      # above build the library with both on. These two build it as a
+      # crates.io user does, tests and lints (PR L, ROADMAP § 0.1.0,
+      # check 9).
       - name: default config gate (neuralos-snn, unstable-stdp off)
         run: |
           cargo test -p neuralos-snn
           cargo clippy -p neuralos-snn --all-targets -- -D warnings
 
-      # The SNN core stays no_std (the embedded/RISC-V posture), with
-      # `unstable-stdp` too: `STDPRule` and `Synapse::update_weight` are
-      # `no_std`, and the QEMU leg-A proof builds them that way.
+      # The SNN core stays no_std (the embedded/RISC-V posture), with each
+      # `unstable-` feature too: `STDPRule`, `update_weight`, the bridge's
+      # codecs and its kernel are `no_std`, and the QEMU leg-A proof builds
+      # them that way.
       - name: no_std gate (neuralos-snn)
         run: |
           cargo build --no-default-features -p neuralos-snn
           cargo build --no-default-features --features unstable-stdp -p neuralos-snn
+          cargo build --no-default-features --features unstable-bridge -p neuralos-snn
 
       # The MSRV gate: `rust-version = "1.92"` is the crate's promise to its
       # users; the pin is ours and follows stable (PR C). The library alone,
-      # in the four configurations a user can pick, on the declared floor.
+      # in the five configurations a user can pick, on the declared floor.
       # RUSTFLAGS is emptied: this proves the crate builds there, not that
       # an old compiler's lints are quiet. `rustc -V` names the pin first.
       - name: MSRV gate (neuralos-snn on 1.92.0)
@@ -86,6 +89,7 @@ jobs:
           cargo +1.92.0 check -p neuralos-snn --lib --no-default-features
           cargo +1.92.0 check -p neuralos-snn --lib --features simd
           cargo +1.92.0 check -p neuralos-snn --lib --features unstable-stdp
+          cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge
 
       # SIMD kernel equivalence vs scalar (AVX2, x86_64, behind `simd`).
       # NEURALOS_REQUIRE_AVX2 turns the module's nine "AVX2 not available"
@@ -107,8 +111,8 @@ jobs:
       # published docs can meet; `main` carried 15 and 2 more such links
       # the day this was added (2026-09-19), none of them looked at by
       # any gate. `--no-deps`: this crate's docs, not its dependencies'.
-      # `unstable-stdp` is the third build since PR L: the gated items'
-      # docs exist in no other.
+      # `unstable-stdp` is the third build since PR L and `unstable-bridge`
+      # the fourth since round 48: the gated items' docs exist in no other.
       - name: rustdoc gate (neuralos-snn)
         env:
           RUSTDOCFLAGS: "-D warnings"
@@ -116,6 +120,7 @@ jobs:
           cargo doc -p neuralos-snn --no-deps
           cargo doc -p neuralos-snn --no-deps --features simd
           cargo doc -p neuralos-snn --no-deps --features unstable-stdp
+          cargo doc -p neuralos-snn --no-deps --features unstable-bridge
 
       # The slice-length contract is assert_eq!; its regression test is only
       # distinguishable from debug_assert_eq! in release. Added 2026-08-30.
@@ -251,15 +256,18 @@ jobs:
             cargo clippy -p neuralos-snn --all-targets -- -D warnings
             cargo build --no-default-features -p neuralos-snn
             cargo build --no-default-features --features unstable-stdp -p neuralos-snn
+            cargo build --no-default-features --features unstable-bridge -p neuralos-snn
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-stdp
+            RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge
             cargo test -p neuralos-snn --features simd
             cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp
+            RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-bridge
             cargo test -p neuralos-snn --release --features simd -- --include-ignored
             cargo test -p neuralos-rt --features hdf5
             cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate

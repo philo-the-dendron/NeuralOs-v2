@@ -61,7 +61,8 @@ pass; verification method in parentheses):
 LIF + full pairwise STDP (in the tree behind the `unstable-stdp`
 feature, off by default) + 4 topologies + CSR sparse matrix + AVX2 kernel
 + the ternary bridge codecs (`i2_s`/`q1_0`/`q2_0`) + shared ternary
-matmul + live synaptic transmission (the session-F fix) + NIR
+matmul (both behind `unstable-bridge`, off by default) + live synaptic
+transmission (the session-F fix) + NIR
 import/export (JSON container; HDF5 `.nir` IO via `neuralos-rt`) +
 general four-kind graph assembly — any reference-emitted
 Input/Linear/LIF/Output graph builds and fires on the substrate

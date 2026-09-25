@@ -1,3 +1,4 @@
+//! Unstable: behind `unstable-bridge`.
 //! Stage 2 of the ternary bridge: the **format bridge** (see `docs/VISION.md`
 //! and `docs/TERNARY_FORMAT.md`).
 //!
@@ -55,7 +56,7 @@ use crate::trit::Trit;
 
 /// The `i2_s` tail size in bytes: 4 bytes of LE f32 scale bits, then 28
 /// zero bytes (the reference aligns each row to 32).
-pub const I2_S_TAIL_BYTES: usize = 32;
+const I2_S_TAIL_BYTES: usize = 32;
 
 /// `i2_s` block size in values (transposed packing operates on 4 lanes of
 /// 32 elements).
@@ -68,20 +69,24 @@ pub const Q1_0_BLOCK: usize = 128;
 /// (`QK2_0 = 128` in the fork's `ggml/src/ggml-common.h`; 34 B/block).
 pub const Q2_0_BLOCK: usize = 128;
 
-/// Errors from the format codecs. Loud by design — no decode path clamps,
-/// pads, or guesses. A short buffer, a wrong length, or an impossible code
-/// is an [`Err`], never best-effort output.
+/// Errors from the format codecs and the kernel. Loud by design — no
+/// decode path clamps, pads, or guesses. A short buffer, a wrong length, a
+/// row too wide for the kernel, or an impossible code is an [`Err`], never
+/// best-effort output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BridgeError {
     /// The trit slice length is not a multiple of the format's block size
-    /// (`i2_s`/`q1_0`: 128, `q2_0`: 64).
+    /// (128 for `i2_s`, `q1_0` and `q2_0`; 4 for the kernel's packing).
     BadLength,
-    /// The byte buffer is shorter than the layout requires.
+    /// A buffer is shorter than the layout requires.
     TooShort,
     /// A 2-bit code the reference quantizer can never produce (`3`) was
     /// found in the input — the data is malformed or not this format.
     UnsupportedCode,
+    /// A kernel row is wider than 65,535 trits: past that, the `i32`
+    /// accumulator's bound `n × 32,768` no longer fits.
+    RowTooWide,
 }
 
 impl core::fmt::Display for BridgeError {
@@ -90,9 +95,15 @@ impl core::fmt::Display for BridgeError {
             Self::BadLength => {
                 write!(f, "tensor length is not a multiple of the block size")
             }
-            Self::TooShort => write!(f, "byte buffer shorter than the layout requires"),
+            Self::TooShort => write!(f, "buffer shorter than the layout requires"),
             Self::UnsupportedCode => {
                 write!(f, "2-bit code 3 found (reference quantizer cannot emit it)")
+            }
+            Self::RowTooWide => {
+                write!(
+                    f,
+                    "kernel row wider than 65535: its i32 accumulator could overflow"
+                )
             }
         }
     }
@@ -135,7 +146,7 @@ const fn code_to_trit(code: u8) -> Result<Trit, BridgeError> {
 /// Encoded byte length of an `i2_s` tensor with `n` trits: `n/4` packed
 /// bytes plus the 32-byte scale tail. `n` must be a multiple of 128.
 #[must_use]
-const fn i2_s_encoded_len(n: usize) -> usize {
+pub const fn i2_s_encoded_len(n: usize) -> usize {
     n / 4 + I2_S_TAIL_BYTES
 }
 
@@ -164,8 +175,9 @@ const fn i2_s_lane_shift(i: usize) -> u32 {
 /// transposed 4-lane packing, then 32 tail bytes — the first 4 the LE f32
 /// scale bits, the rest zero, matching the reference.
 ///
-/// Requires `trits.len() % 128 == 0` and `out.len() >= i2_s_encoded_len(n)`.
-/// Returns the number of bytes written.
+/// Requires `trits.len() % 128 == 0` and
+/// `out.len() >= `[`i2_s_encoded_len`]`(n)`. Returns the number of bytes
+/// written.
 ///
 /// # Errors
 ///
@@ -191,8 +203,8 @@ pub fn encode_i2_s(trits: &[Trit], scale_bits: u32, out: &mut [u8]) -> Result<us
 /// Decode a `BitNet` `i2_s` byte stream back into ternary values.
 ///
 /// `trits.len()` is the tensor length `n` (must be `n % 128 == 0`);
-/// `bytes.len()` must be at least `i2_s_encoded_len(n)`. Returns the raw f32
-/// scale bits from the tail — the exact inverse of [`encode_i2_s`]. The
+/// `bytes.len()` must be at least [`i2_s_encoded_len`]`(n)`. Returns the raw
+/// f32 scale bits from the tail — the exact inverse of [`encode_i2_s`]. The
 /// 28 tail pad bytes after the scale are not validated (the reference
 /// ignores them too). On [`BridgeError::UnsupportedCode`], `trits` may
 /// hold partial output — do not use it.
@@ -242,7 +254,8 @@ pub const fn q1_0_encoded_len(n: usize) -> usize {
 /// decode returns per-block scales through `scale_bits_out` when provided,
 /// and the first block's scale for the one-block case).
 ///
-/// Requires `trits.len() % 128 == 0` and `bytes.len() >= q1_0_encoded_len(n)`.
+/// Requires `trits.len() % 128 == 0` and
+/// `bytes.len() >= `[`q1_0_encoded_len`]`(n)`.
 ///
 /// # Errors
 ///
@@ -295,8 +308,9 @@ pub const fn q2_0_encoded_len(n: usize) -> usize {
 /// leaves `[-1, 1]`). This decoder rejects it loudly rather than inventing a
 /// mapping the reference never produced.
 ///
-/// Requires `trits.len() % 128 == 0`. Scale bits per block are written to
-/// `scale_bits_out` (needs `n/128` entries).
+/// Requires `trits.len() % 128 == 0` and
+/// `bytes.len() >= `[`q2_0_encoded_len`]`(n)`. Scale bits per block are
+/// written to `scale_bits_out` (needs `n/128` entries).
 ///
 /// # Errors
 ///
