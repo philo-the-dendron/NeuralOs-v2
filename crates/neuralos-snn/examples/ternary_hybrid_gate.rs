@@ -148,7 +148,7 @@ fn main() {
 
         // Kernel-side: counts → Q15 absmax → shared matvec.
         let mut acts = vec![0_i16; NEURONS as usize];
-        let absmax = absmax_normalize_q15(&counts, &mut acts);
+        let absmax = absmax_normalize_q15(&counts, &mut acts).expect("kernel absmax");
         let mut out = [0_i32; 4];
         ternary_matvec(&kernel_w, &acts, 4, &mut out).expect("kernel matvec");
         let arg = out

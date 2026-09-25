@@ -715,7 +715,7 @@ fn kernel_checks() {
 
     let vals = [10_i16, 5, 0, -10];
     let mut out = [0_i16; 4];
-    let scale = absmax_normalize_q15(&vals, &mut out);
+    let scale = absmax_normalize_q15(&vals, &mut out).unwrap_or(u16::MAX);
     ck("kernel::absmax_known_vector scale", scale, 10);
     ck_slice(
         "kernel::absmax_known_vector out",
@@ -725,7 +725,7 @@ fn kernel_checks() {
 
     let vals = [i16::MIN, 0, i16::MAX];
     let mut out = [0_i16; 3];
-    let scale = absmax_normalize_q15(&vals, &mut out);
+    let scale = absmax_normalize_q15(&vals, &mut out).unwrap_or(u16::MAX);
     ck("kernel::absmax_i16_min scale", scale, 32_768);
     ck_slice(
         "kernel::absmax_i16_min out",
@@ -734,7 +734,7 @@ fn kernel_checks() {
     );
 
     let mut out = [7_i16; 3];
-    let scale = absmax_normalize_q15(&[0, 0, 0], &mut out);
+    let scale = absmax_normalize_q15(&[0, 0, 0], &mut out).unwrap_or(u16::MAX);
     ck("kernel::absmax_zero_vector scale", scale, 0);
     ck_slice("kernel::absmax_zero_vector out", &out, &[0, 0, 0]);
 

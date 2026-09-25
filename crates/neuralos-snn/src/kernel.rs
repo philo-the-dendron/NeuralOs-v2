@@ -24,8 +24,9 @@
 //! Activations are Q15 i16 (`−32768..=32767`, produced by
 //! [`absmax_normalize_q15`] — the integer analog of `BitNet`'s per-token
 //! absmax activation quantization). Accumulation is i32 with the documented
-//! bound `|acc| ≤ n × 32767` — safe for any row width `n < 65 536`. No
-//! float, no heap: every function is buffer-based.
+//! bound `|acc| ≤ n × 32,768` (an [`i16::MIN`] activation), which fits `i32`
+//! for `n ≤ 65,535`; [`ternary_matvec`] refuses a wider row. No float, no
+//! heap: every function is buffer-based.
 
 #![allow(clippy::module_name_repetitions)]
 #![allow(
@@ -102,14 +103,19 @@ pub fn unpack_trit(packed: &[u8], i: usize) -> Result<Trit, BridgeError> {
 /// NOT fit i16: the old `i16` return wrapped to −32768 there). An
 /// all-zero vector normalizes to zeros and returns 0.
 ///
-/// `values.len()` must equal `out.len()`.
-#[must_use]
-pub fn absmax_normalize_q15(values: &[i16], out: &mut [i16]) -> u16 {
-    debug_assert_eq!(values.len(), out.len(), "value/out length mismatch");
+/// Writes `out[..values.len()]`; a longer `out` keeps its tail.
+///
+/// # Errors
+///
+/// [`BridgeError::TooShort`] if `out` is shorter than `values`.
+pub fn absmax_normalize_q15(values: &[i16], out: &mut [i16]) -> Result<u16, BridgeError> {
+    if out.len() < values.len() {
+        return Err(BridgeError::TooShort);
+    }
     let absmax = values.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0);
     if absmax == 0 {
-        out.fill(0);
-        return 0;
+        out[..values.len()].fill(0);
+        return Ok(0);
     }
     for (v, slot) in values.iter().zip(out.iter_mut()) {
         // |v| ≤ absmax → |num| ≤ 32767 × absmax ≤ 32767×32768 < 2^31: exact.
@@ -123,7 +129,7 @@ pub fn absmax_normalize_q15(values: &[i16], out: &mut [i16]) -> u16 {
         };
         *slot = q.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
     }
-    absmax
+    Ok(absmax)
 }
 
 /// The shared ternary matvec: `out[j] = Σᵢ w[j·n+i] · a[i]`.
@@ -134,14 +140,14 @@ pub fn absmax_normalize_q15(values: &[i16], out: &mut [i16]) -> u16 {
 /// [`crate::bridge::repack_i2s_to_kernel`]); `activations` are Q15 i16;
 /// `out` receives `rows` i32 accumulators.
 ///
-/// Accumulation bound: `|out[j]| ≤ n × 32767` — overflow-free for any
-/// `n < 65 536` (debug-asserted; in release a larger `n` wraps silently,
-/// so the bound is a contract, not an enforcement).
+/// Accumulation bound: `|out[j]| ≤ n × 32,768` (an [`i16::MIN`] activation),
+/// which fits `i32` for `n ≤ 65,535`; a wider row is refused.
 ///
 /// # Errors
 ///
-/// [`BridgeError::BadLength`] if `n % 4 != 0`; [`BridgeError::TooShort`]
-/// if `packed_weights.len() < rows·n/4` or `out.len() < rows`;
+/// [`BridgeError::BadLength`] if `n % 4 != 0`; [`BridgeError::RowTooWide`]
+/// if `n > 65_535`; [`BridgeError::TooShort`] if
+/// `packed_weights.len() < rows·n/4` or `out.len() < rows`;
 /// [`BridgeError::UnsupportedCode`] on any code-3 lane. On `Err`, `out`
 /// may already hold partial row results — do not use them.
 pub fn ternary_matvec(
@@ -154,14 +160,13 @@ pub fn ternary_matvec(
     if !n.is_multiple_of(TRITS_PER_BYTE) {
         return Err(BridgeError::BadLength);
     }
+    if n > 65_535 {
+        return Err(BridgeError::RowTooWide);
+    }
     let row_bytes = n / TRITS_PER_BYTE;
     if packed_weights.len() < rows * row_bytes || out.len() < rows {
         return Err(BridgeError::TooShort);
     }
-    debug_assert!(
-        n <= 65_535,
-        "i32 accumulator bound |acc| ≤ n·32767 requires n < 65 536"
-    );
     for (j, acc) in out.iter_mut().enumerate().take(rows) {
         let row = &packed_weights[j * row_bytes..(j + 1) * row_bytes];
         let mut sum: i32 = 0;
@@ -220,7 +225,7 @@ mod tests {
     fn absmax_known_vector() {
         let vals = [10_i16, 5, 0, -10];
         let mut out = [0_i16; 4];
-        let scale = absmax_normalize_q15(&vals, &mut out);
+        let scale = absmax_normalize_q15(&vals, &mut out).unwrap();
         assert_eq!(scale, 10);
         assert_eq!(out, [32_767, 16_384, 0, -32_767]); // 16383.5 rounds away → 16384
     }
@@ -234,7 +239,7 @@ mod tests {
         // 32767·32767/32768 = 32766.00003 → 32766.
         let vals = [i16::MIN, 0, i16::MAX];
         let mut out = [0_i16; 3];
-        let scale = absmax_normalize_q15(&vals, &mut out);
+        let scale = absmax_normalize_q15(&vals, &mut out).unwrap();
         assert_eq!(scale, 32_768); // u16 — does not wrap
         assert_eq!(out, [-32_767, 0, 32_766]);
     }
@@ -242,8 +247,28 @@ mod tests {
     #[test]
     fn absmax_zero_vector_is_zeros() {
         let mut out = [7_i16; 3];
-        assert_eq!(absmax_normalize_q15(&[0, 0, 0], &mut out), 0);
+        assert_eq!(absmax_normalize_q15(&[0, 0, 0], &mut out), Ok(0));
         assert_eq!(out, [0, 0, 0]);
+    }
+
+    #[test]
+    fn absmax_refuses_a_short_out() {
+        let mut out = [7_i16; 3];
+        assert_eq!(
+            absmax_normalize_q15(&[1, 2, 3, 4], &mut out),
+            Err(BridgeError::TooShort)
+        );
+        assert_eq!(out, [7, 7, 7]);
+    }
+
+    #[test]
+    fn absmax_writes_the_prefix_of_a_longer_out() {
+        let mut out = [7_i16; 4];
+        assert_eq!(absmax_normalize_q15(&[10, -5], &mut out), Ok(10));
+        assert_eq!(out, [32_767, -16_384, 7, 7]);
+        let mut out = [7_i16; 4];
+        assert_eq!(absmax_normalize_q15(&[0, 0], &mut out), Ok(0));
+        assert_eq!(out, [0, 0, 7, 7]);
     }
 
     // ----- Matvec -----
@@ -282,6 +307,23 @@ mod tests {
             ternary_matvec(&packed, &[1_i16, 2, 3, 4], 2, &mut out),
             Err(BridgeError::TooShort)
         );
+    }
+
+    #[test]
+    fn matvec_refuses_a_row_wider_than_65_535() {
+        // Code 0 is −1, so every lane adds −1 × i16::MIN = +32,768: 65,532
+        // lanes sum to 2,147,352,576, inside i32; 65,536 would reach 2^31.
+        let packed = vec![0x00_u8; 65_536 / 4];
+        let mut out = [0_i32; 1];
+        assert_eq!(
+            ternary_matvec(&packed, &vec![i16::MIN; 65_536], 1, &mut out),
+            Err(BridgeError::RowTooWide)
+        );
+        assert_eq!(
+            ternary_matvec(&packed, &vec![i16::MIN; 65_532], 1, &mut out),
+            Ok(())
+        );
+        assert_eq!(out, [2_147_352_576]);
     }
 
     // ----- Properties: matvec vs an unpacked scalar reference -----
@@ -330,7 +372,7 @@ mod tests {
             vals in prop::collection::vec(-3000i16..=3000, 1..=40),
         ) {
             let mut out = vec![0_i16; vals.len()];
-            let scale = absmax_normalize_q15(&vals, &mut out);
+            let scale = absmax_normalize_q15(&vals, &mut out).unwrap();
             let max_abs = vals.iter().map(|v| v.unsigned_abs()).max().unwrap();
             prop_assert_eq!(scale, max_abs);
             for (v, &o) in vals.iter().zip(out.iter()) {

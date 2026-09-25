@@ -69,9 +69,10 @@ pub const Q1_0_BLOCK: usize = 128;
 /// (`QK2_0 = 128` in the fork's `ggml/src/ggml-common.h`; 34 B/block).
 pub const Q2_0_BLOCK: usize = 128;
 
-/// Errors from the format codecs. Loud by design — no decode path clamps,
-/// pads, or guesses. A short buffer, a wrong length, or an impossible code
-/// is an [`Err`], never best-effort output.
+/// Errors from the format codecs and the kernel. Loud by design — no
+/// decode path clamps, pads, or guesses. A short buffer, a wrong length, a
+/// row too wide for the kernel, or an impossible code is an [`Err`], never
+/// best-effort output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BridgeError {
@@ -83,6 +84,9 @@ pub enum BridgeError {
     /// A 2-bit code the reference quantizer can never produce (`3`) was
     /// found in the input — the data is malformed or not this format.
     UnsupportedCode,
+    /// A kernel row is wider than 65,535 trits: past that, the `i32`
+    /// accumulator's bound `n × 32,768` no longer fits.
+    RowTooWide,
 }
 
 impl core::fmt::Display for BridgeError {
@@ -94,6 +98,12 @@ impl core::fmt::Display for BridgeError {
             Self::TooShort => write!(f, "buffer shorter than the layout requires"),
             Self::UnsupportedCode => {
                 write!(f, "2-bit code 3 found (reference quantizer cannot emit it)")
+            }
+            Self::RowTooWide => {
+                write!(
+                    f,
+                    "kernel row wider than 65535: its i32 accumulator could overflow"
+                )
             }
         }
     }
