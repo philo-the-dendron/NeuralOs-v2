@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@8f0d87b (PR #43 merged 2026-09-23 19:43 UTC: round 46, unlettered, tier 2, what stops being public before 0.1.0: `spike_history()` gone, two kernel constants private, the stochastic flip behind `unstable-stdp`, the CSR types private, the report's notes behind `notes(NirNote)`; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 46 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/next-moves, round 47 (tier 3: ROADMAP § Practical next moves is the chapter, three lines; the stale ROADMAP lines; the calibration row in evidence/INDEX.md; three commits, docs only, no check ticked) · open(session): the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@c8b49af (PR #44 merged 2026-09-24 22:48 UTC: round 47, tier 3, § Practical next moves is the chapter, not the history: the section three lines, the stale ROADMAP lines, the calibration row in evidence/INDEX.md; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 47 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/bridge-feature, round 48 (M-paths' first PR of three, tier 2: `bridge` and `kernel` behind `unstable-bridge`, their fourteen root names gone; `i2_s_encoded_len` public and the lengths stated true; the kernel's two debug-only contracts become checks, `RowTooWide` a new variant; the closed chapter's imports on module paths; leg A's linker script in a `build.rs`; five commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all five · open(session): one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-23T17:32:00Z
+updated: 2026-09-25T16:08:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9772,3 +9772,36 @@ says "ROADMAP step 5", pinned by its SHA256SUMS, true when written;
 round 16 wrote "ROADMAP item 5" for what was item 4 at `8f0d87b`, so
 the section had renumbered once before. No check ticks. Guards: 1
 appended, head refreshed; 2 and 3 not in play.
+
+## Close-out (round 48 — the bridge chapter behind its feature; unlettered, M-paths' first PR of three — 2026-09-25)
+
+Branch `work/bridge-feature` from `main@c8b49af`, tier 2, five commits:
+`74fb1b1` `bridge` and `kernel` behind `unstable-bridge`, their
+fourteen root names gone, the six files that import one on module
+paths, eighteen gate lines; `ff5f8b8` `i2_s_encoded_len` public,
+`I2_S_TAIL_BYTES` private, each codec's doc linking its length
+function, `BridgeError`'s texts true (`q2_0`'s block 128, in rt's
+`gguf.rs` too), leg A's linker script in a `build.rs`; `d6bb6a1`
+`absmax_normalize_q15` returns a `Result` and writes its prefix,
+`ternary_matvec` refuses a row wider than 65,535 with `RowTooWide`,
+the bound `n × 32,768`; `9bbd35a` the seven other closed-chapter
+files on module paths; this. **Rulings** (philo, 2026-09-25): the
+feature's name; `RowTooWide`, last; `>=` with `TooShort`; leg A's
+`unwrap_or(u16::MAX)`; `PINNED.sha256` not edited; `gguf.rs:27`
+fixed; the `build.rs`, no README line; the README's opening; five
+commits. **Falsifiers**: `i2_s_encoded_len` private, the rustdoc gate
+with the feature red on two links; each kernel check removed, its new
+test the one red of `kernel::`; the Stage 3 stdout identical to its
+parent's, `91e068d1…`, YES; a scratch crate compiles each removed
+use at `c8b49af`, not here. **Unmoved**: no `.trace` or `frozen.rs`;
+`.text` `9e2e6ef1` in the clone at all five; leg A 175/175 at the
+three `feat` commits and the tip, check lines identical to its pinned
+log, from `ff5f8b8` with `RUSTFLAGS` exported; the `no_std` rustdoc
+build's six unresolved links. **Counts**: 173 + 8 + 9 + 18 tests,
+211 before (38 behind the feature); 242 with both features, 245
+from `d6bb6a1`. **Record-only**: the step-5 generator's pinned row,
+`3fcc1a2f…`, is the example read at `c27084c`; it is `7db083bc…`
+from `9bbd35a`, so the burn runs at `c27084c` only. Leg A did not
+link with `RUSTFLAGS` exported (the variable replaced the config's
+`-Tlink.x`), found while measuring; the `build.rs` fixes it. No check
+ticks. **Guards.** 1: appended, head refreshed; 2 and 3 not in play.
