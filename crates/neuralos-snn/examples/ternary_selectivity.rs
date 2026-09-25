@@ -66,7 +66,8 @@
 //! - NO: ternary collapses uniformly despite i16 discriminating.
 //! - MARGINAL: report the numbers honestly. No mid-experiment rescues.
 
-use neuralos_snn::{NetworkTopology, SpikingNeuralNetwork, Trit};
+use neuralos_snn::trit::Trit;
+use neuralos_snn::{NetworkTopology, SpikingNeuralNetwork};
 
 const NEURONS: u16 = 128;
 const EXCITATORY_RATIO: f64 = 0.8;

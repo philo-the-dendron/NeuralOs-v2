@@ -60,7 +60,7 @@ use neuralos_rt::harness::{
 };
 use neuralos_rt::judge::{parse_dump_file, step5_base_knife_edges, THETA};
 use neuralos_rt::{GgufFile, GGML_TYPE_Q2_0};
-use neuralos_snn::Trit;
+use neuralos_snn::trit::Trit;
 use std::collections::BTreeMap;
 use std::io::Write;
 

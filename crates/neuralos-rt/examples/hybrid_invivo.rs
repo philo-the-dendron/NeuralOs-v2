@@ -152,7 +152,7 @@ use neuralos_rt::harness::{
     shuffled_copy, splice_and_verify, tix, train_hamming, trit_val, ExperimentParams, Train,
 };
 use neuralos_rt::{rms_norm_milli, GgufFile, Qwen3, Tokenizer};
-use neuralos_snn::{Trit, VoltageResolution};
+use neuralos_snn::{trit::Trit, VoltageResolution};
 
 /// The banked H2 terminal-export sha (evidence/session-h2/run.log:47) —
 /// ON window-0's r0 re-pin assert. (The OFF arm compares against the

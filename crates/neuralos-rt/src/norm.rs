@@ -19,7 +19,7 @@
 //! per-element path cannot overflow).
 
 /// Convert raw f32 bits to the milli domain: `round(v × 1000)` — the f32
-/// sibling of `neuralos_snn::half_to_milli`, same integer construction
+/// sibling of `neuralos_snn::bridge::half_to_milli`, same integer construction
 /// (mantissa shift, round-half-away), saturating at the i32 rails.
 ///
 /// This is a load-edge conversion (file bytes → fixed point), not part of
