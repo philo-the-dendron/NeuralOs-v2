@@ -24,7 +24,7 @@
 //! ggml tensor types we care about (fork `ggml/include/ggml.h`):
 //! `F32=0`, `F16=1`, `Q8_0=8`, `BF16=30`, `TQ1_0=34`, **`Q1_0=41`**,
 //! **`Q2_0=42`**. `Q1_0` blocks are 18 bytes per 128 weights (fp16 scale +
-//! 16 sign bytes); `Q2_0` is 18 bytes per 64 — see
+//! 16 sign bytes); `Q2_0` is 34 bytes per 128 — see
 //! `docs/TERNARY_FORMAT.md` and [`neuralos_snn::bridge`].
 //!
 //! # Validation policy

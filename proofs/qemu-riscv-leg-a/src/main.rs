@@ -9,8 +9,8 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use neuralos_snn::bridge::{
     decode_i2_s, decode_q1_0, decode_q2_0, encode_i2_s, encode_q2_0, half_to_f32_bits,
-    half_to_milli, q2_0_encoded_len, repack_i2s_to_kernel, wire_gamma_to_substrate, I2_S_BLOCK,
-    I2_S_TAIL_BYTES, Q1_0_BLOCK, Q2_0_BLOCK,
+    half_to_milli, i2_s_encoded_len, q2_0_encoded_len, repack_i2s_to_kernel,
+    wire_gamma_to_substrate, I2_S_BLOCK, Q1_0_BLOCK, Q2_0_BLOCK,
 };
 use neuralos_snn::kernel::{absmax_normalize_q15, pack_trits, ternary_matvec, unpack_trit};
 use neuralos_snn::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
@@ -408,7 +408,7 @@ fn bridge_checks() {
     ck(
         "bridge::i2_s_known_vector written",
         written,
-        32 + I2_S_TAIL_BYTES,
+        i2_s_encoded_len(I2_S_BLOCK),
     );
     let mut expected = [0_u8; 64];
     for k in 0..4 {
