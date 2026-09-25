@@ -23,7 +23,7 @@
 //! shift 5 — exactly the worst case above), so the commentary holds at
 //! the seam by construction, not by luck.
 
-use neuralos_snn::half_to_milli;
+use neuralos_snn::bridge::half_to_milli;
 
 /// Q2_0 block size (weights per block — one fp16 scale + 32 code
 /// bytes). Single-sourced from the published codec
@@ -279,7 +279,7 @@ pub fn matvec_scaled(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neuralos_snn::Trit;
+    use neuralos_snn::trit::Trit;
 
     /// Build one Q2_0 row (n values, one block per 128) from a code
     /// pattern ({0,1,2} = {−1,0,+1}) and per-block fp16 scales.
@@ -314,7 +314,7 @@ mod tests {
                 let row = &data[j * (n / Q2_0_BLOCK * Q2_0_BLOCK_BYTES)..];
                 let mut trits = vec![Trit::Zero; n];
                 let mut scales = vec![0_u16; n / Q2_0_BLOCK];
-                neuralos_snn::decode_q2_0(row, &mut trits, &mut scales).unwrap();
+                neuralos_snn::bridge::decode_q2_0(row, &mut trits, &mut scales).unwrap();
                 let mut acc: f64 = 0.0;
                 for b in 0..n / Q2_0_BLOCK {
                     let d = match crate::q1_0::half_scale_mant_shift(scales[b]) {

@@ -40,9 +40,10 @@ use crate::Error;
 
 /// Fixed-point scale: 1000 = 1.0.
 ///
-/// Public since Stage 3: `bridge::wire_gamma_to_substrate` maps imported
-/// wire-format scales into the substrate through exactly this constant —
-/// the coupling has one home and a pinning test, not a magic 1000.
+/// Public since Stage 3: with `unstable-bridge`,
+/// `bridge::wire_gamma_to_substrate` maps imported wire-format scales into
+/// the substrate through exactly this constant — the coupling has one home
+/// and a pinning test, not a magic 1000.
 pub const SCALE: i32 = 1000;
 
 /// Synapse type — biological neurotransmitter classification.

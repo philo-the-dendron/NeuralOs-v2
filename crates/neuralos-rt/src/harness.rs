@@ -18,10 +18,10 @@
 //! decision entry — honest labels, values untouched: this rung
 //! externalizes, it does not re-tune).
 
-use neuralos_snn::{
-    decode_q2_0, encode_q2_0, NetworkTopology, SpikingNeuralNetwork, SynapseType, Trit,
-    VoltageResolution,
-};
+use neuralos_snn::bridge::{decode_q2_0, encode_q2_0};
+use neuralos_snn::synapse::SynapseType;
+use neuralos_snn::trit::Trit;
+use neuralos_snn::{NetworkTopology, SpikingNeuralNetwork, VoltageResolution};
 
 use crate::{GgufFile, GGML_TYPE_Q2_0};
 

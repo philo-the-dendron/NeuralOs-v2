@@ -1,3 +1,4 @@
+//! Unstable: behind `unstable-bridge`.
 //! Stage 3 of the ternary bridge: the **shared kernel** (see
 //! `docs/VISION.md`).
 //!

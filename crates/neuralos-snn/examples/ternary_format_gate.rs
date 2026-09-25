@@ -22,10 +22,11 @@
 //! checks hold with zero tolerance for mismatch. The YES/NO call is recorded
 //! in the commit message and `docs/VISION.md`.
 
-use neuralos_snn::{
+use neuralos_snn::bridge::{
     decode_i2_s, decode_q1_0, decode_q2_0, encode_i2_s, half_to_f32_bits, half_to_milli,
-    BridgeError, Trit,
+    BridgeError,
 };
+use neuralos_snn::trit::Trit;
 
 const I2_S_SCALE_BITS: u32 = 0x4000_0000; // f32 2.0 — BitNet-Round γ carried verbatim
 

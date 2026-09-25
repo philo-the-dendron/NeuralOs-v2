@@ -1,3 +1,4 @@
+//! Unstable: behind `unstable-bridge`.
 //! Stage 2 of the ternary bridge: the **format bridge** (see `docs/VISION.md`
 //! and `docs/TERNARY_FORMAT.md`).
 //!

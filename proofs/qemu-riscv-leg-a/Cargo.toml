@@ -9,7 +9,7 @@ description = "Leg A of the QEMU riscv64gc proof: bare-metal none-elf exact-valu
 [workspace]
 
 [dependencies]
-neuralos-snn = { path = "../../crates/neuralos-snn", default-features = false, features = ["unstable-stdp"] }
+neuralos-snn = { path = "../../crates/neuralos-snn", default-features = false, features = ["unstable-stdp", "unstable-bridge"] }
 
 [profile.dev]
 panic = "abort"

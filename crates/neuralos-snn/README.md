@@ -1,8 +1,9 @@
 # neuralos-snn
 
 > `no_std`, i16 fixed-point spiking neural networks for edge and RISC-V
-> silicon — LIF neurons, CSR synapses, ternary weight codecs, an AVX2
-> batch kernel, and pairwise STDP behind an unstable feature.
+> silicon — LIF neurons, CSR synapses, a ternary weight quantizer, an
+> AVX2 batch kernel, and, behind unstable features, pairwise STDP and
+> the ternary bridge codecs.
 
 Published on crates.io as `0.1.0-alpha.8` (AGPL-3.0-or-later).
 
@@ -65,9 +66,9 @@ the chip.
 | `network` *(std)* | `SpikingNeuralNetwork` orchestration (`step()`), a CSR synapse store (forward and reverse), 4 topology builders (Random, Small-World, Feedforward, Balanced E/I), per-step stats; with `unstable-stdp`, the plasticity passes (LTD + LTP), off until `set_plasticity_enabled(true)` |
 | `fixed` | `FixedNetwork<N, S>`: `N` neurons and `S` synapses in arrays, no heap, no plasticity, the std step's order; its step has no `Result`, no index and no division of its own. `TryFrom<&SpikingNeuralNetwork>` *(std)* converts a plasticity-off network of the same size, and refuses one whose CSR no longer matches its synapse list (edges added out of `pre` order and not finalized since, or finalized twice) |
 | `trit` | Ternary weight type `{-1, 0, +1}` + scale, ternarizer; with `unstable-stdp`, the stochastic bucket-flip (LFSR, integer-only) |
-| `bridge` | `BitNet` `i2_s` encode/decode (bit-exact round-trip), Prism `q1_0`/`q2_0` import + `q2_0` export, integer fp16 widening — layouts pinned from reference sources, loud errors on impossible input |
+| `bridge` *(feature)* | `BitNet` `i2_s` encode/decode (bit-exact round-trip), Prism `q1_0`/`q2_0` import + `q2_0` export, integer fp16 widening — layouts pinned from reference sources, loud errors on impossible input |
 | `nir` | NIR (Neuromorphic Intermediate Representation) slice 1 — JSON import/export of `Input`/`Linear`/`LIF`/`Output` graphs, explicit per-node quantization records, loud lossiness, byte-stable export. Schema pinned verbatim to the reference implementation (`neuromorphs/NIR` @ `7883c3c`); fixtures are the reference's own emissions (`tools/gen_nir_fixtures.py`) |
-| `kernel` | Shared `no_std` ternary matvec: sequential 2-bit packed trits × Q15 activations → i32, absmax normalization, wire→compute repack seam |
+| `kernel` *(feature)* | Shared `no_std` ternary matvec: sequential 2-bit packed trits × Q15 activations → i32, absmax normalization, wire→compute repack seam |
 | `simd` *(feature)* | AVX2 batch LIF integration (`x86_64`, ~1.6–2.2× vs scalar, ±2 mV tolerance) |
 
 ## The voltage grid story
@@ -88,17 +89,21 @@ keeps every historically recorded result bit-exact.
   `SpikingNeuralNetwork::set_plasticity_enabled`,
   `stochastic_ternary_step`, `trit::stochastic_ternary_flip` and
   `trit::STOCHASTIC_FLIP_RATE`. Works with and without `std`.
+- `unstable-bridge` — the closed ternary bridge chapter: the `bridge`
+  codecs (`i2_s`, `q1_0`, `q2_0`) and the `kernel` matvec. Works with
+  and without `std`.
 
-"Unstable" means one thing: anything behind `unstable-stdp` may change or
-go in a minor release. It is outside the semver promise, and the rest of
-the crate is inside it. A default build does not learn: a network starts
-with plasticity off, and only `set_plasticity_enabled`, behind the
-feature, turns it on. The getter `plasticity_enabled()` and the STDP
-counter fields are stable; without the feature they read `false` and 0.
+"Unstable" means one thing: anything behind an `unstable-` feature may
+change or go in a minor release. It is outside the semver promise, and
+the rest of the crate is inside it. A default build does not learn: a
+network starts with plasticity off, and only `set_plasticity_enabled`,
+behind `unstable-stdp`, turns it on. The getter `plasticity_enabled()`
+and the STDP counter fields are stable; without the feature they read
+`false` and 0.
 
 Without `std` the crate builds `no_std` (neurons, the spike recorder,
-synapses, the fixed network, trit, bridge, kernel, nir) — the embedded
-posture CI enforces.
+synapses, the fixed network, trit, nir, and with `unstable-bridge` the
+bridge and the kernel) — the embedded posture CI enforces.
 
 ## Usage sketch
 
