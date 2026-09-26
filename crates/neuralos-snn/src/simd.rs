@@ -226,9 +226,9 @@
 //! - `sum = leak + current_term`: `|sum| ≤ 65_535 + 1_073_741 = 1_139_276`.
 //! - `sum × dt_over_tau` must fit `i32`: `|dt_over_tau| ≤ i32::MAX / 1_139_276 = 1884`.
 //!
-//! Hence [`DT_OVER_TAU_MAX`] `= 1884`. Both public entry points saturate to
-//! `−DT_OVER_TAU_MAX..=DT_OVER_TAU_MAX`, and [`dt_over_tau`] never returns
-//! anything outside it.
+//! Hence [`DT_OVER_TAU_MAX`] `= 1884`. Both public entry points take the
+//! exact factor, [`crate::lif_neuron::dt_over_tau`]'s `i64`, and saturate it
+//! to `−DT_OVER_TAU_MAX..=DT_OVER_TAU_MAX` on entry.
 //!
 //! **Saturate, not reject.** Rejection needs an error channel, and neither
 //! [`integrate_lif_batch`] nor [`integrate_batch_scalar`] has one — adding
@@ -438,29 +438,6 @@ pub fn detect_simd_support() -> SimdSupport {
 /// Returned to the batch 2026-09-01 by the principal's ruling.)
 pub const DT_OVER_TAU_MAX: i32 = 1884;
 
-/// [`crate::lif_neuron::dt_over_tau`] with this kernel's bound applied.
-///
-/// The formula has exactly one definition, in `lif_neuron`, where the exact
-/// LIF arithmetic lives; this wrapper adds the clamp the `i32` kernel needs.
-/// Callers of [`integrate_lif_batch`] want this one — feeding it a raw `dt/τ`
-/// and letting the entry point clamp gives the same answer, since both entry
-/// points clamp defensively anyway.
-///
-/// # Examples
-/// ```
-/// # use neuralos_snn::simd::{dt_over_tau, DT_OVER_TAU_MAX};
-/// assert_eq!(dt_over_tau(1_000, 20_000), 50);              // the physical default
-/// assert_eq!(dt_over_tau(40_000, 20_000), DT_OVER_TAU_MAX); // exact 2000, clamped
-/// assert_eq!(dt_over_tau(u32::MAX, 1), DT_OVER_TAU_MAX);
-/// ```
-#[must_use]
-pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i32 {
-    let exact = crate::lif_neuron::dt_over_tau(dt_us, tau_membrane_us);
-    i32::try_from(exact)
-        .unwrap_or(i32::MAX)
-        .min(DT_OVER_TAU_MAX)
-}
-
 /// Integrate one LIF step across a batch of N neurons (SoA slices).
 ///
 /// Updates `membrane` in place and writes the spike mask to `spikes_out`.
@@ -470,6 +447,12 @@ pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i32 {
 /// `input_currents` is the *total* effective current per neuron (external +
 /// synaptic + noise − adaptation); the batch computes only the membrane
 /// update, not current accumulation — that's the caller's job.
+///
+/// `dt_over_tau` is the exact factor, [`crate::lif_neuron::dt_over_tau`]'s
+/// value, the one the neuron takes. This kernel's `i32` intermediates cannot
+/// hold every such value, so it is saturated to [`DT_OVER_TAU_MAX`] here, on
+/// entry (module doc § Overflow domain): a factor past the bound steps as
+/// the bound does.
 ///
 /// # Panics
 ///
@@ -484,13 +467,33 @@ pub fn dt_over_tau(dt_us: u32, tau_membrane_us: u32) -> i32 {
 /// would silently redefine it, integrate a prefix, and hide the caller's bug in
 /// a numerical kernel where a short slice is never intentional. Five length
 /// comparisons per call cost nothing against N-element work.
+///
+/// # Examples
+///
+/// ```
+/// use neuralos_snn::lif_neuron::dt_over_tau;
+/// use neuralos_snn::simd::{integrate_lif_batch, DT_OVER_TAU_MAX};
+///
+/// // One neuron at -100 mV, resting at -70 mV, no current: the factor
+/// // alone moves it.
+/// let step = |factor: i64| {
+///     let mut membrane = [-100_i16];
+///     let mut spikes = [false];
+///     integrate_lif_batch(&mut membrane, &[-70], &[0], &[100], &[0], factor, &mut spikes);
+///     membrane[0]
+/// };
+/// let bound = step(i64::from(DT_OVER_TAU_MAX));
+/// assert_eq!(step(dt_over_tau(40_000, 20_000)), bound); // exact 2000, past 1884
+/// assert_eq!(step(dt_over_tau(u32::MAX, 1)), bound); // the largest there is
+/// assert_ne!(step(dt_over_tau(1_000, 20_000)), bound); // 50, the physical default
+/// ```
 pub fn integrate_lif_batch(
     membrane: &mut [i16],
     resting: &[i16],
     input_currents: &[i16],
     resistance: &[i16],
     threshold: &[i16],
-    dt_over_tau: i32,
+    dt_over_tau: i64,
     spikes_out: &mut [bool],
 ) {
     let n = membrane.len();
@@ -506,7 +509,9 @@ pub fn integrate_lif_batch(
 
     // Saturate into the no-overflow domain (module doc § Overflow domain). Both
     // halves must see the same value, or AVX2 wraps where the scalar panics.
-    let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX);
+    // Inside the bound the `i32` holds the factor exactly.
+    let dt_over_tau =
+        dt_over_tau.clamp(-i64::from(DT_OVER_TAU_MAX), i64::from(DT_OVER_TAU_MAX)) as i32;
 
     #[cfg(target_arch = "x86_64")]
     if matches!(detect_simd_support(), SimdSupport::Avx2) {
@@ -534,16 +539,16 @@ pub fn integrate_lif_batch(
         input_currents,
         resistance,
         threshold,
-        dt_over_tau,
+        i64::from(dt_over_tau),
         spikes_out,
     );
 }
 
 /// Scalar reference — exact v2 LIF math (÷1000). Also the remainder tail.
 ///
-/// `dt_over_tau` is saturated to [`DT_OVER_TAU_MAX`] on entry, so no `i32`
-/// intermediate here can overflow for any `i16` input (module doc § Overflow
-/// domain).
+/// `dt_over_tau` is the exact factor, as [`integrate_lif_batch`] takes it,
+/// saturated to [`DT_OVER_TAU_MAX`] on entry, so no `i32` intermediate here
+/// can overflow for any `i16` input (module doc § Overflow domain).
 ///
 /// # Panics
 ///
@@ -566,7 +571,7 @@ pub fn integrate_batch_scalar(
     input_currents: &[i16],
     resistance: &[i16],
     threshold: &[i16],
-    dt_over_tau: i32,
+    dt_over_tau: i64,
     spikes_out: &mut [bool],
 ) {
     let n = membrane.len();
@@ -580,7 +585,8 @@ pub fn integrate_batch_scalar(
     assert_eq!(threshold.len(), n, "threshold.len() != membrane.len()");
     assert_eq!(spikes_out.len(), n, "spikes_out.len() != membrane.len()");
 
-    let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX);
+    let dt_over_tau =
+        dt_over_tau.clamp(-i64::from(DT_OVER_TAU_MAX), i64::from(DT_OVER_TAU_MAX)) as i32;
     for i in 0..n {
         let mp = i32::from(membrane[i]);
         let leak = i32::from(resting[i]) - mp;
@@ -663,7 +669,7 @@ unsafe fn integrate_batch_avx2(
         &input_currents[tail..],
         &resistance[tail..],
         &threshold[tail..],
-        dt_over_tau,
+        i64::from(dt_over_tau),
         &mut spikes_out[tail..],
     );
 }
@@ -721,7 +727,7 @@ mod tests {
     #![allow(clippy::shadow_unrelated)]
     #![allow(clippy::cast_precision_loss)] // test counters are tiny; usize→f64 is lossless in practice
     use super::*;
-    use crate::lif_neuron::{LIFNeuron, VoltageResolution};
+    use crate::lif_neuron::{dt_over_tau, LIFNeuron, VoltageResolution};
     use proptest::prelude::*;
 
     /// Equivalence-domain bound on `|input_current × resistance|` (module doc
@@ -851,7 +857,7 @@ mod tests {
         integrate_batch_scalar(&mut mp_a, &rp, &ic, &res, &th, dtot, &mut spikes_a);
         // SAFETY: equal-length slices, AVX2 verified available above.
         unsafe {
-            integrate_batch_avx2(&mut mp_b, &rp, &ic, &res, &th, dtot, &mut spikes_b);
+            integrate_batch_avx2(&mut mp_b, &rp, &ic, &res, &th, dtot as i32, &mut spikes_b);
         }
 
         let mut max_diff = 0i32;
@@ -907,31 +913,46 @@ mod tests {
         );
     }
 
-    /// `dt_over_tau` never returns a value outside the safe domain, and the
-    /// `as i32` casts it used to do are gone.
+    /// Both entry points take the exact factor and saturate it on entry:
+    /// over the whole `u32` domain of `lif_neuron::dt_over_tau`, each steps as
+    /// that factor clamped to `DT_OVER_TAU_MAX` does. The grid is the one the
+    /// `simd::dt_over_tau` wrapper was tested on until it went (round 49),
+    /// with `τ = 0` added, and so is the historical regression: `dt_us as i32`
+    /// and `tau as i32` both wrapped, and `(2_147_484, u32::MAX)` came out
+    /// -2_147_483_647. Since the wrapper went, the entry points' clamp is the
+    /// only one a caller's factor meets.
     #[test]
-    fn dt_over_tau_is_non_negative_and_saturated_over_the_whole_u32_domain() {
-        // The historical regression: `dt_us as i32` and `tau as i32` both wrapped.
-        // `(2_147_484 * 1000).saturating_mul` hit i32::MAX, `u32::MAX as i32` was
-        // -1, and the quotient came out -2_147_483_647.
+    fn the_entry_points_saturate_the_exact_factor_over_the_whole_u32_domain() {
+        // Leak +30 mV, no current: each factor moves the membrane its own
+        // way, a negative one down, so a wrapped factor cannot pass.
+        let step = |factor: i64, dispatched: bool| {
+            let mut membrane = [-70i16];
+            let mut spikes = [false];
+            let (rp, ic, res, th) = ([-40i16], [0i16], [100i16], [i16::MAX]);
+            if dispatched {
+                integrate_lif_batch(&mut membrane, &rp, &ic, &res, &th, factor, &mut spikes);
+            } else {
+                integrate_batch_scalar(&mut membrane, &rp, &ic, &res, &th, factor, &mut spikes);
+            }
+            membrane[0]
+        };
         assert_eq!(dt_over_tau(2_147_484, u32::MAX), 0);
 
         for &dt in &[0u32, 1, 1000, 10_000, i32::MAX as u32, 2_147_484, u32::MAX] {
-            for &tau in &[1u32, 20_000, i32::MAX as u32, 2_147_483_648, u32::MAX] {
-                let v = dt_over_tau(dt, tau);
-                assert!(
-                    (0..=DT_OVER_TAU_MAX).contains(&v),
-                    "dt_over_tau({dt}, {tau}) = {v} is outside 0..={DT_OVER_TAU_MAX}"
-                );
+            for &tau in &[0u32, 1, 20_000, i32::MAX as u32, 2_147_483_648, u32::MAX] {
+                let exact = dt_over_tau(dt, tau);
+                let saturated = exact.min(i64::from(DT_OVER_TAU_MAX));
+                for dispatched in [false, true] {
+                    assert_eq!(
+                        step(exact, dispatched),
+                        step(saturated, false),
+                        "({dt}, {tau}): the exact {exact} must step as {saturated}"
+                    );
+                }
             }
         }
-        assert_eq!(dt_over_tau(0, 20_000), 0, "tau == 0 guard unchanged");
-        assert_eq!(dt_over_tau(1000, 0), 0, "tau == 0 guard unchanged");
-        assert_eq!(
-            dt_over_tau(1000, 20_000),
-            50,
-            "the physical default is untouched"
-        );
+        // The physical default is untouched: 50 × 30 / 1000 = +1 mV.
+        assert_eq!(step(dt_over_tau(1000, 20_000), true), -69);
     }
 
     /// The AVX2 kernel clamps on its own: fed a factor past the bound
@@ -990,7 +1011,7 @@ mod tests {
         // Scalar first: in a debug build an overflowing `*` panics here.
         let mut mp_s = mp.to_vec();
         let mut sp_s = vec![false; n];
-        integrate_batch_scalar(&mut mp_s, rp, ic, res, th, dtot, &mut sp_s);
+        integrate_batch_scalar(&mut mp_s, rp, ic, res, th, i64::from(dtot), &mut sp_s);
         for &v in &mp_s {
             assert!((-100..=50).contains(&v), "scalar left the mV grid: {v}");
         }
@@ -1080,7 +1101,7 @@ mod tests {
         }
 
         // Both signs. `dt_over_tau` itself is never negative, but
-        // `integrate_lif_batch` and `integrate_batch_scalar` both take an `i32`
+        // `integrate_lif_batch` and `integrate_batch_scalar` both take an `i64`
         // from the caller and clamp to `-DT_OVER_TAU_MAX..=DT_OVER_TAU_MAX`, so
         // the negative half of that range is reachable through the public API
         // and was untested until 2026-09-01.
@@ -1250,7 +1271,7 @@ mod tests {
             for dtot in [DT_OVER_TAU_MAX, -DT_OVER_TAU_MAX] {
                 let mut mp_s = mp.clone();
                 let mut sp_s = vec![false; n];
-                integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, dtot, &mut sp_s);
+                integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, i64::from(dtot), &mut sp_s);
                 for i in 0..n {
                     let v = avx2_lane_model(mp[i], rp[i], ic[i], res[i], dtot, floor_current_term);
                     let s = i32::from(mp_s[i]);
@@ -1350,7 +1371,7 @@ mod tests {
             &[ic; LANES],
             &[res; LANES],
             &[th; LANES],
-            DT_OVER_TAU_MAX,
+            i64::from(DT_OVER_TAU_MAX),
             &mut sp_s,
         );
         assert_eq!(mp_s[0], -55, "scalar lands on threshold exactly");
@@ -1716,8 +1737,8 @@ mod tests {
             let mut sp_v = vec![false; N];
             let mut worst_step = 0i32;
             for _ in 0..steps {
-                integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, dtot, &mut sp_s);
-                integrate_lif_batch(&mut mp_v, &rp, &ic, &res, &th, dtot, &mut sp_v);
+                integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, i64::from(dtot), &mut sp_s);
+                integrate_lif_batch(&mut mp_v, &rp, &ic, &res, &th, i64::from(dtot), &mut sp_v);
                 let d = (i32::from(mp_s[0]) - i32::from(mp_v[0])).abs();
                 if d > worst_step {
                     worst_step = d;
@@ -1836,7 +1857,15 @@ mod tests {
         let (mp_s, mp_v, sp_s, sp_v) = scratch;
         mp_s.copy_from_slice(start);
         mp_v.copy_from_slice(start);
-        integrate_batch_scalar(mp_s, resting, current, resistance, threshold, dtot, sp_s);
+        integrate_batch_scalar(
+            mp_s,
+            resting,
+            current,
+            resistance,
+            threshold,
+            i64::from(dtot),
+            sp_s,
+        );
         // SAFETY: equal-length slices; the caller checked AVX2 is available.
         unsafe {
             integrate_batch_avx2(mp_v, resting, current, resistance, threshold, dtot, sp_v);
@@ -1982,8 +2011,24 @@ mod tests {
                 let (mut sa, mut sb) = (vec![false; LANES], vec![false; LANES]);
                 let mut traj = 0i32;
                 for _ in 0..20_000 {
-                    integrate_batch_scalar(&mut a, &rp_v, &ic_v, &res_v, &th_v, dt, &mut sa);
-                    integrate_lif_batch(&mut b, &rp_v, &ic_v, &res_v, &th_v, dt, &mut sb);
+                    integrate_batch_scalar(
+                        &mut a,
+                        &rp_v,
+                        &ic_v,
+                        &res_v,
+                        &th_v,
+                        i64::from(dt),
+                        &mut sa,
+                    );
+                    integrate_lif_batch(
+                        &mut b,
+                        &rp_v,
+                        &ic_v,
+                        &res_v,
+                        &th_v,
+                        i64::from(dt),
+                        &mut sb,
+                    );
                     let d = (i32::from(a[0]) - i32::from(b[0])).abs();
                     if d > traj {
                         traj = d;
@@ -2050,7 +2095,7 @@ mod tests {
                         &current,
                         &resistance,
                         &threshold,
-                        dt,
+                        i64::from(dt),
                         &mut sp_s,
                     );
                     // SAFETY: equal-length slices, AVX2 checked above.
@@ -2154,7 +2199,6 @@ mod tests {
 
         for (dt_us, tau_us, mp, rp, input, resistance) in CASES {
             let exact = crate::lif_neuron::dt_over_tau(dt_us, tau_us);
-            let clamped = dt_over_tau(dt_us, tau_us);
 
             let neuron = |tau: u32, dt: u32| {
                 let mut n = LIFNeuron::new(0);
@@ -2180,7 +2224,7 @@ mod tests {
                 &[input],
                 &[resistance],
                 &[i16::MAX],
-                clamped,
+                exact,
                 &mut spikes,
             );
 
@@ -2195,7 +2239,7 @@ mod tests {
             assert_eq!(
                 membrane[0], expected,
                 "dt={dt_us} tau={tau_us}: batch {} vs expected {expected} \
-                 (exact dt_over_tau {exact}, clamped {clamped})",
+                 (exact dt_over_tau {exact})",
                 membrane[0],
             );
 
@@ -2299,14 +2343,10 @@ mod tests {
                 n
             };
 
-            // One formula, two consumers. The neuron takes it exact; the batch
-            // takes it clamped, because its i32 intermediates cannot hold more.
+            // One formula, one value, two consumers: the neuron takes it exact,
+            // and the batch clamps it on entry, because its i32 intermediates
+            // cannot hold more.
             let exact = crate::lif_neuron::dt_over_tau(dt_us, tau_us);
-            let dtot = dt_over_tau(dt_us, tau_us);
-            prop_assert_eq!(
-                i64::from(dtot), exact.min(i64::from(DT_OVER_TAU_MAX)),
-                "simd::dt_over_tau is not lif_neuron::dt_over_tau plus this kernel's clamp"
-            );
             // Bit-equality is claimed ONLY where the clamp does not engage.
             // Above it the neuron is exact and the batch is the approximation,
             // which is a documented divergence, not a defect — see
@@ -2325,7 +2365,7 @@ mod tests {
             let mut membrane = vec![mp];
             let mut spikes = vec![false];
             integrate_batch_scalar(
-                &mut membrane, &[rp], &[input], &[resistance], &[th], dtot, &mut spikes,
+                &mut membrane, &[rp], &[input], &[resistance], &[th], exact, &mut spikes,
             );
 
             if inside_the_clamp {
@@ -2333,7 +2373,7 @@ mod tests {
                     membrane[0], quiet.membrane_potential,
                     "membrane differs: batch {} vs integrate_and_fire {} \
                      (mp={} rp={} input={} resistance={} dt_over_tau={})",
-                    membrane[0], quiet.membrane_potential, mp, rp, input, resistance, dtot
+                    membrane[0], quiet.membrane_potential, mp, rp, input, resistance, exact
                 );
                 prop_assert_eq!(
                     spikes[0], fired,
@@ -2415,7 +2455,7 @@ mod tests {
             let mut mp_s = membrane.clone();
             let mut sp_s = vec![false; n];
             integrate_batch_scalar(
-                &mut mp_s, &resting, &current, &resistance, &threshold, dtot, &mut sp_s,
+                &mut mp_s, &resting, &current, &resistance, &threshold, i64::from(dtot), &mut sp_s,
             );
 
             let mut mp_v = membrane.clone();

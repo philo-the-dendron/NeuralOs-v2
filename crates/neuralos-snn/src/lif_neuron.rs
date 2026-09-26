@@ -85,14 +85,15 @@ pub const MEMBRANE_MV_MAX: i16 = 50;
 /// The `dt/τ` scaling factor, scaled by 1000: `(dt_us * 1000) / tau_us`.
 ///
 /// **Exact over the whole `u32 × u32` domain, and never saturated here.** The
-/// batch kernel cannot accept every value this returns — its `i32`
+/// batch kernel cannot step with every value this returns — its `i32`
 /// intermediates overflow above `simd::DT_OVER_TAU_MAX` — so `simd` applies
 /// that bound at its own boundary. The bound belongs to the kernel that needs
 /// it; it is not a property of `dt/τ`, and a neuron must not inherit it. See
 /// [`LIFNeuron::integrate_and_fire`].
 ///
-/// This is the ONE definition of the formula. `simd::dt_over_tau` is this
-/// function plus the batch's clamp, so the two cannot drift.
+/// This is the ONE definition of the formula: `simd`'s two entry points
+/// take its value as it is and clamp it on entry, so no second copy exists
+/// to drift.
 ///
 /// Both divisions are by a `NonZero`: the zero test on entry is the only
 /// one, and the type carries it into each division, the out-of-line wide
