@@ -123,7 +123,8 @@ impl core::fmt::Debug for SpikeRecorder {
 }
 
 /// The read side the tests need, test-gated like its callers (the neuron's
-/// tests and this module's; a public walk is alpha.9's question).
+/// tests and this module's): not public at 0.1.0 on purpose; it can go
+/// public in a minor release.
 #[cfg(test)]
 #[allow(clippy::cast_possible_truncation)] // bounds at each cast
 impl SpikeRecorder {

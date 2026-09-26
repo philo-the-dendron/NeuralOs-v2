@@ -62,7 +62,7 @@ pub enum SynapseType {
 /// Synapse with fixed-point weight and STDP instrumentation counters.
 ///
 /// Biologically-modeled synaptic transmission with fixed-point math throughout.
-/// Pairs with [`crate::lif_neuron::LIFNeuron`] for full integrate-and-fire + STDP.
+/// Pairs with [`LIFNeuron`](crate::LIFNeuron) for full integrate-and-fire + STDP.
 #[derive(Debug, Clone)]
 pub struct Synapse {
     /// Presynaptic (source) neuron ID.

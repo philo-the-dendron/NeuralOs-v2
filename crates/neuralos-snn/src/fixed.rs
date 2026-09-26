@@ -141,8 +141,7 @@ impl<const N: usize, const S: usize> FixedNetwork<N, S> {
     /// nothing, and the clear drops the pulse: it is lost, not deferred.
     ///
     /// ```
-    /// use neuralos_snn::fixed::{FixedNetwork, FixedSynapse};
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::{FixedNetwork, FixedSynapse, LIFNeuron};
     ///
     /// let quiet = |id| {
     ///     let mut n = LIFNeuron::new(id);
@@ -330,7 +329,7 @@ impl FixedSynapse {
     /// cases' synapse line in `tests/traces.rs`.
     ///
     /// ```
-    /// use neuralos_snn::fixed::FixedSynapse;
+    /// use neuralos_snn::FixedSynapse;
     ///
     /// let s = FixedSynapse::new(0, 1, 400);
     /// assert_eq!((s.pre, s.post, s.pulse_ua), (0, 1, 400));
