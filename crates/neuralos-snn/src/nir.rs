@@ -78,7 +78,7 @@
 //! values (HDF5 import, builders) skip the JSON reader and call
 //! [`quantize_linear`] / [`quantize_lif`] directly — the same
 //! quantization contract, the same errors, arena placement included —
-//! or assemble the whole graph in memory with [`NirBuilder`] (std).
+//! or assemble the whole graph in memory with `NirBuilder` (std).
 //! The printable-ASCII string gate is a property of the JSON
 //! container: it fires at read and at [`nir_export`], never on the
 //! typed surface.
@@ -151,7 +151,7 @@ pub enum NirError<'a> {
     /// A node name appears twice in `nodes`.
     DuplicateNodeName,
     /// Topology outside the slice-1 assembly (the format layer still
-    /// imports it; only [`NirImport::build_chain_network`] rejects —
+    /// imports it; only `NirImport::build_chain_network` rejects —
     /// e.g. a LIF population whose size ≠ the feeding Linear's
     /// rows).
     UnsupportedTopology(&'static str),
@@ -470,7 +470,7 @@ pub struct NirLif {
 
 /// A quantized LIF population view: `len` neurons with per-neuron
 /// records in the caller's lifs buffer ([`NirBuffers::lifs`] or
-/// [`NirImport::lifs`]), starting at `offset`. A length-1
+/// `NirImport::lifs`), starting at `offset`. A length-1
 /// population is the slice-1 single neuron.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NirLifPopulation {

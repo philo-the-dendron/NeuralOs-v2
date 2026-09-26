@@ -58,6 +58,10 @@ the chip.
 
 ## Modules
 
+Every item's home is its module; the crate root re-exports only the
+names a first program writes, and every example in these docs imports
+each name by its shortest public path.
+
 | Module | What it holds |
 |---|---|
 | `lif_neuron` | Leaky-Integrate-and-Fire neuron, fixed-point, per-neuron voltage grid (`VoltageResolution`: mV default, opt-in centi-mV) |
@@ -87,8 +91,9 @@ keeps every historically recorded result bit-exact.
 - `simd` — implies `std`, x86_64-only AVX2 batch kernel
 - `unstable-stdp` — STDP: `STDPRule`, `Synapse::update_weight`,
   `SpikingNeuralNetwork::set_plasticity_enabled`,
-  `stochastic_ternary_step`, `trit::stochastic_ternary_flip` and
-  `trit::STOCHASTIC_FLIP_RATE`. Works with and without `std`.
+  `SpikingNeuralNetwork::stochastic_ternary_step`,
+  `trit::stochastic_ternary_flip` and `trit::STOCHASTIC_FLIP_RATE`.
+  Works with and without `std`.
 - `unstable-bridge` — the closed ternary bridge chapter: the `bridge`
   codecs (`i2_s`, `q1_0`, `q2_0`) and the `kernel` matvec. Works with
   and without `std`.

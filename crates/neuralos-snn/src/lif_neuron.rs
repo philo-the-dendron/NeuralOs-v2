@@ -85,14 +85,15 @@ pub const MEMBRANE_MV_MAX: i16 = 50;
 /// The `dt/τ` scaling factor, scaled by 1000: `(dt_us * 1000) / tau_us`.
 ///
 /// **Exact over the whole `u32 × u32` domain, and never saturated here.** The
-/// batch kernel cannot accept every value this returns — its `i32`
+/// batch kernel cannot step with every value this returns — its `i32`
 /// intermediates overflow above `simd::DT_OVER_TAU_MAX` — so `simd` applies
 /// that bound at its own boundary. The bound belongs to the kernel that needs
 /// it; it is not a property of `dt/τ`, and a neuron must not inherit it. See
 /// [`LIFNeuron::integrate_and_fire`].
 ///
-/// This is the ONE definition of the formula. `simd::dt_over_tau` is this
-/// function plus the batch's clamp, so the two cannot drift.
+/// This is the ONE definition of the formula: `simd`'s two entry points
+/// take its value as it is and clamp it on entry, so no second copy exists
+/// to drift.
 ///
 /// Both divisions are by a `NonZero`: the zero test on entry is the only
 /// one, and the type carries it into each division, the out-of-line wide
@@ -324,7 +325,7 @@ impl LIFNeuron {
     ///
     /// This call is the head of the `with_*` chain: it and the eight
     /// setters below are how a network is written as Rust source
-    /// ([`fixed::freeze`](crate::fixed::freeze)), so every one of them is
+    /// (`fixed::freeze`), so every one of them is
     /// `const`. What `const` costs, in one line: no formatted panic
     /// message can ever live in them, and un-`const`-ing one is a
     /// breaking change, because every frozen file ever written is a
@@ -381,12 +382,11 @@ impl LIFNeuron {
     ///
     /// The one setter that touches two fields, which is why the order the
     /// eight are called in cannot matter. A second such setter would end
-    /// that, and the order
-    /// [`fixed::freeze`](crate::fixed::freeze) emits them in would become
+    /// that, and the order `fixed::freeze` emits them in would become
     /// load-bearing.
     ///
     /// ```
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::LIFNeuron;
     ///
     /// let n = LIFNeuron::new(0).with_resting_potential(-65);
     /// assert_eq!(n.resting_potential, -65);
@@ -402,7 +402,7 @@ impl LIFNeuron {
     /// The spike threshold, in this neuron's quanta.
     ///
     /// ```
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::LIFNeuron;
     ///
     /// assert_eq!(LIFNeuron::new(0).with_threshold(-40).threshold, -40);
     /// ```
@@ -416,7 +416,7 @@ impl LIFNeuron {
     /// quanta.
     ///
     /// ```
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::LIFNeuron;
     ///
     /// assert_eq!(LIFNeuron::new(0).with_reset_potential(-75).reset_potential, -75);
     /// ```
@@ -429,7 +429,7 @@ impl LIFNeuron {
     /// The membrane time constant (μs).
     ///
     /// ```
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::LIFNeuron;
     ///
     /// assert_eq!(LIFNeuron::new(0).with_tau_membrane_us(5_000).tau_membrane_us, 5_000);
     /// ```
@@ -442,7 +442,7 @@ impl LIFNeuron {
     /// The refractory period (μs).
     ///
     /// ```
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::LIFNeuron;
     ///
     /// assert_eq!(LIFNeuron::new(0).with_tau_refractory_us(1_000).tau_refractory_us, 1_000);
     /// ```
@@ -462,7 +462,7 @@ impl LIFNeuron {
     /// is open before 0.1.0, and the day it goes, this goes with it.
     ///
     /// ```
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::LIFNeuron;
     ///
     /// assert_eq!(LIFNeuron::new(0).with_capacitance_pf(200).capacitance_pf, 200);
     /// ```
@@ -475,7 +475,7 @@ impl LIFNeuron {
     /// The membrane resistance (MΩ): the R of the current term.
     ///
     /// ```
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::LIFNeuron;
     ///
     /// assert_eq!(LIFNeuron::new(0).with_resistance_mohm(50).resistance_mohm, 50);
     /// ```
@@ -488,7 +488,7 @@ impl LIFNeuron {
     /// The noise amplitude (μA); `0` is a deterministic neuron.
     ///
     /// ```
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::LIFNeuron;
     ///
     /// assert_eq!(LIFNeuron::new(0).with_noise_amplitude_ua(0).noise_amplitude_ua, 0);
     /// ```
@@ -585,7 +585,7 @@ impl LIFNeuron {
     /// 3 mV, ±12 μA moves nothing on the mV grid and 6 quanta on the
     /// centi-mV one.
     /// ```
-    /// use neuralos_snn::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
+    /// use neuralos_snn::{LIFNeuron, NeuronType, VoltageResolution};
     ///
     /// let quiet = |r| {
     ///     let mut n = LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, r);
@@ -612,7 +612,7 @@ impl LIFNeuron {
     /// The spike at `>=`, what it resets, the two silent steps, and the
     /// membrane that stays at the reset potential, or one quantum above it.
     /// ```
-    /// use neuralos_snn::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
+    /// use neuralos_snn::{LIFNeuron, NeuronType, VoltageResolution};
     ///
     /// let mut n = LIFNeuron::new(0);
     /// n.noise_amplitude_ua = 0;
@@ -652,7 +652,7 @@ impl LIFNeuron {
     /// The current saturates term by term, and the synaptic current is the
     /// caller's to clear.
     /// ```
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::LIFNeuron;
     ///
     /// let mut n = LIFNeuron::new(0);
     /// n.noise_amplitude_ua = 0;
@@ -678,7 +678,8 @@ impl LIFNeuron {
     ///
     /// The clamp at both ends, and the frozen membrane.
     /// ```
-    /// use neuralos_snn::lif_neuron::{LIFNeuron, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
+    /// use neuralos_snn::lif_neuron::{MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
+    /// use neuralos_snn::LIFNeuron;
     ///
     /// let mut n = LIFNeuron::new(0);
     /// n.noise_amplitude_ua = 0;

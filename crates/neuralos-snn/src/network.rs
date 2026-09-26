@@ -924,7 +924,7 @@ impl SpikingNeuralNetwork {
     }
 
     /// The simulation step (μs), read by `FixedNetwork`'s conversion.
-    /// `pub(crate)`: whether it goes public is the pub walk's call.
+    /// `pub(crate)` at 0.1.0 on purpose; it can go public in a minor release.
     #[must_use]
     pub(crate) fn time_step_us(&self) -> u32 {
         self.time_step_us

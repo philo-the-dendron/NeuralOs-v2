@@ -6,8 +6,9 @@
 //! Prints ns per integration step and the speedup ratio for N = {64, 256, 1024}.
 //! The number that matters: is AVX2 faster than scalar here, and by how much?
 
+use neuralos_snn::lif_neuron::dt_over_tau;
 use neuralos_snn::simd::{
-    detect_simd_support, dt_over_tau, integrate_batch_scalar, integrate_lif_batch, SimdSupport,
+    detect_simd_support, integrate_batch_scalar, integrate_lif_batch, SimdSupport,
 };
 
 const ITERS: usize = 20_000;
@@ -53,7 +54,7 @@ fn main() {
 
 /// Time scalar and dispatched (AVX2-or-scalar) over `iters` steps of `n` neurons.
 /// Returns (scalar ns/step, dispatched ns/step).
-fn bench(n: usize, dtot: i32) -> (f64, f64) {
+fn bench(n: usize, dtot: i64) -> (f64, f64) {
     // Identical starting state for both runs.
     let mut s = make_inputs(n);
     let mut x = make_inputs(n);

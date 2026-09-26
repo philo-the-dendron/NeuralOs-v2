@@ -100,6 +100,9 @@ for c in $commits; do
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-bridge
+  run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features
+  run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-stdp
+  run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-bridge
   run cargo test -p neuralos-snn --release --features simd -- --include-ignored
   run cargo test -p neuralos-rt --features hdf5
   run cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate

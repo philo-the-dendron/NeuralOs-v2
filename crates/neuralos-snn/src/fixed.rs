@@ -141,8 +141,7 @@ impl<const N: usize, const S: usize> FixedNetwork<N, S> {
     /// nothing, and the clear drops the pulse: it is lost, not deferred.
     ///
     /// ```
-    /// use neuralos_snn::fixed::{FixedNetwork, FixedSynapse};
-    /// use neuralos_snn::lif_neuron::LIFNeuron;
+    /// use neuralos_snn::{FixedNetwork, FixedSynapse, LIFNeuron};
     ///
     /// let quiet = |id| {
     ///     let mut n = LIFNeuron::new(id);
@@ -323,14 +322,14 @@ impl FixedSynapse {
     /// to the synaptic current of `post`.
     ///
     /// `const`, and not `std`: a frozen network's synapse array is a
-    /// `const` of these calls, written by [`freeze::module`] and
+    /// `const` of these calls, written by `freeze::module` and
     /// compiled outside this crate — by the firmware, which has no
     /// `std`. The call is positional with the two ids side by side, so
     /// which is which is pinned by a test, not by the types: the frozen
     /// cases' synapse line in `tests/traces.rs`.
     ///
     /// ```
-    /// use neuralos_snn::fixed::FixedSynapse;
+    /// use neuralos_snn::FixedSynapse;
     ///
     /// let s = FixedSynapse::new(0, 1, 400);
     /// assert_eq!((s.pre, s.post, s.pulse_ua), (0, 1, 400));

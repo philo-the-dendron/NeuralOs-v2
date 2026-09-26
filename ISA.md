@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@c8b49af (PR #44 merged 2026-09-24 22:48 UTC: round 47, tier 3, § Practical next moves is the chapter, not the history: the section three lines, the stale ROADMAP lines, the calibration row in evidence/INDEX.md; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 47 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/bridge-feature, round 48 (M-paths' first PR of three, tier 2: `bridge` and `kernel` behind `unstable-bridge`, their fourteen root names gone; `i2_s_encoded_len` public and the lengths stated true; the kernel's two debug-only contracts become checks, `RowTooWide` a new variant; the closed chapter's imports on module paths; leg A's linker script in a `build.rs`; five commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all five · open(session): one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@bde705d (PR #45 merged 2026-09-25 17:36 UTC: round 48, tier 2, M-paths' first PR: `bridge` and `kernel` behind `unstable-bridge`, their fourteen root names gone; `i2_s_encoded_len` public and the lengths stated true; the kernel's two debug-only contracts become checks, `RowTooWide` a new variant; the closed chapter's imports on module paths; leg A's linker script in a `build.rs`; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 48 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/root-and-paths, round 49 (M-paths' second PR of four, tier 2: the `no_std` rustdoc build a gate, its six links code spans; the root holds ten names, thirty leave it, `stats` private, `NirImport` rooted; the examples import each name by its shortest public path; the AVX2 kernel's own clamp pinned; `simd` takes the exact `i64` factor, its wrapper gone; six commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all six · open(session): one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-25T16:08:00Z
+updated: 2026-09-26T15:07:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9804,4 +9804,37 @@ from `d6bb6a1`. **Record-only**: the step-5 generator's pinned row,
 from `9bbd35a`, so the burn runs at `c27084c` only. Leg A did not
 link with `RUSTFLAGS` exported (the variable replaced the config's
 `-Tlink.x`), found while measuring; the `build.rs` fixes it. No check
+ticks. **Guards.** 1: appended, head refreshed; 2 and 3 not in play.
+
+## Close-out (round 49 — the root and the paths; unlettered, M-paths' second PR of four — 2026-09-26)
+
+Branch `work/root-and-paths` from `main@bde705d`, tier 2, six
+commits: `8dce855` the `no_std` rustdoc build a gate in its three
+configurations, eighteen lines, its six links to `std`-only items
+code spans, the hdf5 gate's count the CI log's; `958c43b` the root
+holds ten names, thirty leave it and `stochastic_ternary_flip` the
+STDP root, `stats` private, `NirImport` rooted, the three root-path
+importers on module paths; `73cb708` fifteen doctest lines at the
+shortest public path, the crate doc's sentence, the STDP list,
+the two provisional markers settled; `463b76e` a test for the AVX2
+kernel's own clamp; `b2cd02e` `simd::dt_over_tau` gone, the two
+entry points on the exact `i64`, the wrapper's two saturation tests
+moved onto them; this. **Rulings** (philo, 2026-09-25): the six as
+code spans; three `no_std` doc lines; "the count is the CI log's";
+what a reader sees takes the shortest path, link targets and code
+keep theirs; the sentence, the markers and the list as quoted; the
+kernel keeps `i32` and its clamp, and gets its test; six commits;
+tier 2. **Falsifiers**: the three doc lines red at `bde705d` on the
+six; the kernel's clamp removed, its test the one red of the `simd`
+release gate; the scalar entry's clamp removed, the moved unit test
+and two more red, the doctest green; the dispatcher's, the moved
+unit test and doctest red; the public API listing at the tip, seven
+configurations: the root is the modules, `Error`, `Result` and the ten
+names, and every other changed line is a named change. **Unmoved**:
+no `.trace` or `frozen.rs`; `.text` `9e2e6ef1` in the clone at all
+six. **Counts**: 173 + 8 + 9 + 18 tests; `simd` 190 (2 ignored) +
+8 + 9 + 20, 191 from `463b76e`, in release 192, then 193; 245 with
+both features. **Record-only**: the listing prints `NirImport`'s
+lines under the root path once rooted, and `NetworkStats`'s under
+`network::` once `stats` is private: moved lines, not new API. No check
 ticks. **Guards.** 1: appended, head refreshed; 2 and 3 not in play.

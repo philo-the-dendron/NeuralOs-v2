@@ -29,7 +29,7 @@ fn run(arm: &str, input_ua: i16, force: bool) -> Vec<f64> {
         let mut n = LIFNeuron::new(1);
         n.noise_amplitude_ua = 0;
         if force {
-            n.threshold = neuralos_snn::MEMBRANE_MV_MIN;
+            n.threshold = neuralos_snn::lif_neuron::MEMBRANE_MV_MIN;
             n.tau_refractory_us = 0;
         }
         let mut t: u32 = 0;
