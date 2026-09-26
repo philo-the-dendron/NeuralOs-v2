@@ -6,7 +6,8 @@
 //! spike; a caller that wants the spike times records them:
 //!
 //! ```
-//! use neuralos_snn::{LIFNeuron, SpikeRecorder};
+//! use neuralos_snn::spike_recorder::SpikeRecorder;
+//! use neuralos_snn::LIFNeuron;
 //!
 //! let mut n = LIFNeuron::new(0);
 //! n.threshold = -100; // the membrane floor: every integrating step fires

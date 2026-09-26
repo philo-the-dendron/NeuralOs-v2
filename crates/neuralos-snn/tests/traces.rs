@@ -26,7 +26,8 @@ mod frozen;
 
 use cases::{Case, Kind, Rows, CASES, DIR, FORMAT};
 use neuralos_snn::fixed::row;
-use neuralos_snn::{FixedNetwork, FixedSynapse, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
+use neuralos_snn::lif_neuron::{MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
+use neuralos_snn::{FixedNetwork, FixedSynapse};
 
 /// The bench record of the firmware's neuron, `evidence/esp32c3-bringup/
 /// README.md`: the spike count, the first spike's step, and the wrapping
