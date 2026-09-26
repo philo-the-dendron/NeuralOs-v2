@@ -324,7 +324,7 @@ impl LIFNeuron {
     ///
     /// This call is the head of the `with_*` chain: it and the eight
     /// setters below are how a network is written as Rust source
-    /// ([`fixed::freeze`](crate::fixed::freeze)), so every one of them is
+    /// (`fixed::freeze`), so every one of them is
     /// `const`. What `const` costs, in one line: no formatted panic
     /// message can ever live in them, and un-`const`-ing one is a
     /// breaking change, because every frozen file ever written is a
@@ -381,8 +381,7 @@ impl LIFNeuron {
     ///
     /// The one setter that touches two fields, which is why the order the
     /// eight are called in cannot matter. A second such setter would end
-    /// that, and the order
-    /// [`fixed::freeze`](crate::fixed::freeze) emits them in would become
+    /// that, and the order `fixed::freeze` emits them in would become
     /// load-bearing.
     ///
     /// ```

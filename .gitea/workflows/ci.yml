@@ -127,6 +127,10 @@ jobs:
       # any gate. `--no-deps`: this crate's docs, not its dependencies'.
       # `unstable-stdp` is the third build since PR L and `unstable-bridge`
       # the fourth since round 48: the gated items' docs exist in no other.
+      # The three `no_std` builds since round 49, the no_std gate's three
+      # configurations: a `std`-only item is a code span in a doc they
+      # render, never a link (six were links until then, and no gate
+      # built them).
       - name: rustdoc gate (neuralos-snn)
         env:
           RUSTDOCFLAGS: "-D warnings"
@@ -135,6 +139,9 @@ jobs:
           cargo doc -p neuralos-snn --no-deps --features simd
           cargo doc -p neuralos-snn --no-deps --features unstable-stdp
           cargo doc -p neuralos-snn --no-deps --features unstable-bridge
+          cargo doc -p neuralos-snn --no-deps --no-default-features
+          cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-stdp
+          cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-bridge
 
       # The slice-length contract is assert_eq!; its regression test is only
       # distinguishable from debug_assert_eq! in release. Added 2026-08-30.
@@ -282,6 +289,9 @@ jobs:
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-bridge
+            RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features
+            RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-stdp
+            RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-bridge
             cargo test -p neuralos-snn --release --features simd -- --include-ignored
             cargo test -p neuralos-rt --features hdf5
             cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate

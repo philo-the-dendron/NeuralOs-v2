@@ -323,7 +323,7 @@ impl FixedSynapse {
     /// to the synaptic current of `post`.
     ///
     /// `const`, and not `std`: a frozen network's synapse array is a
-    /// `const` of these calls, written by [`freeze::module`] and
+    /// `const` of these calls, written by `freeze::module` and
     /// compiled outside this crate — by the firmware, which has no
     /// `std`. The call is positional with the two ids side by side, so
     /// which is which is pinned by a test, not by the types: the frozen
