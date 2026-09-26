@@ -779,12 +779,12 @@ mod tests {
         (membrane, resting, current, resistance, threshold)
     }
 
-    /// The gate on the gates. Nine tests in this module return early when the
-    /// runner has no AVX2, and every divergence number they pin (2371, 1225,
-    /// 1379, 157, 122, the −56 witness) passes by skipping. Neither workflow
-    /// file asserted the capability, so a green CI leg could be a runner that
-    /// never executed its subject: the same defect class the fixture rework
-    /// fixed, one level up. Found by Soushi on PR #3.
+    /// The gate on the gates. The tests in this module that need AVX2 return
+    /// early when the runner has none, and every divergence number they pin
+    /// (2371, 1225, 1379, 157, 122, the −56 witness) passes by skipping.
+    /// Neither workflow file asserted the capability, so a green CI leg could
+    /// be a runner that never executed its subject: the same defect class the
+    /// fixture rework fixed, one level up. Found by Soushi on PR #3.
     ///
     /// CI sets `NEURALOS_REQUIRE_AVX2` on the simd test steps (both workflow
     /// files); with it set, a runner without AVX2 fails here instead of
@@ -932,6 +932,34 @@ mod tests {
             50,
             "the physical default is untouched"
         );
+    }
+
+    /// The AVX2 kernel clamps on its own: fed a factor past the bound
+    /// directly, it steps exactly as it does at the bound. The dispatcher
+    /// clamps first, so only a direct call reaches this clamp, and sixteen
+    /// neurons fill one AVX2 chunk: the scalar tail clamps on its own too.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn the_avx2_kernel_clamps_a_factor_past_the_bound_on_its_own() {
+        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+            eprintln!("(AVX2 not available — skipping the kernel's clamp test)");
+            return;
+        }
+        // Leak +30 mV, no current: a wrapped factor steps the membrane its
+        // own way, so it cannot pass for the bound.
+        let step = |factor: i32| {
+            let mut membrane = [-70i16; 16];
+            let mut spikes = [false; 16];
+            let (rp, ic, res, th) = ([-40i16; 16], [0i16; 16], [100i16; 16], [i16::MAX; 16]);
+            // SAFETY: equal-length slices, AVX2 verified available above.
+            unsafe {
+                integrate_batch_avx2(&mut membrane, &rp, &ic, &res, &th, factor, &mut spikes);
+            }
+            membrane
+        };
+        for (past, bound) in [(i32::MAX, DT_OVER_TAU_MAX), (i32::MIN, -DT_OVER_TAU_MAX)] {
+            assert_eq!(step(past), step(bound), "{past} must step as {bound}");
+        }
     }
 
     /// Run one batch through both halves and return

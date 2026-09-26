@@ -92,7 +92,7 @@ jobs:
           cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge
 
       # SIMD kernel equivalence vs scalar (AVX2, x86_64, behind `simd`).
-      # NEURALOS_REQUIRE_AVX2 turns the module's nine "AVX2 not available"
+      # NEURALOS_REQUIRE_AVX2 turns the module's "AVX2 not available"
       # skips into one failure (`ci_runner_actually_has_avx2`), so a runner
       # without AVX2 cannot pass this gate by not running it. Added 2026-09-02.
       - name: simd gate (neuralos-snn)
