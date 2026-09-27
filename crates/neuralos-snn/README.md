@@ -88,7 +88,8 @@ keeps every historically recorded result bit-exact.
 ## Features
 
 - `std` *(default)* — enables the `network` orchestration module
-- `simd` — implies `std`, x86_64-only AVX2 batch kernel
+- `simd` — implies `std`; the AVX2 batch LIF kernel on `x86_64`, the
+  scalar reference on any other target
 - `unstable-stdp` — STDP: `STDPRule`, `Synapse::update_weight`,
   `SpikingNeuralNetwork::set_plasticity_enabled`,
   `SpikingNeuralNetwork::stochastic_ternary_step`,

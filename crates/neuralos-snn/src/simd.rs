@@ -8,7 +8,8 @@
 //! the architecture. `cfg(target_arch = "x86_64")` gates the intrinsics import,
 //! `integrate_batch_avx2` and `lif_lane` inside it, so on any other target the
 //! module still compiles and `integrate_lif_batch` runs the scalar reference.
-//! Checked, not assumed: `cargo check -p neuralos-snn --features simd --target
+//! Checked, not assumed, and a gate since round 50 (CI's simd off-x86 step):
+//! `cargo check -p neuralos-snn --lib --features simd --target
 //! riscv64gc-unknown-linux-musl` is green.
 //!
 //! # What it does
