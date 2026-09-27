@@ -8,7 +8,7 @@
 
 use neuralos_snn::lif_neuron::dt_over_tau;
 use neuralos_snn::simd::{
-    detect_simd_support, integrate_batch_scalar, integrate_lif_batch, SimdSupport,
+    detect_simd_support, integrate_lif_batch, integrate_lif_batch_scalar, LIFBatch, SimdSupport,
 };
 
 const ITERS: usize = 20_000;
@@ -58,29 +58,11 @@ fn bench(n: usize, dtot: i64) -> (f64, f64) {
     // Identical starting state for both runs.
     let mut s = make_inputs(n);
     let mut x = make_inputs(n);
-    let mut spikes_s = vec![false; n];
-    let mut spikes_x = vec![false; n];
 
     // Warm up (fill caches, branch-predict).
     for _ in 0..100 {
-        integrate_batch_scalar(
-            &mut s.membrane,
-            &s.resting,
-            &s.current,
-            &s.resistance,
-            &s.threshold,
-            dtot,
-            &mut spikes_s,
-        );
-        integrate_lif_batch(
-            &mut x.membrane,
-            &x.resting,
-            &x.current,
-            &x.resistance,
-            &x.threshold,
-            dtot,
-            &mut spikes_x,
-        );
+        integrate_lif_batch_scalar(s.batch(), dtot);
+        integrate_lif_batch(x.batch(), dtot);
     }
     // Reset to deterministic starting state for the measured runs.
     s = make_inputs(n);
@@ -89,30 +71,14 @@ fn bench(n: usize, dtot: i64) -> (f64, f64) {
     // Scalar timing.
     let t0 = std::time::Instant::now();
     for _ in 0..ITERS {
-        integrate_batch_scalar(
-            &mut s.membrane,
-            &s.resting,
-            &s.current,
-            &s.resistance,
-            &s.threshold,
-            dtot,
-            &mut spikes_s,
-        );
+        integrate_lif_batch_scalar(s.batch(), dtot);
     }
     let scalar_dur = t0.elapsed();
 
     // Dispatched (AVX2 when available) timing.
     let t0 = std::time::Instant::now();
     for _ in 0..ITERS {
-        integrate_lif_batch(
-            &mut x.membrane,
-            &x.resting,
-            &x.current,
-            &x.resistance,
-            &x.threshold,
-            dtot,
-            &mut spikes_x,
-        );
+        integrate_lif_batch(x.batch(), dtot);
     }
     let simd_dur = t0.elapsed();
 
@@ -121,13 +87,28 @@ fn bench(n: usize, dtot: i64) -> (f64, f64) {
     (s_ns, x_ns)
 }
 
-/// SoA batch inputs for one benchmark run.
+/// SoA batch state for one benchmark run.
 struct Inputs {
     membrane: Vec<i16>,
     resting: Vec<i16>,
     current: Vec<i16>,
     resistance: Vec<i16>,
     threshold: Vec<i16>,
+    spikes: Vec<bool>,
+}
+
+impl Inputs {
+    /// Lend the six arrays as one batch step, each under its name.
+    fn batch(&mut self) -> LIFBatch<'_> {
+        LIFBatch {
+            membrane: &mut self.membrane,
+            resting: &self.resting,
+            input_currents: &self.current,
+            resistance: &self.resistance,
+            threshold: &self.threshold,
+            spikes_out: &mut self.spikes,
+        }
+    }
 }
 
 fn make_inputs(n: usize) -> Inputs {
@@ -137,5 +118,6 @@ fn make_inputs(n: usize) -> Inputs {
         current: vec![200i16; n],
         resistance: vec![100i16; n],
         threshold: vec![-55i16; n],
+        spikes: vec![false; n],
     }
 }

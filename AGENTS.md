@@ -95,6 +95,7 @@ RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-stdp  #
 RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge  # same gate, the bridge configuration
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
 cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings  # simd lint gate: workspace clippy never compiles the feature-gated module (2026-08-30)
+cargo check -p neuralos-snn --lib --features simd --target riscv64gc-unknown-linux-musl  # simd off-x86 gate (round 50): the module's non-x86 lines compile in no other gate; needs `rustup target add riscv64gc-unknown-linux-musl` on the pin
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps                  # the rustdoc gate (2026-09-19): the docs state the semantics (ROADMAP § 0.1.0, check 11), so an unresolved link is a defect
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd  # same gate, the simd configuration
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp  # same gate, the STDP configuration: the gated items' docs exist in no other
@@ -136,9 +137,10 @@ is only worth the multi-minute link when you want real smoothness.
 
 ## Features
 
-- `neuralos-snn`: `default = ["std"]`, `std`, `simd` (implies std,
-  x86_64-only, AVX2 batch LIF kernel), `unstable-stdp` (STDP, outside
-  the semver promise: `STDPRule`, `Synapse::update_weight`,
+- `neuralos-snn`: `default = ["std"]`, `std`, `simd` (implies std; the
+  AVX2 batch LIF kernel on x86_64, the scalar reference on any other
+  target), `unstable-stdp` (STDP, outside the semver promise:
+  `STDPRule`, `Synapse::update_weight`,
   `set_plasticity_enabled`, `stochastic_ternary_step`,
   `trit::stochastic_ternary_flip`, `trit::STOCHASTIC_FLIP_RATE`; works
   without std; rt, the app and `proofs/qemu-riscv-leg-a` ask for it, so
@@ -316,8 +318,9 @@ exist because careful per-session process still produced drift.
 
 - **Pure Rust, `no_std`-by-default for the library.** The hot path
   (`lif_neuron`, `synapse`) is `no_std`; `network` is `std`-gated;
-  `simd` is std+x86_64-gated. Keep new library code `no_std` unless it
-  genuinely needs `alloc`/`std`.
+  `simd` is `std`-gated, and only its AVX2 kernel is `x86_64`-gated.
+  Keep new library code `no_std` unless it genuinely needs
+  `alloc`/`std`.
 - **i16 fixed-point, no float in the hot path.** This is the design
   axis the IEEE 2025 "Full-Integer SNN Inference with RISC-V ISA"
   paper validates, and it's what makes the ternary bridge tractable.

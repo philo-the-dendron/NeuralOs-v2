@@ -92,9 +92,11 @@ jobs:
           cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge
 
       # SIMD kernel equivalence vs scalar (AVX2, x86_64, behind `simd`).
-      # NEURALOS_REQUIRE_AVX2 turns the module's "AVX2 not available"
-      # skips into one failure (`ci_runner_actually_has_avx2`), so a runner
-      # without AVX2 cannot pass this gate by not running it. Added 2026-09-02.
+      # NEURALOS_REQUIRE_AVX2 turns each of the module's "AVX2 not
+      # available" skips into a failure of the test that would have
+      # skipped (`runs_avx2`, round 50), and `ci_runner_actually_has_avx2`
+      # fails too, so a runner without AVX2 cannot pass this gate by not
+      # running it. Added 2026-09-02.
       - name: simd gate (neuralos-snn)
         env:
           NEURALOS_REQUIRE_AVX2: "1"
@@ -105,14 +107,27 @@ jobs:
       - name: simd lint gate (neuralos-snn)
         run: cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
 
+      # `simd` off x86 (round 50). The module builds on any target and runs
+      # its scalar reference there (its module doc says so), and the lines
+      # behind `cfg(not(target_arch = "x86_64"))` compile in no other gate.
+      # The library alone, checked, never linked, on the riscv64 Linux
+      # target leg B runs under QEMU.
+      - name: simd off-x86 gate (neuralos-snn on riscv64)
+        run: |
+          rustup target add riscv64gc-unknown-linux-musl
+          cargo check -p neuralos-snn --lib --features simd --target riscv64gc-unknown-linux-musl
+
       # The rustdoc gate: the library's docs are where its semantics are
       # stated (ROADMAP § 0.1.0, check 11), so a link that does not resolve
-      # is a defect. Default and `simd`, the two builds a reader of the
-      # published docs can meet; `main` carried 15 and 2 more such links
-      # the day this was added (2026-09-19), none of them looked at by
-      # any gate. `--no-deps`: this crate's docs, not its dependencies'.
-      # `unstable-stdp` is the third build since PR L and `unstable-bridge`
-      # the fourth since round 48: the gated items' docs exist in no other.
+      # is a defect. Default and `simd` were the first two builds; `main`
+      # carried 15 and 2 more such links the day this was added
+      # (2026-09-19), none of them looked at by any gate. `--no-deps`: this
+      # crate's docs, not its dependencies'. `unstable-stdp` is the third
+      # build since PR L and `unstable-bridge` the fourth since round 48:
+      # the gated items' docs exist in no other. docs.rs publishes one
+      # build, the default features with `simd`, `unstable-stdp` and
+      # `unstable-bridge` (the crate's `[package.metadata.docs.rs]`, `simd`
+      # since round 50); the lines here build the features one at a time.
       # The three `no_std` builds since round 49, the no_std gate's three
       # configurations: a `std`-only item is a code span in a doc they
       # render, never a link (six were links until then, and no gate
@@ -271,6 +286,10 @@ jobs:
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge
             cargo test -p neuralos-snn --features simd
             cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
+            # simd off x86 (round 50): this commit's pin needs the target, as
+            # the firmware leg's does below; a no-op when it is there.
+            rustup target add riscv64gc-unknown-linux-musl
+            cargo check -p neuralos-snn --lib --features simd --target riscv64gc-unknown-linux-musl
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp

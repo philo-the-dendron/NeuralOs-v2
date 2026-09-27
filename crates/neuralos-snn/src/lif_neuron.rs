@@ -1620,39 +1620,26 @@ mod tests {
     ///
     /// `dt = 40_000 µs` into `τ = 20_000 µs` is a ratio of 2. Nothing
     /// overflows, every value is physical, and the discretisation
-    /// `dt_over_tau = 2000` is the correct one. Borrowing the batch's
-    /// `DT_OVER_TAU_MAX = 1884` moved this step from −40 mV to −44 mV: a wrong
-    /// answer, silently, in a domain a caller can reach through
-    /// `SpikingNeuralNetwork::new(n, 40_000, ..)`.
+    /// `dt_over_tau = 2000` is the correct one. Borrowing the batch's bound
+    /// moved this step from −40 mV to −44 mV: a wrong answer, silently, in a
+    /// domain a caller can reach through
+    /// `SpikingNeuralNetwork::new(n, 40_000, ..)`. The batch's side of the row
+    /// is pinned with the kernel's own constant, in `simd`'s
+    /// `the_batch_diverges_from_the_neuron_by_exactly_its_own_clamp`.
     #[test]
     fn the_neuron_is_exact_where_the_batch_clamps() {
-        const BATCH_BOUND: i64 = 1884; // simd::DT_OVER_TAU_MAX, not imported: no_std
-
         let mut n = quiet_neuron(26, VoltageResolution::Millivolt);
         n.membrane_potential = -100;
         n.resting_potential = -70;
         n.tau_membrane_us = 20_000;
         n.threshold = i16::MAX; // unreachable: read the raw membrane
 
-        let exact = dt_over_tau(40_000, 20_000);
-        assert_eq!(exact, 2000, "dt/tau = 2, exactly");
-        assert!(
-            exact > BATCH_BOUND,
-            "the witness must be above the batch's bound"
-        );
+        assert_eq!(dt_over_tau(40_000, 20_000), 2000, "dt/tau = 2, exactly");
 
         let _ = n.integrate_and_fire(0, 40_000, 0);
 
-        // leak = -70 - (-100) = 30, no current.
-        //   neuron: 2000 * 30 / 1000 = +60  ->  -40
-        //   batch:  1884 * 30 / 1000 = +56  ->  -44
+        // leak = -70 - (-100) = 30, no current: 2000 * 30 / 1000 = +60.
         assert_eq!(n.membrane_potential, -40, "the neuron takes the exact step");
-        let clamped = -100 + i16::try_from(BATCH_BOUND * 30 / 1000).expect("fits i16");
-        assert_eq!(clamped, -44, "what the batch's bound would have given");
-        assert_ne!(
-            n.membrane_potential, clamped,
-            "the divergence above dt/tau = 1.884 is real and documented, not a bug"
-        );
     }
 
     #[test]

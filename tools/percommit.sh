@@ -27,11 +27,11 @@
 # exits 1 with the worktree still removed.
 #
 # Needs what CI needs: the pinned toolchain (rust-toolchain.toml is in
-# the worktree, rustup picks it up), the chip target and llvm-tools,
-# which the loop adds to each commit's pin itself, as the job does, the
-# MSRV toolchain 1.92.0 (`rustup toolchain install 1.92.0 --profile
-# minimal`), and cmake on PATH for the vendored HDF5 (.nirenv/bin from
-# the main clone is prepended).
+# the worktree, rustup picks it up), the chip target, the riscv64 Linux
+# target and llvm-tools, which the loop adds to each commit's pin itself,
+# as the job does, the MSRV toolchain 1.92.0 (`rustup toolchain install
+# 1.92.0 --profile minimal`), and cmake on PATH for the vendored HDF5
+# (.nirenv/bin from the main clone is prepended).
 set -euo pipefail
 
 repo=$(git rev-parse --show-toplevel)
@@ -96,6 +96,9 @@ for c in $commits; do
   run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge
   run cargo test -p neuralos-snn --features simd
   run cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
+  # simd off x86 (round 50): the same two lines as the per-commit job.
+  run rustup target add riscv64gc-unknown-linux-musl
+  run cargo check -p neuralos-snn --lib --features simd --target riscv64gc-unknown-linux-musl
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp
