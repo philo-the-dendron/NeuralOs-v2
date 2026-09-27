@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@bde705d (PR #45 merged 2026-09-25 17:36 UTC: round 48, tier 2, M-paths' first PR: `bridge` and `kernel` behind `unstable-bridge`, their fourteen root names gone; `i2_s_encoded_len` public and the lengths stated true; the kernel's two debug-only contracts become checks, `RowTooWide` a new variant; the closed chapter's imports on module paths; leg A's linker script in a `build.rs`; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 48 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/root-and-paths, round 49 (M-paths' second PR of four, tier 2: the `no_std` rustdoc build a gate, its six links code spans; the root holds ten names, thirty leave it, `stats` private, `NirImport` rooted; the examples import each name by its shortest public path; the AVX2 kernel's own clamp pinned; `simd` takes the exact `i64` factor, its wrapper gone; six commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all six · open(session): one fresh review of the build BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@f2cc23b (PR #46 merged 2026-09-26 17:07 UTC: round 49, tier 2, M-paths' second PR: the `no_std` rustdoc build a gate, its six links code spans; the root holds ten names, thirty leave it, `stats` private, `NirImport` rooted; the examples import each name by its shortest public path; the AVX2 kernel's own clamp pinned; `simd` takes the exact `i64` factor, its wrapper gone; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 49 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/batch-by-name, round 50 (M-paths' third PR of four, tier 2: docs.rs builds `simd`, and a gate checks it off x86; `DT_OVER_TAU_MAX` an `i64` with one home in code; a test that needs AVX2 fails in CI instead of skipping; the dispatcher's scalar fallback runs on every CPU; `simd` takes a `LIFBatch`, its six slices by name, the scalar reference renamed `integrate_lif_batch_scalar`; six commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all six · open(session): the check of the third fix round BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-26T15:07:00Z
+updated: 2026-09-27T21:55:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9838,3 +9838,36 @@ both features. **Record-only**: the listing prints `NirImport`'s
 lines under the root path once rooted, and `NetworkStats`'s under
 `network::` once `stats` is private: moved lines, not new API. No check
 ticks. **Guards.** 1: appended, head refreshed; 2 and 3 not in play.
+
+## Close-out (round 50 — the batch by name; unlettered, M-paths' third PR of four — 2026-09-26)
+
+Branch `work/batch-by-name` from `main@f2cc23b`, tier 2, six
+commits: `e879bec` docs.rs builds `simd`, and the `simd` off-x86
+gate in six copies; `7f2da5e` `DT_OVER_TAU_MAX` an `i64`, 1884
+code once, K's copy gone; `0dc5584` the tests that need AVX2 ask
+`runs_avx2`; `70146b0` the fallback forced by `dispatch`'s switch
+and tested, `scalar_matches_itself` gone; `114017c` the entry
+points take a `LIFBatch` by value, the scalar reference renamed
+`integrate_lif_batch_scalar`, the private loops on slices, the scalar
+one always inlined; this. **Rulings** (philo, 2026-09-26, Calls 1 to
+9): (b) by value, `spikes_out` inside, `LIFBatch`, the rename; K by
+deletion; the bound an `i64`; the helper in its own commit; the seam;
+six commits, tier 2; the off-x86 gate; the loop `#[inline(always)]`:
+as a call it cost the dispatched path about 3 ns at N = 64 (the brief's
+bench); "Exhaustive on purpose" in `LIFBatch`'s doc. **Falsifiers**:
+a planted E0599 off x86, red in the new gate alone; the neuron's step
+clamped to 1884, three red; the helper told there is no AVX2, ten;
+the fallback deleted, the new test alone, and green at `f2cc23b`;
+resting and threshold swapped in the scalar reference, twelve; the API
+listing, default unchanged and `simd` the named change. **Unmoved**:
+no `.trace` or `frozen.rs`; `.text` `9e2e6ef1` in the clone at all
+six. **Counts**: 173 + 8 + 9 + 18 tests; `simd` 191 (2 ignored) +
+8 + 9 + 20, 21 doctests from `114017c`, in release 193; STDP 204;
+245 with both features. **Record-only**: the off-x86 gate checks
+`--lib` on purpose: `--all-targets` exits 101 at `f2cc23b` as here,
+on nine test items only x86 tests use, and leg B builds without
+`simd`; the dive's (b), the struct passed into the scalar loop, made
+the compiler guard it with overlap checks (315 instructions, 8 `setb`,
+against 272 and none); a place the dive's count missed decided silently
+whether AVX2 ran, the proptest's `return Ok(())`. No check ticks.
+**Guards.** 1: appended, head refreshed; 2 and 3 not in play.
