@@ -420,15 +420,18 @@ pub fn detect_simd_support() -> SimdSupport {
 
 /// Largest `|dt_over_tau|` for which no `i32` intermediate in THIS KERNEL can
 /// overflow, for any `i16` input. See the module doc § Overflow domain for the
-/// derivation; `i32::MAX / 1_139_276 = 1884`.
+/// derivation; `i32::MAX / 1_139_276 = 1884`. An `i64`, the type of the factor
+/// it bounds: the entry points clamp the caller's factor with it, and only
+/// then narrow it to the kernel's `i32`.
 ///
 /// **This is the batch kernel's limit, not a property of `dt/τ` and not a
 /// property of the model.** `LIFNeuron::integrate_and_fire` computes the same
 /// equation in `i64` and is exact over the whole input domain; it does not
 /// apply this bound and must not. The neuron is the reference semantic, this
 /// kernel is the documented approximation, and above `dt/τ = 1.884` they
-/// differ by exactly this clamp — named and pinned by
-/// `the_neuron_is_exact_where_the_batch_clamps`.
+/// differ by exactly this clamp: the neuron's side is pinned by `lif_neuron`'s
+/// `the_neuron_is_exact_where_the_batch_clamps`, the batch's by
+/// `the_batch_diverges_from_the_neuron_by_exactly_its_own_clamp`.
 ///
 /// (The bound was briefly applied to `LIFNeuron` as well, on the reasoning that
 /// one saturation was safer than two. It was not: it silently changed correct
@@ -437,7 +440,7 @@ pub fn detect_simd_support() -> SimdSupport {
 /// −44 — and the bound is not even conservative for the neuron's wider `u16`
 /// resistance and centi-mV scale, where the safe `i32` limit is nearer 9.
 /// Returned to the batch 2026-09-01 by the principal's ruling.)
-pub const DT_OVER_TAU_MAX: i32 = 1884;
+pub const DT_OVER_TAU_MAX: i64 = 1884;
 
 /// Integrate one LIF step across a batch of N neurons (SoA slices).
 ///
@@ -483,7 +486,7 @@ pub const DT_OVER_TAU_MAX: i32 = 1884;
 ///     integrate_lif_batch(&mut membrane, &[-70], &[0], &[100], &[0], factor, &mut spikes);
 ///     membrane[0]
 /// };
-/// let bound = step(i64::from(DT_OVER_TAU_MAX));
+/// let bound = step(DT_OVER_TAU_MAX);
 /// assert_eq!(step(dt_over_tau(40_000, 20_000)), bound); // exact 2000, past 1884
 /// assert_eq!(step(dt_over_tau(u32::MAX, 1)), bound); // the largest there is
 /// assert_ne!(step(dt_over_tau(1_000, 20_000)), bound); // 50, the physical default
@@ -511,8 +514,7 @@ pub fn integrate_lif_batch(
     // Saturate into the no-overflow domain (module doc § Overflow domain). Both
     // halves must see the same value, or AVX2 wraps where the scalar panics.
     // Inside the bound the `i32` holds the factor exactly.
-    let dt_over_tau =
-        dt_over_tau.clamp(-i64::from(DT_OVER_TAU_MAX), i64::from(DT_OVER_TAU_MAX)) as i32;
+    let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX) as i32;
 
     #[cfg(target_arch = "x86_64")]
     if matches!(detect_simd_support(), SimdSupport::Avx2) {
@@ -586,8 +588,7 @@ pub fn integrate_batch_scalar(
     assert_eq!(threshold.len(), n, "threshold.len() != membrane.len()");
     assert_eq!(spikes_out.len(), n, "spikes_out.len() != membrane.len()");
 
-    let dt_over_tau =
-        dt_over_tau.clamp(-i64::from(DT_OVER_TAU_MAX), i64::from(DT_OVER_TAU_MAX)) as i32;
+    let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX) as i32;
     for i in 0..n {
         let mp = i32::from(membrane[i]);
         let leak = i32::from(resting[i]) - mp;
@@ -612,7 +613,7 @@ unsafe fn integrate_batch_avx2(
 ) {
     const WIDTH: usize = 16; // AVX2: 256-bit / 16-bit = 16 lanes.
                              // Same saturation as the scalar entry — `_mm256_mullo_epi32` wraps silently.
-    let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX);
+    let dt_over_tau = i64::from(dt_over_tau).clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX) as i32;
     let n = membrane.len();
     let chunks = n / WIDTH;
 
@@ -739,6 +740,9 @@ mod tests {
     const EQUIV_DT_OVER_TAU_MAX: i32 = 200;
     /// The agreement the equivalence domain buys, in mV.
     const EQUIV_TOLERANCE_MV: i32 = 2;
+    /// `DT_OVER_TAU_MAX` as a step: this many µs into a 1 s time constant is
+    /// a factor of exactly the bound.
+    const BOUND_STEP_US: u32 = DT_OVER_TAU_MAX as u32 * 1000;
 
     // (resting, drive, resistance, dt_over_tau), all inside the equivalence
     // domain. The first three are the reviewer's named arms; the last two are
@@ -902,7 +906,7 @@ mod tests {
         assert_eq!(max_product, 1_073_741_824);
         assert_eq!(max_sum, 1_139_276);
 
-        let bound = i64::from(DT_OVER_TAU_MAX);
+        let bound = DT_OVER_TAU_MAX;
         assert!(
             bound * max_sum <= i64::from(i32::MAX),
             "DT_OVER_TAU_MAX is too large: {DT_OVER_TAU_MAX} * {max_sum} overflows i32"
@@ -942,7 +946,7 @@ mod tests {
         for &dt in &[0u32, 1, 1000, 10_000, i32::MAX as u32, 2_147_484, u32::MAX] {
             for &tau in &[0u32, 1, 20_000, i32::MAX as u32, 2_147_483_648, u32::MAX] {
                 let exact = dt_over_tau(dt, tau);
-                let saturated = exact.min(i64::from(DT_OVER_TAU_MAX));
+                let saturated = exact.min(DT_OVER_TAU_MAX);
                 for dispatched in [false, true] {
                     assert_eq!(
                         step(exact, dispatched),
@@ -979,7 +983,10 @@ mod tests {
             }
             membrane
         };
-        for (past, bound) in [(i32::MAX, DT_OVER_TAU_MAX), (i32::MIN, -DT_OVER_TAU_MAX)] {
+        for (past, bound) in [
+            (i32::MAX, DT_OVER_TAU_MAX as i32),
+            (i32::MIN, -DT_OVER_TAU_MAX as i32),
+        ] {
             assert_eq!(step(past), step(bound), "{past} must step as {bound}");
         }
     }
@@ -1106,7 +1113,7 @@ mod tests {
         // from the caller and clamp to `-DT_OVER_TAU_MAX..=DT_OVER_TAU_MAX`, so
         // the negative half of that range is reachable through the public API
         // and was untested until 2026-09-01.
-        for dtot in [DT_OVER_TAU_MAX, -DT_OVER_TAU_MAX] {
+        for dtot in [DT_OVER_TAU_MAX as i32, -DT_OVER_TAU_MAX as i32] {
             let Some((max_diff, membrane_diffs, spike_diffs, both_saturating)) =
                 measure_divergence(&mp, &rp, &ic, &res, &th, dtot)
             else {
@@ -1247,7 +1254,7 @@ mod tests {
 
         // Validation FIRST. The model's committed variant must equal the real
         // kernel on every row of every sign, or its fork number means nothing.
-        for dtot in [DT_OVER_TAU_MAX, -DT_OVER_TAU_MAX] {
+        for dtot in [DT_OVER_TAU_MAX as i32, -DT_OVER_TAU_MAX as i32] {
             let mut mp_v = mp.clone();
             let mut sp_v = vec![false; n];
             // SAFETY: equal-length slices, AVX2 verified available above.
@@ -1269,7 +1276,7 @@ mod tests {
         // Only now, the measurement. Both variants, both signs, one instrument.
         let measure = |floor_current_term: bool| {
             let (mut max_diff, mut membrane_diffs, mut spike_diffs) = (0i32, 0usize, 0usize);
-            for dtot in [DT_OVER_TAU_MAX, -DT_OVER_TAU_MAX] {
+            for dtot in [DT_OVER_TAU_MAX as i32, -DT_OVER_TAU_MAX as i32] {
                 let mut mp_s = mp.clone();
                 let mut sp_s = vec![false; n];
                 integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, i64::from(dtot), &mut sp_s);
@@ -1319,8 +1326,8 @@ mod tests {
 
         // (dt_over_tau, max_diff, membrane_diffs, spike_diffs, both_saturating)
         let expected: [(i32, i32, usize, usize, usize); 2] = [
-            (DT_OVER_TAU_MAX, 8, 2331, 65, 1225),
-            (-DT_OVER_TAU_MAX, 15, 2261, 92, 1379),
+            (DT_OVER_TAU_MAX as i32, 8, 2331, 65, 1225),
+            (-DT_OVER_TAU_MAX as i32, 15, 2261, 92, 1379),
         ];
         for (dtot, max_diff, membrane_diffs, spike_diffs, both_saturating) in expected {
             let Some(got) = measure_divergence(&mp, &rp, &ic, &res, &th, dtot) else {
@@ -1372,7 +1379,7 @@ mod tests {
             &[ic; LANES],
             &[res; LANES],
             &[th; LANES],
-            i64::from(DT_OVER_TAU_MAX),
+            DT_OVER_TAU_MAX,
             &mut sp_s,
         );
         assert_eq!(mp_s[0], -55, "scalar lands on threshold exactly");
@@ -1392,7 +1399,7 @@ mod tests {
                 &[ic; LANES],
                 &[res; LANES],
                 &[th; LANES],
-                DT_OVER_TAU_MAX,
+                DT_OVER_TAU_MAX as i32,
                 &mut sp_v,
             );
         }
@@ -2229,10 +2236,10 @@ mod tests {
                 &mut spikes,
             );
 
-            // The batch equals the neuron run at the CLAMPED factor: 1_884_000 µs
-            // into 1_000_000 µs is exactly DT_OVER_TAU_MAX.
-            let at_clamped = neuron(1_000_000, 1_884_000);
-            let expected = if exact <= i64::from(DT_OVER_TAU_MAX) {
+            // The batch equals the neuron run at the CLAMPED factor: a step of
+            // BOUND_STEP_US into 1_000_000 µs is exactly DT_OVER_TAU_MAX.
+            let at_clamped = neuron(1_000_000, BOUND_STEP_US);
+            let expected = if exact <= DT_OVER_TAU_MAX {
                 neuron(tau_us, dt_us)
             } else {
                 at_clamped
@@ -2244,7 +2251,7 @@ mod tests {
                 membrane[0],
             );
 
-            if exact <= i64::from(DT_OVER_TAU_MAX) {
+            if exact <= DT_OVER_TAU_MAX {
                 assert_eq!(
                     membrane[0],
                     neuron(tau_us, dt_us),
@@ -2352,7 +2359,7 @@ mod tests {
             // Above it the neuron is exact and the batch is the approximation,
             // which is a documented divergence, not a defect — see
             // `the_batch_diverges_from_the_neuron_by_exactly_its_own_clamp`.
-            let inside_the_clamp = exact <= i64::from(DT_OVER_TAU_MAX);
+            let inside_the_clamp = exact <= DT_OVER_TAU_MAX;
 
             // Unreachable threshold: no spike, so the membrane is the raw value.
             let mut quiet = fixture(i16::MAX);
@@ -2413,7 +2420,7 @@ mod tests {
                 clamped.refractory_time_us = 0;
                 // tau chosen so the exact factor IS the clamp bound.
                 clamped.tau_membrane_us = 1_000_000;
-                let _ = clamped.integrate_and_fire(input, 1_884_000, 0);
+                let _ = clamped.integrate_and_fire(input, BOUND_STEP_US, 0);
                 prop_assert_eq!(
                     membrane[0], clamped.membrane_potential,
                     "above the clamp the batch must equal the neuron run at \
