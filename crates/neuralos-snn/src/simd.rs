@@ -500,6 +500,33 @@ pub fn integrate_lif_batch(
     dt_over_tau: i64,
     spikes_out: &mut [bool],
 ) {
+    dispatch(
+        true,
+        membrane,
+        resting,
+        input_currents,
+        resistance,
+        threshold,
+        dt_over_tau,
+        spikes_out,
+    );
+}
+
+/// [`integrate_lif_batch`]'s body, with one switch: `allow_avx2 = false`
+/// takes the scalar fallback on any CPU, so a test can run the line an AVX2
+/// machine never reaches. It takes AVX2 away and never forces it: the AVX2
+/// kernel still runs only where [`detect_simd_support`] finds it.
+#[allow(clippy::too_many_arguments)] // the entry point's seven, and the switch
+fn dispatch(
+    allow_avx2: bool,
+    membrane: &mut [i16],
+    resting: &[i16],
+    input_currents: &[i16],
+    resistance: &[i16],
+    threshold: &[i16],
+    dt_over_tau: i64,
+    spikes_out: &mut [bool],
+) {
     let n = membrane.len();
     assert_eq!(resting.len(), n, "resting.len() != membrane.len()");
     assert_eq!(
@@ -517,7 +544,7 @@ pub fn integrate_lif_batch(
     let dt_over_tau = dt_over_tau.clamp(-DT_OVER_TAU_MAX, DT_OVER_TAU_MAX) as i32;
 
     #[cfg(target_arch = "x86_64")]
-    if matches!(detect_simd_support(), SimdSupport::Avx2) {
+    if allow_avx2 && matches!(detect_simd_support(), SimdSupport::Avx2) {
         // SAFETY: slices are valid and equal-length — asserted above in every
         // profile, not merely debug-asserted — and the AVX2
         // kernel processes 16-element aligned chunks plus a scalar tail, so no
@@ -536,6 +563,9 @@ pub fn integrate_lif_batch(
         }
         return;
     }
+    // Off x86_64 there is no AVX2 to allow: the fallback is the only path.
+    #[cfg(not(target_arch = "x86_64"))]
+    let _ = allow_avx2;
     integrate_batch_scalar(
         membrane,
         resting,
@@ -1562,24 +1592,54 @@ mod tests {
         );
     }
 
-    /// The batch with `SimdSupport::None`-forcing path must still match scalar
-    /// exactly when the scalar is called directly (sanity for the dispatch seam).
+    /// The dispatcher's scalar fallback, the line an AVX2 machine never
+    /// reaches: forced by `dispatch(false, ..)`, it must step exactly as the
+    /// scalar reference does, membrane and spike bit, on inputs where each
+    /// slice holds values of its own, so a swapped pair cannot pass. It needs
+    /// no AVX2 and runs on every CPU.
     #[test]
-    fn scalar_matches_itself() {
-        let n = 64;
-        let mut a = vec![-70i16; n];
-        let mut b = vec![-70i16; n];
-        let rp = vec![-70i16; n];
-        let ic = vec![200i16; n];
-        let res = vec![100i16; n];
-        let th = vec![-55i16; n];
+    fn the_dispatchers_scalar_fallback_steps_as_the_reference() {
+        let (mut membrane, mut resting, mut current, mut resistance, mut threshold) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for i in 0..64i16 {
+            membrane.push(-90 + i * 7 % 60);
+            resting.push(-80 + i * 11 % 40);
+            current.push(-500 + i * 37 % 1000);
+            resistance.push(20 + i * 13 % 200);
+            threshold.push(-70 + i * 5 % 30);
+        }
         let dtot = dt_over_tau(1000, 20_000);
-        let mut sa = vec![false; n];
-        let mut sb = vec![false; n];
-        integrate_batch_scalar(&mut a, &rp, &ic, &res, &th, dtot, &mut sa);
-        integrate_batch_scalar(&mut b, &rp, &ic, &res, &th, dtot, &mut sb);
-        assert_eq!(a, b);
-        assert_eq!(sa, sb);
+        let (mut forced, mut reference) = (membrane.clone(), membrane.clone());
+        let (mut forced_spikes, mut reference_spikes) = (vec![false; 64], vec![false; 64]);
+        dispatch(
+            false,
+            &mut forced,
+            &resting,
+            &current,
+            &resistance,
+            &threshold,
+            dtot,
+            &mut forced_spikes,
+        );
+        integrate_batch_scalar(
+            &mut reference,
+            &resting,
+            &current,
+            &resistance,
+            &threshold,
+            dtot,
+            &mut reference_spikes,
+        );
+        assert_ne!(
+            forced, membrane,
+            "the fixture moves: a fallback that does nothing fails"
+        );
+        assert!(
+            reference_spikes.contains(&true) && reference_spikes.contains(&false),
+            "the fixture has both spike outcomes, or a spike bit written wrong could pass"
+        );
+        assert_eq!(forced, reference, "the fallback's membranes");
+        assert_eq!(forced_spikes, reference_spikes, "the fallback's spike bits");
     }
 
     /// The bit-equality below, swept DETERMINISTICALLY over the regime where the
