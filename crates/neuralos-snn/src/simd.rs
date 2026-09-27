@@ -798,10 +798,11 @@ mod tests {
     /// fixture rework fixed, one level up. Found by Soushi on PR #3.
     ///
     /// CI sets `NEURALOS_REQUIRE_AVX2` on the simd test steps (both workflow
-    /// files); with it set, a runner without AVX2 fails here instead of
-    /// skipping everywhere. Unset, a local run on an older box keeps skipping,
-    /// which is what a developer wants. Falsifier: set the variable on a
-    /// non-AVX2 target and this test must be the one that fails.
+    /// files); with it set, a runner without AVX2 fails here, and in every
+    /// test that needs AVX2, since each asks [`runs_avx2`]. Unset, a local run
+    /// on an older box keeps skipping, which is what a developer wants.
+    /// Falsifier: set the variable on a non-AVX2 target and this test fails,
+    /// with every test that needs AVX2.
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn ci_runner_actually_has_avx2() {
@@ -814,10 +815,32 @@ mod tests {
         }
     }
 
+    /// Whether this runner can run the AVX2 kernel, asked by every test that
+    /// needs it. `false` means the test returns early, and `what` says what
+    /// then went unchecked. Under `NEURALOS_REQUIRE_AVX2`, which CI sets on
+    /// every `simd` test step, there is no `false`: a runner without AVX2
+    /// fails in each test that needed it, and not only in
+    /// [`ci_runner_actually_has_avx2`].
+    #[cfg(target_arch = "x86_64")]
+    fn runs_avx2(what: &str) -> bool {
+        if matches!(detect_simd_support(), SimdSupport::Avx2) {
+            return true;
+        }
+        assert!(
+            std::env::var_os("NEURALOS_REQUIRE_AVX2").is_none(),
+            "CI asked for the AVX2 gate and this runner cannot run it: {what}"
+        );
+        eprintln!("(AVX2 not available — {what})");
+        false
+    }
+
     /// AVX2 kernel output stays within the biological bounds, like the scalar.
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn simd_membrane_stays_bounded() {
+        if !runs_avx2("skipping the bounds test") {
+            return;
+        }
         let n = 256;
         let mut mp = vec![60i16; n]; // deliberately above MAX
         let rp = vec![-70i16; n];
@@ -836,8 +859,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn simd_approximates_scalar_within_tolerance() {
-        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
-            eprintln!("(AVX2 not available — skipping equivalence test)");
+        if !runs_avx2("skipping equivalence test") {
             return;
         }
         // Varied inputs so both signs + magnitudes of delta are exercised.
@@ -967,8 +989,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn the_avx2_kernel_clamps_a_factor_past_the_bound_on_its_own() {
-        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
-            eprintln!("(AVX2 not available — skipping the kernel's clamp test)");
+        if !runs_avx2("skipping the kernel's clamp test") {
             return;
         }
         // Leak +30 mV, no current: a wrapped factor steps the membrane its
@@ -1012,6 +1033,7 @@ mod tests {
         res: &[i16],
         th: &[i16],
         dtot: i32,
+        what: &str,
     ) -> Option<(i32, usize, usize, usize)> {
         let n = mp.len();
         assert!(n.is_multiple_of(LANES), "fixture must be all vector lanes");
@@ -1024,7 +1046,7 @@ mod tests {
             assert!((-100..=50).contains(&v), "scalar left the mV grid: {v}");
         }
 
-        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+        if !runs_avx2(what) {
             return None;
         }
         let mut mp_v = mp.to_vec();
@@ -1114,10 +1136,15 @@ mod tests {
         // the negative half of that range is reachable through the public API
         // and was untested until 2026-09-01.
         for dtot in [DT_OVER_TAU_MAX as i32, -DT_OVER_TAU_MAX as i32] {
-            let Some((max_diff, membrane_diffs, spike_diffs, both_saturating)) =
-                measure_divergence(&mp, &rp, &ic, &res, &th, dtot)
-            else {
-                eprintln!("(AVX2 not available — corner agreement not checked)");
+            let Some((max_diff, membrane_diffs, spike_diffs, both_saturating)) = measure_divergence(
+                &mp,
+                &rp,
+                &ic,
+                &res,
+                &th,
+                dtot,
+                "corner agreement not checked",
+            ) else {
                 return;
             };
             assert_eq!(
@@ -1245,10 +1272,7 @@ mod tests {
         let (mp, rp, ic, res, th) = mv_grid_fixture();
         let n = mp.len();
 
-        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
-            eprintln!(
-                "(AVX2 not available — the model cannot be validated, so nothing is reported)"
-            );
+        if !runs_avx2("the model cannot be validated, so nothing is reported") {
             return;
         }
 
@@ -1330,8 +1354,15 @@ mod tests {
             (-DT_OVER_TAU_MAX as i32, 15, 2261, 92, 1379),
         ];
         for (dtot, max_diff, membrane_diffs, spike_diffs, both_saturating) in expected {
-            let Some(got) = measure_divergence(&mp, &rp, &ic, &res, &th, dtot) else {
-                eprintln!("(AVX2 not available — mV-grid divergence not checked)");
+            let Some(got) = measure_divergence(
+                &mp,
+                &rp,
+                &ic,
+                &res,
+                &th,
+                dtot,
+                "mV-grid divergence not checked",
+            ) else {
                 return;
             };
             assert_eq!(
@@ -1385,8 +1416,7 @@ mod tests {
         assert_eq!(mp_s[0], -55, "scalar lands on threshold exactly");
         assert!(sp_s[0], "scalar fires");
 
-        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
-            eprintln!("(AVX2 not available — spike divergence not checked)");
+        if !runs_avx2("spike divergence not checked") {
             return;
         }
         let mut mp_v = vec![mp; LANES];
@@ -1652,8 +1682,7 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn avx2_tail_writes_every_remainder_element() {
         const DTOT: i32 = 50; // 1 ms / 20 ms
-        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
-            eprintln!("(AVX2 not available — skipping tail test)");
+        if !runs_avx2("skipping tail test") {
             return;
         }
         for n in [0usize, 1, 15, 16, 17, 31, 32, 33, 47, 48, 257] {
@@ -1728,8 +1757,7 @@ mod tests {
     fn avx2_and_scalar_trajectories_stay_bounded() {
         const N: usize = 16;
 
-        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
-            eprintln!("(AVX2 not available — skipping trajectory test)");
+        if !runs_avx2("skipping trajectory test") {
             return;
         }
 
@@ -1909,8 +1937,7 @@ mod tests {
         const DT_SCAN: i32 = 260; // past the documented edge, to find it rather than assume it
         const W: usize = 16; // a full chunk: anything shorter is all scalar tail
 
-        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
-            eprintln!("(AVX2 not available — skipping the equivalence sweep)");
+        if !runs_avx2("skipping the equivalence sweep") {
             return;
         }
         let reps = current_term_class_representatives();
@@ -2062,8 +2089,7 @@ mod tests {
     #[ignore = "exhaustive sweep, minutes not milliseconds"]
     #[cfg(target_arch = "x86_64")]
     fn sweep_reproduces_the_documented_trajectory_maxima() {
-        if !matches!(detect_simd_support(), SimdSupport::Avx2) {
-            eprintln!("(AVX2 not available — skipping the trajectory sweep)");
+        if !runs_avx2("skipping the trajectory sweep") {
             return;
         }
         let reps = current_term_class_representatives();
@@ -2454,7 +2480,7 @@ mod tests {
             ),
             dtot in 0i32..=EQUIV_DT_OVER_TAU_MAX,
         ) {
-            if !matches!(detect_simd_support(), SimdSupport::Avx2) {
+            if !runs_avx2("the equivalence property not checked") {
                 return Ok(());
             }
             let (membrane, resting, current, resistance, threshold) = soa_in_domain(&raw);
