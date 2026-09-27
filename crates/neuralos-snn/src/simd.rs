@@ -23,9 +23,9 @@
 //! # The SoA seam
 //!
 //! The network stores neurons as `Vec<LIFNeuron>` (`array-of-structures`). SIMD
-//! needs SoA. The batch entry point takes slices; an adapter that gathers
-//! `&mut [LIFNeuron]` → SoA slices, runs the batch, scatters back, is a
-//! follow-up concern (measured separately from the kernel speedup).
+//! needs SoA. The batch entry points take a [`LIFBatch`] of slices; an adapter
+//! that gathers `&mut [LIFNeuron]` → SoA slices, runs the batch, scatters back,
+//! is a follow-up concern (measured separately from the kernel speedup).
 //!
 //! One type seam that adapter will have to close: `resistance` is `u16`
 //! (`resistance_mohm`) on [`crate::LIFNeuron`] and `i16` here, so the batch
@@ -154,7 +154,7 @@
 //!
 //! # What "matching `integrate_and_fire`" means
 //!
-//! [`integrate_batch_scalar`] is bit-equal to
+//! [`integrate_lif_batch_scalar`] is bit-equal to
 //! [`crate::LIFNeuron::integrate_and_fire`] on the mV grid — same
 //! `dt_over_tau`, same `leak + (I·R)/1000`, same `/1000`, same
 //! `saturating_add` and same clamp — and produces the same spike bit, **for
@@ -206,7 +206,7 @@
 //!
 //! # Overflow domain (the `dt_over_tau` bound)
 //!
-//! Every intermediate in `lif_lane` and [`integrate_batch_scalar`] is `i32`, and
+//! Every intermediate in `lif_lane` and [`integrate_lif_batch_scalar`] is `i32`, and
 //! the two halves disagree on what overflow means: `_mm256_mullo_epi32` wraps
 //! silently, while the scalar `*` panics in debug and wraps in release. So the
 //! kernel does not permit overflow at all — it saturates `dt_over_tau` into the
@@ -232,7 +232,7 @@
 //! to `−DT_OVER_TAU_MAX..=DT_OVER_TAU_MAX` on entry.
 //!
 //! **Saturate, not reject.** Rejection needs an error channel, and neither
-//! [`integrate_lif_batch`] nor [`integrate_batch_scalar`] has one — adding
+//! [`integrate_lif_batch`] nor [`integrate_lif_batch_scalar`] has one — adding
 //! `Result` would change a hot-path signature for a condition no physical `dt/τ`
 //! reaches (the standard 1 ms / 20 ms step gives `dt_over_tau = 50`). A silent
 //! wrap in one half and a debug panic in the other is the worse outcome, so the
@@ -315,11 +315,11 @@
 //!
 //! The batch kernel (and its scalar reference) operate on the **default mV
 //! grid only**: the reference clamps to `−100..50` and ignores
-//! [`crate::VoltageResolution`] scale (`integrate_batch_scalar`, below). A
+//! [`crate::VoltageResolution`] scale (`integrate_lif_batch_scalar`, below). A
 //! centi-mV consumer would get silently wrong membranes. Until the kernel
 //! takes a scale parameter, do not route `CentiMillivolt` state through it (no
 //! in-tree consumer does — 2026-08-20 audit, re-verified 2026-08-30: the only
-//! callers of `integrate_lif_batch` / `integrate_batch_scalar` anywhere in the
+//! callers of `integrate_lif_batch` / `integrate_lif_batch_scalar` anywhere in the
 //! workspace are `examples/bench_simd.rs` and this module's own tests, and none
 //! constructs a `CentiMillivolt` neuron).
 //!
@@ -442,11 +442,83 @@ pub fn detect_simd_support() -> SimdSupport {
 /// Returned to the batch 2026-09-01 by the principal's ruling.)
 pub const DT_OVER_TAU_MAX: i64 = 1884;
 
+/// One batch step's six slices, by name: N neurons in SoA form.
+///
+/// [`integrate_lif_batch`] and [`integrate_lif_batch_scalar`] take one by
+/// value. Built as a struct literal, it puts each slice beside its name where
+/// the call is written: four of the six are `&[i16]`, which as positional
+/// arguments compile in any order. Every slice must be as long as `membrane`
+/// (asserted on entry, in every profile).
+///
+/// Exhaustive on purpose: a caller may build a batch by a literal, which is
+/// what names each slice, and a seventh field would be a breaking release.
+///
+/// A caller that owns its arrays lends them as one batch per step:
+///
+/// ```
+/// use neuralos_snn::simd::{integrate_lif_batch, LIFBatch};
+///
+/// struct Population {
+///     membrane: Vec<i16>,
+///     resting: Vec<i16>,
+///     current: Vec<i16>,
+///     resistance: Vec<i16>,
+///     threshold: Vec<i16>,
+///     spikes: Vec<bool>,
+/// }
+///
+/// impl Population {
+///     fn batch(&mut self) -> LIFBatch<'_> {
+///         LIFBatch {
+///             membrane: &mut self.membrane,
+///             resting: &self.resting,
+///             input_currents: &self.current,
+///             resistance: &self.resistance,
+///             threshold: &self.threshold,
+///             spikes_out: &mut self.spikes,
+///         }
+///     }
+/// }
+///
+/// let mut p = Population {
+///     membrane: vec![-70; 3],
+///     resting: vec![-70; 3],
+///     current: vec![0, 300, 600],
+///     resistance: vec![100; 3],
+///     threshold: vec![-55; 3],
+///     spikes: vec![false; 3],
+/// };
+/// for step in 0..3 {
+///     p.current[0] = 100 * step; // this step's input
+///     integrate_lif_batch(p.batch(), 50); // 1 ms into a 20 ms time constant
+/// }
+/// assert!(p.membrane[2] > p.membrane[1] && p.membrane[1] > -70);
+/// ```
+#[derive(Debug)]
+pub struct LIFBatch<'a> {
+    /// Each neuron's membrane potential on the mV grid, updated in place.
+    pub membrane: &'a mut [i16],
+    /// Each neuron's resting potential, mV.
+    pub resting: &'a [i16],
+    /// Each neuron's total input current: external, synaptic and noise, less
+    /// adaptation, summed by the caller. The batch integrates it; it does not
+    /// accumulate it.
+    pub input_currents: &'a [i16],
+    /// Each neuron's membrane resistance: `i16` here, `u16` on
+    /// [`crate::LIFNeuron`] (module doc § The SoA seam).
+    pub resistance: &'a [i16],
+    /// Each neuron's spike threshold, mV.
+    pub threshold: &'a [i16],
+    /// Written: whether each neuron's new membrane reached its threshold.
+    pub spikes_out: &'a mut [bool],
+}
+
 /// Integrate one LIF step across a batch of N neurons (SoA slices).
 ///
-/// Updates `membrane` in place and writes the spike mask to `spikes_out`.
-/// Picks AVX2 at runtime when available, else the scalar reference. All slices
-/// must be equal length (asserted, in every profile).
+/// Updates `batch.membrane` in place and writes the spike mask to
+/// `batch.spikes_out`. Picks AVX2 at runtime when available, else the scalar
+/// reference. All six slices must be equal length (asserted, in every
+/// profile).
 ///
 /// `input_currents` is the *total* effective current per neuron (external +
 /// synaptic + noise − adaptation); the batch computes only the membrane
@@ -463,7 +535,7 @@ pub const DT_OVER_TAU_MAX: i64 = 1884;
 /// Panics if the six slices are not all the same length — in **every** profile,
 /// not just debug. The AVX2 kernel indexes all of them by the same chunk
 /// offsets, so an unequal length is an out-of-bounds read from a safe function
-/// in a published crate; enforcing the contract here is the only way the
+/// in a published crate; enforcing the contract on entry is the only way the
 /// `SAFETY` comment below can name an invariant that actually holds.
 ///
 /// Asserting rather than clamping `n` to the shortest slice is deliberate. The
@@ -476,14 +548,22 @@ pub const DT_OVER_TAU_MAX: i64 = 1884;
 ///
 /// ```
 /// use neuralos_snn::lif_neuron::dt_over_tau;
-/// use neuralos_snn::simd::{integrate_lif_batch, DT_OVER_TAU_MAX};
+/// use neuralos_snn::simd::{integrate_lif_batch, LIFBatch, DT_OVER_TAU_MAX};
 ///
 /// // One neuron at -100 mV, resting at -70 mV, no current: the factor
 /// // alone moves it.
 /// let step = |factor: i64| {
 ///     let mut membrane = [-100_i16];
 ///     let mut spikes = [false];
-///     integrate_lif_batch(&mut membrane, &[-70], &[0], &[100], &[0], factor, &mut spikes);
+///     let batch = LIFBatch {
+///         membrane: &mut membrane,
+///         resting: &[-70],
+///         input_currents: &[0],
+///         resistance: &[100],
+///         threshold: &[0],
+///         spikes_out: &mut spikes,
+///     };
+///     integrate_lif_batch(batch, factor);
 ///     membrane[0]
 /// };
 /// let bound = step(DT_OVER_TAU_MAX);
@@ -491,42 +571,23 @@ pub const DT_OVER_TAU_MAX: i64 = 1884;
 /// assert_eq!(step(dt_over_tau(u32::MAX, 1)), bound); // the largest there is
 /// assert_ne!(step(dt_over_tau(1_000, 20_000)), bound); // 50, the physical default
 /// ```
-pub fn integrate_lif_batch(
-    membrane: &mut [i16],
-    resting: &[i16],
-    input_currents: &[i16],
-    resistance: &[i16],
-    threshold: &[i16],
-    dt_over_tau: i64,
-    spikes_out: &mut [bool],
-) {
-    dispatch(
-        true,
-        membrane,
-        resting,
-        input_currents,
-        resistance,
-        threshold,
-        dt_over_tau,
-        spikes_out,
-    );
+pub fn integrate_lif_batch(batch: LIFBatch<'_>, dt_over_tau: i64) {
+    dispatch(true, batch, dt_over_tau);
 }
 
 /// [`integrate_lif_batch`]'s body, with one switch: `allow_avx2 = false`
 /// takes the scalar fallback on any CPU, so a test can run the line an AVX2
 /// machine never reaches. It takes AVX2 away and never forces it: the AVX2
 /// kernel still runs only where [`detect_simd_support`] finds it.
-#[allow(clippy::too_many_arguments)] // the entry point's seven, and the switch
-fn dispatch(
-    allow_avx2: bool,
-    membrane: &mut [i16],
-    resting: &[i16],
-    input_currents: &[i16],
-    resistance: &[i16],
-    threshold: &[i16],
-    dt_over_tau: i64,
-    spikes_out: &mut [bool],
-) {
+fn dispatch(allow_avx2: bool, batch: LIFBatch<'_>, dt_over_tau: i64) {
+    let LIFBatch {
+        membrane,
+        resting,
+        input_currents,
+        resistance,
+        threshold,
+        spikes_out,
+    } = batch;
     let n = membrane.len();
     assert_eq!(resting.len(), n, "resting.len() != membrane.len()");
     assert_eq!(
@@ -566,7 +627,7 @@ fn dispatch(
     // Off x86_64 there is no AVX2 to allow: the fallback is the only path.
     #[cfg(not(target_arch = "x86_64"))]
     let _ = allow_avx2;
-    integrate_batch_scalar(
+    integrate_scalar(
         membrane,
         resting,
         input_currents,
@@ -577,7 +638,8 @@ fn dispatch(
     );
 }
 
-/// Scalar reference — exact v2 LIF math (÷1000). Also the remainder tail.
+/// Scalar reference — exact v2 LIF math (÷1000). It takes the batch
+/// [`integrate_lif_batch`] takes, and always runs the scalar loop.
 ///
 /// `dt_over_tau` is the exact factor, as [`integrate_lif_batch`] takes it,
 /// saturated to [`DT_OVER_TAU_MAX`] on entry, so no `i32` intermediate here
@@ -598,7 +660,40 @@ fn dispatch(
 /// [`crate::LIFNeuron::integrate_and_fire`] on the mV grid — pinned by
 /// `prop_scalar_batch_is_bit_equal_to_integrate_and_fire`, with the four
 /// non-arithmetic differences listed in the module doc.
-pub fn integrate_batch_scalar(
+pub fn integrate_lif_batch_scalar(batch: LIFBatch<'_>, dt_over_tau: i64) {
+    let LIFBatch {
+        membrane,
+        resting,
+        input_currents,
+        resistance,
+        threshold,
+        spikes_out,
+    } = batch;
+    integrate_scalar(
+        membrane,
+        resting,
+        input_currents,
+        resistance,
+        threshold,
+        dt_over_tau,
+        spikes_out,
+    );
+}
+
+/// The scalar loop, on separate slices: the body of
+/// [`integrate_lif_batch_scalar`], the AVX2 kernel's remainder tail and the
+/// dispatcher's fallback. Separate slice arguments tell the compiler that
+/// `membrane` and `spikes_out` overlap no input, so it vectorises the loop
+/// with no check at run time; slices read out of a [`LIFBatch`] do not tell
+/// it that.
+///
+/// Always inlined, so the AVX2 kernel does not call out for its tail: as a
+/// call, it cost the dispatched path a few ns per call at small N on the
+/// pinned compiler (ISA round 50). A toolchain bump can move that;
+/// `examples/bench_simd.rs` measures it.
+#[allow(clippy::inline_always)] // measured, above
+#[inline(always)]
+fn integrate_scalar(
     membrane: &mut [i16],
     resting: &[i16],
     input_currents: &[i16],
@@ -695,7 +790,7 @@ unsafe fn integrate_batch_avx2(
 
     // Scalar tail for the remainder.
     let tail = chunks * WIDTH;
-    integrate_batch_scalar(
+    integrate_scalar(
         &mut membrane[tail..],
         &resting[tail..],
         &input_currents[tail..],
@@ -794,7 +889,7 @@ mod tests {
         (50, 870, 100, 5),  // the extremal case found by the exhaustive sweep
     ];
 
-    /// The five SoA slices a batch needs, owned. Named because the tuple trips
+    /// The five `i16` columns of a batch, owned. Named because the tuple trips
     /// `clippy::type_complexity` under `--features simd`, which no workspace gate
     /// lints (the workspace build does not enable `simd`).
     type SoaBatch = (Vec<i16>, Vec<i16>, Vec<i16>, Vec<i16>, Vec<i16>);
@@ -879,7 +974,17 @@ mod tests {
         let th = vec![-55i16; n];
         let mut spikes = vec![false; n];
         let dtot = dt_over_tau(1000, 20_000);
-        integrate_lif_batch(&mut mp, &rp, &ic, &res, &th, dtot, &mut spikes);
+        integrate_lif_batch(
+            LIFBatch {
+                membrane: &mut mp,
+                resting: &rp,
+                input_currents: &ic,
+                resistance: &res,
+                threshold: &th,
+                spikes_out: &mut spikes,
+            },
+            dtot,
+        );
         for &v in &mp {
             assert!((-100..=50).contains(&v), "out of bounds: {v}");
         }
@@ -911,7 +1016,17 @@ mod tests {
         let dtot = dt_over_tau(1000, 20_000);
         let mut spikes_a = vec![false; n];
         let mut spikes_b = vec![false; n];
-        integrate_batch_scalar(&mut mp_a, &rp, &ic, &res, &th, dtot, &mut spikes_a);
+        integrate_lif_batch_scalar(
+            LIFBatch {
+                membrane: &mut mp_a,
+                resting: &rp,
+                input_currents: &ic,
+                resistance: &res,
+                threshold: &th,
+                spikes_out: &mut spikes_a,
+            },
+            dtot,
+        );
         // SAFETY: equal-length slices, AVX2 verified available above.
         unsafe {
             integrate_batch_avx2(&mut mp_b, &rp, &ic, &res, &th, dtot as i32, &mut spikes_b);
@@ -987,9 +1102,29 @@ mod tests {
             let mut spikes = [false];
             let (rp, ic, res, th) = ([-40i16], [0i16], [100i16], [i16::MAX]);
             if dispatched {
-                integrate_lif_batch(&mut membrane, &rp, &ic, &res, &th, factor, &mut spikes);
+                integrate_lif_batch(
+                    LIFBatch {
+                        membrane: &mut membrane,
+                        resting: &rp,
+                        input_currents: &ic,
+                        resistance: &res,
+                        threshold: &th,
+                        spikes_out: &mut spikes,
+                    },
+                    factor,
+                );
             } else {
-                integrate_batch_scalar(&mut membrane, &rp, &ic, &res, &th, factor, &mut spikes);
+                integrate_lif_batch_scalar(
+                    LIFBatch {
+                        membrane: &mut membrane,
+                        resting: &rp,
+                        input_currents: &ic,
+                        resistance: &res,
+                        threshold: &th,
+                        spikes_out: &mut spikes,
+                    },
+                    factor,
+                );
             }
             membrane[0]
         };
@@ -1071,7 +1206,17 @@ mod tests {
         // Scalar first: in a debug build an overflowing `*` panics here.
         let mut mp_s = mp.to_vec();
         let mut sp_s = vec![false; n];
-        integrate_batch_scalar(&mut mp_s, rp, ic, res, th, i64::from(dtot), &mut sp_s);
+        integrate_lif_batch_scalar(
+            LIFBatch {
+                membrane: &mut mp_s,
+                resting: rp,
+                input_currents: ic,
+                resistance: res,
+                threshold: th,
+                spikes_out: &mut sp_s,
+            },
+            i64::from(dtot),
+        );
         for &v in &mp_s {
             assert!((-100..=50).contains(&v), "scalar left the mV grid: {v}");
         }
@@ -1154,14 +1299,14 @@ mod tests {
         // 3125 = 195 * 16 + 5. Without padding the last five combinations
         // (membrane = resting = current = resistance = i16::MAX, every
         // threshold) run in the AVX2 scalar tail and are compared against
-        // integrate_batch_scalar's own output — a guaranteed zero feeding a
+        // the same scalar loop's own output — a guaranteed zero feeding a
         // triple this test pins as an exact measurement. See LANES.
         for v in [&mut mp, &mut rp, &mut ic, &mut res, &mut th] {
             pad_to_lanes(v);
         }
 
         // Both signs. `dt_over_tau` itself is never negative, but
-        // `integrate_lif_batch` and `integrate_batch_scalar` both take an `i64`
+        // `integrate_lif_batch` and `integrate_lif_batch_scalar` both take an `i64`
         // from the caller and clamp to `-DT_OVER_TAU_MAX..=DT_OVER_TAU_MAX`, so
         // the negative half of that range is reachable through the public API
         // and was untested until 2026-09-01.
@@ -1199,8 +1344,8 @@ mod tests {
     /// row's own leak: `current_term = input * 100 / 1000 = input / 10`, so
     /// `input = -10 * leak + offset` puts the sum `leak + current_term` at
     /// `offset / 10`.
-    /// `(membrane, resting, input_current, resistance, threshold)` — the SoA
-    /// shape every entry point in this module takes.
+    /// `(membrane, resting, input_current, resistance, threshold)`, the five
+    /// `i16` columns in the order the AVX2 kernel takes them.
     #[cfg(target_arch = "x86_64")]
     type SoaFixture = (Vec<i16>, Vec<i16>, Vec<i16>, Vec<i16>, Vec<i16>);
 
@@ -1333,7 +1478,17 @@ mod tests {
             for dtot in [DT_OVER_TAU_MAX as i32, -DT_OVER_TAU_MAX as i32] {
                 let mut mp_s = mp.clone();
                 let mut sp_s = vec![false; n];
-                integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, i64::from(dtot), &mut sp_s);
+                integrate_lif_batch_scalar(
+                    LIFBatch {
+                        membrane: &mut mp_s,
+                        resting: &rp,
+                        input_currents: &ic,
+                        resistance: &res,
+                        threshold: &th,
+                        spikes_out: &mut sp_s,
+                    },
+                    i64::from(dtot),
+                );
                 for i in 0..n {
                     let v = avx2_lane_model(mp[i], rp[i], ic[i], res[i], dtot, floor_current_term);
                     let s = i32::from(mp_s[i]);
@@ -1434,14 +1589,16 @@ mod tests {
         let (mp, rp, ic, res, th) = (-100i16, -100i16, 247i16, 100i16, -55i16);
         let mut mp_s = vec![mp; LANES];
         let mut sp_s = vec![false; LANES];
-        integrate_batch_scalar(
-            &mut mp_s,
-            &[rp; LANES],
-            &[ic; LANES],
-            &[res; LANES],
-            &[th; LANES],
+        integrate_lif_batch_scalar(
+            LIFBatch {
+                membrane: &mut mp_s,
+                resting: &[rp; LANES],
+                input_currents: &[ic; LANES],
+                resistance: &[res; LANES],
+                threshold: &[th; LANES],
+                spikes_out: &mut sp_s,
+            },
             DT_OVER_TAU_MAX,
-            &mut sp_s,
         );
         assert_eq!(mp_s[0], -55, "scalar lands on threshold exactly");
         assert!(sp_s[0], "scalar fires");
@@ -1512,7 +1669,7 @@ mod tests {
         // any element the kernel actually processes moves off SENTINEL.
         // Both public entry points carry the same contract, so both are checked.
         // `integrate_lif_batch` takes the AVX2 path on this box, so it never
-        // exercises `integrate_batch_scalar`'s own asserts except through the
+        // exercises the scalar loop's own asserts except through the
         // equal-length tail call.
         let run = |scalar_entry: bool, lens: [usize; 5]| -> (bool, Vec<i16>, Vec<bool>) {
             let mut membrane = vec![SENTINEL; N];
@@ -1521,18 +1678,20 @@ mod tests {
             let mut spikes = vec![true; lens[4]];
             let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let entry = if scalar_entry {
-                    integrate_batch_scalar
+                    integrate_lif_batch_scalar
                 } else {
                     integrate_lif_batch
                 };
                 entry(
-                    &mut membrane,
-                    &vec![0i16; lens[0]],
-                    &vec![0i16; lens[1]],
-                    &vec![100i16; lens[2]],
-                    &vec![-55i16; lens[3]],
+                    LIFBatch {
+                        membrane: &mut membrane,
+                        resting: &vec![0i16; lens[0]],
+                        input_currents: &vec![0i16; lens[1]],
+                        resistance: &vec![100i16; lens[2]],
+                        threshold: &vec![-55i16; lens[3]],
+                        spikes_out: &mut spikes,
+                    },
                     50,
-                    &mut spikes,
                 );
             }))
             .is_err();
@@ -1546,7 +1705,7 @@ mod tests {
         for (i, name) in NAMES.iter().enumerate() {
             for (entry_name, scalar_entry) in [
                 ("integrate_lif_batch", false),
-                ("integrate_batch_scalar", true),
+                ("integrate_lif_batch_scalar", true),
             ] {
                 for (label, len) in [("short", SHORT), ("long", N * 2)] {
                     let mut lens = [N; 5];
@@ -1613,22 +1772,26 @@ mod tests {
         let (mut forced_spikes, mut reference_spikes) = (vec![false; 64], vec![false; 64]);
         dispatch(
             false,
-            &mut forced,
-            &resting,
-            &current,
-            &resistance,
-            &threshold,
+            LIFBatch {
+                membrane: &mut forced,
+                resting: &resting,
+                input_currents: &current,
+                resistance: &resistance,
+                threshold: &threshold,
+                spikes_out: &mut forced_spikes,
+            },
             dtot,
-            &mut forced_spikes,
         );
-        integrate_batch_scalar(
-            &mut reference,
-            &resting,
-            &current,
-            &resistance,
-            &threshold,
+        integrate_lif_batch_scalar(
+            LIFBatch {
+                membrane: &mut reference,
+                resting: &resting,
+                input_currents: &current,
+                resistance: &resistance,
+                threshold: &threshold,
+                spikes_out: &mut reference_spikes,
+            },
             dtot,
-            &mut reference_spikes,
         );
         assert_ne!(
             forced, membrane,
@@ -1648,7 +1811,7 @@ mod tests {
     /// The clamp is what makes a random-i16 sweep blind: saturate both sides and
     /// any arithmetic error is hidden behind the same bound. A property test can
     /// therefore pass on one seed and fail on another, which is not a pin. This
-    /// test takes no draws, so every constant in `integrate_batch_scalar` is
+    /// test takes no draws, so every constant in the scalar loop is
     /// observable on every run — `/1000 -> /1024` turns it red.
     #[test]
     fn scalar_batch_matches_integrate_and_fire_in_the_unclamped_regime() {
@@ -1678,14 +1841,16 @@ mod tests {
                             let dtot = dt_over_tau(dt_us, tau_us);
                             let mut membrane = vec![mp];
                             let mut spikes = vec![false];
-                            integrate_batch_scalar(
-                                &mut membrane,
-                                &[rp],
-                                &[input],
-                                &[resistance],
-                                &[i16::MAX],
+                            integrate_lif_batch_scalar(
+                                LIFBatch {
+                                    membrane: &mut membrane,
+                                    resting: &[rp],
+                                    input_currents: &[input],
+                                    resistance: &[resistance],
+                                    threshold: &[i16::MAX],
+                                    spikes_out: &mut spikes,
+                                },
                                 dtot,
-                                &mut spikes,
                             );
                             assert_eq!(
                                 membrane[0], n.membrane_potential,
@@ -1833,8 +1998,28 @@ mod tests {
             let mut sp_v = vec![false; N];
             let mut worst_step = 0i32;
             for _ in 0..steps {
-                integrate_batch_scalar(&mut mp_s, &rp, &ic, &res, &th, i64::from(dtot), &mut sp_s);
-                integrate_lif_batch(&mut mp_v, &rp, &ic, &res, &th, i64::from(dtot), &mut sp_v);
+                integrate_lif_batch_scalar(
+                    LIFBatch {
+                        membrane: &mut mp_s,
+                        resting: &rp,
+                        input_currents: &ic,
+                        resistance: &res,
+                        threshold: &th,
+                        spikes_out: &mut sp_s,
+                    },
+                    i64::from(dtot),
+                );
+                integrate_lif_batch(
+                    LIFBatch {
+                        membrane: &mut mp_v,
+                        resting: &rp,
+                        input_currents: &ic,
+                        resistance: &res,
+                        threshold: &th,
+                        spikes_out: &mut sp_v,
+                    },
+                    i64::from(dtot),
+                );
                 let d = (i32::from(mp_s[0]) - i32::from(mp_v[0])).abs();
                 if d > worst_step {
                     worst_step = d;
@@ -1881,7 +2066,7 @@ mod tests {
 
     /// The AVX2 chunk width. Any sweep fixture whose length is not a multiple of
     /// this feeds its final `len % LANES` lanes to `integrate_batch_avx2`'s
-    /// SCALAR TAIL, where they are compared against `integrate_batch_scalar` —
+    /// SCALAR TAIL, where they are compared against the scalar reference —
     /// that is, against themselves. Those grid points are then covered on paper
     /// and untested in fact.
     ///
@@ -1953,14 +2138,16 @@ mod tests {
         let (mp_s, mp_v, sp_s, sp_v) = scratch;
         mp_s.copy_from_slice(start);
         mp_v.copy_from_slice(start);
-        integrate_batch_scalar(
-            mp_s,
-            resting,
-            current,
-            resistance,
-            threshold,
+        integrate_lif_batch_scalar(
+            LIFBatch {
+                membrane: mp_s,
+                resting,
+                input_currents: current,
+                resistance,
+                threshold,
+                spikes_out: sp_s,
+            },
             i64::from(dtot),
-            sp_s,
         );
         // SAFETY: equal-length slices; the caller checked AVX2 is available.
         unsafe {
@@ -1983,7 +2170,7 @@ mod tests {
     ///
     /// Membrane and resting over the whole mV grid × every distinct current-term
     /// class × `dt_over_tau` past the documented bound, against
-    /// `integrate_batch_avx2` and `integrate_batch_scalar` themselves — not a
+    /// `integrate_batch_avx2` and `integrate_lif_batch_scalar` themselves — not a
     /// scalar model of them, which is what the numbers rested on before.
     ///
     /// "The whole grid" is load-bearing and was not true in the first draft: the
@@ -2106,23 +2293,27 @@ mod tests {
                 let (mut sa, mut sb) = (vec![false; LANES], vec![false; LANES]);
                 let mut traj = 0i32;
                 for _ in 0..20_000 {
-                    integrate_batch_scalar(
-                        &mut a,
-                        &rp_v,
-                        &ic_v,
-                        &res_v,
-                        &th_v,
+                    integrate_lif_batch_scalar(
+                        LIFBatch {
+                            membrane: &mut a,
+                            resting: &rp_v,
+                            input_currents: &ic_v,
+                            resistance: &res_v,
+                            threshold: &th_v,
+                            spikes_out: &mut sa,
+                        },
                         i64::from(dt),
-                        &mut sa,
                     );
                     integrate_lif_batch(
-                        &mut b,
-                        &rp_v,
-                        &ic_v,
-                        &res_v,
-                        &th_v,
+                        LIFBatch {
+                            membrane: &mut b,
+                            resting: &rp_v,
+                            input_currents: &ic_v,
+                            resistance: &res_v,
+                            threshold: &th_v,
+                            spikes_out: &mut sb,
+                        },
                         i64::from(dt),
-                        &mut sb,
                     );
                     let d = (i32::from(a[0]) - i32::from(b[0])).abs();
                     if d > traj {
@@ -2183,14 +2374,16 @@ mod tests {
                 for _ in 0..400 {
                     prev_s.copy_from_slice(&mp_s);
                     prev_v.copy_from_slice(&mp_v);
-                    integrate_batch_scalar(
-                        &mut mp_s,
-                        &resting,
-                        &current,
-                        &resistance,
-                        &threshold,
+                    integrate_lif_batch_scalar(
+                        LIFBatch {
+                            membrane: &mut mp_s,
+                            resting: &resting,
+                            input_currents: &current,
+                            resistance: &resistance,
+                            threshold: &threshold,
+                            spikes_out: &mut sp_s,
+                        },
                         i64::from(dt),
-                        &mut sp_s,
                     );
                     // SAFETY: equal-length slices, AVX2 checked above.
                     unsafe {
@@ -2312,14 +2505,16 @@ mod tests {
 
             let mut membrane = vec![mp];
             let mut spikes = vec![false];
-            integrate_batch_scalar(
-                &mut membrane,
-                &[rp],
-                &[input],
-                &[resistance],
-                &[i16::MAX],
+            integrate_lif_batch_scalar(
+                LIFBatch {
+                    membrane: &mut membrane,
+                    resting: &[rp],
+                    input_currents: &[input],
+                    resistance: &[resistance],
+                    threshold: &[i16::MAX],
+                    spikes_out: &mut spikes,
+                },
                 exact,
-                &mut spikes,
             );
 
             // The batch equals the neuron run at the CLAMPED factor: a step of
@@ -2359,14 +2554,16 @@ mod tests {
 
         let mut membrane = vec![-100i16];
         let mut spikes = vec![false];
-        integrate_batch_scalar(
-            &mut membrane,
-            &[-70],
-            &[0],
-            &[100],
-            &[i16::MAX],
+        integrate_lif_batch_scalar(
+            LIFBatch {
+                membrane: &mut membrane,
+                resting: &[-70],
+                input_currents: &[0],
+                resistance: &[100],
+                threshold: &[i16::MAX],
+                spikes_out: &mut spikes,
+            },
             dt_over_tau(40_000, 20_000),
-            &mut spikes,
         );
         assert_eq!(membrane[0], -44, "batch: 1884 * 30 / 1000 = +56");
     }
@@ -2395,7 +2592,7 @@ mod tests {
             th in -100i16..=50,
             // Two regimes. The wide arm saturates the clamp on almost every draw,
             // which makes it blind on its own: `/1000 -> /1024` in
-            // integrate_batch_scalar survived it, because both sides then pin to
+            // the scalar loop survived it, because both sides then pin to
             // the same clamp bound. The small-signal arm keeps the result inside
             // the clamp, where the arithmetic is observable. The deterministic
             // sweep below is what actually holds the pin; this arm only widens
@@ -2458,8 +2655,16 @@ mod tests {
 
             let mut membrane = vec![mp];
             let mut spikes = vec![false];
-            integrate_batch_scalar(
-                &mut membrane, &[rp], &[input], &[resistance], &[th], exact, &mut spikes,
+            integrate_lif_batch_scalar(
+                LIFBatch {
+                    membrane: &mut membrane,
+                    resting: &[rp],
+                    input_currents: &[input],
+                    resistance: &[resistance],
+                    threshold: &[th],
+                    spikes_out: &mut spikes,
+                },
+                exact,
             );
 
             if inside_the_clamp {
@@ -2548,8 +2753,16 @@ mod tests {
 
             let mut mp_s = membrane.clone();
             let mut sp_s = vec![false; n];
-            integrate_batch_scalar(
-                &mut mp_s, &resting, &current, &resistance, &threshold, i64::from(dtot), &mut sp_s,
+            integrate_lif_batch_scalar(
+                LIFBatch {
+                    membrane: &mut mp_s,
+                    resting: &resting,
+                    input_currents: &current,
+                    resistance: &resistance,
+                    threshold: &threshold,
+                    spikes_out: &mut sp_s,
+                },
+                i64::from(dtot),
             );
 
             let mut mp_v = membrane.clone();
