@@ -35,8 +35,6 @@ use std::path::{Path, PathBuf};
 use neuralos_snn::fixed::freeze;
 use neuralos_snn::nir::{NirImport, NirImportOptions};
 use neuralos_snn::trace::{self, Kind, Rows};
-#[cfg(feature = "unstable-freeze")]
-use neuralos_snn::FixedSynapse;
 use neuralos_snn::{
     LIFNeuron, NetworkTopology, NeuronType, SpikingNeuralNetwork, VoltageResolution,
 };
@@ -84,47 +82,38 @@ pub fn frozen_path() -> PathBuf {
 
 /// The text of `frozen.rs` (module doc): every plasticity-off case, built,
 /// as one module named after it (`-` becomes `_`) holding `N`, `S`,
-/// `DT_US`, `STEPS`, `SPIKES_ONLY`, `HEADER` (the trace's first line,
-/// verbatim), `NEURONS` (one constructor call and one setter per
-/// parameter each, as built, before the first step), `SYNAPSES`
-/// (`FixedSynapse::from_network`: the CSR order) and `DRIVE` (runs of
-/// equal steps). Then `for_each_frozen!`, which applies a caller's macro
-/// to every module, so no list is kept by hand.
+/// `DT_US`, `STEPS`, `SPIKES_ONLY`, `HEADER` (the trace's first line),
+/// `NEURONS` (one constructor call and one setter per parameter each, as
+/// built, before the first step), `SYNAPSES` (`FixedSynapse::from_network`:
+/// the CSR order) and `DRIVE` (runs of equal steps). Then
+/// `for_each_frozen!`, which applies a caller's macro to every module, so
+/// no list is kept by hand.
 ///
 /// # Panics
 ///
 /// When a case's drive is not one current per neuron, which no case here
-/// is; and with every refusal of `freeze::module` — a neuron that is not
-/// at rest, an `id` that is not the neuron's position, a chain that does
-/// not rebuild its neuron — none of which a case here trips: each is
-/// built and frozen before its first step, and each numbers its neurons
-/// from 0.
+/// is; and with every refusal of `freeze::module`, none of which a case
+/// here trips: each is built and frozen before its first step, on one
+/// grid, named by the rule, its edges finalized, and each numbers its
+/// neurons from 0; the one case with plasticity on is skipped.
 #[cfg(feature = "unstable-freeze")]
 pub fn freeze() -> String {
     let mut out = String::from(freeze::preamble());
-    let mut modules = Vec::new();
+    let mut frozen = Vec::new();
     for case in CASES {
         let Run { net, drive } = (case.build)();
         if net.plasticity_enabled() {
             continue;
         }
-        let name = case.name.replace('-', "_");
         let drive = runs(case.name, &*drive, case.steps, net.neurons().len());
         out.push('\n');
         out.push_str(&freeze::module(
-            &name,
-            net.neurons(),
-            &FixedSynapse::from_network(&net),
-            DT_US,
-            &header(case, &net),
-            case.steps,
-            matches!(case.rows, Rows::Spikes),
-            &drive,
+            &net, case.name, case.kind, case.steps, case.rows, &drive,
         ));
-        modules.push(name);
+        frozen.push(case.name);
     }
     out.push('\n');
-    out.push_str(&freeze::tail(&modules));
+    out.push_str(&freeze::tail(&frozen));
     out
 }
 

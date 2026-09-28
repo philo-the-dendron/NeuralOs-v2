@@ -704,19 +704,21 @@ pub fn module_name(stem: &str) -> Option<String> {
 /// # Panics
 ///
 /// Never, and not by luck: an assembled network steps, a `String` takes
-/// every write, and the library's freezer refuses nothing it is handed
-/// here. Its three refusals, each ruled out at its source: a neuron
-/// that is not at rest — the module is written before the stepping loop
-/// below, and `build_network` builds every membrane at its leak; an
-/// `id` that is not the neuron's position — `build_network` numbers the
-/// neurons as it pushes them; and a chain that does not rebuild its
-/// neuron, which would be a defect of the library, not of a stranger's
-/// graph. The drive it is given is the encoder's output, one current
-/// per neuron. The header line refuses nothing here either:
-/// `build_network` builds every neuron on the options' grid, and `name`
-/// is a [`module_name`] (anything else is refused first, as
+/// every write, and neither the header line nor the library's freezer
+/// refuses what it is handed here. Each refusal is ruled out at its
+/// source: plasticity on, refused above; a CSR that no longer delivers
+/// its synapses — `build_network` finalizes once, after its last edge;
+/// a clock not at 0, and a neuron that is not at rest — the module is
+/// written before the stepping loop below, and `build_network` builds
+/// every membrane at its leak; neurons on two grids — `build_network`
+/// builds every neuron on the options' grid; a case name off the rule —
+/// `name` is a [`module_name`] (anything else is refused first, as
 /// [`FreezeError::Name`]), which with `_` made `-` is lowercase
-/// letters, digits and `-`.
+/// letters, digits and `-`; an `id` that is not the neuron's position —
+/// `build_network` numbers the neurons as it pushes them; and a chain
+/// that does not rebuild its neuron, which would be a defect of the
+/// library, not of a stranger's graph. The drive it is given is the
+/// encoder's output, one current per neuron.
 pub fn freeze(
     json: &[u8],
     opts: NirImportOptions,
@@ -761,23 +763,16 @@ pub fn freeze(
 
     // build_network builds the network at opts.dt_us, every neuron on
     // opts.resolution, plasticity off (refused above)
-    let header = trace::header(
+    let case = name.replace('_', "-");
+    let header = trace::header(&net, &case, Kind::Stranger, steps, Rows::All)
+        .expect("one grid, the options', and a case name from module_name");
+    let synapses = FixedSynapse::from_network(&net).len();
+    let module = freezer::module(
         &net,
-        &name.replace('_', "-"),
+        &case,
         Kind::Stranger,
         steps,
         Rows::All,
-    )
-    .expect("one grid, the options', and a case name from module_name");
-    let synapses = FixedSynapse::from_network(&net);
-    let module = freezer::module(
-        name,
-        net.neurons(),
-        &synapses,
-        opts.dt_us,
-        &header,
-        steps,
-        false,
         &[(steps, currents.clone())],
     );
 
@@ -796,7 +791,7 @@ pub fn freeze(
         module,
         trace,
         neurons: net.neurons().len(),
-        synapses: synapses.len(),
+        synapses,
     })
 }
 

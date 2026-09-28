@@ -19,6 +19,8 @@
 
 use super::FixedSynapse;
 use crate::lif_neuron::LIFNeuron;
+use crate::network::SpikingNeuralNetwork;
+use crate::trace::{self, Kind, Rows};
 
 /// The head of the library's frozen file (module doc).
 const PREAMBLE: &str = "\
@@ -52,12 +54,17 @@ pub fn preamble() -> &'static str {
     PREAMBLE
 }
 
-/// One `pub mod name { … }`, its last newline included: `N`, `S`,
-/// `DT_US`, `STEPS`, `SPIKES_ONLY`, `HEADER` (verbatim), `NEURONS` (one
-/// constructor call and one setter per parameter each, every parameter
-/// written, as given, before the first step), `SYNAPSES` (as given: the
-/// delivery order, which [`FixedSynapse::from_network`] gives as the
-/// CSR's) and `DRIVE`, runs of equal steps, `(count, currents)`.
+/// One `pub mod` for the trace `case`, its last newline included: `N`,
+/// `S`, `DT_US`, `STEPS`, `SPIKES_ONLY`, `HEADER` (the trace's header
+/// line, [`trace::header`]'s), `NEURONS` (one constructor call and one
+/// setter per parameter each, every parameter written, at rest),
+/// `SYNAPSES` (the delivery order, which [`FixedSynapse::from_network`]
+/// gives as the CSR's) and `DRIVE`, runs of equal steps, `(count,
+/// currents)`. The module is named after the case, `-` made `_`.
+///
+/// Everything but the run is read from `net`: its neurons, its synapses,
+/// its time step and the header's fields. `case`, `kind`, `steps` and
+/// `rows` name the trace, and `drive` is its run.
 ///
 /// No state is emitted: a frozen neuron is its parameters, at rest. The
 /// eight setters are written default or not, so a frozen file does not
@@ -66,30 +73,64 @@ pub fn preamble() -> &'static str {
 ///
 /// # Panics
 ///
-/// When a run of `drive` does not hold one current per neuron; when a
-/// neuron is not at rest, since no state is written (the assert in
-/// `neuron_chain` carries the reasons it cannot fire on the stranger
-/// path); when a neuron's `id` is not its position in `neurons`, since
-/// the id is what a `FixedNetwork` indexes it by and what seeds its
-/// noise; and when the chain written for a neuron does not rebuild it,
-/// which is this module's own defect and not the caller's.
+/// On what a frozen file cannot hold, each message naming the case:
+/// plasticity on, since a `FixedNetwork` has none; a CSR that no longer
+/// delivers each synapse under its own `pre` (edges added out of `pre`
+/// order and not finalized since, or finalized twice), which
+/// `FixedNetwork::try_from` refuses too; a clock that is not at 0,
+/// since the file starts at 0 and writes no state; neurons on two grids
+/// and a `case` that is empty or holds anything but lowercase ASCII
+/// letters, digits and `-`, which the header line refuses; a run of
+/// `drive` that does not hold one current per neuron; a neuron that is
+/// not at rest (the assert in `neuron_chain` carries the reasons it
+/// cannot fire on the stranger path); and a neuron whose `id` is not
+/// its position, since the id is what a `FixedNetwork` indexes it by
+/// and what seeds its noise. And when the chain written for a neuron
+/// does not rebuild it, which is this module's own defect and not the
+/// caller's.
 #[must_use]
-#[allow(clippy::too_many_arguments)] // one argument per constant of the module
 pub fn module(
-    name: &str,
-    neurons: &[LIFNeuron],
-    synapses: &[FixedSynapse],
-    dt_us: u32,
-    header: &str,
+    net: &SpikingNeuralNetwork,
+    case: &str,
+    kind: Kind,
     steps: u32,
-    spikes_only: bool,
+    rows: Rows,
     drive: &[(u32, Vec<i16>)],
 ) -> String {
+    assert!(
+        !net.plasticity_enabled(),
+        "{case}: plasticity is on, and a FixedNetwork has none"
+    );
+    assert!(
+        net.csr_delivers_its_synapses(),
+        "{case}: the CSR does not deliver each synapse under its own pre (edges added \
+         out of pre order and not finalized since, or finalized twice)"
+    );
+    assert_eq!(
+        net.current_time_us(),
+        0,
+        "{case}: the network has stepped, and a frozen file starts at 0"
+    );
+    assert!(
+        trace::one_grid(net).is_some(),
+        "{case}: the neurons store their potentials on two grids, and a trace names one"
+    );
+    assert!(
+        trace::is_case_name(case),
+        "{case:?}: a case name is lowercase ASCII letters, digits and -"
+    );
+    let header = trace::header(net, case, kind, steps, rows)
+        .expect("one grid and a case name by the rule, both checked above");
+    let neurons = net.neurons();
+    let synapses = FixedSynapse::from_network(net);
+    let dt_us = net.time_step_us();
+    let spikes_only = matches!(rows, Rows::Spikes);
+    let name = case.replace('-', "_");
     assert!(
         drive
             .iter()
             .all(|(_, currents)| currents.len() == neurons.len()),
-        "one current per neuron in every run of the drive"
+        "{case}: one current per neuron in every run of the drive"
     );
     let mut out = format!("pub mod {name} {{\n");
     out.push_str(
@@ -105,7 +146,7 @@ pub fn module(
     out.push_str(&format!("    pub const HEADER: &str = {header:?};\n"));
     out.push_str("    pub const NEURONS: [LIFNeuron; N] = [\n");
     for (i, neuron) in neurons.iter().enumerate() {
-        let (chain, rebuilt) = neuron_chain(name, i, neuron);
+        let (chain, rebuilt) = neuron_chain(case, i, neuron);
         // THE GUARD IS A CORPUS TEST, NOT A TRIPWIRE. It fires when a
         // frozen neuron carries a value the chain does not write, which
         // is what "the emitted list of setters is complete" means here.
@@ -129,16 +170,17 @@ pub fn module(
         // `VoltageResolution` (the crate's own habit for a field-by-field
         // compare, `nir::chain_equivalence_both_builders_bit_exact`); a
         // hand-written `Debug` on any of the three would blind it, and
-        // the field count with it — but not that test's literal, which
-        // is the compiler's own check and reads no `Debug` at all.
+        // one on `LIFNeuron` the field count too — but not that test's
+        // literal, which is the compiler's own check and reads no `Debug`
+        // at all.
         assert_eq!(
             format!("{rebuilt:?}"),
             format!("{neuron:?}"),
-            "{name}, neuron {i}: the emitted chain does not rebuild the neuron"
+            "{case}, neuron {i}: the emitted chain does not rebuild the neuron"
         );
         assert!(
             usize::from(neuron.id) == i,
-            "{name}, neuron {i}: a neuron's id is its position in the array, \
+            "{case}, neuron {i}: a neuron's id is its position in the array, \
              which is what indexes it and what seeds its noise"
         );
         out.push_str(&format!("        {chain},\n"));
@@ -148,7 +190,7 @@ pub fn module(
         out.push_str("    pub const SYNAPSES: [FixedSynapse; S] = [];\n");
     } else {
         out.push_str("    pub const SYNAPSES: [FixedSynapse; S] = [\n");
-        for s in synapses {
+        for s in &synapses {
             out.push_str(&format!(
                 "        FixedSynapse::new({}, {}, {}),\n",
                 s.pre, s.post, s.pulse_ua
@@ -165,17 +207,18 @@ pub fn module(
     out
 }
 
-/// `for_each_frozen!`, which applies a caller's macro to every module
-/// named here, in this order, so no list is kept by hand; then its
-/// `pub(crate) use`.
+/// `for_each_frozen!`, which applies a caller's macro to the module of
+/// every case named here, in this order, so no list is kept by hand;
+/// then its `pub(crate) use`. A case's module is its name, `-` made `_`,
+/// as [`module`] names it.
 #[must_use]
-pub fn tail(modules: &[String]) -> String {
+pub fn tail(cases: &[&str]) -> String {
     let mut out = String::from(
         "/// Applies the caller's macro to every frozen case, in file order.\n\
          macro_rules! for_each_frozen {\n    ($m:ident) => {\n",
     );
-    for module in modules {
-        out.push_str(&format!("        $m!({module});\n"));
+    for case in cases {
+        out.push_str(&format!("        $m!({});\n", case.replace('-', "_")));
     }
     out.push_str("    };\n}\npub(crate) use for_each_frozen;\n");
     out
@@ -197,10 +240,10 @@ pub fn tail(modules: &[String]) -> String {
 /// `LIFNeuron { … }` literal, so a field added is the compiler's error
 /// there whatever this pattern says.
 ///
-/// `name` and `i` are the module's name and the neuron's index, for the
+/// `case` and `i` are the case's name and the neuron's index, for the
 /// assert below: the two asserts in [`module`]'s loop name both, and a
 /// caller that trips this one wants them as much.
-fn neuron_chain(name: &str, i: usize, n: &LIFNeuron) -> (String, LIFNeuron) {
+fn neuron_chain(case: &str, i: usize, n: &LIFNeuron) -> (String, LIFNeuron) {
     let LIFNeuron {
         id,
         neuron_type,
@@ -227,11 +270,12 @@ fn neuron_chain(name: &str, i: usize, n: &LIFNeuron) -> (String, LIFNeuron) {
     // module before its stepping loop, and `nir::substrate_neuron`
     // builds the membrane at the leak.
     //
-    // "At rest" means "before the first step" for every caller in the
-    // tree: `integrate_and_fire` writes `last_update_time_us =
-    // current_time_us`, 0 at the first step, so a network stepped once
-    // at time 0 with nothing moving passes — and the freezer is handed
-    // neurons, never the network's clock.
+    // "At rest" means "before the first step", and `module` reads that
+    // off the network's clock: a network stepped once at time 0 with
+    // nothing moving passes this assert (`integrate_and_fire` writes
+    // `last_update_time_us = current_time_us`, 0 at the first step), not
+    // the clock's. What this assert alone catches is a neuron handed to
+    // `from_neurons` carrying state, which a clock at 0 does not reveal.
     assert!(
         membrane_potential == resting_potential
             && *refractory_time_us == 0
@@ -239,7 +283,7 @@ fn neuron_chain(name: &str, i: usize, n: &LIFNeuron) -> (String, LIFNeuron) {
             && *last_spike_time_us == 0
             && *synaptic_current_ua == 0
             && *adaptation_current_ua == 0,
-        "{name}, neuron {i}: the freezer writes a neuron at rest, before the first step"
+        "{case}, neuron {i}: the freezer writes a neuron at rest, before the first step"
     );
     let mut text = format!(
         "LIFNeuron::new_with_type_resolution({id}, NeuronType::{neuron_type:?}, \
@@ -270,4 +314,184 @@ fn neuron_chain(name: &str, i: usize, n: &LIFNeuron) -> (String, LIFNeuron) {
         with_noise_amplitude_ua => *noise_amplitude_ua,
     }
     (text, rebuilt)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lif_neuron::{NeuronType, VoltageResolution};
+
+    /// A neuron at rest with no noise, on `grid`.
+    fn quiet(id: u16, grid: VoltageResolution) -> LIFNeuron {
+        let mut n = LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, grid);
+        n.noise_amplitude_ua = 0;
+        n
+    }
+
+    /// Two quiet neurons on the centi-mV grid and a synapse 0 → 1,
+    /// finalized, at a 0.5 ms step, which no trace uses: a network the
+    /// freezer takes.
+    fn two() -> SpikingNeuralNetwork {
+        let neurons = vec![
+            quiet(0, VoltageResolution::CentiMillivolt),
+            quiet(1, VoltageResolution::CentiMillivolt),
+        ];
+        let mut net = SpikingNeuralNetwork::from_neurons(neurons, 500).expect("neurons given");
+        net.add_synapse(0, 1, 5_000).expect("ids in range");
+        net.finalize_synapses();
+        net
+    }
+
+    /// `two`'s run: three silent steps.
+    fn silent() -> Vec<(u32, Vec<i16>)> {
+        vec![(3, vec![0, 0])]
+    }
+
+    /// What the module reads off the network, and the case's name made
+    /// the module's.
+    #[test]
+    fn the_module_is_named_after_its_case_and_reads_the_network() {
+        let text = module(
+            &two(),
+            "two-quiet",
+            Kind::Stranger,
+            3,
+            Rows::Spikes,
+            &silent(),
+        );
+        assert!(text.starts_with("pub mod two_quiet {\n"), "{text}");
+        for line in [
+            "    pub const N: usize = 2;\n",
+            "    pub const S: usize = 1;\n",
+            "    pub const DT_US: u32 = 500;\n",
+            "    pub const STEPS: u32 = 3;\n",
+            "    pub const SPIKES_ONLY: bool = true;\n",
+            "    pub const HEADER: &str = \"# neuralos-trace v1 case=two-quiet kind=stranger n=2 \
+             dt_us=500 res=cmV plasticity=off divisor=10 steps=3 rows=spikes\";\n",
+        ] {
+            assert!(text.contains(line), "{line:?} in {text}");
+        }
+    }
+
+    /// `tail` names each case's module as `module` does.
+    #[test]
+    fn the_tail_names_each_case_by_its_module() {
+        let text = tail(&["chain-3", "two"]);
+        assert!(
+            text.contains("        $m!(chain_3);\n        $m!(two);\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "unstable-stdp")]
+    #[should_panic(expected = "two: plasticity is on")]
+    fn plasticity_on_is_refused() {
+        let mut net = two();
+        net.set_plasticity_enabled(true);
+        let _ = module(&net, "two", Kind::Regression, 3, Rows::All, &silent());
+    }
+
+    /// Edges added out of `pre` order and never finalized, as
+    /// `FixedNetwork::try_from`'s own test builds them.
+    #[test]
+    #[should_panic(expected = "stale: the CSR does not deliver")]
+    fn a_stale_csr_is_refused() {
+        let neurons = (0..3)
+            .map(|id| quiet(id, VoltageResolution::CentiMillivolt))
+            .collect();
+        let mut net = SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("neurons given");
+        net.add_synapse(1, 2, 5_000).expect("ids in range");
+        net.add_synapse(0, 1, 5_000).expect("ids in range");
+        let _ = module(
+            &net,
+            "stale",
+            Kind::Regression,
+            1,
+            Rows::All,
+            &[(1, vec![0, 0, 0])],
+        );
+    }
+
+    /// One step at time 0 moves no field the neuron check reads, so the
+    /// clock is what refuses it.
+    #[test]
+    #[should_panic(expected = "two: the network has stepped")]
+    fn a_stepped_network_is_refused() {
+        let mut net = two();
+        net.step(&[0, 0]).expect("two inputs");
+        let _ = module(&net, "two", Kind::Regression, 3, Rows::All, &silent());
+    }
+
+    #[test]
+    #[should_panic(expected = "mixed: the neurons store their potentials on two grids")]
+    fn two_grids_are_refused() {
+        let neurons = vec![
+            quiet(0, VoltageResolution::Millivolt),
+            quiet(1, VoltageResolution::CentiMillivolt),
+        ];
+        let net = SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("neurons given");
+        let _ = module(
+            &net,
+            "mixed",
+            Kind::Regression,
+            1,
+            Rows::All,
+            &[(1, vec![0, 0])],
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "\"Two\": a case name is lowercase")]
+    fn a_case_name_off_the_rule_is_refused() {
+        let _ = module(&two(), "Two", Kind::Regression, 3, Rows::All, &silent());
+    }
+
+    #[test]
+    #[should_panic(expected = "two: one current per neuron in every run of the drive")]
+    fn a_drive_short_of_a_current_is_refused() {
+        let _ = module(
+            &two(),
+            "two",
+            Kind::Regression,
+            3,
+            Rows::All,
+            &[(3, vec![0])],
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "restless, neuron 0: the freezer writes a neuron at rest")]
+    fn a_neuron_carrying_state_is_refused() {
+        let mut restless = quiet(0, VoltageResolution::CentiMillivolt);
+        restless.membrane_potential += 1;
+        let neurons = vec![restless, quiet(1, VoltageResolution::CentiMillivolt)];
+        let net = SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("neurons given");
+        let _ = module(
+            &net,
+            "restless",
+            Kind::Regression,
+            1,
+            Rows::All,
+            &[(1, vec![0, 0])],
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "swapped, neuron 0: a neuron's id is its position")]
+    fn an_id_off_its_position_is_refused() {
+        let neurons = vec![
+            quiet(1, VoltageResolution::CentiMillivolt),
+            quiet(0, VoltageResolution::CentiMillivolt),
+        ];
+        let net = SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("neurons given");
+        let _ = module(
+            &net,
+            "swapped",
+            Kind::Regression,
+            1,
+            Rows::All,
+            &[(1, vec![0, 0])],
+        );
+    }
 }
