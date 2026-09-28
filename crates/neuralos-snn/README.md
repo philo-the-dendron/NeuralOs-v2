@@ -2,8 +2,8 @@
 
 > `no_std`, i16 fixed-point spiking neural networks for edge and RISC-V
 > silicon — LIF neurons, CSR synapses, a ternary weight quantizer, an
-> AVX2 batch kernel, and, behind unstable features, pairwise STDP and
-> the ternary bridge codecs.
+> AVX2 batch kernel, and, behind unstable features, pairwise STDP, the
+> ternary bridge codecs and the freezer.
 
 Published on crates.io as `0.1.0-alpha.8` (AGPL-3.0-or-later).
 
@@ -68,7 +68,7 @@ each name by its shortest public path.
 | `spike_recorder` | `SpikeRecorder`, the spike history a caller keeps when it wants one: a `[u32; MAX_SPIKE_HISTORY]` ring (64 entries, the oldest overwritten), fed from `integrate_and_fire`'s return; the neuron keeps none |
 | `synapse` | Synapse, weight scale `SCALE = 1000`; with `unstable-stdp`, the pairwise STDP rule (a₊ 50 / a₋ −53 / lr 100) |
 | `network` *(std)* | `SpikingNeuralNetwork` orchestration (`step()`), a CSR synapse store (forward and reverse), 4 topology builders (Random, Small-World, Feedforward, Balanced E/I), per-step stats; with `unstable-stdp`, the plasticity passes (LTD + LTP), off until `set_plasticity_enabled(true)` |
-| `fixed` | `FixedNetwork<N, S>`: `N` neurons and `S` synapses in arrays, no heap, no plasticity, the std step's order; its step has no `Result`, no index and no division of its own. `TryFrom<&SpikingNeuralNetwork>` *(std)* converts a plasticity-off network of the same size, and refuses one whose CSR no longer matches its synapse list (edges added out of `pre` order and not finalized since, or finalized twice) |
+| `fixed` | `FixedNetwork<N, S>`: `N` neurons and `S` synapses in arrays, no heap, no plasticity, the std step's order; its step has no `Result`, no index and no division of its own. `TryFrom<&SpikingNeuralNetwork>` *(std)* converts a plasticity-off network of the same size, and refuses one whose CSR no longer matches its synapse list (edges added out of `pre` order and not finalized since, or finalized twice); with `unstable-freeze` *(std)*, `fixed::freeze`, the freezer, which writes a network as the Rust source of the arrays a `FixedNetwork` steps |
 | `trit` | Ternary weight type `{-1, 0, +1}` + scale, ternarizer; with `unstable-stdp`, the stochastic bucket-flip (LFSR, integer-only) |
 | `bridge` *(feature)* | `BitNet` `i2_s` encode/decode (bit-exact round-trip), Prism `q1_0`/`q2_0` import + `q2_0` export, integer fp16 widening — layouts pinned from reference sources, loud errors on impossible input |
 | `nir` | NIR (Neuromorphic Intermediate Representation) slice 1 — JSON import/export of `Input`/`Linear`/`LIF`/`Output` graphs, explicit per-node quantization records, loud lossiness, byte-stable export. Schema pinned verbatim to the reference implementation (`neuromorphs/NIR` @ `7883c3c`); fixtures are the reference's own emissions (`tools/gen_nir_fixtures.py`) |
@@ -98,6 +98,10 @@ keeps every historically recorded result bit-exact.
 - `unstable-bridge` — the closed ternary bridge chapter: the `bridge`
   codecs (`i2_s`, `q1_0`, `q2_0`) and the `kernel` matvec. Works with
   and without `std`.
+- `unstable-freeze` — the freezer, `fixed::freeze`: a network written as
+  the Rust source of the arrays a `FixedNetwork` steps, what
+  `neuralos-nir2json --freeze` writes. `std` only: without `std` the
+  feature builds nothing.
 
 "Unstable" means one thing: anything behind an `unstable-` feature may
 change or go in a minor release. It is outside the semver promise, and

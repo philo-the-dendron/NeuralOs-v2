@@ -69,28 +69,39 @@ jobs:
 
       # The published default config: the `unstable-` features off. Cargo
       # unifies features across a `--workspace` build: rt and the app ask
-      # for `unstable-stdp` and rt for `unstable-bridge`, so the two lines
-      # above build the library with both on. These two build it as a
-      # crates.io user does, tests and lints (PR L, ROADMAP § 0.1.0,
-      # check 9).
+      # for `unstable-stdp`, rt for `unstable-bridge` and nir2json for
+      # `unstable-freeze`, so the two lines above build the library with
+      # all three on. These two build it as a crates.io user does, tests
+      # and lints (PR L, ROADMAP § 0.1.0, check 9).
       - name: default config gate (neuralos-snn, unstable-stdp off)
         run: |
           cargo test -p neuralos-snn
           cargo clippy -p neuralos-snn --all-targets -- -D warnings
 
-      # The SNN core stays no_std (the embedded/RISC-V posture), with each
-      # `unstable-` feature too: `STDPRule`, `update_weight`, the bridge's
-      # codecs and its kernel are `no_std`, and the QEMU leg-A proof builds
-      # them that way.
+      # The SNN core stays no_std (the embedded/RISC-V posture), with the
+      # `unstable-` features that have code there: `STDPRule`,
+      # `update_weight`, the bridge's codecs and its kernel are `no_std`,
+      # and the QEMU leg-A proof builds them that way. The freezer has
+      # none: the next step.
       - name: no_std gate (neuralos-snn)
         run: |
           cargo build --no-default-features -p neuralos-snn
           cargo build --no-default-features --features unstable-stdp -p neuralos-snn
           cargo build --no-default-features --features unstable-bridge -p neuralos-snn
 
+      # The freezer without `std` (round 51): `unstable-freeze` builds
+      # nothing there, and a `no_std` build that asks for it still builds.
+      # The host has `std`, so a host line cannot see a feature that turns
+      # `std` on; a target without one can. The library alone, checked,
+      # never linked, on the firmware's target.
+      - name: no_std gate with the freezer (neuralos-snn on riscv32imc)
+        run: |
+          rustup target add riscv32imc-unknown-none-elf
+          cargo check -p neuralos-snn --lib --no-default-features --features unstable-freeze --target riscv32imc-unknown-none-elf
+
       # The MSRV gate: `rust-version = "1.92"` is the crate's promise to its
       # users; the pin is ours and follows stable (PR C). The library alone,
-      # in the five configurations a user can pick, on the declared floor.
+      # in the six configurations a user can pick, on the declared floor.
       # RUSTFLAGS is emptied: this proves the crate builds there, not that
       # an old compiler's lints are quiet. `rustc -V` names the pin first.
       - name: MSRV gate (neuralos-snn on 1.92.0)
@@ -104,6 +115,7 @@ jobs:
           cargo +1.92.0 check -p neuralos-snn --lib --features simd
           cargo +1.92.0 check -p neuralos-snn --lib --features unstable-stdp
           cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge
+          cargo +1.92.0 check -p neuralos-snn --lib --features unstable-freeze
 
       # SIMD kernel equivalence vs scalar (AVX2, x86_64, behind `simd`).
       # NEURALOS_REQUIRE_AVX2 turns each of the module's "AVX2 not
@@ -137,11 +149,13 @@ jobs:
       # carried 15 and 2 more such links the day this was added
       # (2026-09-19), none of them looked at by any gate. `--no-deps`: this
       # crate's docs, not its dependencies'. `unstable-stdp` is the third
-      # build since PR L and `unstable-bridge` the fourth since round 48:
-      # the gated items' docs exist in no other. docs.rs publishes one
-      # build, the default features with `simd`, `unstable-stdp` and
-      # `unstable-bridge` (the crate's `[package.metadata.docs.rs]`, `simd`
-      # since round 50); the lines here build the features one at a time.
+      # build since PR L, `unstable-bridge` the fourth since round 48 and
+      # `unstable-freeze` the fifth since round 51: the gated items' docs
+      # exist in no other. docs.rs publishes one build, the default
+      # features with `simd`, `unstable-stdp`, `unstable-bridge` and
+      # `unstable-freeze` (the crate's `[package.metadata.docs.rs]`, `simd`
+      # since round 50, `unstable-freeze` since round 51); the lines here
+      # build the features one at a time.
       # The three `no_std` builds since round 49, the no_std gate's three
       # configurations: a `std`-only item is a code span in a doc they
       # render, never a link (six were links until then, and no gate
@@ -154,6 +168,7 @@ jobs:
           cargo doc -p neuralos-snn --no-deps --features simd
           cargo doc -p neuralos-snn --no-deps --features unstable-stdp
           cargo doc -p neuralos-snn --no-deps --features unstable-bridge
+          cargo doc -p neuralos-snn --no-deps --features unstable-freeze
           cargo doc -p neuralos-snn --no-deps --no-default-features
           cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-stdp
           cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-bridge
@@ -293,11 +308,17 @@ jobs:
             cargo build --no-default-features -p neuralos-snn
             cargo build --no-default-features --features unstable-stdp -p neuralos-snn
             cargo build --no-default-features --features unstable-bridge -p neuralos-snn
+            # the freezer without std (round 51): this commit's pin needs the
+            # target, as the firmware leg's does below; a no-op when it is
+            # there.
+            rustup target add riscv32imc-unknown-none-elf
+            cargo check -p neuralos-snn --lib --no-default-features --features unstable-freeze --target riscv32imc-unknown-none-elf
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-stdp
             RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge
+            RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-freeze
             cargo test -p neuralos-snn --features simd
             cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
             # simd off x86 (round 50): this commit's pin needs the target, as
@@ -308,6 +329,7 @@ jobs:
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-bridge
+            RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-freeze
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-stdp
             RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-bridge

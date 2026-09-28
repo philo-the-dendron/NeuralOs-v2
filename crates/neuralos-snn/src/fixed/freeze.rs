@@ -9,7 +9,8 @@
 //! `neuralos-nir2json --freeze` writes one module for a stranger's graph.
 //! A module needs only `core` and this crate, so firmware can include it.
 //!
-//! Provisional until the pub walk: alpha.9's later PRs may rename it.
+//! Behind the `unstable-freeze` feature, outside the semver promise:
+//! anything here may change or go in a minor release.
 
 // The text is built line by line, `format!` then `push_str`, as
 // `cases::freeze` built it before the move: each line reads as the
@@ -46,8 +47,6 @@ const PREAMBLE: &str = "\
 /// includer reads only the constants it needs). The allow is an inner
 /// attribute, so that file is included as a module (`#[path]`), not by
 /// `include!`.
-///
-/// Provisional until the pub walk.
 #[must_use]
 pub fn preamble() -> &'static str {
     PREAMBLE
@@ -64,8 +63,6 @@ pub fn preamble() -> &'static str {
 /// eight setters are written default or not, so a frozen file does not
 /// move when a default does — the per-type table and the per-grid
 /// scaling are what an old file would otherwise be silently rebound to.
-///
-/// Provisional until the pub walk.
 ///
 /// # Panics
 ///
@@ -171,8 +168,6 @@ pub fn module(
 /// `for_each_frozen!`, which applies a caller's macro to every module
 /// named here, in this order, so no list is kept by hand; then its
 /// `pub(crate) use`.
-///
-/// Provisional until the pub walk.
 #[must_use]
 pub fn tail(modules: &[String]) -> String {
     let mut out = String::from(

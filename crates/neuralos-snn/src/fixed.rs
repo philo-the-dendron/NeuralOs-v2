@@ -18,8 +18,8 @@
 //!
 //! A frozen network's rows go through [`row`], the one writer of a
 //! `neuralos-trace v1` row: the trace tests on the host, the ESP32-C3
-//! firmware and the QEMU replay. `freeze` (`std`) writes the arrays
-//! themselves as Rust source.
+//! firmware and the QEMU replay. `freeze` (`std`, behind
+//! `unstable-freeze`) writes the arrays themselves as Rust source.
 //!
 //! # `no_std`
 //!
@@ -35,7 +35,7 @@ use crate::network::SpikingNeuralNetwork;
 #[cfg(feature = "std")]
 use crate::{Error, Result};
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "unstable-freeze"))]
 pub mod freeze;
 
 /// One synapse of a [`FixedNetwork`]: a spike of `pre` adds `pulse_ua` to
