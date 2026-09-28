@@ -61,10 +61,11 @@ use std::fmt;
 use std::path::Path;
 
 use hdf5_pure::{DType, Dataset, File, Group, VlenStringReadOptions};
-use neuralos_snn::fixed::{freeze as freezer, row};
+use neuralos_snn::fixed::freeze as freezer;
 use neuralos_snn::nir::{
     NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, nir_export,
 };
+use neuralos_snn::trace::{self, Kind, Rows, row};
 use neuralos_snn::{FixedSynapse, VoltageResolution};
 
 /// Tool version (sidecar stamp).
@@ -600,7 +601,7 @@ pub struct Frozen {
     /// the library's freezer (`neuralos_snn::fixed::freeze::module`).
     pub module: String,
     /// `neuralos-trace v1`: the module's header line, then one row per
-    /// step, each written by `neuralos_snn::fixed::row`.
+    /// step, each written by `neuralos_snn::trace::row`.
     pub trace: String,
     /// The network's neurons.
     pub neurons: usize,
@@ -624,6 +625,11 @@ pub enum FreezeError {
     Plasticity,
     /// `--input` does not give one value per input feature.
     Input { given: usize, features: usize },
+    /// `name` is not a [`module_name`], which `freeze` needs: the
+    /// module is named `name`, and the trace's case name is `name` with
+    /// `_` made `-`. Never from the CLI, which passes `module_name`'s
+    /// output.
+    Name(String),
 }
 
 impl fmt::Display for FreezeError {
@@ -639,6 +645,10 @@ impl fmt::Display for FreezeError {
             Self::Input { given, features } => write!(
                 f,
                 "--input gives {given} values; the graph has {features} input features, one value each"
+            ),
+            Self::Name(n) => write!(
+                f,
+                "{n:?} is not a module name: lowercase ASCII letters, digits and _, a letter or _ first, not _ alone, not a Rust keyword"
             ),
         }
     }
@@ -683,7 +693,7 @@ pub fn module_name(stem: &str) -> Option<String> {
 ///
 /// The trace is the std network's, plasticity off, the network
 /// `FixedNetwork::try_from` would convert, each row written by
-/// `neuralos_snn::fixed::row`. The fixed step equals the std step on
+/// `neuralos_snn::trace::row`. The fixed step equals the std step on
 /// every network `try_from` converts (the library's trace tests), and
 /// this crate's test builds the module and steps it to the same rows.
 ///
@@ -695,14 +705,18 @@ pub fn module_name(stem: &str) -> Option<String> {
 ///
 /// Never, and not by luck: an assembled network steps, a `String` takes
 /// every write, and the library's freezer refuses nothing it is handed
-/// here. Its three refusals, each ruled out at its source: a neuron that
-/// is not at rest — the module is written before the stepping loop
+/// here. Its three refusals, each ruled out at its source: a neuron
+/// that is not at rest — the module is written before the stepping loop
 /// below, and `build_network` builds every membrane at its leak; an
 /// `id` that is not the neuron's position — `build_network` numbers the
 /// neurons as it pushes them; and a chain that does not rebuild its
 /// neuron, which would be a defect of the library, not of a stranger's
-/// graph. The drive it is given is the encoder's output, one current per
-/// neuron.
+/// graph. The drive it is given is the encoder's output, one current
+/// per neuron. The header line refuses nothing here either:
+/// `build_network` builds every neuron on the options' grid, and `name`
+/// is a [`module_name`] (anything else is refused first, as
+/// [`FreezeError::Name`]), which with `_` made `-` is lowercase
+/// letters, digits and `-`.
 pub fn freeze(
     json: &[u8],
     opts: NirImportOptions,
@@ -710,6 +724,9 @@ pub fn freeze(
     steps: u32,
     input: Option<&[i16]>,
 ) -> Result<Frozen, FreezeError> {
+    if module_name(name).as_deref() != Some(name) {
+        return Err(FreezeError::Name(name.to_string()));
+    }
     let graph = NirImport::from_json(json, opts).map_err(|e| FreezeError::Import(e.to_string()))?;
     // one LIF record per neuron; a FixedNetwork's neuron ids are u16
     if graph.lifs.len() > usize::from(u16::MAX) {
@@ -742,19 +759,16 @@ pub fn freeze(
     }
     let currents = enc.encode(&per_input);
 
-    // the time step is the options': build_network builds the network at
-    // opts.dt_us
-    let header = format!(
-        "# neuralos-trace v1 case={} kind=stranger n={} dt_us={} res={} plasticity=off divisor={} steps={steps} rows=all",
-        name.replace('_', "-"),
-        net.neuron_count(),
-        opts.dt_us,
-        match opts.resolution {
-            VoltageResolution::Millivolt => "mV",
-            VoltageResolution::CentiMillivolt => "cmV",
-        },
-        net.synaptic_input_divisor(),
-    );
+    // build_network builds the network at opts.dt_us, every neuron on
+    // opts.resolution, plasticity off (refused above)
+    let header = trace::header(
+        &net,
+        &name.replace('_', "-"),
+        Kind::Stranger,
+        steps,
+        Rows::All,
+    )
+    .expect("one grid, the options', and a case name from module_name");
     let synapses = FixedSynapse::from_network(&net);
     let module = freezer::module(
         name,
@@ -911,6 +925,30 @@ mod tests {
         for bad in ["", "_", "2layer", "type", "mod", "crate"] {
             assert_eq!(module_name(bad), None, "{bad:?}");
         }
+    }
+
+    /// `freeze` refuses a `name` that is not a `module_name` before it
+    /// reads the graph (the JSON here is not JSON), so the header
+    /// line's case-name rule never meets it; a `module_name` goes on to
+    /// the import.
+    #[test]
+    fn freeze_refuses_a_name_that_is_not_a_module_name_first() {
+        for bad in ["Graph", "3chain", "loop", "_", "", "two-layer"] {
+            match freeze(b"not json", NirImportOptions::default(), bad, 1, None) {
+                Err(FreezeError::Name(n)) => assert_eq!(n, bad),
+                Err(e) => panic!("{bad:?}: refused as {e:?}, not by its name"),
+                Ok(_) => panic!("{bad:?}: frozen"),
+            }
+        }
+        assert!(
+            FreezeError::Name("Graph".to_string())
+                .to_string()
+                .contains("not a module name")
+        );
+        assert!(matches!(
+            freeze(b"not json", NirImportOptions::default(), "graph", 1, None),
+            Err(FreezeError::Import(_))
+        ));
     }
 
     #[test]

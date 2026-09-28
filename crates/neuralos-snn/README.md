@@ -69,6 +69,7 @@ each name by its shortest public path.
 | `synapse` | Synapse, weight scale `SCALE = 1000`; with `unstable-stdp`, the pairwise STDP rule (a₊ 50 / a₋ −53 / lr 100) |
 | `network` *(std)* | `SpikingNeuralNetwork` orchestration (`step()`), a CSR synapse store (forward and reverse), 4 topology builders (Random, Small-World, Feedforward, Balanced E/I), per-step stats; with `unstable-stdp`, the plasticity passes (LTD + LTP), off until `set_plasticity_enabled(true)` |
 | `fixed` | `FixedNetwork<N, S>`: `N` neurons and `S` synapses in arrays, no heap, no plasticity, the std step's order; its step has no `Result`, no index and no division of its own. `TryFrom<&SpikingNeuralNetwork>` *(std)* converts a plasticity-off network of the same size, and refuses one whose CSR no longer matches its synapse list (edges added out of `pre` order and not finalized since, or finalized twice); with `unstable-freeze` *(std)*, `fixed::freeze`, the freezer, which writes a network as the Rust source of the arrays a `FixedNetwork` steps |
+| `trace` | `neuralos-trace v1`, the trace format a host and a board write alike: its spec, `row` (one row, to any `core::fmt::Write`) and, with `std`, `header` (the header line, from a network); `Kind` and `Rows`, two of its fields |
 | `trit` | Ternary weight type `{-1, 0, +1}` + scale, ternarizer; with `unstable-stdp`, the stochastic bucket-flip (LFSR, integer-only) |
 | `bridge` *(feature)* | `BitNet` `i2_s` encode/decode (bit-exact round-trip), Prism `q1_0`/`q2_0` import + `q2_0` export, integer fp16 widening — layouts pinned from reference sources, loud errors on impossible input |
 | `nir` | NIR (Neuromorphic Intermediate Representation) slice 1 — JSON import/export of `Input`/`Linear`/`LIF`/`Output` graphs, explicit per-node quantization records, loud lossiness, byte-stable export. Schema pinned verbatim to the reference implementation (`neuromorphs/NIR` @ `7883c3c`); fixtures are the reference's own emissions (`tools/gen_nir_fixtures.py`) |
@@ -112,8 +113,9 @@ and the STDP counter fields are stable; without the feature they read
 `false` and 0.
 
 Without `std` the crate builds `no_std` (neurons, the spike recorder,
-synapses, the fixed network, trit, nir, and with `unstable-bridge` the
-bridge and the kernel) — the embedded posture CI enforces.
+synapses, the fixed network, the trace rows, trit, nir, and with
+`unstable-bridge` the bridge and the kernel) — the embedded posture CI
+enforces.
 
 ## Usage sketch
 

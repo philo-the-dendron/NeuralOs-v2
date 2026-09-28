@@ -9,7 +9,7 @@
 //! The fixed network is compared here too: `frozen.rs` regenerates line
 //! for line from `cases::freeze`; every frozen network, stepped from its
 //! arrays, writes its trace file's text through the library's row
-//! writer, `neuralos_snn::fixed::row`; every
+//! writer, `neuralos_snn::trace::row`; every
 //! plasticity-off case, converted by `FixedNetwork::try_from`, steps as
 //! the std network; and the frozen `feedforward-8` over 10,000 steps
 //! folds to the values the board's network arm must print.
@@ -24,10 +24,15 @@ mod cases;
 #[path = "traces/frozen.rs"]
 mod frozen;
 
-use cases::{Case, Kind, Rows, CASES, DIR, FORMAT};
-use neuralos_snn::fixed::row;
+use cases::{Case, CASES, DIR};
 use neuralos_snn::lif_neuron::{MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
+use neuralos_snn::trace::{row, Kind, Rows};
 use neuralos_snn::{FixedNetwork, FixedSynapse};
+
+/// The format line's name and version as a reader expects it, checked on
+/// every header below; the library's own is private to
+/// `neuralos_snn::trace`.
+const FORMAT: &str = "neuralos-trace v1";
 
 /// The bench record of the firmware's neuron, `evidence/esp32c3-bringup/
 /// README.md`: the spike count, the first spike's step, and the wrapping

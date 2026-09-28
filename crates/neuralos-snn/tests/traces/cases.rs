@@ -3,22 +3,11 @@
 //! library code: a case is a network built through the public API plus a
 //! drive, and a row is what `step()` returned and `neurons()` after it.
 //!
-//! Format `neuralos-trace v1`, one file per case in this directory:
-//!
-//! ```text
-//! # neuralos-trace v1 case=<name> kind=<regression|reference> n=<neurons> dt_us=<dt> res=<mV|cmV> plasticity=<on|off> divisor=<d> steps=<N> rows=<all|spikes>
-//! <step> <time_us> | <spiking neuron ids> | <membrane of every neuron, i16 quanta>
-//! ```
-//!
-//! One row per step (`rows=all`), or one per step that spiked
-//! (`rows=spikes`; the board case is 10,000 steps and 147 rows). A row is
-//! written after its step: `time_us` is the step's own timestamp, the one
-//! its spikes carry; the ids are the spikes `step()` returned, in neuron
-//! order, nothing between the bars when the step was silent; the
-//! membranes are `neurons()` after the step, so a neuron that fired shows
-//! its reset potential. Everything is decimal. Where a case keeps the
-//! noise, it is the neuron's own LFSR, seeded by id and time, so every
-//! case is a pure function of this file.
+//! One file per case in this directory, in the library's format,
+//! `neuralos-trace v1` (`neuralos_snn::trace`'s module doc); the board
+//! case keeps its spiking steps only, 147 rows of 10,000 steps. Where a
+//! case keeps the noise, it is the neuron's own LFSR, seeded by id and
+//! time, so every case is a pure function of this file.
 //!
 //! Two words, two meanings (PR B). A `regression` trace comes from this
 //! code and is compared with itself across commits: a trace that moves is
@@ -37,7 +26,7 @@
 //! steps, and `for_each_frozen!` over them. `plasticity-on` is the one
 //! case it cannot freeze, since a `FixedNetwork` has no plasticity. A
 //! frozen network writes its rows through the library's row writer
-//! (`neuralos_snn::fixed::row`), a second writer beside `render`, and
+//! (`neuralos_snn::trace::row`), a second writer beside `render`, and
 //! `tests/traces.rs` holds both against the files.
 
 use std::path::{Path, PathBuf};
@@ -45,34 +34,18 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "unstable-freeze")]
 use neuralos_snn::fixed::freeze;
 use neuralos_snn::nir::{NirImport, NirImportOptions};
+use neuralos_snn::trace::{self, Kind, Rows};
 #[cfg(feature = "unstable-freeze")]
 use neuralos_snn::FixedSynapse;
 use neuralos_snn::{
     LIFNeuron, NetworkTopology, NeuronType, SpikingNeuralNetwork, VoltageResolution,
 };
 
-/// The format line's name and version.
-pub const FORMAT: &str = "neuralos-trace v1";
 /// Where the files live: this directory, resolved from the crate root.
 pub const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/traces");
 /// Every case steps at 1 ms, the firmware's `DT_US` and the crate's own
 /// tests' step.
 const DT_US: u32 = 1_000;
-
-/// What the file is compared against: itself across commits, or an
-/// oracle too.
-#[derive(Clone, Copy)]
-pub enum Kind {
-    Regression,
-    Reference,
-}
-
-/// Which steps get a row.
-#[derive(Clone, Copy)]
-pub enum Rows {
-    All,
-    Spikes,
-}
 
 /// One case: a name, what it is, how long it runs, and how to build it.
 pub struct Case {
@@ -96,28 +69,11 @@ pub fn path(case: &Case) -> PathBuf {
 }
 
 /// A case's header line, the file's first, without its newline: what the
-/// built network says of itself before its first step.
+/// built network says of itself before its first step, written by the
+/// library (`neuralos_snn::trace::header`).
 fn header(case: &Case, net: &SpikingNeuralNetwork) -> String {
-    let res = match net.neurons()[0].voltage_resolution {
-        VoltageResolution::Millivolt => "mV",
-        VoltageResolution::CentiMillivolt => "cmV",
-    };
-    format!(
-        "# {FORMAT} case={} kind={} n={} dt_us={DT_US} res={res} plasticity={} divisor={} steps={} rows={}",
-        case.name,
-        match case.kind {
-            Kind::Regression => "regression",
-            Kind::Reference => "reference",
-        },
-        net.neuron_count(),
-        if net.plasticity_enabled() { "on" } else { "off" },
-        net.synaptic_input_divisor(),
-        case.steps,
-        match case.rows {
-            Rows::All => "all",
-            Rows::Spikes => "spikes",
-        },
-    )
+    trace::header(net, case.name, case.kind, case.steps, case.rows)
+        .expect("every case is on one grid and named by the rule")
 }
 
 /// The frozen file, `frozen.rs` in this directory.
@@ -232,7 +188,8 @@ fn neuron(id: u16, kind: NeuronType, res: VoltageResolution, noise_ua: u8) -> LI
     n
 }
 
-/// A network from given neurons, with the given edges, finalized.
+/// A network from given neurons and the given edges, finalized when there
+/// is at least one.
 fn wired(neurons: Vec<LIFNeuron>, edges: &[(u16, u16, i16)]) -> SpikingNeuralNetwork {
     let mut net = SpikingNeuralNetwork::from_neurons(neurons, DT_US).expect("neurons given");
     for &(pre, post, w) in edges {

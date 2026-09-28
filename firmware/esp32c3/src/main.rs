@@ -27,7 +27,7 @@
 //!    stranger's gate.
 //! 3. replay: every frozen case (`for_each_frozen!`), its trace's header
 //!    line, then its rows through the library's writer
-//!    (`neuralos_snn::fixed::row`) into `esp_println::Printer`; then, in
+//!    (`neuralos_snn::trace::row`) into `esp_println::Printer`; then, in
 //!    a build that names a stranger's graph, that graph the same way; then
 //!    one end line, `# neuralos-trace end`.
 //!    `tools/esp32c3_trace_diff.py` diffs a capture against
@@ -79,15 +79,15 @@ use esp_hal::gpio::{Level, Output, OutputConfig};
 use esp_hal::main;
 use esp_hal::time::Instant;
 use esp_println::{println, Printer};
-use neuralos_snn::fixed::row;
 use neuralos_snn::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
+use neuralos_snn::trace::row;
 use neuralos_snn::FixedNetwork;
 
 // The frozen cases, by path into the library's tests directory: the
 // arrays are the cases' derivative and live with them, so the library's
 // package stays self-contained. rustfmt leaves the generated file as
 // written (its head says why). Their rows go through the library's one
-// row writer, `neuralos_snn::fixed::row`.
+// row writer, `neuralos_snn::trace::row`.
 #[rustfmt::skip]
 #[path = "../../../crates/neuralos-snn/tests/traces/frozen.rs"]
 mod frozen;
