@@ -33,8 +33,9 @@ hdf5-pure = { version = "0.39.0", default-features = false, features = ["std", "
 # the registry instead — post-alpha spine API breaks then require a
 # spine republish before the tool's next semver-honest release.
 # The requirement follows the workspace version (0.1.0-alpha.8 since PR
-# G); the path wins here, and --freeze needs the tree's fixed::freeze.
-neuralos-snn = { version = "0.1.0-alpha.8", path = "../neuralos-snn" }
+# G); the path wins here, and --freeze needs the tree's fixed::freeze,
+# behind the library's `unstable-freeze` since round 51.
+neuralos-snn = { version = "0.1.0-alpha.8", path = "../neuralos-snn", features = ["unstable-freeze"] }
 
 [dev-dependencies]
 # Tests only — never shipped: value-level comparison of converted

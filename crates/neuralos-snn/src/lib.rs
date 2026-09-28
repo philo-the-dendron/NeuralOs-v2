@@ -25,6 +25,7 @@ pub mod spike_recorder;
 #[cfg(feature = "std")]
 mod stats;
 pub mod synapse;
+pub mod trace;
 pub mod trit;
 
 pub use fixed::{FixedNetwork, FixedSynapse};

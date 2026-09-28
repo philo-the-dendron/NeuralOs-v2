@@ -147,8 +147,8 @@ QEMU: every plasticity-off case of `crates/neuralos-snn/tests/traces/`
 stepped by `FixedNetwork`, bare metal on `riscv64gc-unknown-none-elf`
 (Leg A's boot, copied), its header line and its rows written over the
 UART by the library's row writer (`tests/traces/row.rs` at round 33,
-`neuralos_snn::fixed::row` since PR G), then the end line, then the
-pass code.
+`neuralos_snn::fixed::row` from PR G, `neuralos_snn::trace::row` since
+round 51), then the end line, then the pass code.
 Its `build.sh` builds the crate `--release --locked` on the pin
 (1.98.1, the spine at `0.1.0-alpha.8`), runs it under
 `qemu-system-riscv64` 8.2.2 (`virt`, `-bios none`, a 120 s timeout),

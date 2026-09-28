@@ -36,11 +36,16 @@ unstable-stdp = []
 # behind it may change or go in a minor release. Off by default; works
 # with and without `std`.
 unstable-bridge = []
+# The freezer, `fixed::freeze`, outside the semver promise: a network
+# written as the Rust source of the arrays a `FixedNetwork` steps.
+# Anything behind it may change or go in a minor release. Off by
+# default; `std` only, so without `std` it builds nothing.
+unstable-freeze = []
 
 # docs.rs builds the default features alone; the gated items' docs exist
 # only with the features on.
 [package.metadata.docs.rs]
-features = ["simd", "unstable-stdp", "unstable-bridge"]
+features = ["simd", "unstable-stdp", "unstable-bridge", "unstable-freeze"]
 
 [dependencies]
 # None. The spike history is a [u32; N] ring, SpikeRecorder in
@@ -59,10 +64,11 @@ heapless = "0.8"
 name = "bench_simd"
 required-features = ["simd"]
 
-# The five examples that learn, or that write the plasticity-on trace:
+# The five examples that learn, or that write the plasticity-on trace
+# (`trace` writes the frozen file too, so it needs the freezer):
 # `-p neuralos-snn` skips them in silence, as it does `bench_simd`; the
-# workspace build turns the feature on (rt and the app ask for it) and
-# covers them.
+# workspace build turns the features on (rt and the app ask for STDP,
+# nir2json for the freezer) and covers them.
 [[example]]
 name = "demo"
 required-features = ["unstable-stdp"]
@@ -87,4 +93,4 @@ required-features = ["unstable-bridge"]
 
 [[example]]
 name = "trace"
-required-features = ["unstable-stdp"]
+required-features = ["unstable-stdp", "unstable-freeze"]

@@ -84,7 +84,7 @@ sidecar:
   that writes the library's own frozen traces.
 - **`<out>.trace`**, that run on the host in `neuralos-trace v1`: the
   header line, then one row per step, the spikes and every membrane,
-  written by `neuralos_snn::fixed::row`, the row writer the firmware
+  written by `neuralos_snn::trace::row`, the row writer the firmware
   uses. The host steps the library's std network with plasticity off,
   the network `FixedNetwork::try_from` converts; the two step alike,
   bit for bit, on every network it converts (the library's trace

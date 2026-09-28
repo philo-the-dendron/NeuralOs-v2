@@ -4,7 +4,8 @@
 //! the freezer are `tests/traces/cases.rs`; the compare is
 //! `cargo test -p neuralos-snn --test traces`, part of the test gate.
 //!
-//! Run: `cargo run -p neuralos-snn --features unstable-stdp --example trace -- write`
+//! Run:
+//! `cargo run -p neuralos-snn --features unstable-stdp,unstable-freeze --example trace -- write`
 //!
 //! Regenerates every case and the frozen file in place and prints one
 //! line per file with its size and its row count (for the frozen file,
@@ -20,7 +21,8 @@ fn main() {
         (Some("write"), None) => write(),
         _ => {
             eprintln!(
-                "usage: cargo run -p neuralos-snn --features unstable-stdp --example trace -- write"
+                "usage: cargo run -p neuralos-snn --features unstable-stdp,unstable-freeze \
+                 --example trace -- write"
             );
             std::process::exit(2);
         }

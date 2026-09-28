@@ -83,16 +83,18 @@ cargo fmt    --all -- --check                    # formatting gate (2026-09-02):
 cargo check  --workspace --all-targets
 cargo test   --workspace                          # offline; the count is the CI log's (one number, one home) + 5 rt model-gated #[ignore]
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test   -p neuralos-snn                      # the default config gate (PR L): `--workspace` unifies features, and rt and the app ask for `unstable-stdp` and rt for `unstable-bridge`, so the lines above build the library with both on; this one builds what crates.io users get
+cargo test   -p neuralos-snn                      # the default config gate (PR L): `--workspace` unifies features, and rt and the app ask for `unstable-stdp`, rt for `unstable-bridge` and nir2json for `unstable-freeze`, so the lines above build the library with all three on; this one builds what crates.io users get
 cargo clippy -p neuralos-snn --all-targets -- -D warnings  # same gate, the lints
 cargo build --no-default-features -p neuralos-snn # the no_std gate (RISC-V/embedded posture)
 cargo build --no-default-features --features unstable-stdp -p neuralos-snn  # same gate with STDP: `STDPRule` and `update_weight` are `no_std`
 cargo build --no-default-features --features unstable-bridge -p neuralos-snn  # same gate with the bridge: the codecs and the kernel are `no_std`
+cargo check -p neuralos-snn --lib --no-default-features --features unstable-freeze --target riscv32imc-unknown-none-elf  # same gate with the freezer (round 51): it builds nothing without `std`, and a target with no `std` sees what a host line cannot, a feature that turns `std` on; needs `rustup target add riscv32imc-unknown-none-elf` on the pin
 RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib                         # the MSRV gate (PR C): rust-version is the crate's promise, the pin is ours; needs `rustup toolchain install 1.92.0 --profile minimal`
 RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features   # same gate, the no_std configuration
 RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd         # same gate, the simd configuration
 RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-stdp  # same gate, the STDP configuration
 RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge  # same gate, the bridge configuration
+RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-freeze  # same gate, the freezer configuration
 cargo test -p neuralos-snn --features simd        # the simd gate (AVX2-vs-scalar equivalence)
 cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings  # simd lint gate: workspace clippy never compiles the feature-gated module (2026-08-30)
 cargo check -p neuralos-snn --lib --features simd --target riscv64gc-unknown-linux-musl  # simd off-x86 gate (round 50): the module's non-x86 lines compile in no other gate; needs `rustup target add riscv64gc-unknown-linux-musl` on the pin
@@ -100,6 +102,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps                  
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd  # same gate, the simd configuration
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp  # same gate, the STDP configuration: the gated items' docs exist in no other
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-bridge  # same gate, the bridge configuration: the gated items' docs exist in no other
+RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-freeze  # same gate, the freezer configuration: the gated items' docs exist in no other
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features  # same gate, the no_std configuration (round 49): a `std`-only item is a code span there, never a link
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-stdp  # same gate, no_std with STDP
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-bridge  # same gate, no_std with the bridge
@@ -148,9 +151,12 @@ is only worth the multi-minute link when you want real smoothness.
   `unstable-bridge` (the closed bridge chapter, outside the semver
   promise: the `bridge` codecs and the `kernel` matvec; works without
   std; rt and `proofs/qemu-riscv-leg-a` ask for it, so every
-  `--workspace` line builds the library with it on). The published
-  crate's default config is what CI tests, by `cargo test -p
-  neuralos-snn` and its clippy (§ Commands, PR L).
+  `--workspace` line builds the library with it on),
+  `unstable-freeze` (the freezer, `fixed::freeze`, outside the semver
+  promise; `std` only, so without `std` it builds nothing; nir2json
+  asks for it, so every `--workspace` line builds the library with it
+  on). The published crate's default config is what CI tests, by
+  `cargo test -p neuralos-snn` and its clippy (§ Commands, PR L).
 - `neuralos-rt`: `hdf5` (first feature gate, simd-precedent posture):
   NIR `.nir` HDF5 container support — vendored static HDF5 via
   `hdf5-sys { static, zlib }`; needs `cmake` on PATH (the repo-local

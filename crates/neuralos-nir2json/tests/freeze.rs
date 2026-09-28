@@ -44,7 +44,7 @@ fn first_difference(have: &str, want: &str) -> Option<(usize, String, String)> {
 /// The scratch crate's program: the frozen module stepped by
 /// `FixedNetwork`, its header and rows written by the library's writer,
 /// as the firmware steps a frozen case.
-const MAIN: &str = r#"use neuralos_snn::fixed::row;
+const MAIN: &str = r#"use neuralos_snn::trace::row;
 use neuralos_snn::FixedNetwork;
 
 include!("two_lif_neurons.rs");

@@ -7,7 +7,7 @@
 //! The replay is the firmware's (`firmware/esp32c3/src/main.rs`, step 3):
 //! `frozen.rs` by `#[path]` from the library's tests directory,
 //! `for_each_frozen!` over the cases, the rows through the library's row
-//! writer, `neuralos_snn::fixed::row`. `build.sh` runs it and
+//! writer, `neuralos_snn::trace::row`. `build.sh` runs it and
 //! diffs the capture with `tools/esp32c3_trace_diff.py`, the board's
 //! diff, so a wrong writer is red, not trusted.
 //!
@@ -25,7 +25,7 @@ use core::fmt::Write as _;
 use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 
-use neuralos_snn::fixed::row;
+use neuralos_snn::trace::row;
 use neuralos_snn::FixedNetwork;
 
 // The frozen cases, by path into the library's tests directory, as the

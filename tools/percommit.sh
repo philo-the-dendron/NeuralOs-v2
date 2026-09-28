@@ -89,11 +89,16 @@ for c in $commits; do
   run cargo build --no-default-features -p neuralos-snn
   run cargo build --no-default-features --features unstable-stdp -p neuralos-snn
   run cargo build --no-default-features --features unstable-bridge -p neuralos-snn
+  # the freezer without std (round 51): the same two lines as the
+  # per-commit job.
+  run rustup target add riscv32imc-unknown-none-elf
+  run cargo check -p neuralos-snn --lib --no-default-features --features unstable-freeze --target riscv32imc-unknown-none-elf
   run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib
   run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --no-default-features
   run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features simd
   run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-stdp
   run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-bridge
+  run env RUSTFLAGS= cargo +1.92.0 check -p neuralos-snn --lib --features unstable-freeze
   run cargo test -p neuralos-snn --features simd
   run cargo clippy -p neuralos-snn --features simd --all-targets -- -D warnings
   # simd off x86 (round 50): the same two lines as the per-commit job.
@@ -103,6 +108,7 @@ for c in $commits; do
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features simd
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-stdp
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-bridge
+  run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstable-freeze
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-stdp
   run env RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-bridge
