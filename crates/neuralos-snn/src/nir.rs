@@ -142,9 +142,18 @@ pub enum NirError<'a> {
     /// `tau > 1000·dt`: the leak rate [`dt_over_tau`] truncates to 0,
     /// and a neuron at 0 never moves, neither leaking nor integrating.
     TauTooLongForDt,
+    /// Under [`NirUnits::Simulation`], a Linear weight whose true-scale
+    /// quanta pass ±32,767: `round(w · SIM_CURRENT_QUANTA)` into a drive
+    /// stage, `round(w · 10 · SIM_CURRENT_QUANTA)` on a spiking Linear
+    /// edge, so `|w|` up to about 32.767 and 3.2767. Refused, never
+    /// clamped.
+    WeightOutOfRange,
     /// `v_threshold` quantized to 0 quanta — a deaf neuron.
     ThresholdZero,
-    /// A potential quantizes outside `[MEMBRANE_MV_MIN, MEMBRANE_MV_MAX]`.
+    /// A potential quantizes outside `[MEMBRANE_MV_MIN, MEMBRANE_MV_MAX]`,
+    /// or, under [`NirUnits::Simulation`], a threshold at
+    /// `MEMBRANE_MV_MAX`, named `v_threshold + 1`: stored one quantum
+    /// up, it sits past the ceiling, and the membrane never reaches it.
     PotentialOutOfRange(&'static str),
     /// More nodes/edges/weights than the caller's buffers hold.
     BufferOverflow,
@@ -159,6 +168,10 @@ pub enum NirError<'a> {
     /// e.g. a LIF population whose size ≠ the feeding Linear's
     /// rows).
     UnsupportedTopology(&'static str),
+    /// [`NirUnits::Simulation`] given to the slice-1 chain builder,
+    /// `NirImport::build_chain_network`, which reads native units only;
+    /// `build_network` assembles such a graph.
+    UnsupportedUnits,
     /// A per-edge type-shape mismatch (reference `check_types`
     /// parity): the `src → dst` edge's tensor shapes disagree.
     EdgeShapeMismatch {
@@ -197,6 +210,10 @@ impl core::fmt::Display for NirError<'_> {
                 f,
                 "tau > 1000·dt — the leak rate truncates to 0, a neuron that never moves"
             ),
+            Self::WeightOutOfRange => write!(
+                f,
+                "a Linear weight's quanta pass ±32,767 at true scale (simulation units)"
+            ),
             Self::ThresholdZero => write!(f, "v_threshold quantizes to 0 — a deaf neuron"),
             Self::PotentialOutOfRange(n) => {
                 write!(f, "'{n}' quantizes outside the membrane bounds")
@@ -208,6 +225,10 @@ impl core::fmt::Display for NirError<'_> {
             Self::UnsupportedTopology(n) => {
                 write!(f, "topology unsupported by slice 1: {n}")
             }
+            Self::UnsupportedUnits => write!(
+                f,
+                "the chain builder reads native units only — build_network takes simulation units"
+            ),
             Self::EdgeShapeMismatch { src, dst } => write!(
                 f,
                 "edge shape mismatch: '{src}' -> '{dst}' (reference type-check parity)"
@@ -705,7 +726,7 @@ pub struct NirBuffers<'buf, 'a> {
     pub scratch: &'buf mut [f64],
 }
 
-/// Import options: the two things NIR does not carry that the
+/// Import options: the three things NIR does not carry that the
 /// substrate needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NirImportOptions {
@@ -714,15 +735,71 @@ pub struct NirImportOptions {
     pub dt_us: u32,
     /// Voltage grid the potentials quantize onto.
     pub resolution: VoltageResolution,
+    /// How the graph's numbers read: [`NirUnits`].
+    pub units: NirUnits,
 }
 
 impl NirImportOptions {
-    /// Options from `(dt, grid)`.
+    /// Options from `(dt, grid)`, in [`NirUnits::Native`].
     #[must_use]
     pub const fn new(dt_us: u32, resolution: VoltageResolution) -> Self {
-        Self { dt_us, resolution }
+        Self {
+            dt_us,
+            resolution,
+            units: NirUnits::Native,
+        }
+    }
+
+    /// Options for a graph in simulation units, as
+    /// `neuralos-nir2json --sim-units` writes one: the centi-mV grid and
+    /// [`NirUnits::Simulation`].
+    #[must_use]
+    pub const fn sim_units(dt_us: u32) -> Self {
+        Self {
+            dt_us,
+            resolution: VoltageResolution::CentiMillivolt,
+            units: NirUnits::Simulation,
+        }
     }
 }
+
+/// How an imported graph's numbers read. NIR carries no units, so the
+/// caller says: [`NirImportOptions::new`] and `Default` give
+/// [`Native`](Self::Native), [`NirImportOptions::sim_units`] gives
+/// [`Simulation`](Self::Simulation).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NirUnits {
+    /// The document's own units, seconds, ohms and volts, under the
+    /// substrate's named conventions: each Linear scaled by its own
+    /// absmax, the substrate's firing rule `v ≥ threshold`, a refractory
+    /// period of 1 ms. No numeric-parity claim.
+    Native,
+    /// The simulation-unit convention of snnTorch, norse and rockpool,
+    /// after `neuralos-nir2json --sim-units` has read the potentials and
+    /// `r`. A Linear weight `w` keeps its true scale,
+    /// [`SIM_CURRENT_QUANTA`] current quanta per unit, and a weight
+    /// whose quanta pass ±32,767 is refused
+    /// ([`NirError::WeightOutOfRange`]). A current summed in one step,
+    /// the drive a stage sums or the pulses a neuron receives, is not
+    /// refused at import: past `i16`, 32.767 units, it saturates at run
+    /// time, as a native one does. The threshold is stored one quantum
+    /// up, so the substrate's `v ≥ threshold` fires on NIR's
+    /// `v > v_threshold` (membranes are integers), and a threshold at
+    /// the membrane's ceiling, which could then never fire, is refused
+    /// ([`NirError::PotentialOutOfRange`]). The refractory period is 0,
+    /// since NIR's LIF has none.
+    Simulation,
+}
+
+/// Current quanta per simulation unit under [`NirUnits::Simulation`]. A
+/// Linear weight `w` into a drive stage is `round(w · SIM_CURRENT_QUANTA)`
+/// quanta per unit of input; a spike through a spiking Linear edge
+/// delivers the same, and a spike through a direct LIF→LIF edge one unit
+/// (the std weight is ten times that, under the assembly's synaptic
+/// divisor 10). `neuralos-nir2json --sim-units` divides `r` by it, so
+/// the product `r·I` keeps the source's scale.
+pub const SIM_CURRENT_QUANTA: i16 = 1_000;
 
 impl Default for NirImportOptions {
     fn default() -> Self {
@@ -786,7 +863,8 @@ fn quant_potential(
 /// [`NirError::BadNumber`] on non-finite values, `tau ≤ 0`, `r ≤ 0`
 /// or out-of-range magnitudes; [`NirError::TauBelowDt`];
 /// [`NirError::TauTooLongForDt`]; [`NirError::ThresholdZero`];
-/// [`NirError::PotentialOutOfRange`].
+/// [`NirError::PotentialOutOfRange`], under [`NirUnits::Simulation`]
+/// also for a threshold at the membrane's ceiling.
 pub fn quantize_lif(
     tau_s: f64,
     r_ohm: f64,
@@ -833,6 +911,13 @@ pub fn quantize_lif(
     let (threshold_q, e2) = quant_potential(v_threshold_v, "v_threshold", s)?;
     if threshold_q == 0 {
         return Err(NirError::ThresholdZero);
+    }
+    // simulation units store it one quantum up (`substrate_neuron`):
+    // at the ceiling, that is a threshold the membrane never reaches
+    if opts.units == NirUnits::Simulation
+        && i32::from(threshold_q) >= i32::from(MEMBRANE_MV_MAX) * s
+    {
+        return Err(NirError::PotentialOutOfRange("v_threshold + 1"));
     }
     let (reset_q, e3) = quant_potential(v_reset_v, "v_reset", s)?;
 
@@ -1829,19 +1914,23 @@ mod std_assembly {
     //! - **Encoder stages (the Linear half):** the Linear sub-DAG is
     //!   evaluated symbolically at setup — for every drive Linear `L`
     //!   and root Input `r`, the composed matrix `W_L·G` (product of
-    //!   the chain's matrices in f64, D2 fusion) is quantized ONCE via
-    //!   [`quantize_linear`](super::quantize_linear). At step time the
-    //!   encoder applies the substrate's gain, [`LINEAR_GAIN_DIVISOR`],
-    //!   per stage and merges saturating-i16 into the global per-step
-    //!   current vector (D5's mechanical merge; multiple Inputs read
-    //!   their own slices, one stage matrix per (drive Linear, root)
-    //!   pair).
+    //!   the chain's matrices in f64, D2 fusion) is quantized ONCE, via
+    //!   [`quantize_linear`](super::quantize_linear) natively and at
+    //!   true scale in simulation units. At step time the encoder
+    //!   applies the substrate's gain, [`LINEAR_GAIN_DIVISOR`] (1 in
+    //!   simulation units, [`NirUnits::Simulation`], whose quanta are
+    //!   already true scale), per stage and merges saturating-i16 into
+    //!   the global per-step current vector (D5's mechanical merge;
+    //!   multiple Inputs read their own slices, one stage matrix per
+    //!   (drive Linear, root) pair).
     //! - **Edges:** LIF→LIF wires `add_synapse(pre_i, post_i,
-    //!   EDGE_PULSE_QUANTA)` per neuron pair (identity element
-    //!   mapping — the reference defines no element semantics at this
-    //!   sha); a LIF→Linear→…→LIF path is the spiking Linear edge
+    //!   EDGE_PULSE_QUANTA)`, or `10 · SIM_CURRENT_QUANTA` in simulation
+    //!   units, per neuron pair (identity element mapping — the
+    //!   reference defines no element semantics at this sha); a
+    //!   LIF→Linear→…→LIF path is the spiking Linear edge
     //!   (D8, [`LINEAR_GAIN_DIVISOR`]): the same fused walk with the
-    //!   LIF as its root, one synapse per nonzero composed weight;
+    //!   LIF as its root, one synapse per nonzero composed weight, or
+    //!   per nonzero true-scale std weight in simulation units;
     //!   Input→Linear is the encoder entry; LIF→Output is
     //!   shape-checked decoration.
     //! - **Plasticity is FROZEN at assembly** (`NIR has no plasticity
@@ -1867,7 +1956,7 @@ mod std_assembly {
 
     use super::{
         NirError, NirImportOptions, NirLif, NirLifParams, NirLifPopulation, NirLinear, NirNode,
-        NirNodeKind, NIR_REF_SHA,
+        NirNodeKind, NirUnits, NIR_REF_SHA, SIM_CURRENT_QUANTA,
     };
     use crate::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
     use crate::network::SpikingNeuralNetwork;
@@ -1900,6 +1989,10 @@ mod std_assembly {
     /// edge assembles only under `CentiMillivolt` import options — a
     /// single 20 μA pulse is dead 10× over on the mV grid. Explicit mV
     /// options on such a graph are rejected BY NAME with the remedy.
+    ///
+    /// Native units only. Under [`NirUnits::Simulation`] a spike through
+    /// a LIF→LIF edge delivers one unit, a std weight of
+    /// `10 · SIM_CURRENT_QUANTA`, NIR's "1 held for one step".
     pub const EDGE_PULSE_QUANTA: i16 = 200;
 
     /// **D8, the spiking Linear edge (decided 2026-09-14, PR G).**
@@ -1953,6 +2046,14 @@ mod std_assembly {
     /// and `S` is the graph's topology, the count the visualizer shows;
     /// a drop would need a fixture that assembles with a band of a tenth
     /// of its `S`.
+    ///
+    /// Native units only. Under [`NirUnits::Simulation`] a weight keeps
+    /// its true scale: the std weight is `round(w · 10 · SIM_CURRENT_QUANTA)`,
+    /// so a spike delivers `w` units truncated to one quantum; a weight
+    /// that rounds to a std weight of 0 makes no synapse, and the band is
+    /// the std weights ±1 to ±9, whose pulse truncates to 0. A weight
+    /// whose std weight passes ±32,767 is refused,
+    /// [`NirError::WeightOutOfRange`].
     pub const LINEAR_GAIN_DIVISOR: i16 = 100;
 
     /// D8's std weight divisor: [`LINEAR_GAIN_DIVISOR`] over the
@@ -2800,6 +2901,39 @@ mod std_assembly {
             assert_eq!(pulse, 32_767 / LINEAR_GAIN_DIVISOR);
         }
 
+        /// The band, kept on purpose (`LINEAR_GAIN_DIVISOR`'s doc): a
+        /// nonzero `q` under `LINEAR_GAIN_DIVISOR` still makes its
+        /// synapse, which delivers 0 μA. `a` (three neurons) →
+        /// `Linear([[1.0, 0.001, 0.0002]])` → `b`: absmax 1.0, so `q` is
+        /// 32767, 33 and 7, the std weights 3276, 3 and 0, the pulses
+        /// 327, 0 and 0.
+        #[test]
+        fn a_q_in_the_band_makes_a_synapse_that_delivers_nothing() {
+            let mut bld = NirBuilder::new(centi());
+            let inp = bld.add_input("input", &[1]).expect("input");
+            let l0 = bld.add_linear("l0", &[1.0; 3], 3, 1).expect("linear");
+            let pre = lif(&mut bld, "a", 3);
+            let l1 = bld
+                .add_linear("l1", &[1.0, 0.001, 0.000_2], 1, 3)
+                .expect("linear");
+            let post = lif(&mut bld, "b", 1);
+            let out = bld.add_output("out", &[1]).expect("output");
+            wire(
+                &mut bld,
+                &[(inp, l0), (l0, pre), (pre, l1), (l1, post), (post, out)],
+            );
+            let graph = bld.build().expect("builds");
+            let (net, _enc, rep) = graph.build_network().expect("assembles");
+            assert_eq!(rep.synapses, 3);
+            let weights: Vec<i16> = net.synapses().iter().map(|s| s.weight).collect();
+            assert_eq!(weights, [3_276, 3, 0]);
+            let pulses: Vec<i16> = FixedSynapse::from_network(&net)
+                .iter()
+                .map(|s| s.pulse_ua)
+                .collect();
+            assert_eq!(pulses, [327, 0, 0]);
+        }
+
         /// The readout stays deferred, by name, wherever a spike path
         /// would feed an Output: a Linear after a LIF with an Output
         /// successor, whatever its others (here a LIF too). An
@@ -2964,12 +3098,16 @@ mod std_assembly {
         /// # Errors
         ///
         /// [`NirError::UnsupportedTopology`] for anything but
-        /// `Input → Linear → LIF → Output`; [`NirError::MissingField`]
-        /// if the fixture starved a node.
+        /// `Input → Linear → LIF → Output`; [`NirError::UnsupportedUnits`]
+        /// under [`NirUnits::Simulation`]; [`NirError::MissingField`] if
+        /// the fixture starved a node.
         #[allow(clippy::missing_panics_doc)] // no panics — flagged for the unwrap on .first()
         pub fn build_chain_network(
             &self,
         ) -> Result<(SpikingNeuralNetwork, ChainEncoder<'_>), NirError<'_>> {
+            if self.opts.units == NirUnits::Simulation {
+                return Err(NirError::UnsupportedUnits);
+            }
             let mut input_n = None;
             let mut linear_n = None;
             let mut lif_n = None;
@@ -3059,7 +3197,13 @@ mod std_assembly {
         /// setup seam), and from its LIFs one synapse per nonzero
         /// composed weight (D8, [`LINEAR_GAIN_DIVISOR`]). Plasticity is
         /// frozen; the report records everything loud (fusion,
-        /// undriven structure, multi-Linear gain).
+        /// undriven structure, multi-Linear gain). That is the native
+        /// mapping. Under [`NirUnits::Simulation`] every weight keeps
+        /// its true scale, [`SIM_CURRENT_QUANTA`] quanta per unit: a
+        /// drive stage's quanta are `round(w · SIM_CURRENT_QUANTA)`, a
+        /// LIF→LIF pair is `10 · SIM_CURRENT_QUANTA`, one unit a spike,
+        /// and a spiking Linear edge makes one synapse per nonzero std
+        /// weight, `round(w · 10 · SIM_CURRENT_QUANTA)`.
         ///
         /// The import options ARE the grid request (one channel, no
         /// overrides): a graph with any LIF→LIF or LIF→Linear edge
@@ -3077,7 +3221,9 @@ mod std_assembly {
         /// u16 neuron-id bound (D7); every
         /// [`quantize_linear`](super::quantize_linear) hard failure at
         /// the fusion seam (e.g. a composed-absmax overflow to
-        /// non-finite).
+        /// non-finite); under [`NirUnits::Simulation`],
+        /// [`NirError::WeightOutOfRange`] for a weight whose true-scale
+        /// quanta pass ±32,767.
         ///
         /// # Panics
         ///
@@ -3125,11 +3271,7 @@ mod std_assembly {
                         .lifs
                         .get(pop.offset + i)
                         .ok_or(NirError::MissingField("lif"))?;
-                    neurons.push(substrate_neuron(
-                        neurons.len() as u16,
-                        p,
-                        self.opts.resolution,
-                    ));
+                    neurons.push(substrate_neuron(neurons.len() as u16, p, self.opts));
                 }
             }
             let mut net = SpikingNeuralNetwork::from_neurons(neurons, self.opts.dt_us)
@@ -3147,8 +3289,14 @@ mod std_assembly {
                 drive_linears,
             } = self.build_stages(&inputs, &order, &pop_base)?;
 
-            // LIF->LIF edges -> EDGE_PULSE_QUANTA synapse pairs
-            // (identity element mapping; equal sizes shape-checked)
+            // LIF->LIF edges -> EDGE_PULSE_QUANTA synapse pairs, or one
+            // unit a spike in simulation units (identity element mapping;
+            // equal sizes shape-checked)
+            let d1 = if self.opts.units == NirUnits::Simulation {
+                10 * SIM_CURRENT_QUANTA
+            } else {
+                EDGE_PULSE_QUANTA
+            };
             let mut synapses = 0usize;
             for &(a, b) in &self.edges {
                 let (na, nb) = (&self.nodes[a as usize], &self.nodes[b as usize]);
@@ -3156,7 +3304,7 @@ mod std_assembly {
                     let pa = na.lif.expect("checked");
                     let (ba, bb) = (pop_base[&(a as usize)], pop_base[&(b as usize)]);
                     for i in 0..pa.len {
-                        net.add_synapse((ba + i) as u16, (bb + i) as u16, EDGE_PULSE_QUANTA)
+                        net.add_synapse((ba + i) as u16, (bb + i) as u16, d1)
                             .map_err(|_| NirError::BufferOverflow)?;
                         synapses += 1;
                     }
@@ -3175,6 +3323,11 @@ mod std_assembly {
             let undriven = self.undriven_notes(&inputs, &rooted);
             let encoder = NirGraphEncoder {
                 total,
+                gain_divisor: if self.opts.units == NirUnits::Simulation {
+                    1
+                } else {
+                    i64::from(LINEAR_GAIN_DIVISOR)
+                },
                 input_feats: inputs
                     .iter()
                     .map(|&i| self.nodes[i].shape.first().copied().unwrap_or(0) as usize)
@@ -3515,6 +3668,7 @@ mod std_assembly {
                     }
                     let mut q = vec![0i16; rows * f];
                     super::quantize_linear(&flat, rows, f, &mut q, 0)?;
+                    let sim = self.opts.units == NirUnits::Simulation;
                     if self.nodes[*root].kind == NirNodeKind::Lif {
                         // D8: pre j of the root population to post i of
                         // each LIF this Linear feeds, one synapse per
@@ -3525,7 +3679,14 @@ mod std_assembly {
                             for i in 0..rows {
                                 for j in 0..f {
                                     let qij = q[i * f + j];
-                                    if qij == 0 {
+                                    // simulation units: the true-scale std
+                                    // weight, and a zero one makes no synapse
+                                    let wij = if sim {
+                                        sim_quanta(flat[i * f + j], 10)?
+                                    } else {
+                                        qij / D8_WEIGHT_DIVISOR
+                                    };
+                                    if (sim && wij == 0) || (!sim && qij == 0) {
                                         continue; // a zero q makes no synapse
                                     }
                                     let (pre, post) = (pre_base + j, post_base + i);
@@ -3534,16 +3695,19 @@ mod std_assembly {
                                             "spiking Linear edge onto its own neuron (LIF->Linear->LIF, a nonzero diagonal) — the substrate forbids self-synapse",
                                         ));
                                     }
-                                    spiking.push((
-                                        pre as u16,
-                                        post as u16,
-                                        qij / D8_WEIGHT_DIVISOR,
-                                    ));
+                                    spiking.push((pre as u16, post as u16, wij));
                                 }
                             }
                         }
                     } else {
                         let mat = mats.len();
+                        let q = if sim {
+                            flat.iter()
+                                .map(|&w| sim_quanta(w, 1))
+                                .collect::<Result<Vec<_>, _>>()?
+                        } else {
+                            q
+                        };
                         mats.push(QuantMat { q, rows, cols: f });
                         let root_ord = inputs
                             .iter()
@@ -3635,8 +3799,9 @@ mod std_assembly {
     }
 
     /// One quantized encoder matrix (row-major `q`, the stage's
-    /// `rows × cols` product quantized once via
-    /// [`quantize_linear`](super::quantize_linear)).
+    /// `rows × cols` product quantized once, via
+    /// [`quantize_linear`](super::quantize_linear) natively and at true
+    /// scale in simulation units).
     #[derive(Debug)]
     struct QuantMat {
         q: Vec<i16>,
@@ -3651,8 +3816,10 @@ mod std_assembly {
     struct EncoderPlan<'a> {
         mats: Vec<QuantMat>,
         stages: Vec<DriveStage>,
-        /// D8: `(pre, post, weight)`, one per nonzero composed weight of
-        /// a LIF-rooted stage, in stage order.
+        /// D8: `(pre, post, std weight)`, in stage order: natively one
+        /// per nonzero quantized composed weight `q`, carrying
+        /// `q / D8_WEIGHT_DIVISOR`; in simulation units one per nonzero
+        /// true-scale std weight.
         spiking: Vec<(u16, u16, i16)>,
         fused: Vec<LinearFusedRecord<'a>>,
         rooted: BTreeSet<usize>,
@@ -3673,12 +3840,14 @@ mod std_assembly {
     /// entry per neuron). One quantized matrix per (drive Linear,
     /// root) pair — fused chains arrive as a single composed matrix
     /// (D2: no hop-by-hop i16 encode-composition) — with the
-    /// substrate's encoder gain, [`LINEAR_GAIN_DIVISOR`], and i64 row
-    /// accumulation (`ChainEncoder` semantics per stage), merged
-    /// saturating-i16 across stages (D5's mechanical merge).
+    /// substrate's encoder gain, [`LINEAR_GAIN_DIVISOR`] (1 under
+    /// [`NirUnits::Simulation`], whose quanta are already true scale),
+    /// and i64 row accumulation (`ChainEncoder` semantics per stage),
+    /// merged saturating-i16 across stages (D5's mechanical merge).
     #[derive(Debug)]
     pub struct NirGraphEncoder {
         total: usize,
+        gain_divisor: i64,
         input_feats: Vec<usize>,
         mats: Vec<QuantMat>,
         stages: Vec<DriveStage>,
@@ -3726,7 +3895,7 @@ mod std_assembly {
                         acc += i64::from(m.q[r * m.cols + c])
                             * i64::from(x.get(c).copied().unwrap_or(0));
                     }
-                    acc /= i64::from(LINEAR_GAIN_DIVISOR);
+                    acc /= self.gain_divisor;
                     let v = acc.clamp(i64::from(i16::MIN), i64::from(i16::MAX)) as i16;
                     out[st.pop_base + r] = out[st.pop_base + r].saturating_add(v);
                 }
@@ -3752,7 +3921,10 @@ mod std_assembly {
         /// Total neurons (all populations).
         pub neurons: usize,
         /// Synapses: the LIF→LIF pairs at [`EDGE_PULSE_QUANTA`] (D1) and
-        /// the spiking Linear edges' nonzero composed weights (D8).
+        /// the spiking Linear edges' nonzero composed weights (D8);
+        /// under [`NirUnits::Simulation`], the pairs at
+        /// `10 · SIM_CURRENT_QUANTA` and the edges' nonzero true-scale
+        /// std weights.
         pub synapses: usize,
         /// Input nodes (encoder entry points).
         pub inputs: usize,
@@ -3760,6 +3932,8 @@ mod std_assembly {
         /// (D8) a LIF (D6's note fires when > 1: each tensor's absmax
         /// scale absorbs its branch's true gain — the dequantizing
         /// global-scale encode is a named follow-up, NOT this surface).
+        /// Under [`NirUnits::Simulation`] the weights keep their true
+        /// scale and no gain is absorbed; the note fires all the same.
         pub drive_linears: usize,
         /// Quantized (drive Linear × root) encoder matrices.
         pub stages: usize,
@@ -3787,6 +3961,166 @@ mod std_assembly {
      NirImportOptions { resolution: VoltageResolution::CentiMillivolt, \
      ..NirImportOptions::default() }";
 
+    #[cfg(test)]
+    mod sim_units_tests {
+        //! `NirUnits::Simulation`: true-scale weights, NIR's firing rule,
+        //! no refractory, a direct edge at one unit a spike, and the
+        //! refusals. The graphs are what `--sim-units` writes at V 10:
+        //! τ 5 ms, r 50 → 500 MΩ, threshold 1.0 → 10 mV, leak and reset 0.
+        use super::super::{
+            NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, SIM_CURRENT_QUANTA,
+        };
+        use crate::fixed::FixedSynapse;
+        use crate::lif_neuron::VoltageResolution;
+
+        fn lif(bld: &mut NirBuilder<'_>, name: &'static str) -> usize {
+            bld.add_lif_population(
+                name,
+                &NirLifParams {
+                    tau_s: &[0.005],
+                    r_ohm: &[5e8],
+                    v_leak_v: &[0.0],
+                    v_threshold_v: &[0.01],
+                    v_reset_v: Some(&[0.0]),
+                },
+            )
+            .expect("a simulation-units LIF")
+        }
+
+        /// `Input → Linear [[w1]] → LIF`, then `→ Linear [[w2]] → LIF`
+        /// when `w2` is given, `→ LIF` directly when `direct`.
+        fn graph(
+            opts: NirImportOptions,
+            w1: f64,
+            w2: Option<f64>,
+            direct: bool,
+        ) -> NirImport<'static> {
+            let mut b = NirBuilder::new(opts);
+            let inp = b.add_input("input", &[1]).expect("input");
+            let l1 = b.add_linear("l1", &[w1], 1, 1).expect("l1");
+            let a = lif(&mut b, "a");
+            let out = b.add_output("output", &[1]).expect("output");
+            b.add_edge(inp, l1).expect("edge");
+            b.add_edge(l1, a).expect("edge");
+            if let Some(w2) = w2 {
+                let l2 = b.add_linear("l2", &[w2], 1, 1).expect("l2");
+                let c = lif(&mut b, "c");
+                b.add_edge(a, l2).expect("edge");
+                b.add_edge(l2, c).expect("edge");
+                b.add_edge(c, out).expect("edge");
+            } else if direct {
+                let c = lif(&mut b, "c");
+                b.add_edge(a, c).expect("edge");
+                b.add_edge(c, out).expect("edge");
+            } else {
+                b.add_edge(a, out).expect("edge");
+            }
+            b.build().expect("the graph builds")
+        }
+
+        fn sim() -> NirImportOptions {
+            NirImportOptions::sim_units(100)
+        }
+
+        #[test]
+        fn a_drive_weight_keeps_its_true_scale() {
+            let (_, enc, _) = graph(sim(), 0.3, None, false)
+                .build_network()
+                .expect("builds");
+            assert_eq!(enc.encode(&[&[1]]), [300], "0.3 · 1,000, no divisor");
+            let native = NirImportOptions::new(100, VoltageResolution::CentiMillivolt);
+            let (_, enc, _) = graph(native, 0.3, None, false)
+                .build_network()
+                .expect("builds");
+            assert_eq!(enc.encode(&[&[1]]), [327], "native: absmax, / 100");
+        }
+
+        #[test]
+        fn a_spiking_linear_edge_keeps_its_true_scale() {
+            let (net, _, _) = graph(sim(), 1.0, Some(0.3), false)
+                .build_network()
+                .expect("builds");
+            assert_eq!(net.synapses()[0].weight, 3_000, "0.3 · 1,000 · 10");
+            let pulse = [FixedSynapse {
+                pre: 0,
+                post: 1,
+                pulse_ua: 300,
+            }];
+            assert_eq!(FixedSynapse::from_network(&net), pulse);
+        }
+
+        #[test]
+        fn a_direct_edge_delivers_one_unit_a_spike() {
+            let (net, _, _) = graph(sim(), 1.0, None, true)
+                .build_network()
+                .expect("builds");
+            assert_eq!(net.synapses()[0].weight, 10 * SIM_CURRENT_QUANTA);
+        }
+
+        #[test]
+        fn nir_s_firing_rule_and_no_refractory() {
+            let (net, _, _) = graph(sim(), 1.0, None, false)
+                .build_network()
+                .expect("builds");
+            let n = &net.neurons()[0];
+            assert_eq!(n.threshold, 1_001, "10 mV is 1,000 quanta, one up");
+            assert_eq!(n.tau_refractory_us, 0);
+            let native = NirImportOptions::new(100, VoltageResolution::CentiMillivolt);
+            let (net, _, _) = graph(native, 1.0, None, false)
+                .build_network()
+                .expect("builds");
+            let n = &net.neurons()[0];
+            assert_eq!((n.threshold, n.tau_refractory_us), (1_000, 1_000));
+        }
+
+        #[test]
+        fn a_weight_that_does_not_fit_is_refused() {
+            // Ok when it builds, Err(true) when refused as out of range
+            let fits = |w1, w2| match graph(sim(), w1, w2, false).build_network() {
+                Ok(_) => Ok(()),
+                Err(e) => Err(matches!(e, NirError::WeightOutOfRange)),
+            };
+            assert_eq!(fits(32.767, None), Ok(()), "32,767 quanta fit");
+            assert_eq!(fits(32.768, None), Err(true));
+            assert_eq!(fits(1.0, Some(3.2767)), Ok(()), "32,767 fits");
+            assert_eq!(fits(1.0, Some(-3.2768)), Err(true));
+        }
+
+        #[test]
+        fn a_weight_that_rounds_to_zero_makes_no_synapse() {
+            // 0.000_04 at true scale is a std weight of 0.4, rounded to 0
+            let g = graph(sim(), 1.0, Some(0.000_04), false);
+            let (net, _, rep) = g.build_network().expect("builds");
+            assert!(net.synapses().is_empty());
+            assert_eq!(rep.synapses, 0);
+        }
+
+        #[test]
+        fn a_weight_in_the_band_makes_a_synapse_that_delivers_nothing() {
+            // 0.000_5 at true scale is a std weight of 5, in the band:
+            // the synapse is made, and its pulse, 5 / 10, truncates to 0
+            let g = graph(sim(), 1.0, Some(0.000_5), false);
+            let (net, _, rep) = g.build_network().expect("builds");
+            assert_eq!(rep.synapses, 1);
+            assert_eq!(net.synapses()[0].weight, 5);
+            let silent = [FixedSynapse {
+                pre: 0,
+                post: 1,
+                pulse_ua: 0,
+            }];
+            assert_eq!(FixedSynapse::from_network(&net), silent);
+        }
+
+        #[test]
+        fn the_chain_builder_refuses_simulation_units() {
+            let g = graph(sim(), 0.3, None, false);
+            assert!(matches!(
+                g.build_chain_network(),
+                Err(NirError::UnsupportedUnits)
+            ));
+        }
+    }
+
     /// The assembly's neuron mapping: per-neuron quantized params onto
     /// an Excitatory substrate neuron, deterministic (noise 0), minimum
     /// refractory.
@@ -3805,16 +4139,42 @@ mod std_assembly {
     /// pinned by the traces of `snntorch-two-layer` and
     /// `two-lif-neurons`, by the freezer's at-rest assert, and by
     /// `with_resting_potential`'s doctest.
-    fn substrate_neuron(id: u16, p: &NirLif, res: VoltageResolution) -> LIFNeuron {
-        LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, res)
+    ///
+    /// In simulation units the threshold is one quantum up, so the
+    /// substrate's `v ≥ threshold` fires on NIR's `v > v_threshold`, and
+    /// the refractory period is 0. The chain builder refuses simulation
+    /// units, so its inline block stays the native mapping this one is
+    /// compared with.
+    fn substrate_neuron(id: u16, p: &NirLif, opts: NirImportOptions) -> LIFNeuron {
+        let sim = opts.units == NirUnits::Simulation;
+        LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, opts.resolution)
             .with_resting_potential(p.leak_q) // the membrane with it: built at rest
-            .with_threshold(p.threshold_q)
+            .with_threshold(if sim {
+                p.threshold_q.saturating_add(1) // NIR's strict `>`
+            } else {
+                p.threshold_q
+            })
             .with_reset_potential(p.reset_q)
             .with_tau_membrane_us(p.tau_us)
-            .with_tau_refractory_us(1_000) // NIR LIF has no refractory → minimum
+            // NIR's LIF has no refractory: 0 in simulation units, the
+            // native minimum otherwise
+            .with_tau_refractory_us(if sim { 0 } else { 1_000 })
             .with_capacitance_pf(p.capacitance_pf)
             .with_resistance_mohm(p.resistance_mohm)
             .with_noise_amplitude_ua(0) // import is deterministic
+    }
+
+    /// A weight at true scale in simulation units:
+    /// `round(w · SIM_CURRENT_QUANTA · per)`, where `per` is 1 into a
+    /// drive stage and 10 for a spiking Linear edge's std weight (the
+    /// assembly's divisor 10). Refused past ±32,767.
+    fn sim_quanta(w: f64, per: i16) -> Result<i16, NirError<'static>> {
+        let q = super::round_half_away(w * f64::from(SIM_CURRENT_QUANTA) * f64::from(per));
+        if (-f64::from(i16::MAX)..=f64::from(i16::MAX)).contains(&q) {
+            Ok(q as i16)
+        } else {
+            Err(NirError::WeightOutOfRange)
+        }
     }
 
     fn mat_zero(r: usize, c: usize) -> Vec<Vec<f64>> {
@@ -3893,8 +4253,9 @@ mod std_assembly {
     }
 
     impl<'a> NirBuilder<'a> {
-        /// An empty graph under the given import options (dt + the
-        /// voltage grid the LIF quantizer uses).
+        /// An empty graph under the given import options: dt, the
+        /// voltage grid and the units, which the LIF quantizer and the
+        /// assembly read.
         #[must_use]
         pub fn new(opts: NirImportOptions) -> Self {
             Self {
@@ -4221,6 +4582,25 @@ mod tests {
             at(1.000_001, 1_000),
             Err(NirError::TauTooLongForDt)
         ));
+    }
+
+    #[test]
+    fn a_threshold_at_the_ceiling_is_refused_in_simulation_units() {
+        // 5,000 centi quanta, stored one quantum up in simulation units,
+        // is 5,001, past the membrane's clamp at 5,000: never a spike
+        let at =
+            |v_threshold: f64, opts| quantize_lif(0.005, 5e8, 0.0, v_threshold, 0.0, false, opts);
+        let sim = NirImportOptions::sim_units(100);
+        assert!(matches!(
+            at(0.05, sim),
+            Err(NirError::PotentialOutOfRange("v_threshold + 1"))
+        ));
+        assert!(at(0.049_99, sim).is_ok(), "4,999 quanta, stored 5,000");
+        let native = NirImportOptions::new(100, VoltageResolution::CentiMillivolt);
+        assert!(
+            at(0.05, native).is_ok(),
+            "natively `v ≥ threshold` fires there"
+        );
     }
 
     #[test]
