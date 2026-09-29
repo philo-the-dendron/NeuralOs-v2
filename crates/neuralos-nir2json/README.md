@@ -2,11 +2,12 @@
 
 The inbound bridge: a stranger's NIR `.nir` file (HDF5) converted into
 the JSON schema [`neuralos-snn`]'s `nir_import` consumes — **pure
-Rust, no C toolchain** (`hdf5-pure`; dependencies reduce to byteorder
-+ miniz_oxide via flate2's rust backend).
+Rust, no C toolchain** (`hdf5-pure` and what its `std` and `deflate`
+features bring, flate2's rust backend among them;
+`cargo tree -p neuralos-nir2json -e normal` lists them).
 
 ```
-neuralos-nir2json [--sim-units] [--freeze <out.rs> [--steps N] [--input v1,v2,…]] <input.nir> <output.json>
+neuralos-nir2json [--sim-units] [--dt µs] [--freeze <out.rs> [--steps N] [--input v1,v2,…]] <input.nir> <output.json>
 ```
 
 Exit codes: `0` converted (a sidecar `<output>.meta.json` carries the
@@ -47,24 +48,45 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   `r` refuses first, the voltages (e.g. `v_th 0.1` read as 0.1 V =
   100 mV) right behind it. snnTorch's LIF is dimensionless
   (β/threshold, no R), so no snnTorch export carries a biological `r`.
-  **`--sim-units`** is the exact, stamped bridge: `r × 1000 → MΩ`,
-  voltages read as mV, **centi grid forced** (without it the
-  0.1-threshold family dies at ThresholdZero — 0.1 mV rounds to 0 on
-  the default grid). The substrate couples only the product `r·I`, so
-  dynamics are preserved when you drive your dimensionless currents as
-  µA numerics (see the sidecar stamp). The transform is opt-in and
-  sidecar-stamped — an interpretive act is never silent, and nothing
-  is ever auto-rescaled. The flag is **all-or-nothing per file**:
-  mixed-convention graphs (bio `r ≥ 1 MΩ` beside sim `r`) transform
-  every `r` of the node — and refuse loudly via the r ceiling (a bio
-  5 MΩ becomes 5×10⁹ MΩ > 65,535), never silent corruption.
+  **`--sim-units`** is the stamped bridge. Each LIF node gets a voltage
+  scale, `V = min(10 / largest |threshold|, 45 / largest |potential|)`
+  mV per unit, on the **centi grid**: the node's largest threshold is
+  then 1,000 quanta, fewer only where a potential past 4.5 times it
+  lowers `V`, its others in proportion, and the −100 mV floor ten times
+  it or more down; the node's `r` becomes `r · V` MΩ. Linear weights
+  keep their true scale in the library (`NirUnits::Simulation`, 1,000
+  current quanta per unit), so the product `r·I` keeps the source's
+  scale. The import follows NIR's LIF: it fires on `v > v_threshold`
+  and has no refractory period. The step is 0.1 ms unless `--dt` gives
+  another: snnTorch's exporter assumes it, and a `.nir` file carries
+  none. The transform is opt-in and sidecar-stamped, each node's `V`
+  with it: an interpretive act is never silent. What does not fit is
+  refused by name: a weight past ±32,767 quanta at true scale, an `r`
+  that `V` takes past 65,535 MΩ, a `tau` past 1,000 steps. Limits,
+  named: `r` is whole MΩ, so a node whose `r · V` is near 1 rounds
+  coarsely; the current a neuron receives in one step, from the input
+  or from spikes, is not refused at import and saturates past 32.767
+  units; a membrane driven below the −100 mV floor stops there, so a
+  strongly inhibited neuron recovers sooner than snnTorch's; each step
+  moves a membrane by whole quanta, so it stops up to about τ/dt quanta
+  short of the value it settles to: a neuron that settles just above
+  its threshold can stay silent, and one that nears it slowly fires
+  later than in floating point; the substrate's spike-frequency
+  adaptation stays on, which slows a neuron that fires at a high rate;
+  and snnTorch's default reset, subtraction, does not survive NIR (its
+  exporter writes `v_reset = 0` for every model), so a model runs as
+  trained only with `reset_mechanism="zero"`. The flag is
+  **all-or-nothing per file**: mixed-convention graphs (bio
+  `r ≥ 1 MΩ` beside sim `r`) transform every `r` of the node — and
+  refuse loudly via the r ceiling (a bio 5 MΩ becomes 5×10⁶·V MΩ),
+  never silent corruption.
   Linear-only graphs (encoders, readout heads) convert cleanly from
   any emitter, no flag needed.
 
 ## Freeze: the arrays a `FixedNetwork` steps
 
 ```
-neuralos-nir2json [--sim-units] --freeze <out.rs> [--steps N] [--input v1,v2,…] <input.nir> <output.json>
+neuralos-nir2json [--sim-units] [--dt µs] --freeze <out.rs> [--steps N] [--input v1,v2,…] <input.nir> <output.json>
 ```
 
 After the conversion, `--freeze` builds the network the JSON describes

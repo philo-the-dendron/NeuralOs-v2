@@ -1,5 +1,5 @@
-//! The CLI: `neuralos-nir2json [--sim-units] [--freeze <out.rs> [--steps N]
-//! [--input v1,v2,…]] <input.nir> <output.json>`.
+//! The CLI: `neuralos-nir2json [--sim-units] [--dt µs] [--freeze <out.rs>
+//! [--steps N] [--input v1,v2,…]] <input.nir> <output.json>`.
 //!
 //! Exit codes: 0 converted, and frozen with `--freeze` · 1 usage/IO · 2
 //! named refusal (filter census, out-of-subset node, layout/schema
@@ -20,9 +20,18 @@ use neuralos_snn::nir::NirImportOptions;
 /// The run `--freeze` writes when `--steps` is not given.
 const DEFAULT_STEPS: u32 = 150;
 
+/// The time step under `--sim-units` when `--dt` is not given: snnTorch's
+/// exporter writes `tau = dt / (1 - beta)` with `dt = 1e-4` fixed, and a
+/// `.nir` file carries no step.
+const SIM_DT_US: u32 = 100;
+
+/// The time step otherwise, the library's default.
+const NATIVE_DT_US: u32 = 1_000;
+
 /// The command line, parsed.
 struct Args {
     sim_units: bool,
+    dt_us: Option<u32>,
     freeze: Option<PathBuf>,
     steps: Option<u32>,
     input: Option<Vec<i16>>,
@@ -33,6 +42,7 @@ struct Args {
 fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut out = Args {
         sim_units: false,
+        dt_us: None,
         freeze: None,
         steps: None,
         input: None,
@@ -41,6 +51,13 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--sim-units" => out.sim_units = true,
+            "--dt" => {
+                let v = args.next().ok_or("--dt needs µs")?;
+                match v.parse::<u32>() {
+                    Ok(n) if n > 0 => out.dt_us = Some(n),
+                    _ => return Err(format!("--dt {v}: a time step in µs, at least 1")),
+                }
+            }
             "--freeze" => out.freeze = Some(args.next().ok_or("--freeze needs <out.rs>")?.into()),
             "--steps" => {
                 let v = args.next().ok_or("--steps needs N")?;
@@ -72,10 +89,13 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
 fn usage(why: &str) -> ExitCode {
     eprintln!("neuralos-nir2json: {why}");
     eprintln!(
-        "usage: neuralos-nir2json [--sim-units] [--freeze <out.rs> [--steps N] [--input v1,v2,…]] <input.nir> <output.json>"
+        "usage: neuralos-nir2json [--sim-units] [--dt µs] [--freeze <out.rs> [--steps N] [--input v1,v2,…]] <input.nir> <output.json>"
     );
     eprintln!("  --sim-units : interpret LIF parameters in the ecosystem's simulation-unit");
-    eprintln!("                 convention (r×1000 → MΩ, voltages as mV, centi grid) — stamped");
+    eprintln!("                 convention (true-scale weights, a voltage scale per node,");
+    eprintln!("                 NIR's firing rule, centi grid) — stamped");
+    eprintln!("  --dt µs     : the time step, default {SIM_DT_US} with --sim-units (snnTorch's");
+    eprintln!("                 exporter assumes 0.1 ms), else {NATIVE_DT_US}");
     eprintln!("  --freeze    : also build the network and write <out.rs>, the arrays a");
     eprintln!("                 FixedNetwork steps, and <out>.trace, their run on the host");
     eprintln!("  --steps N   : the run --freeze writes, default {DEFAULT_STEPS} steps");
@@ -103,7 +123,16 @@ fn main() -> ExitCode {
     };
     let (input, output) = (PathBuf::from(&args.paths[0]), PathBuf::from(&args.paths[1]));
 
-    let converted = match convert_file_opts(&input, NirImportOptions::default(), args.sim_units) {
+    let dt_us = args.dt_us.unwrap_or(if args.sim_units {
+        SIM_DT_US
+    } else {
+        NATIVE_DT_US
+    });
+    let opts = NirImportOptions {
+        dt_us,
+        ..NirImportOptions::default()
+    };
+    let converted = match convert_file_opts(&input, opts, args.sim_units) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("neuralos-nir2json: REFUSED — {e}");
@@ -126,7 +155,7 @@ fn main() -> ExitCode {
                     out_rs.display()
                 ));
             };
-            let opts = effective_options(NirImportOptions::default(), args.sim_units);
+            let opts = effective_options(opts, args.sim_units);
             let steps = args.steps.unwrap_or(DEFAULT_STEPS);
             match freeze(&converted.json, opts, &name, steps, args.input.as_deref()) {
                 Ok(f) => Some((out_rs.clone(), name, steps, f)),
@@ -165,7 +194,7 @@ fn main() -> ExitCode {
     println!("  nir version: {}", converted.stamp.nir_version);
     if converted.stamp.sim_units {
         println!(
-            "  sim-units  : transform APPLIED (r×1000 → MΩ, V as mV, centi grid) — see sidecar"
+            "  sim-units  : transform APPLIED (a voltage scale per node, true scale, centi grid) — see sidecar"
         );
     }
     println!("  sidecar    : {}", sidecar.display());

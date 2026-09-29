@@ -41,6 +41,7 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `board-r36-head.log` | the ninth entry (ISA round 36, 2026-09-15): the default firmware at head, the stack's mark and `report()`'s step count, built by `build.sh` on 1.98.1 in the main clone (ELF `0f8b0d38…`), 20 s after reset (§ Ninth entry) |
 | `board-r36-neurons.log` | the ninth entry: the neuron corner (5,957 neurons, no synapse) in the slot by `stranger.sh run --steps 20 --seconds 30` (ELF `f25500df…`), 30 s after reset; the script's `target/stranger/neurons.capture.log`, byte for byte, the largest log in `evidence/` (§ Ninth entry) |
 | `board-r36-dense.log` | the ninth entry: the dense corner (402 neurons, 40,401 synapses) the same way (ELF `3eeb2d72…`), 30 s after reset; `target/stranger/dense.capture.log`, byte for byte (§ Ninth entry) |
+| `board-r52-head.log` | the tenth entry (ISA round 52, 2026-09-28): the default firmware at head, the two NIR witnesses of its replay in simulation units at 0.1 ms, built by `build.sh` on 1.98.1 in the main clone (ELF `dad40393…`), 20 s after reset (§ Tenth entry) |
 | `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../tools/esp32c3_trace_diff.py` | the replay diff: every plasticity-off trace of `crates/neuralos-snn/tests/traces/` against its case in a capture, one line per case (§ Sixth entry) |
@@ -967,6 +968,63 @@ bytes a neuron (its trace's twenty rows are 525,277 bytes), which is
 why the corners replay 20 rows in a 30 s window: 150 rows would be
 about 4 MB.
 
+## Tenth entry: round 52, the witnesses at 0.1 ms (2026-09-28)
+
+Same SuperMini (MAC `70:af:09:07:f6:3c`, esp32c3 revision v0.4, as
+`espflash flash` read them), same port, same tool, 20 s after reset,
+the ELF built and flashed from the main clone. Why this entry exists:
+NIR parity's first PR (ISA round 52) moves two of the frozen cases the
+firmware replays, the D8 witnesses `snntorch-two-layer` and
+`two-lif-neurons`, which the library now imports as
+`neuralos-nir2json --sim-units` does, in simulation units at 0.1 ms.
+Their traces and their modules in `frozen.rs` change, and the firmware
+compiles that file in; its own sources do not change.
+
+Head: `build.sh` on 1.98.1 in the main clone, `NEURALOS_GRAPH` unset,
+from the sources of the commit that adds this entry: ELF `dad40393…`,
+`.text` `768a1957…`, the pin appended as "round 52, the witnesses at
+0.1 ms" (§ Rebuild + run); the gate 0 hits, the trim-paths canary still
+unstable on 1.98.1 (exit 101); `main`'s frame `0x420`, as at round 36.
+In the same clone, round 36's `9e2e6ef1…` was read again at `1ad7a46`,
+the branch's base, before the branch; a canary on the head
+(`MEMBRANE_MV_MAX` 50 → 51 in `lif_neuron.rs`, restored by
+`git checkout`) read `0fdf566e…`, and the head read `768a1957…` again
+after the restore; the head with `1ad7a46`'s `frozen.rs` laid on it read
+`9e2e6ef1…`, so the two witnesses' modules move the whole `.text` and
+the library's changes none of it. Flashed from a copy of the head's ELF,
+`board-r52-head.log`, 53,481 bytes. The capture holds two boots, as in
+the sixth to ninth entries: it opens with the tail of the boot that
+followed the flash, a bootloader line spliced into a spike line of the
+real-time loop, no trace line in it, cut by the capture's reset. Every
+figure below is from after the `rst:` line.
+
+| Measurement | Round 36 (head) | Round 52 (head) |
+|---|---|---|
+| Burst, pinned arm | 15,714 µs → 1,571 ns/step | 15,715 µs → 1,571 ns/step |
+| Burst, free arm | 3,617 µs → 361 ns/step | 3,617 µs → 361 ns/step |
+| Burst spikes, first spike step, checksum, both neuron arms | 147, 55, `0b78b456` | 147, 55, `0b78b456` |
+| Burst, network arm (8 neurons, 6 synapses a step) | 140,587 µs → 14,058 ns/step | 140,588 µs → 14,058 ns/step |
+| Network arm: spikes, first spike step, checksum | 3,377, 5, `7e700ee1` | 3,377, 5, `7e700ee1` |
+| `main`'s frame, from the prologue | 1,056 B | 1,056 B |
+| Stack high-water mark, of `.stack` | 1,432 of 316,316 B | 1,432 of 316,316 B |
+| `.stack` free at the mark | 314,884 B | 314,884 B |
+| First spike, real-time loop | step 57, 57,156 µs | step 53, 53,150 µs |
+| Spikes after the reset | 288 in 20 s | 287 in 20 s |
+| Replay diff, last line | `14 cases, 0 red` | `14 cases, 0 red` |
+
+The gates hold.
+`python3 tools/esp32c3_trace_diff.py evidence/esp32c3-bringup/board-r52-head.log`
+reads the fourteen plasticity-off cases identical, the two witnesses
+with 150 rows each under their new headers (`dt_us=100`), and ends
+`14 cases, 0 red`: the moved cases replay bit for bit on the chip, as
+they do under QEMU (`evidence/qemu-riscv-gate/README.md` § The trace
+replay, `replay-r52.log`). The rest is reported, not gated: every
+other figure in the table equals round 36's head on a `.text` the
+witnesses moved, but the pinned and network bursts, each 1 µs longer
+at the same ns per step, and the real-time loop, whose first spike
+lands at step 53, against 57, with 287 spikes in the window against
+288; not read further.
+
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
 ```bash
@@ -1007,6 +1065,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 35, the slot (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line: round 34's .text, unmoved)
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 36 base (build.sh at fbc2bd7 on 1.98.1, main clone, NEURALOS_GRAPH unset: e5d3125's firmware sources, the slot with its large-array allow; round 35's .text, unmoved)
 #   9e2e6ef1e0e0627d3d245e64b004f0d42ce91f39f4c77ef7034e265b71d48c9b  round 36, the mark (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line: the stack's paint and scan, report()'s step count)
+#   768a1957e7103b69c8cda65b01ddd03f30d916e85b5da7c3aa74eb7aa8a621fb  round 52, the witnesses at 0.1 ms (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -1046,7 +1105,11 @@ stack's paint after esp-hal's init and its scan after the replays, and
 with that change alone, before the mark went in). `report()` divides a
 u64 by a run-time count, a software 64-bit division (the round-27
 cost), once per arm, after the arm has read its elapsed time, so no
-timed span contains it.
+timed span contains it. The fourteenth is round 52's, the default
+build of the commit that adds it: the thirteenth's firmware sources,
+the two NIR witnesses of the replay in simulation units at 0.1 ms,
+whose modules in `frozen.rs` move the `.text` on their own (§ Tenth
+entry).
 
 ### Release asset (the procedure since round 26)
 

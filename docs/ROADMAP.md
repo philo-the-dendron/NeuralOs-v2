@@ -125,14 +125,20 @@ displace substrate + lab bench + gated research.
 ## Practical next moves
 
 The chapter, not the history. Closed work lives in `ISA.md` and the
-records it names in `evidence/INDEX.md`. Three lines, in order:
+records it names in `evidence/INDEX.md`. Four lines, in order:
 
-1. **alpha.9: the pub walk.** What stops being public before the
+1. **NIR, the reach.** `--sim-units` imports at true scale, with NIR's
+   firing rule and the exporter's step (round 52); the converter's
+   parity test is the front door's evidence. Next, the graphs it takes:
+   `Affine` (PyTorch's default bias), the converter's assembly report,
+   the input's form, a drive that varies over time. Before the front
+   door.
+2. **alpha.9: the pub walk.** What stops being public before the
    crate's surface is promised: paths and re-exports, `LIFNeuron` with
-   its noise default, the rest of the field walk. No pinned value
-   moves: the traces bit for bit, the firmware `.text` unmoved. Then
-   the rename, the front door, the stamp.
-2. **0.1.0: the stamp.** The principal's call, once the fourteen checks
+   its noise default, the rest of the field walk. The noise default
+   regenerates the traces it touches, with a board round; the rest
+   moves no pinned value. Then the rename, the front door, the stamp.
+3. **0.1.0: the stamp.** The principal's call, once the fourteen checks
    of § 0.1.0 hold again at the final tree, after the rename.
-3. **After 0.1.0: the learning chapter** (`docs/VISION.md` § Realistic
+4. **After 0.1.0: the learning chapter** (`docs/VISION.md` § Realistic
    near-term path, item 6).

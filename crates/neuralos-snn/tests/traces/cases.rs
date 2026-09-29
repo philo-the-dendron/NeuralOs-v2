@@ -42,7 +42,9 @@ use neuralos_snn::{
 /// Where the files live: this directory, resolved from the crate root.
 pub const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/traces");
 /// Every case steps at 1 ms, the firmware's `DT_US` and the crate's own
-/// tests' step.
+/// tests' step, but the two NIR witnesses, which step at 0.1 ms: the step
+/// snnTorch's exporter assumes and `neuralos-nir2json --sim-units` takes by
+/// default (`witness`).
 const DT_US: u32 = 1_000;
 
 /// One case: a name, what it is, how long it runs, and how to build it.
@@ -546,16 +548,15 @@ fn ternary_weights() -> Run {
     }
 }
 
-/// A D8 witness imported on the centi-mV grid, which a spiking Linear
-/// edge requires, and built by `build_network`: two neurons, lif1 → lif2
-/// by one 327 μA synapse, driven through the graph's own encoder with
-/// the one input feature `drive(step)`.
+/// A D8 witness in simulation units at 0.1 ms, as `--sim-units` imports
+/// it (`NirImportOptions::sim_units`, the centi-mV grid a spiking Linear
+/// edge requires), built by `build_network`: two neurons, lif1 → lif2 by
+/// one synapse of 1,000 quanta a spike (a weight of 1.0 at true scale),
+/// driven through the graph's own encoder with the one input feature
+/// `drive(step)`.
 fn witness(json: &'static [u8], drive: fn(u32) -> i16) -> Run {
-    let g = NirImport::from_json(
-        json,
-        NirImportOptions::new(DT_US, VoltageResolution::CentiMillivolt),
-    )
-    .expect("the converted witness imports");
+    let g = NirImport::from_json(json, NirImportOptions::sim_units(100))
+        .expect("the converted witness imports");
     let (net, enc, _report) = g.build_network().expect("the two-layer graph assembles");
     Run {
         net,
@@ -565,10 +566,11 @@ fn witness(json: &'static [u8], drive: fn(u32) -> i16) -> Run {
 
 /// The framework witness: snnTorch 1.0's own export of `Linear → Leaky →
 /// Linear → Leaky`. Input feature 1 on steps 0–9 and 50–59, else 0, so
-/// the edge shows: lif1 fires on every other driven step (NIR's LIF has
-/// no refractory; the assembly's minimum is one step), lif2 on the step
-/// after each, on the pulse alone, and both are silent between the
-/// bursts and after them.
+/// the edge shows: a driven step adds exactly one threshold and NIR fires
+/// on `v > v_threshold`, so lif1 fires on every other driven step from
+/// step 1; each spike reaches lif2 one step later, and lif2 fires when a
+/// pulse finds it above rest. Both are silent between the bursts and
+/// after them.
 fn snntorch_two_layer() -> Run {
     witness(SNNTORCH_TWO_LAYER, |step| {
         i16::from(matches!(step, 0..=9 | 50..=59))
@@ -577,8 +579,12 @@ fn snntorch_two_layer() -> Run {
 
 /// The reference witness: the NIR paper's own `two_lif_neurons`, the same
 /// shape, input feature 1 every step. lif1's leak sits above its
-/// threshold, so it would fire with no input; driven, it fires on every
-/// other step, and lif2 on the step after each.
+/// threshold, so it fires from rest at step 0, then every 63 steps, where
+/// the same equation in floating point takes 61, since the substrate
+/// truncates each step's move to whole quanta
+/// (`LIFNeuron::integrate_and_fire` § Semantics, Rounding); lif2
+/// (threshold 20) stays below threshold, as the paper's model means it
+/// to.
 fn two_lif_neurons() -> Run {
     witness(TWO_LIF_NEURONS, |_| 1)
 }

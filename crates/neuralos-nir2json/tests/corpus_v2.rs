@@ -207,6 +207,11 @@ fn stranger_smoke_two_lif_with_sim_units_pins_discrete_centi() {
     .expect("the transform converts the smoke file");
     assert!(c.stamp.sim_units);
     assert_eq!(c.stamp.resolution, "centi-mv", "centi grid FORCED");
+    // V = min(10 / threshold, 45 / largest potential), per node, stamped
+    assert_eq!(
+        c.stamp.volt_scale,
+        [("lif1".to_string(), 10.0), ("lif2".to_string(), 0.5)]
+    );
     // centi opts ride the document; import under them for the pins
     let g = neuralos_snn::nir::NirImport::from_json(
         &c.json,
@@ -223,9 +228,12 @@ fn stranger_smoke_two_lif_with_sim_units_pins_discrete_centi() {
     );
     let l1 = &g.lifs[0];
     assert_eq!(l1.tau_us, 10_000, "10 ms");
-    assert_eq!(l1.resistance_mohm, 1_000, "r 1.0 × 1000 → 1000 MΩ");
-    assert_eq!(l1.leak_q, 120, "1.2 mV → 120 centi quanta");
-    assert_eq!(l1.threshold_q, 100, "1.0 mV → 100 centi quanta");
+    assert_eq!(l1.resistance_mohm, 10, "r 1.0 × V 10 → 10 MΩ");
+    assert_eq!(l1.leak_q, 1_200, "1.2 × V 10 = 12 mV → 1,200 centi quanta");
+    assert_eq!(
+        l1.threshold_q, 1_000,
+        "1.0 × V 10 = 10 mV → 1,000 centi quanta"
+    );
     assert_eq!(l1.reset_q, 0, "v_reset absent → zeros semantics");
     // v_reset_defaulted: the in-memory flag does not survive snn's
     // JSON round trip (spine behavior); the DURABLE pin is the
@@ -245,9 +253,14 @@ fn stranger_smoke_two_lif_with_sim_units_pins_discrete_centi() {
     );
     let l2 = &g.lifs[1];
     assert_eq!(l2.tau_us, 10_000);
-    assert_eq!(l2.resistance_mohm, 1_000);
+    // r is whole MΩ: 1.0 × V 0.5 = 0.5 rounds up to 1, the coupling
+    // doubled (a node whose r·V is near 1 rounds coarsely)
+    assert_eq!(l2.resistance_mohm, 1);
     assert_eq!(l2.leak_q, 0);
-    assert_eq!(l2.threshold_q, 2_000, "20 mV → 2000 centi quanta");
+    assert_eq!(
+        l2.threshold_q, 1_000,
+        "20 × V 0.5 = 10 mV → 1,000 centi quanta"
+    );
 }
 
 #[test]
@@ -284,12 +297,12 @@ fn stranger_emitter_skew_rockpool_transform_pins_the_f32_path() {
     let lif = &g.lifs[0];
     assert_eq!(lif.tau_us, 2_500, "2.5 ms");
     assert_eq!(
-        lif.resistance_mohm, 24_020,
-        "24.019737 (f32) × 1000 → 24020 MΩ"
+        lif.resistance_mohm, 2_402,
+        "24.019737 (f32) × V 100 → 2,402 MΩ (V = 10 / threshold 0.1)"
     );
     assert_eq!(
-        lif.threshold_q, 10,
-        "0.1 mV → 10 centi quanta (ThresholdZero on mV grid)"
+        lif.threshold_q, 1_000,
+        "0.1 × V 100 = 10 mV → 1,000 centi quanta"
     );
     assert_eq!(lif.leak_q, 0);
 }
@@ -326,16 +339,20 @@ fn stranger_fallback_snntorch_two_layer_completes_full_path_sim_units() {
     let err =
         convert_file(&path, NirImportOptions::default()).expect_err("r = 50 Ω refuses natively");
     assert!(matches!(err, ConvertError::SimUnits { .. }), "{err:?}");
-    let c = convert_file_opts(&path, NirImportOptions::default(), true)
-        .expect("converts under --sim-units");
+    // the CLI's --sim-units defaults: snnTorch's 0.1 ms step
+    let sim_step = NirImportOptions {
+        dt_us: 100,
+        ..NirImportOptions::default()
+    };
+    let c = convert_file_opts(&path, sim_step, true).expect("converts under --sim-units");
     assert_eq!(c.stamp.nir_version, "1.0.9.dev1+g7883c3c85");
     assert!(
         c.stamp.f32_datasets.iter().any(|d| d.ends_with("/weight")),
         "torch's float32 widened: {:?}",
         c.stamp.f32_datasets
     );
-    let centi = NirImportOptions::new(1_000, neuralos_snn::VoltageResolution::CentiMillivolt);
-    let g = neuralos_snn::nir::NirImport::from_json(&c.json, centi).expect("imports under centi");
+    let g = neuralos_snn::nir::NirImport::from_json(&c.json, NirImportOptions::sim_units(100))
+        .expect("imports in simulation units");
     for l in &g.lifs {
         assert_eq!(
             (
@@ -345,8 +362,8 @@ fn stranger_fallback_snntorch_two_layer_completes_full_path_sim_units() {
                 l.threshold_q,
                 l.reset_q
             ),
-            (5_000, 50_000, 0, 100, 0),
-            "τ 5 ms; 50 Ω × 1000 → 50,000 MΩ; threshold 1 mV → 100 centi quanta"
+            (5_000, 500, 0, 1_000, 0),
+            "τ 5 ms; r 50 × V 10 → 500 MΩ; threshold 1.0 × V 10 = 10 mV → 1,000 centi quanta"
         );
     }
     let (net, _enc, report) = g
@@ -358,8 +375,9 @@ fn stranger_fallback_snntorch_two_layer_completes_full_path_sim_units() {
         [neuralos_snn::FixedSynapse {
             pre: 0,
             post: 1,
-            pulse_ua: 327
-        }]
+            pulse_ua: 1_000
+        }],
+        "w 1.0 at true scale: 1,000 quanta a spike"
     );
 }
 
@@ -375,8 +393,13 @@ fn the_snn_witness_fixtures_are_this_converter_s_bytes() {
         ),
         ("community/two_lif_neurons.nir", "two_lif_neurons_sim.json"),
     ] {
-        let c = convert_file_opts(&fixture(nir), NirImportOptions::default(), true)
-            .expect("converts under --sim-units");
+        // the CLI's --sim-units default step, 0.1 ms
+        let sim_step = NirImportOptions {
+            dt_us: 100,
+            ..NirImportOptions::default()
+        };
+        let c =
+            convert_file_opts(&fixture(nir), sim_step, true).expect("converts under --sim-units");
         let committed = std::fs::read(
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../neuralos-snn/tests/nir_fixtures")
@@ -453,6 +476,13 @@ fn binary_end_to_end_smoke_happy_and_sad() {
         String::from_utf8_lossy(&out.stderr)
     );
 
+    let head_sidecar =
+        std::fs::read_to_string(format!("{}.meta.json", e2e.display())).expect("the sidecar");
+    assert!(
+        head_sidecar.contains("\"dt_us\":1000,"),
+        "without --sim-units the step stays 1 ms: {head_sidecar}"
+    );
+
     // the transform through the binary: two_lif + --sim-units exits 0
     // and stamps the sidecar
     let sim_path = tmp("sim.json");
@@ -472,8 +502,20 @@ fn binary_end_to_end_smoke_happy_and_sad() {
     let sidecar = std::fs::read_to_string(&sidecar_path).unwrap();
     assert!(sidecar.contains("\"sim_units\":true"), "stamped: {sidecar}");
     assert!(
+        sidecar.contains("\"dt_us\":100,"),
+        "--sim-units defaults to 0.1 ms: {sidecar}"
+    );
+    assert!(
         sidecar.contains("\"resolution\":\"centi-mv\""),
         "centi recorded: {sidecar}"
+    );
+    assert!(
+        sidecar.contains("\"current_quanta\":1000"),
+        "the true scale stamped: {sidecar}"
+    );
+    assert!(
+        sidecar.contains("\"volt_scale\":{\"lif1\":10,\"lif2\":0.5}"),
+        "each node's V stamped: {sidecar}"
     );
 
     // without the flag: exit 2, message names the flag + both walls

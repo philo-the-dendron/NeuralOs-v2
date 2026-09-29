@@ -5,7 +5,7 @@
 //! # Design (single-writer by construction)
 //!
 //! The tool never writes JSON itself: HDF5 is read via `hdf5-pure`
-//! (pure Rust — byteorder + miniz_oxide, no C toolchain), the typed
+//! (pure Rust, no C toolchain: `cargo tree -e normal` lists it), the typed
 //! values feed snn's own `NirBuilder` (the structured-entry seam —
 //! THE quantizer), and snn's `nir_export` renders the canonical
 //! bytes. Schema and quantization live in one Rust source; the
@@ -61,12 +61,12 @@ use std::fmt;
 use std::path::Path;
 
 use hdf5_pure::{DType, Dataset, File, Group, VlenStringReadOptions};
+use neuralos_snn::FixedSynapse;
 use neuralos_snn::fixed::freeze as freezer;
 use neuralos_snn::nir::{
-    NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, nir_export,
+    NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, SIM_CURRENT_QUANTA, nir_export,
 };
 use neuralos_snn::trace::{self, Kind, Rows, row};
-use neuralos_snn::{FixedSynapse, VoltageResolution};
 
 /// Tool version (sidecar stamp).
 pub const TOOL_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -126,8 +126,8 @@ impl fmt::Display for ConvertError {
                 "node '{node}' carries SIMULATION-UNIT LIF parameters (r = {r_ohm} Ω < 1 MΩ; \
                  and the dimensionless voltages would also exceed the substrate's \
                  [−100, +50] mV membrane read natively as volts) — the substrate quantizes \
-                 biological scale (MΩ, mV). Re-run with `--sim-units`: the stamped, exact \
-                 convention transform (r × 1000 → MΩ, voltages read as mV, centi grid forced)"
+                 biological scale (MΩ, mV). Re-run with `--sim-units`: the stamped \
+                 convention transform (a voltage scale per node, true-scale weights, centi grid)"
             ),
             Self::BadData { dataset, what } => write!(f, "dataset '{dataset}': {what}"),
             Self::Snn { stage, msg } => write!(f, "snn {stage}: {msg}"),
@@ -152,6 +152,10 @@ pub struct Stamp {
     /// The sim-unit convention transform was applied (stamped — an
     /// interpretive act, never silent).
     pub sim_units: bool,
+    /// Under `--sim-units`, each transformed LIF node's voltage scale,
+    /// mV per simulation unit, in document order (stamped, as the
+    /// transform is).
+    pub volt_scale: Vec<(String, f64)>,
 }
 
 /// A completed conversion: canonical JSON + its stamp.
@@ -296,25 +300,25 @@ pub fn convert_file(path: &Path, opts: NirImportOptions) -> Result<Converted, Co
 }
 
 /// Convert with the `--sim-units` convention transform available
-/// (amended B-brief, 2026-08-24). When `sim_units` is set, LIF
-/// parameters are interpreted in the ecosystem's simulation-unit
-/// convention via the THREE-element exact transform:
+/// (amended B-brief, 2026-08-24). When `sim_units` is set, each LIF
+/// node whose `r` is under 1 MΩ is read in the ecosystem's
+/// simulation-unit convention:
 ///
-/// - `r × 1000` — dimensionless/Ω → MΩ (r = 1.0 → 1000 MΩ; the
-///   substrate's coupling is the product `r·I` only, so the dynamics
-///   are preserved when the stranger drives their dimensionless
-///   currents as µA numerics);
-/// - voltages read AS mV (numerically unchanged; the native reading
-///   of e.g. `v_threshold = 0.1` as 0.1 V = 100 mV exceeds the
-///   [−100, +50] mV membrane — the wall is DOUBLE: r fires first in
-///   quantize_lif's check order, voltages refuse right behind it);
-/// - CENTI GRID FORCED — on the default mV grid, the 0.1-threshold
-///   family (rockpool, norse, small-β snnTorch) dies at ThresholdZero
-///   (0.1 mV quantum rounds to 0); centi (scale 100) gives 10 quanta.
+/// - a voltage scale per node, `V = min(10 / largest |threshold|,
+///   45 / largest |potential|)` mV per unit, stamped: the node's
+///   largest threshold is 1,000 quanta, fewer only where a potential
+///   past 4.5 times it lowers `V`, its others in proportion, and the
+///   −100 mV floor ten times it or more down, under the membrane's
+///   +50 mV ceiling;
+/// - the potentials × `V`, read as mV, on the CENTI GRID (forced);
+/// - `r × V × 1000 / SIM_CURRENT_QUANTA` MΩ, so the product `r·I` keeps
+///   the source's scale under the library's true-scale weights;
+/// - the import in simulation units, [`effective_options`]: true-scale
+///   weights, NIR's `v > v_threshold`, no refractory period.
 ///
-/// The transform is an INTERPRETIVE ACT (declaring dimensionless =
-/// mV/µA-numeric is a convention assumption about the stranger's
-/// intent) — hence opt-in, sidecar-stamped, never silent.
+/// The transform is an INTERPRETIVE ACT (a convention assumption about
+/// what the stranger's dimensionless numbers mean) — hence opt-in,
+/// sidecar-stamped, never silent.
 ///
 /// # Errors
 ///
@@ -372,6 +376,7 @@ pub fn convert_file_opts(
         dt_us: opts.dt_us,
         resolution: resolution_name(effective),
         sim_units,
+        volt_scale: Vec::new(),
     };
 
     // Owned name storage: NirNode borrows &'a str for the builder's
@@ -439,7 +444,7 @@ pub fn convert_file_opts(
                 };
                 // Sim-unit detection (the ratified cutoff): without the
                 // flag, refuse naming BOTH walls + the flag; with it,
-                // apply the three-element transform.
+                // apply the transform this function's doc lists.
                 let (r, v_leak, v_threshold, v_reset) = if r.iter().any(|&x| x < 1e6) {
                     if !sim_units {
                         return Err(ConvertError::SimUnits {
@@ -447,8 +452,13 @@ pub fn convert_file_opts(
                             r_ohm: r[0],
                         });
                     }
-                    let t = |v: Vec<f64>| v.into_iter().map(|x| x * 1e-3).collect();
-                    let r: Vec<f64> = r.into_iter().map(|x| x * 1e9).collect();
+                    let v = volt_scale(&v_leak, &v_threshold, v_reset.as_deref());
+                    stamp.volt_scale.push((name.clone(), v));
+                    let t = |p: Vec<f64>| p.into_iter().map(|x| x * 1e-3 * v).collect();
+                    // r·I keeps the source's scale: the library's weights
+                    // are SIM_CURRENT_QUANTA quanta per unit
+                    let per_unit = 1e9 * v / f64::from(SIM_CURRENT_QUANTA);
+                    let r: Vec<f64> = r.into_iter().map(|x| x * per_unit).collect();
                     (r, t(v_leak), t(v_threshold), v_reset.map(t))
                 } else {
                     (r, v_leak, v_threshold, v_reset)
@@ -582,15 +592,48 @@ pub fn convert_file_opts(
 }
 
 /// The import options a conversion runs under: `opts`, or under
-/// `--sim-units` the same time step on the centi-mV grid, which the
-/// transform forces. `--freeze` builds the network under the same.
+/// `--sim-units` the same time step in simulation units,
+/// [`NirImportOptions::sim_units`]: the centi-mV grid, true-scale
+/// weights, NIR's firing rule, no refractory. `--freeze` builds the
+/// network under the same.
 #[must_use]
 pub fn effective_options(opts: NirImportOptions, sim_units: bool) -> NirImportOptions {
     if sim_units {
-        NirImportOptions::new(opts.dt_us, VoltageResolution::CentiMillivolt)
+        NirImportOptions::sim_units(opts.dt_us)
     } else {
         opts
     }
+}
+
+/// One LIF node's voltage scale under `--sim-units`, mV per simulation
+/// unit of potential: `V = min(10 / max|threshold|, 45 / max|potential|)`.
+/// With `V` from the threshold, the node's largest threshold is 1,000
+/// quanta on the centi-mV grid and the −100 mV floor ten times it
+/// below 0, whatever the threshold; its other thresholds scale with it.
+/// `V` is lowered only where the node's largest potential would pass
+/// 45 mV, under the membrane's +50 mV ceiling, and then the largest
+/// threshold is fewer quanta and the floor further down. `r`'s range
+/// is not a cap: an `r` that the scale takes past 65,535 MΩ is refused
+/// by name.
+fn volt_scale(v_leak: &[f64], v_threshold: &[f64], v_reset: Option<&[f64]>) -> f64 {
+    let largest = |xs: &[f64]| xs.iter().fold(0.0f64, |a, &x| a.max(x.abs()));
+    let threshold = largest(v_threshold);
+    let potential = largest(v_leak)
+        .max(threshold)
+        .max(v_reset.map_or(0.0, largest));
+    let by_threshold = if threshold > 0.0 {
+        10.0 / threshold
+    } else {
+        f64::INFINITY
+    };
+    let by_range = if potential > 0.0 {
+        45.0 / potential
+    } else {
+        f64::INFINITY
+    };
+    let v = by_threshold.min(by_range);
+    // a zero threshold is refused by the import (ThresholdZero)
+    if v.is_finite() { v } else { 1.0 }
 }
 
 /// What `--freeze` writes (README § Freeze): one module of arrays and the
@@ -825,6 +868,18 @@ pub fn stamp_json(s: &Stamp, source: &Path) -> String {
     out.push_str(s.resolution);
     out.push_str("\",\"sim_units\":");
     out.push_str(if s.sim_units { "true" } else { "false" });
+    if s.sim_units {
+        out.push_str(",\"current_quanta\":");
+        out.push_str(&SIM_CURRENT_QUANTA.to_string());
+        out.push_str(",\"volt_scale\":{");
+        for (i, (name, v)) in s.volt_scale.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push_str(&format!("\"{}\":{v}", name.replace('"', "\\\"")));
+        }
+        out.push('}');
+    }
     out.push_str(",\"f32_widened\":[");
     for (i, d) in s.f32_datasets.iter().enumerate() {
         if i > 0 {
@@ -944,6 +999,29 @@ mod tests {
             freeze(b"not json", NirImportOptions::default(), "graph", 1, None),
             Err(FreezeError::Import(_))
         ));
+    }
+
+    #[test]
+    fn the_voltage_scale_takes_the_smaller_of_its_two_terms() {
+        // the threshold's, 10 / 2, where the range's is 45 / 2
+        assert_eq!(volt_scale(&[0.0], &[2.0], Some(&[0.0])), 5.0);
+        // the range's, 45 / 5: a reset five thresholds down
+        assert_eq!(volt_scale(&[0.0], &[1.0], Some(&[-5.0])), 9.0);
+        // the range's, 45 / 6: a leak six thresholds up
+        assert_eq!(volt_scale(&[6.0], &[1.0], None), 7.5);
+    }
+
+    #[test]
+    fn the_voltage_scale_reads_the_node_s_largest_values() {
+        // the threshold's, 10 / 2: the largest threshold, the middle one
+        assert_eq!(volt_scale(&[0.0; 3], &[1.0, 2.0, 0.5], None), 5.0);
+        // the range's, 45 / 5: the largest potential, the middle reset
+        assert_eq!(
+            volt_scale(&[0.0; 3], &[1.0; 3], Some(&[0.0, -5.0, 0.0])),
+            9.0
+        );
+        // the range's, 45 / 6: the largest potential, the middle leak
+        assert_eq!(volt_scale(&[0.0, 6.0, 0.0], &[1.0; 3], None), 7.5);
     }
 
     #[test]

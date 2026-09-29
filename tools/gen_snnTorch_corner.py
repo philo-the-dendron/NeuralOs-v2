@@ -21,10 +21,11 @@ that number alone:
 A step costs a·N + b·S + c, linear in both, so over the graphs under the
 bar its largest value sits at one of these two.
 
-The emission is not byte-stable across runs (HDF5 ordering, as
-PROVENANCE.md says of the witness), so the frozen module and its trace
-are what a record pins. The .nir goes under
-firmware/esp32c3/target/stranger/ (gitignored), never committed. Run:
+The emission is not byte-stable across runs (the exporter writes the
+edge list in another order each run, as PROVENANCE.md says of the
+witness), so the frozen module and its trace are what a record pins.
+The .nir goes under firmware/esp32c3/target/stranger/ (gitignored),
+never committed. Run:
 
     .nirenv/bin/python3 tools/gen_snnTorch_corner.py neurons|dense <bytes> <out.nir>
 

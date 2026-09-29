@@ -13,13 +13,13 @@ snnTorch's own `export_to_nir` (snntorch/export_nir.py: `Leaky` → `nir.LIF`,
 with both weights filled with 1.0, β = 0.98 and threshold 1.0: OUR values,
 THEIR pipeline, the pre-authorized class of gen_snnTorch_stranger.py. It
 emits input → 0 → 1 → 2 → 3 → output, LIF nodes of τ 5 ms, r 50 Ω, leak 0,
-threshold 1.0, which neuralos-nir2json converts under --sim-units (r 50,000
-MΩ, inside the u16 ceiling; β 0.99 would put 100,000 MΩ over it).
+threshold 1.0, which neuralos-nir2json converts under --sim-units at a
+voltage scale of 10 (r 500 MΩ, threshold 10 mV).
 
-The emission is not byte-stable across runs (HDF5 ordering: two runs, two
-shas, one graph), so the committed fixture is one emission, pinned by its
-sha in PROVENANCE.md. The seed line is moot with the weights filled and is
-kept for the form.
+The emission is not byte-stable across runs: the exporter writes the edge
+list in another order each run (two runs, two shas, one graph), so the
+committed fixture is one emission, pinned by its sha in PROVENANCE.md.
+The seed line is moot with the weights filled and is kept for the form.
 
 Stack (of record, in PROVENANCE.md): the repo's .nirenv, snntorch 1.0.0 ·
 nirtorch 2.6 · nir 1.0.9.dev1+g7883c3c85 · torch 2.13.0+cpu. Run:

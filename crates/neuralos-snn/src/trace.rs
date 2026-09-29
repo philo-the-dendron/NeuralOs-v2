@@ -193,7 +193,8 @@ mod tests {
     use crate::lif_neuron::NeuronType;
 
     /// A network of one neuron per grid given, no synapse, a 0.5 ms step:
-    /// every trace runs at 1 ms, so a step off it shows `dt_us` is read.
+    /// every trace runs at 1 ms or 0.1 ms, so a step off both shows
+    /// `dt_us` is read.
     fn on_grids(grids: &[VoltageResolution]) -> SpikingNeuralNetwork {
         let neurons = (0u16..)
             .zip(grids)
