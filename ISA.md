@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@34ecd58 (PR #47 merged 2026-09-27 23:31 UTC: round 50, tier 2, M-paths' third PR: docs.rs builds `simd`, and a gate checks it off x86; `DT_OVER_TAU_MAX` an `i64` with one home in code; a test that needs AVX2 fails in CI instead of skipping; the dispatcher's scalar fallback runs on every CPU; `simd` takes a `LIFBatch`, its six slices by name, the scalar reference renamed `integrate_lif_batch_scalar`; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 50 (D8, the spiking Linear edge; `fixed::row` and `fixed::freeze` in the library; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/trace-format, round 51 (M-paths' last PR of four, tier 2: the freezer behind `unstable-freeze`, with a riscv32imc gate on a `no_std` build that asks for it; the `trace` module owns `neuralos-trace v1`, `row` moved in from `fixed`, `header`, `Kind` and `Rows`, nir2json refusing a name that is not a module name; the freezer takes the network, its eight refusals each tested; four commits, no check ticked), not pushed; the traces unmoved, the firmware `.text` unmoved at all four · open(session): the check of the fix round BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@1ad7a46 (PR #48 merged 2026-09-28 20:01 UTC: round 51, tier 2, M-paths' last PR: the freezer behind `unstable-freeze`, with a riscv32imc gate on a `no_std` build that asks for it; the `trace` module owns `neuralos-trace v1`; the freezer takes the network, its eight refusals each tested; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 51 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/nir-parity, round 52 (NIR parity's first PR of two, tier 2: `--sim-units` imports at true scale, a voltage scale per node, NIR's firing rule and the exporter's 0.1 ms step, with the converter's parity test against snnTorch's own runs; a LIF whose leak rate truncates to 0 refused; six commits, the build review's and the checks' fixes in), not pushed; the two NIR witness traces and the frozen file moved, the firmware `.text` moved, the other thirteen traces unmoved · open(session): the check of the third fix round BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-09-28T16:57:00Z
+updated: 2026-09-29T19:57:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -9904,3 +9904,36 @@ three features 259; nir2json 6 + 13 + 2. **Record-only**: round 42's
 freezer's door, not its root; one grid per network enforced nowhere,
 and past 65,535 neurons a wrapped `u16` count (TODO's step 6). No check
 ticks. **Guards.** 1: appended, head refreshed; 2 and 3 not in play.
+
+## Close-out (round 52 — NIR parity, the numbers; unlettered, NIR parity's first PR of two — 2026-09-28)
+
+Branch `work/nir-parity` from `main@1ad7a46`, tier 2, six commits:
+`ddd7507` the dead leak refused; `3dfb625` simulation units in the
+assembly; `5007028` the converter at true scale; `418225c` parity with
+snnTorch; `dede717` the board and QEMU; this. **Rulings** (philo: the
+thirteen Calls, the brief review's three and draft 2's one, 2026-09-28;
+the reviews', 2026-09-29): two PRs, this the numbers; `--sim-units`
+graphs only, told by `NirUnits`; K 1,000, a weight that does not fit
+refused; per node V = min(10 / |threshold|, 45 / largest |potential|),
+no cap from `r`; threshold + 1 quantum, refractory 0, `--dt` 100 µs, a
+dead leak refused; the witnesses at 100 µs; a direct edge at 10·K;
+adaptation left to step 6; the chain builder's refusal its own variant;
+no parity claim before the front door; `NirError<'a>` its own PR; the
+board in its own commit; tests for V, the sidecar, both steps, a zero
+weight and the band; the ceiling refused in simulation units; the mV
+remedies naming `sim_units`. **Falsifiers**: the parity test red on
+`1ad7a46`, `w1.0_1.0_b0.98: ours [[0, 11, 22, …`, green here: six graphs
+spike for spike, adaptation's miss pinned at 1,250/624; 38 mutants each
+red (15 library, 14 converter, 9 parity); both native gates as at the
+pin. **Moved**: the two witness traces and `frozen.rs`; `.text`
+`9e2e6ef1` → `768a1957` in the clone (canary `0fdf566e`); the board and
+QEMU, 14 cases, 0 red each (`board-r52-head.log`, `replay-r52.log`),
+QEMU's log apart from round 34's in the two witnesses only; the thirteen
+other traces unmoved. **Counts**: 189 + 8 + 8 + 18 tests; STDP 220;
+`simd` 207 (2 ignored) + 8 + 8 + 21; the freezer 198 + 8 + 9 + 18; it
+and STDP 230; all three 271; nir2json 8 + 13 + 3 + 1. **Record-only**:
+`r` is whole MΩ, so `two_lif_neurons`' lif2 rounds 0.5 up to 1; the
+parity test lags each layer a step and breaks on a layer that fires
+before its step (none of the seven does); a `--sim-units` file read in
+native units meets no unit check (PR 2). No check ticks. **Guards.** 1:
+appended, head refreshed; 2 and 3: not in play.
