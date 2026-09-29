@@ -44,7 +44,8 @@ bare-metal. No libc overclaim in either direction.
 | `leg-b.log` | Leg B full-suite run — 187 unit + 8 integration = 195/195 (matches host count), `cargo_test_exit=0`, wall clock |
 | `replay-alpha8.log` | the trace replay (round 33, 2026-09-14): the twelve plasticity-off traces stepped by `FixedNetwork` on bare-metal riscv64gc, as `proofs/qemu-trace-replay/build.sh` captured them from the UART; identical to the tree's files by `tools/esp32c3_trace_diff.py` (§ The trace replay) |
 | `replay-alpha9-g.log` | the trace replay re-run at PR G (round 34, 2026-09-14): the fourteen plasticity-off traces, the two D8 witnesses among them, every row written by the library's `neuralos_snn::fixed::row`; identical to the tree's files, `14 cases, 0 red` (§ The trace replay) |
-| `SHA256SUMS` | pins the five logs and this README |
+| `replay-r52.log` | the trace replay re-run at round 52 (NIR parity's first PR, 2026-09-28): the fourteen plasticity-off traces, the two D8 witnesses in simulation units at 0.1 ms; identical to the tree's files, `14 cases, 0 red` (§ The trace replay) |
+| `SHA256SUMS` | pins the six logs and this README |
 | `../../proofs/qemu-riscv-leg-a/` | the committed, rebuildable Leg A harness crate (standalone workspace; repo workspace untouched) |
 | `../../proofs/qemu-trace-replay/` | the trace replay's crate (standalone workspace, like Leg A's) and its `build.sh` |
 
@@ -171,8 +172,16 @@ by the library's `neuralos_snn::fixed::row` (1,512 lines, 41,784 bytes,
 two runs the same bytes); `replay-alpha8.log` stays as pinned, the
 capture of round 33's tree.
 
+Re-run at round 52 (NIR parity's first PR, 2026-09-28),
+`replay-r52.log` is the fourteen cases, 0 red, the two D8 witnesses
+imported in simulation units at 0.1 ms (1,512 lines, 41,959 bytes, the
+same bytes as a run of the same code in a scratch clone). Against
+`replay-alpha9-g.log` it differs at lines 1,210 to 1,511, the two
+witness cases, and nowhere else; `replay-alpha9-g.log` stays as
+pinned, the capture of round 34's tree.
+
 ```bash
 rustup target add riscv64gc-unknown-none-elf
 proofs/qemu-trace-replay/build.sh      # the capture into its target/replay.log, the diff, the verdict
-cmp proofs/qemu-trace-replay/target/replay.log evidence/qemu-riscv-gate/replay-alpha9-g.log   # at the tree that added it; replay-alpha8.log at round 33's
+cmp proofs/qemu-trace-replay/target/replay.log evidence/qemu-riscv-gate/replay-r52.log   # at the tree that added it; replay-alpha9-g.log at round 34's, replay-alpha8.log at round 33's
 ```
