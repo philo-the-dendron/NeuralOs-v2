@@ -44,8 +44,9 @@
 //! - **LIF**: potentials → voltage quanta (`×1000` on the mV grid,
 //!   `×100_000` on centi-mV), `tau` → μs, `r` → MΩ; rounding errors
 //!   recorded. **Hard failures, never silent:** `tau ≤ 0`, `tau < dt`,
-//!   threshold quantizing to 0, any potential outside the membrane
-//!   bounds, `r ≤ 0` or outside u16 MΩ, non-finite numbers anywhere.
+//!   `tau > 1000·dt`, threshold quantizing to 0, any potential outside
+//!   the membrane bounds, `r ≤ 0` or outside u16 MΩ, non-finite numbers
+//!   anywhere.
 //! - `dt` is an explicit import argument (NIR LIF carries no
 //!   timestep); the derived integers + `dt_us` live in the record.
 //!
@@ -93,7 +94,7 @@
     clippy::cast_sign_loss
 )]
 
-use crate::lif_neuron::{VoltageResolution, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
+use crate::lif_neuron::{dt_over_tau, VoltageResolution, MEMBRANE_MV_MAX, MEMBRANE_MV_MIN};
 use core::fmt::Write as _;
 
 /// The pinned reference commit this schema derives from (provenance
@@ -138,6 +139,9 @@ pub enum NirError<'a> {
     BadNumber(&'static str),
     /// `tau < dt` — the derived decay would be nonsense.
     TauBelowDt,
+    /// `tau > 1000·dt`: the leak rate [`dt_over_tau`] truncates to 0,
+    /// and a neuron at 0 never moves, neither leaking nor integrating.
+    TauTooLongForDt,
     /// `v_threshold` quantized to 0 quanta — a deaf neuron.
     ThresholdZero,
     /// A potential quantizes outside `[MEMBRANE_MV_MIN, MEMBRANE_MV_MAX]`.
@@ -189,6 +193,10 @@ impl core::fmt::Display for NirError<'_> {
                 write!(f, "non-finite or out-of-range value in '{n}'")
             }
             Self::TauBelowDt => write!(f, "tau < dt — derived decay would be nonsense"),
+            Self::TauTooLongForDt => write!(
+                f,
+                "tau > 1000·dt — the leak rate truncates to 0, a neuron that never moves"
+            ),
             Self::ThresholdZero => write!(f, "v_threshold quantizes to 0 — a deaf neuron"),
             Self::PotentialOutOfRange(n) => {
                 write!(f, "'{n}' quantizes outside the membrane bounds")
@@ -701,7 +709,8 @@ pub struct NirBuffers<'buf, 'a> {
 /// substrate needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NirImportOptions {
-    /// Simulation timestep (μs). Hard requirement: `tau ≥ dt`.
+    /// Simulation timestep (μs). Hard requirement: `dt ≤ tau ≤ 1000·dt`
+    /// (`TauBelowDt` below it, `TauTooLongForDt` above it).
     pub dt_us: u32,
     /// Voltage grid the potentials quantize onto.
     pub resolution: VoltageResolution,
@@ -776,7 +785,8 @@ fn quant_potential(
 ///
 /// [`NirError::BadNumber`] on non-finite values, `tau ≤ 0`, `r ≤ 0`
 /// or out-of-range magnitudes; [`NirError::TauBelowDt`];
-/// [`NirError::ThresholdZero`]; [`NirError::PotentialOutOfRange`].
+/// [`NirError::TauTooLongForDt`]; [`NirError::ThresholdZero`];
+/// [`NirError::PotentialOutOfRange`].
 pub fn quantize_lif(
     tau_s: f64,
     r_ohm: f64,
@@ -806,6 +816,9 @@ pub fn quantize_lif(
     let tau_us = tau_us_round as u32;
     if f64::from(tau_us) < f64::from(opts.dt_us) {
         return Err(NirError::TauBelowDt);
+    }
+    if dt_over_tau(opts.dt_us, tau_us) == 0 {
+        return Err(NirError::TauTooLongForDt);
     }
     let tau_err_s = (tau_us_f - f64::from(tau_us)).abs() * 1.0e-6;
 
@@ -4184,6 +4197,30 @@ mod tests {
         // the loss note fires — loud lossiness doing its job
         assert!(lin.max_abs_err > 0.0 && lin.max_abs_err <= lin.scale / 2.0);
         assert!(report.notes(NirNote::QuantizationLoss) >= 1);
+    }
+
+    #[test]
+    fn a_leak_rate_that_truncates_to_zero_is_refused() {
+        // dt_over_tau = trunc(dt·1000/tau): 0 past tau = 1000·dt, where
+        // a neuron never moves; 1 at the edge, which still integrates.
+        let at = |tau_s: f64, dt_us: u32| {
+            quantize_lif(
+                tau_s,
+                1e8,
+                -0.07,
+                -0.055,
+                -0.08,
+                false,
+                NirImportOptions::new(dt_us, VoltageResolution::Millivolt),
+            )
+        };
+        assert!(at(0.1, 100).is_ok(), "tau 1000·dt: the leak rate is 1");
+        assert!(matches!(at(0.100_001, 100), Err(NirError::TauTooLongForDt)));
+        assert!(at(1.0, 1_000).is_ok(), "tau 1000·dt at 1 ms");
+        assert!(matches!(
+            at(1.000_001, 1_000),
+            Err(NirError::TauTooLongForDt)
+        ));
     }
 
     #[test]
