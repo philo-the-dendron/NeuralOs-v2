@@ -1,5 +1,6 @@
 //! `--freeze` on the reference witness, `two_lif_neurons.nir` under
-//! `--sim-units`, with the default drive (feature 1, 150 steps). The
+//! `--sim-units`, with the default drive (feature 1, 150 steps) at the
+//! default step, 0.1 ms, which `--dt` overrides. The
 //! library's trace case `two-lif-neurons` runs the same graph on the same
 //! drive, so the tool's trace is that file line for line and its module
 //! the case's frozen module, the header's kind aside. The module then
@@ -190,4 +191,34 @@ fn freeze_refuses_by_name_and_writes_nothing() {
             assert!(!path.exists(), "nothing written: {}", path.display());
         }
     }
+}
+
+#[test]
+fn dt_sets_the_step_and_refuses_zero() {
+    let dir = scratch("freeze-dt");
+    let run = |dt: &str| {
+        Command::new(env!("CARGO_BIN_EXE_neuralos-nir2json"))
+            .args(["--sim-units", "--dt", dt, "--freeze"])
+            .arg(dir.join("src/two_lif_neurons.rs"))
+            .arg(repo(
+                "crates/neuralos-nir2json/tests/fixtures/community/two_lif_neurons.nir",
+            ))
+            .arg(dir.join("two_lif_neurons.json"))
+            .output()
+            .expect("the binary runs")
+    };
+    let out = run("1000");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let trace = fs::read_to_string(dir.join("src/two_lif_neurons.trace")).expect("the trace");
+    let header = trace.lines().next().expect("a header line");
+    assert!(
+        header.contains(" dt_us=1000 "),
+        "--dt 1000 overrides the 0.1 ms default: {header}"
+    );
+    assert_eq!(run("0").status.code(), Some(1), "--dt 0 is a usage error");
 }

@@ -283,21 +283,21 @@ pub mod snntorch_two_layer {
 
     pub const N: usize = 2;
     pub const S: usize = 1;
-    pub const DT_US: u32 = 1000;
+    pub const DT_US: u32 = 100;
     pub const STEPS: u32 = 150;
     pub const SPIKES_ONLY: bool = false;
-    pub const HEADER: &str = "# neuralos-trace v1 case=snntorch-two-layer kind=regression n=2 dt_us=1000 res=cmV plasticity=off divisor=10 steps=150 rows=all";
+    pub const HEADER: &str = "# neuralos-trace v1 case=snntorch-two-layer kind=regression n=2 dt_us=100 res=cmV plasticity=off divisor=10 steps=150 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(0).with_threshold(100).with_reset_potential(0).with_tau_membrane_us(5000).with_tau_refractory_us(1000).with_capacitance_pf(0).with_resistance_mohm(50000).with_noise_amplitude_ua(0),
-        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(0).with_threshold(100).with_reset_potential(0).with_tau_membrane_us(5000).with_tau_refractory_us(1000).with_capacitance_pf(0).with_resistance_mohm(50000).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(0).with_threshold(1001).with_reset_potential(0).with_tau_membrane_us(5000).with_tau_refractory_us(0).with_capacitance_pf(10).with_resistance_mohm(500).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(0).with_threshold(1001).with_reset_potential(0).with_tau_membrane_us(5000).with_tau_refractory_us(0).with_capacitance_pf(10).with_resistance_mohm(500).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse::new(0, 1, 327),
+        FixedSynapse::new(0, 1, 1000),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
-        (10, [327, 0]),
+        (10, [1000, 0]),
         (40, [0, 0]),
-        (10, [327, 0]),
+        (10, [1000, 0]),
         (90, [0, 0]),
     ];
 }
@@ -307,19 +307,19 @@ pub mod two_lif_neurons {
 
     pub const N: usize = 2;
     pub const S: usize = 1;
-    pub const DT_US: u32 = 1000;
+    pub const DT_US: u32 = 100;
     pub const STEPS: u32 = 150;
     pub const SPIKES_ONLY: bool = false;
-    pub const HEADER: &str = "# neuralos-trace v1 case=two-lif-neurons kind=regression n=2 dt_us=1000 res=cmV plasticity=off divisor=10 steps=150 rows=all";
+    pub const HEADER: &str = "# neuralos-trace v1 case=two-lif-neurons kind=regression n=2 dt_us=100 res=cmV plasticity=off divisor=10 steps=150 rows=all";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(120).with_threshold(100).with_reset_potential(0).with_tau_membrane_us(10000).with_tau_refractory_us(1000).with_capacitance_pf(10).with_resistance_mohm(1000).with_noise_amplitude_ua(0),
-        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(0).with_threshold(2000).with_reset_potential(0).with_tau_membrane_us(10000).with_tau_refractory_us(1000).with_capacitance_pf(10).with_resistance_mohm(1000).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(1200).with_threshold(1001).with_reset_potential(0).with_tau_membrane_us(10000).with_tau_refractory_us(0).with_capacitance_pf(1000).with_resistance_mohm(10).with_noise_amplitude_ua(0),
+        LIFNeuron::new_with_type_resolution(1, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(0).with_threshold(1001).with_reset_potential(0).with_tau_membrane_us(10000).with_tau_refractory_us(0).with_capacitance_pf(10000).with_resistance_mohm(1).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [
-        FixedSynapse::new(0, 1, 327),
+        FixedSynapse::new(0, 1, 1000),
     ];
     pub const DRIVE: &[(u32, [i16; N])] = &[
-        (150, [327, 0]),
+        (150, [1000, 0]),
     ];
 }
 

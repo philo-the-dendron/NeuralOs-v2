@@ -14,17 +14,18 @@ firmware/esp32c3/stranger.sh run <graph.nir> [--port /dev/ttyACM0] [--seconds 20
 ```
 
 `build` converts the graph (`neuralos-nir2json --sim-units --freeze`:
-`--steps` steps of the graph's own drive, 150 unless given, 1 on every
-input feature; `run` takes `--steps` too and replays that many), checks
-the capacity bar below, and builds this firmware with the graph in
-its slot (`build.rs`, `NEURALOS_GRAPH`) through `build.sh`: the path
-remap, the personal-string gate, the ELF and `.text` shas, clippy. It
-writes into `firmware/esp32c3/target/stranger/`: `<stem>.json` and its
-sidecar, `<stem>.rs` (the arrays), `<stem>.trace` (the host's run of
-them) and `<stem>.elf`. `run` does the same, flashes the ELF, captures
-20 s from the reset into `<stem>.capture.log`, and diffs the capture
-with `tools/esp32c3_trace_diff.py --trace <stem>.trace`. The verdict is
-the diff's last line and its exit code:
+`--steps` steps of the graph's own drive at the converter's 0.1 ms,
+150 unless given, 1 on every input feature; `run` takes `--steps` too
+and replays that many), checks the capacity bar below, and builds this
+firmware with the graph in its slot (`build.rs`, `NEURALOS_GRAPH`)
+through `build.sh`: the path remap, the personal-string gate, the ELF
+and `.text` shas, clippy. It writes into
+`firmware/esp32c3/target/stranger/`: `<stem>.json` and its sidecar,
+`<stem>.rs` (the arrays), `<stem>.trace` (the host's run of them) and
+`<stem>.elf`. `run` does the same, flashes the ELF, captures 20 s from
+the reset into `<stem>.capture.log`, and diffs the capture with
+`tools/esp32c3_trace_diff.py --trace <stem>.trace`. The verdict is the
+diff's last line and its exit code:
 
 ```text
 <case>: identical, <rows> rows     one line per case: the library's, then yours
@@ -53,8 +54,8 @@ a measurement: at both of its corners, the most neurons (one layer of
 201, all to all between them), the stack's high-water mark on the C3
 leaves at least 16 KiB free and the replay is bit for bit. The
 evidence README's ninth entry holds each corner's frame, mark and ns
-per step; the worst case is the neuron corner, several times slower
-than a 1 ms step, so a graph at the bar replays exactly but not in
+per step; the worst case is the neuron corner, far slower than its
+step of model time, so a graph at the bar replays exactly but not in
 real time. Every build prints its
 own mark after the replays, `stack: <mark> of <total> bytes
 high-water after the replays`. The script's header has the rest.

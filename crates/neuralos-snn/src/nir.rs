@@ -2058,8 +2058,11 @@ mod std_assembly {
 
     /// D8's std weight divisor: [`LINEAR_GAIN_DIVISOR`] over the
     /// assembly's `synaptic_input_divisor`, the network's default 10,
-    /// which `build_network` never changes (the witnesses' tests pin
-    /// the pulse end to end).
+    /// which `build_network` never changes. Native units only:
+    /// `a_two_linear_chain_after_a_lif_is_fused_once` and
+    /// `an_input_feature_and_a_spike_through_one_linear_give_the_same_ua`
+    /// pin the pulse end to end; the witnesses import in simulation
+    /// units, which never read it.
     const D8_WEIGHT_DIVISOR: i16 = LINEAR_GAIN_DIVISOR / 10;
 
     #[cfg(test)]
@@ -2669,7 +2672,7 @@ mod std_assembly {
     mod spiking_linear_tests {
         use super::{
             NirBuilder, NirError, NirGraphEncoder, NirImport, NirImportOptions, NirLifParams,
-            D8_WEIGHT_DIVISOR, LINEAR_GAIN_DIVISOR, SPIKING_LINEAR_MV_REMEDY,
+            D8_WEIGHT_DIVISOR, LINEAR_GAIN_DIVISOR, RECURRENT_MV_REMEDY, SPIKING_LINEAR_MV_REMEDY,
         };
         use crate::fixed::FixedSynapse;
         use crate::lif_neuron::VoltageResolution;
@@ -2682,13 +2685,21 @@ mod std_assembly {
         const SELF_SYNAPSE: &str = "spiking Linear edge onto its own neuron (LIF->Linear->LIF, \
              a nonzero diagonal) — the substrate forbids self-synapse";
 
-        /// The one synapse of both witnesses: lif1 → lif2, 327 μA. A 1×1
-        /// weight quantizes to full scale, 32767, and 32767 / 100
-        /// truncates to 327.
+        /// The one native synapse of a 1×1 chain: 327 μA. A 1×1 weight
+        /// quantizes to full scale, 32767, and 32767 / 100 truncates to
+        /// 327.
         const ONE_EDGE: [FixedSynapse; 1] = [FixedSynapse {
             pre: 0,
             post: 1,
             pulse_ua: 327,
+        }];
+
+        /// The one synapse of both simulation-unit witnesses: lif1 →
+        /// lif2, 1,000 quanta a spike, a weight of 1.0 at true scale.
+        const ONE_SIM_EDGE: [FixedSynapse; 1] = [FixedSynapse {
+            pre: 0,
+            post: 1,
+            pulse_ua: 1_000,
         }];
 
         fn centi() -> NirImportOptions {
@@ -2763,55 +2774,56 @@ mod std_assembly {
 
         /// The framework witness of ROADMAP § 0.1.0 check 6: snnTorch
         /// 1.0's own export of `Linear → Leaky → Linear → Leaky`, read
-        /// under `--sim-units` (τ 5 ms, 50,000 MΩ, threshold 1 mV). Two
-        /// neurons, one synapse of 327 μA, and the drive side's 327 μA
-        /// for a feature of 1. Driven 1 on steps 0–9 and 50–59, lif1
-        /// fires on every step its refractory allows (NIR's LIF has none;
-        /// the assembly's minimum, 1 ms, is one step), so on every other
-        /// driven step, and lif2 fires on the step after each, on the
-        /// pulse alone. Both fall silent when the drive stops, lif2 one
-        /// step after lif1.
+        /// under `--sim-units` (τ 5 ms, 500 MΩ, threshold 10 mV at V 10)
+        /// and imported in simulation units at 0.1 ms, the stranger's
+        /// path. Two neurons, one synapse of 1,000 quanta a spike, and the
+        /// drive side's 1,000 for a feature of 1: a weight of 1.0 at true
+        /// scale. Driven 1 on steps 0–9 and 50–59, a step adds exactly one
+        /// threshold and NIR fires on `v > v_threshold`, so lif1 fires on
+        /// every other driven step from step 1; each spike reaches lif2 one
+        /// step later, and lif2 fires when a pulse finds it above rest.
         #[test]
         fn the_snntorch_two_layer_graph_builds_and_fires() {
-            let graph = NirImport::from_json(SNNTORCH, centi()).expect("the emission imports");
+            let graph = NirImport::from_json(SNNTORCH, NirImportOptions::sim_units(100))
+                .expect("the emission imports");
             let (mut net, enc, rep) = graph.build_network().expect("the two-layer graph builds");
             assert_eq!((rep.neurons, rep.synapses), (2, 1));
             assert_eq!(net.synaptic_input_divisor(), 10, "the assembly's divisor");
-            assert_eq!(net.synapses()[0].weight, 32_767 / D8_WEIGHT_DIVISOR);
-            assert_eq!(FixedSynapse::from_network(&net), ONE_EDGE);
+            assert_eq!(net.synapses()[0].weight, 10_000, "1.0 · 1,000 · 10");
+            assert_eq!(FixedSynapse::from_network(&net), ONE_SIM_EDGE);
             assert_eq!(
                 enc.encode(&[&[1]]),
-                [327, 0],
-                "the drive side, the same 327 μA"
+                [1_000, 0],
+                "the drive side, the same 1,000 quanta"
             );
             let [lif1, lif2] = raster(&mut net, &enc, 150, |step| {
                 i16::from(matches!(step, 0..=9 | 50..=59))
             });
-            assert_eq!(lif1, [0, 2, 4, 6, 8, 50, 52, 54, 56, 58]);
-            assert_eq!(lif2[0], 1, "lif2's first spike, on the pulse's step");
-            assert_eq!(
-                lif2,
-                lif1.iter().map(|step| step + 1).collect::<Vec<_>>(),
-                "lif2 one step after each lif1 spike"
-            );
+            assert_eq!(lif1, [1, 3, 5, 7, 9, 51, 53, 55, 57, 59]);
+            assert_eq!(lif2, [4, 8, 52, 56, 60]);
         }
 
         /// The reference witness: the NIR paper's own `two_lif_neurons`
         /// (written through the `nir` library, not a framework), the same
-        /// shape under `--sim-units`. lif1's leak, 1.2 mV, sits above its
-        /// 1 mV threshold, so it fires with no input: at step 0 from
-        /// rest, then every 20 steps from reset. lif2 (threshold 20 mV)
-        /// fires on the step after each lif1 spike: a 327 μA pulse at
-        /// 1,000 MΩ is +3,270 quanta against 2,000.
+        /// shape under `--sim-units` and imported in simulation units at
+        /// 0.1 ms. lif1's leak, 1.2, sits above its threshold, 1.0, so it
+        /// fires with no input: at step 0 from rest, then every 201 steps
+        /// from reset, where the same equation in floating point takes
+        /// 179, since the substrate truncates each step's move to whole
+        /// quanta, two or three of them near this threshold
+        /// (`LIFNeuron::integrate_and_fire` § Semantics, Rounding). lif2
+        /// (threshold 20, V 0.5, its r of 0.5 MΩ rounded up to 1) stays
+        /// below threshold, as the paper's model means it to.
         #[test]
         fn the_two_lif_neurons_graph_builds_and_fires_with_no_input() {
-            let graph = NirImport::from_json(TWO_LIF, centi()).expect("the file imports");
+            let graph = NirImport::from_json(TWO_LIF, NirImportOptions::sim_units(100))
+                .expect("the file imports");
             let (mut net, enc, rep) = graph.build_network().expect("the two-layer graph builds");
             assert_eq!((rep.neurons, rep.synapses), (2, 1));
-            assert_eq!(FixedSynapse::from_network(&net), ONE_EDGE);
-            let [lif1, lif2] = raster(&mut net, &enc, 100, |_| 0);
-            assert_eq!(lif1, [0, 20, 40, 60, 80]);
-            assert_eq!(lif2, [1, 21, 41, 61, 81]);
+            assert_eq!(FixedSynapse::from_network(&net), ONE_SIM_EDGE);
+            let [lif1, lif2] = raster(&mut net, &enc, 500, |_| 0);
+            assert_eq!(lif1, [0, 201, 402], "from rest, then every 201 steps");
+            assert_eq!(lif2, Vec::<u32>::new());
         }
 
         /// D1's grid rule extends to D8: both witnesses reject by name on
@@ -2827,6 +2839,19 @@ mod std_assembly {
                 assert!(
                     matches!(err, NirError::UnsupportedTopology(m) if m == SPIKING_LINEAR_MV_REMEDY),
                     "{label}: {err:?}"
+                );
+            }
+        }
+
+        /// A `--sim-units` file with a spiking Linear edge or a LIF→LIF
+        /// edge, imported on the default mV options, is refused with one
+        /// of these remedies, and each names the options such a file needs.
+        #[test]
+        fn the_mv_remedies_name_the_simulation_units_options() {
+            for remedy in [SPIKING_LINEAR_MV_REMEDY, RECURRENT_MV_REMEDY] {
+                assert!(
+                    remedy.contains("NirImportOptions::sim_units(dt_us)"),
+                    "{remedy}"
                 );
             }
         }
@@ -3951,14 +3976,17 @@ mod std_assembly {
     /// The named mV-on-recurrent rejection, remedy verbatim and
     /// copy-pasteable (D1 + the plan-gate ruling).
     const RECURRENT_MV_REMEDY: &str = "recurrent graph on mV: pulses fall in the ~200 uA dead \
-     zone — re-import with NirImportOptions { resolution: \
-     VoltageResolution::CentiMillivolt, ..NirImportOptions::default() }";
+     zone — re-import a neuralos-nir2json --sim-units file with \
+     NirImportOptions::sim_units(dt_us), a graph in native units with \
+     NirImportOptions { resolution: VoltageResolution::CentiMillivolt, \
+     ..NirImportOptions::default() }";
 
     /// The named mV-on-spiking-Linear rejection (D8 extends D1's grid
     /// rule), remedy verbatim and copy-pasteable.
     const SPIKING_LINEAR_MV_REMEDY: &str = "spiking Linear edge (LIF->Linear->LIF) on mV: D8 \
-     assembles on the centi-mV grid only, as LIF->LIF does — re-import with \
-     NirImportOptions { resolution: VoltageResolution::CentiMillivolt, \
+     assembles on the centi-mV grid only, as LIF->LIF does — re-import a \
+     neuralos-nir2json --sim-units file with NirImportOptions::sim_units(dt_us), a graph in \
+     native units with NirImportOptions { resolution: VoltageResolution::CentiMillivolt, \
      ..NirImportOptions::default() }";
 
     #[cfg(test)]
