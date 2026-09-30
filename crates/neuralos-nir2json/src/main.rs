@@ -4,12 +4,12 @@
 //!
 //! Exit codes: 0 converted, and frozen with `--freeze` · 1 usage/IO · 2
 //! named refusal (filter census, out-of-subset node, layout/schema
-//! violation; with `--freeze`, a graph that does not assemble, plasticity
-//! on, more than 65,535 neurons), nothing written. The sidecar
-//! `<output>.meta.json` carries the file-level audit stamp (f32 widening,
-//! node census, options); `--freeze` writes `<out.rs>` and `<out>.trace`,
-//! prints the library's assembly notes and adds its report to the
-//! sidecar (README § Freeze).
+//! violation, an Affine's bias with no place; with `--freeze`, a graph
+//! that does not assemble, plasticity on, more than 65,535 neurons),
+//! nothing written. The sidecar `<output>.meta.json` carries the
+//! file-level audit stamp (f32 widening, node census, options);
+//! `--freeze` writes `<out.rs>` and `<out>.trace`, prints the library's
+//! assembly notes and adds its report to the sidecar (README § Freeze).
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -132,7 +132,7 @@ fn assembly_notes(a: &Assembly) -> Vec<String> {
         .collect();
     if !a.undriven.is_empty() {
         lines.push(format!(
-            "  undriven   : {} (no input reaches them)",
+            "  undriven   : {} (no input reaches them, or they reach no LIF)",
             a.undriven.join(", ")
         ));
     }
@@ -158,20 +158,23 @@ fn usage(why: &str) -> ExitCode {
     );
     eprintln!("  --sim-units : interpret LIF parameters in the ecosystem's simulation-unit");
     eprintln!("                 convention (true-scale weights, a voltage scale per node,");
-    eprintln!("                 NIR's firing rule, centi grid) — stamped");
+    eprintln!("                 NIR's firing rule, centi grid) — stamped; an Affine becomes");
+    eprintln!("                 a Linear and, for its bias, an input of its own");
     eprintln!("  --dt µs     : the time step, default {SIM_DT_US} with --sim-units (snnTorch's");
     eprintln!("                 exporter assumes 0.1 ms), else {NATIVE_DT_US}");
     eprintln!("  --freeze    : also build the network and write <out.rs>, the arrays a");
     eprintln!("                 FixedNetwork steps, and <out>.trace, their run on the host");
     eprintln!("  --steps N   : the run --freeze writes, default {DEFAULT_STEPS} steps");
-    eprintln!("  --input …   : one i16 per input feature for that run, default 1 each");
+    eprintln!("  --input …   : one i16 per feature of the graph's own inputs for that run,");
+    eprintln!("                 default 1 each; the bias inputs are the converter's");
     eprintln!("  --drive f   : runs instead, one a line: steps, then v1,v2,… (not with");
     eprintln!("                 --steps or --input)");
     eprintln!("  exit 0: converted (sidecar <output>.meta.json written), frozen with --freeze");
     eprintln!("  exit 1: usage / IO error");
     eprintln!("  exit 2: named refusal — filter census, out-of-subset node, layout,");
-    eprintln!("          sim-unit parameters without --sim-units; with --freeze, a graph");
-    eprintln!("          that does not assemble, plasticity on, more than 65,535 neurons");
+    eprintln!("          sim-unit parameters without --sim-units, an Affine's bias with no");
+    eprintln!("          place; with --freeze, a graph that does not assemble, plasticity");
+    eprintln!("          on, more than 65,535 neurons");
     ExitCode::from(1)
 }
 
@@ -241,9 +244,10 @@ fn main() -> ExitCode {
             };
             let drive: Vec<(u32, Option<&[i16]>)> =
                 runs.iter().map(|(n, v)| (*n, v.as_deref())).collect();
-            match freeze(&converted.json, opts, &name, &drive) {
+            match freeze(&converted.json, opts, &name, &drive, &converted.stamp.bias) {
                 Ok(f) => {
-                    let steps: u64 = drive.iter().map(|&(n, _)| u64::from(n)).sum();
+                    // at most a u32 of steps, since freeze refuses more
+                    let steps: usize = drive.iter().map(|&(n, _)| n as usize).sum();
                     Some((out_rs.clone(), name, steps, f))
                 }
                 Err(FreezeError::Input {
@@ -298,6 +302,9 @@ fn main() -> ExitCode {
             "  sim-units  : transform APPLIED (a voltage scale per node, true scale, centi grid) — see sidecar"
         );
     }
+    for b in &converted.stamp.bias {
+        println!("  bias input : {}, 1 from step {}", b.input, b.start);
+    }
     println!("  sidecar    : {}", sidecar.display());
 
     if let Some((out_rs, name, steps, f)) = frozen {
@@ -308,10 +315,11 @@ fn main() -> ExitCode {
             return code;
         }
         println!(
-            "  frozen     : {} (module {name}: {} neurons, {} synapses, {steps} steps)",
+            "  frozen     : {} (module {name}: {}, {}, {})",
             out_rs.display(),
-            f.neurons,
-            f.synapses,
+            counted(f.neurons, "neuron"),
+            counted(f.synapses, "synapse"),
+            counted(steps, "step"),
         );
         println!("  trace      : {}", trace.display());
         for line in assembly_notes(&f.assembly) {
@@ -420,7 +428,7 @@ mod tests {
             assembly_notes(&a),
             [
                 "  fused      : l1 → l2 (one encoder stage)",
-                "  undriven   : c, d (no input reaches them)",
+                "  undriven   : c, d (no input reaches them, or they reach no LIF)",
                 "  gain note  : more than one drive Linear, each scaled by its own absmax",
             ]
         );

@@ -96,11 +96,14 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   is 0 before its population's depth and 1 from it: the depth counts the
   spike edges between the population and an Input, since a spike reaches
   the next population one step late, so a bias one spiking layer deep
-  starts at step 1. Refused by name: a bias that feeds anything but a
-  LIF (an Output, or a Linear before its LIF), one whose LIF no Input
-  reaches or two paths from the Inputs reach at two depths (a loop
-  among them), and one that feeds LIFs at two depths. In native units
-  `Affine` stays refused.
+  starts at step 1. The summary and the sidecar's `bias` name each bias
+  input and its start, and `--freeze` drives it so (below); a caller of
+  the library who takes the JSON drives each `<affine>/bias` input the
+  same way, since the library reads an input it is not given as 0.
+  Refused by name: a bias that feeds anything but a LIF (an Output, or a
+  Linear before its LIF), one whose LIF no Input reaches or two paths
+  from the Inputs reach at two depths (a loop among them), and one that
+  feeds LIFs at two depths. In native units `Affine` stays refused.
 
 ## Freeze: the arrays a `FixedNetwork` steps
 
@@ -115,17 +118,19 @@ sidecar:
 
 - **`<out.rs>`**, one `pub mod` named after the file's stem (lowercased,
   anything but a letter, digit or `_` made `_`; a letter or `_` first,
-  not a Rust keyword): `N` neurons and `S`
-  synapses as the arrays a `neuralos_snn::FixedNetwork<N, S>` steps,
-  the time step, the run, the trace's header line (`kind=stranger`),
-  and `DRIVE`, one run of `--steps` steps (default 150) of the currents
-  the graph's own encoder gives for `--input`: one integer per input
-  feature, in Input order, default 1 for every feature. `--drive
-  <file>` gives runs instead, one a line, a step count and then the
-  integers (`10 1,0`; blank lines and `#` lines skipped), each run the
-  currents its integers give, one after the other. The library's
-  freezer writes it (`neuralos_snn::fixed::freeze::module`), the one
-  that writes the library's own frozen traces.
+  not a Rust keyword): `N` neurons and `S` synapses as the arrays a
+  `neuralos_snn::FixedNetwork<N, S>` steps, the time step, the run, the
+  trace's header line (`kind=stranger`), and `DRIVE`, one run of
+  `--steps` steps (default 150) of the currents the graph's own encoder
+  gives for `--input`: one integer per feature of the graph's own
+  inputs, in Input order, default 1 for every feature. Each bias input
+  the conversion added is the converter's: 0 before its start and 1 from
+  it, a run split where one starts inside it. `--drive <file>` gives
+  runs instead, one a line, a step count and then the integers
+  (`10 1,0`; blank lines and `#` lines skipped), each run the currents
+  its integers give, one after the other. The library's freezer writes
+  it (`neuralos_snn::fixed::freeze::module`), the one that writes the
+  library's own frozen traces.
 - **`<out>.trace`**, that drive on the host in `neuralos-trace v1`: the
   header line, then one row per step, the spikes and every membrane,
   written by `neuralos_snn::trace::row`, the row writer the firmware
@@ -136,12 +141,13 @@ sidecar:
   same rows.
 
 It prints what the library noted as it assembled the graph, one line
-each: a stage fused from two Linear tensors or more, the populations
-and encoders no input reaches, and, in native units, the gain note (more
-than one drive Linear, each scaled by its own absmax). The sidecar
-carries the whole report as `assembly`: the neurons, the synapses, the
-inputs, the drive Linears, the stages, the fused chains with their
-scales, the undriven names, the gain note and the plasticity flag.
+each: a stage fused from two Linear tensors or more, the undriven
+populations and encoders (no input reaches them, or they reach no LIF),
+and, in native units, the gain note (more than one drive Linear, each
+scaled by its own absmax). The sidecar carries the whole report as
+`assembly`: the neurons, the synapses, the inputs, the drive Linears,
+the stages, the fused chains with their scales, the undriven names, the
+gain note and the plasticity flag.
 
 Refused by name, exit 2, nothing written: a graph that does not
 assemble (the library names why, e.g. a readout to Output or a graph

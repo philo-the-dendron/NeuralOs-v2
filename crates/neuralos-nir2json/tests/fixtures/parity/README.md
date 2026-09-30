@@ -13,9 +13,11 @@ nir 1.0.9.dev1+g7883c3c85, torch 2.13.0+cpu):
 
 `reference.json` holds snnTorch's spikes: `reset_mechanism="zero"`,
 what NIR's LIF means (snnTorch's exporter writes `v_reset = 0` for
-every model), 1,500 steps of 0.1 ms, and each graph's input: 1 on
-every feature at every step, or, for the 16 → 8 → 4 graph, a random 0
-or 1 per feature at p 0.3, held as one bitmask a step.
+every model), 1,500 steps of 0.1 ms, and each run's input: 1 on every
+feature at every step, or a random 0 or 1 per feature at p 0.3, held
+as one bitmask a step. snnTorch exports a biased `nn.Linear` as an
+`Affine`, whose bias the converter makes an input of its own; the test
+drives it as `--freeze` does, 1 from its population's depth.
 
 The exporter writes the edge list in the order Python's hash seed
 gives, so the script runs itself under `PYTHONHASHSEED=0`: a second run

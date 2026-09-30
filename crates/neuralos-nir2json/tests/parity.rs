@@ -1,19 +1,20 @@
 //! Parity with snnTorch, spike train for spike train. Each graph in
 //! `fixtures/parity/` is snnTorch 1.0's own export, and `reference.json`
-//! holds snnTorch's own spikes for it: zero reset, 0.1 ms steps, and the
-//! graph's input, 1 on every feature at every step or one bitmask a step
-//! (`tools/gen_snnTorch_parity.py`, the directory's README). This test
-//! converts each graph as a stranger's `--sim-units` does, at snnTorch's
-//! step, steps it on the same input, and holds every neuron's train to
-//! snnTorch's: the first LIF layer as it is, each later layer one step
-//! late, since a spike reaches the next layer on the next step
-//! (`SpikingNeuralNetwork::step` § Order), over the steps both runs can
-//! show. A known miss is named with its reason and pinned by its counts,
-//! so a fix shows here as a change.
+//! holds snnTorch's own spikes for each run of it: zero reset, 0.1 ms
+//! steps, and the run's input, 1 on every feature at every step or one
+//! bitmask a step (`tools/gen_snnTorch_parity.py`, the directory's
+//! README). This test converts each graph as a stranger's `--sim-units`
+//! does, at snnTorch's step, steps it on the same input, each bias input
+//! the conversion adds driven as `--freeze` drives it, and holds every
+//! neuron's train to snnTorch's: the first LIF layer as it is, each later
+//! layer one step late per layer, since a spike reaches the next layer on
+//! the next step (`SpikingNeuralNetwork::step` § Order), over the steps
+//! both runs can show. A known miss is named with its reason and pinned
+//! by its counts, so a fix shows here as a change.
 
 use std::path::{Path, PathBuf};
 
-use neuralos_nir2json::{SIM_DT_US, convert_file_opts, effective_options};
+use neuralos_nir2json::{Inputs, SIM_DT_US, convert_file_opts, effective_options};
 use neuralos_snn::nir::{NirImport, NirImportOptions};
 
 /// The graphs the bridge does not yet run spike for spike: name, the
@@ -59,7 +60,9 @@ fn input(config: &serde_json::Value, features: usize, steps: u32) -> Vec<Vec<i16
 }
 
 /// Each neuron's spike steps, in the network's order, over the steps of
-/// `input`, one value per feature a step.
+/// `input`, one value per feature of the graph's own Inputs a step; each
+/// bias input the conversion adds is driven as `freeze` drives it
+/// (`Inputs`).
 fn run(nir: &Path, input: &[Vec<i16>]) -> Vec<Vec<u32>> {
     let opts = NirImportOptions {
         dt_us: SIM_DT_US,
@@ -68,9 +71,12 @@ fn run(nir: &Path, input: &[Vec<i16>]) -> Vec<Vec<u32>> {
     let c = convert_file_opts(nir, opts, true).expect("converts under --sim-units");
     let graph = NirImport::from_json(&c.json, effective_options(opts, true)).expect("imports");
     let (mut net, enc, _) = graph.build_network().expect("the graph builds");
+    let inputs = Inputs::new(&graph, &enc, &c.stamp.bias).expect("the conversion's bias");
     let mut trains = vec![Vec::new(); net.neurons().len()];
     for (step, x) in (0u32..).zip(input) {
-        let spikes = net.step(&enc.encode(&[x.as_slice()])).expect("steps");
+        let per_input = inputs.at(step, x);
+        let slices: Vec<&[i16]> = per_input.iter().map(Vec::as_slice).collect();
+        let spikes = net.step(&enc.encode(&slices)).expect("steps");
         for spike in spikes {
             trains[usize::from(spike.neuron_id)].push(step);
         }
