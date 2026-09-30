@@ -195,6 +195,7 @@ emission: `tools/gen_snnTorch_stranger.py` (throwaway venv; the script
 header carries the exact stack), and the two-layer witness of D8:
 `tools/gen_snnTorch_two_layer.py` (the repo's `.nirenv`; not
 byte-stable across runs, so the committed emission is pinned by its
-sha in PROVENANCE.md).
+sha in PROVENANCE.md; the exporter's edge order follows Python's hash
+seed, and under `PYTHONHASHSEED=0` a second run writes the same bytes).
 
 [`neuralos-snn`]: https://crates.io/crates/neuralos-snn

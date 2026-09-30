@@ -19,6 +19,8 @@ voltage scale of 10 (r 500 MΩ, threshold 10 mV).
 The emission is not byte-stable across runs: the exporter writes the edge
 list in another order each run (two runs, two shas, one graph), so the
 committed fixture is one emission, pinned by its sha in PROVENANCE.md.
+The order follows Python's hash seed: under `PYTHONHASHSEED=0` a second
+run writes the same bytes.
 The seed line is moot with the weights filled and is kept for the form.
 
 Stack (of record, in PROVENANCE.md): the repo's .nirenv, snntorch 1.0.0 ·

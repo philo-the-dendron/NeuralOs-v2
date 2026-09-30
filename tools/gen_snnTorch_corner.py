@@ -24,6 +24,8 @@ bar its largest value sits at one of these two.
 The emission is not byte-stable across runs (the exporter writes the
 edge list in another order each run, as PROVENANCE.md says of the
 witness), so the frozen module and its trace are what a record pins.
+The order follows Python's hash seed: under `PYTHONHASHSEED=0` a second
+run writes the same bytes.
 The .nir goes under firmware/esp32c3/target/stranger/ (gitignored),
 never committed. Run:
 
