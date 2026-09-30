@@ -254,7 +254,9 @@ const _: fn() = || {
 /// Maximum container nesting [`Reader::skip_value`] will walk before
 /// rejecting the document. The schema's own depth is ≤ 6; 64 leaves
 /// generous headroom for foreign `metadata` while bounding the
-/// recursion (no stack overflow on adversarial input).
+/// recursion (no stack overflow on adversarial input). The scan and
+/// both walks of the import skip a node's field from the field itself,
+/// so all three read a field 64 containers deep.
 const MAX_SKIP_DEPTH: usize = 64;
 
 struct Reader<'a> {
@@ -1303,6 +1305,17 @@ pub fn nir_import<'a>(
                             bufs.edges[edge_count] = (pair[0], pair[1]);
                             edge_count += 1;
                             report.edges = edge_count;
+                        }
+                    } else if gkey == "nodes" {
+                        // field by field, as walk 1 reads them: skipped
+                        // whole, a node's field would sit two levels down
+                        // and nest two containers less than walk 1 reads
+                        let mut nfirst = true;
+                        while r.object_step(&mut nfirst)?.is_some() {
+                            let mut ffirst = true;
+                            while r.object_step(&mut ffirst)?.is_some() {
+                                r.skip_value(0)?;
+                            }
                         }
                     } else {
                         r.skip_value(0)?;
@@ -4524,6 +4537,34 @@ mod tests {
         Vec<NirLif>,
         NirReport,
     ) {
+        import_chain_variant(CHAIN, opts).expect("chain imports")
+    }
+
+    /// CHAIN with `field` added to its LIF node.
+    fn chain_with(field: &str) -> String {
+        let doc = CHAIN.replacen("\"lif\":{", &format!("\"lif\":{{{field},"), 1);
+        assert_ne!(doc, CHAIN, "the LIF node takes the field");
+        doc
+    }
+
+    /// `doc`, CHAIN or a variant of it, through `nir_import` alone, into
+    /// buffers sized by CHAIN's scan. The scan skips a node's fields
+    /// under the same cap, so going around it makes a refusal the
+    /// import's own.
+    #[allow(clippy::type_complexity)]
+    fn import_chain_variant(
+        doc: &str,
+        opts: NirImportOptions,
+    ) -> Result<
+        (
+            Vec<NirNode<'_>>,
+            Vec<(u32, u32)>,
+            Vec<i16>,
+            Vec<NirLif>,
+            NirReport,
+        ),
+        NirError<'_>,
+    > {
         let scan = nir_scan(CHAIN.as_bytes()).unwrap();
         let mut nodes = vec![
             NirNode {
@@ -4547,8 +4588,8 @@ mod tests {
             lifs: &mut lifs,
             scratch: &mut scratch,
         };
-        let report = nir_import(CHAIN.as_bytes(), opts, &mut bufs).expect("chain imports");
-        (nodes, edges, weights, lifs, report)
+        let report = nir_import(doc.as_bytes(), opts, &mut bufs)?;
+        Ok((nodes, edges, weights, lifs, report))
     }
 
     #[test]
@@ -5151,6 +5192,53 @@ mod tests {
             nest(40)
         );
         assert!(nir_scan(ok.as_bytes()).is_ok());
+    }
+
+    /// A node's field nests 64 containers deep, `MAX_SKIP_DEPTH`,
+    /// wherever a walk skips it, counted from the field's value: in the
+    /// scan, in the import's node walk and in its edge walk. One more is
+    /// refused as malformed, by the scan and the import alike.
+    #[test]
+    fn a_node_field_nests_64_containers_wherever_it_is_skipped() {
+        // each field opens `levels` objects, then nests arrays around a
+        // number: `n` containers in all
+        for (label, open, levels) in [
+            ("a field the import does not read", "\"deep\":", 0),
+            ("metadata that is not an object", "\"metadata\":", 0),
+        ] {
+            let field = |n: usize| {
+                let arrays = n - levels;
+                format!(
+                    "{open}{}0{}{}",
+                    "[".repeat(arrays),
+                    "]".repeat(arrays),
+                    "}".repeat(levels)
+                )
+            };
+            let doc = chain_with(&field(64));
+            assert_eq!(
+                nir_scan(doc.as_bytes()).map(|_| ()),
+                Ok(()),
+                "{label}: the scan, 64"
+            );
+            assert_eq!(
+                import_chain_variant(&doc, NirImportOptions::default()).map(|_| ()),
+                Ok(()),
+                "{label}: the import, 64"
+            );
+            let doc = chain_with(&field(65));
+            assert!(
+                matches!(nir_scan(doc.as_bytes()), Err(NirError::Json(_))),
+                "{label}: the scan, 65"
+            );
+            assert!(
+                matches!(
+                    import_chain_variant(&doc, NirImportOptions::default()),
+                    Err(NirError::Json(_))
+                ),
+                "{label}: the import, 65"
+            );
+        }
     }
 
     #[test]
