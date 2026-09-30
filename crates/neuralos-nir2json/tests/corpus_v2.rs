@@ -14,7 +14,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use neuralos_nir2json::{ConvertError, convert_file, convert_file_opts};
+use neuralos_nir2json::{ConvertError, SIM_DT_US, convert_file, convert_file_opts};
 use neuralos_snn::nir::NirImportOptions;
 
 fn fixture(name: &str) -> std::path::PathBuf {
@@ -336,7 +336,7 @@ fn stranger_fallback_snntorch_two_layer_completes_full_path_sim_units() {
     assert!(matches!(err, ConvertError::SimUnits { .. }), "{err:?}");
     // the CLI's --sim-units defaults: snnTorch's 0.1 ms step
     let sim_step = NirImportOptions {
-        dt_us: 100,
+        dt_us: SIM_DT_US,
         ..NirImportOptions::default()
     };
     let c = convert_file_opts(&path, sim_step, true).expect("converts under --sim-units");
@@ -346,8 +346,9 @@ fn stranger_fallback_snntorch_two_layer_completes_full_path_sim_units() {
         "torch's float32 widened: {:?}",
         c.stamp.f32_datasets
     );
-    let g = neuralos_snn::nir::NirImport::from_json(&c.json, NirImportOptions::sim_units(100))
-        .expect("imports in simulation units");
+    let g =
+        neuralos_snn::nir::NirImport::from_json(&c.json, NirImportOptions::sim_units(SIM_DT_US))
+            .expect("imports in simulation units");
     for l in &g.lifs {
         assert_eq!(
             (
@@ -390,7 +391,7 @@ fn the_snn_witness_fixtures_are_this_converter_s_bytes() {
     ] {
         // the CLI's --sim-units default step, 0.1 ms
         let sim_step = NirImportOptions {
-            dt_us: 100,
+            dt_us: SIM_DT_US,
             ..NirImportOptions::default()
         };
         let c =

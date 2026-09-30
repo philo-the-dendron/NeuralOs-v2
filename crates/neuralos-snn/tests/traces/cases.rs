@@ -555,6 +555,9 @@ fn ternary_weights() -> Run {
 /// driven through the graph's own encoder with the one input feature
 /// `drive(step)`.
 fn witness(json: &'static [u8], drive: fn(u32) -> i16) -> Run {
+    // 100 µs is neuralos-nir2json's `SIM_DT_US`, the `--sim-units`
+    // default: the converter depends on this crate, so its constant is
+    // out of reach here
     let g = NirImport::from_json(json, NirImportOptions::sim_units(100))
         .expect("the converted witness imports");
     let (net, enc, _report) = g.build_network().expect("the two-layer graph assembles");

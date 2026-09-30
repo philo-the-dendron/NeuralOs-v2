@@ -12,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use neuralos_nir2json::{convert_file_opts, effective_options};
+use neuralos_nir2json::{SIM_DT_US, convert_file_opts, effective_options};
 use neuralos_snn::nir::{NirImport, NirImportOptions};
 
 /// The graphs the bridge does not yet run spike for spike: name, the
@@ -32,7 +32,7 @@ fn fixtures() -> PathBuf {
 /// of input 1 on every feature.
 fn run(nir: &Path, features: usize, steps: u32) -> Vec<Vec<u32>> {
     let opts = NirImportOptions {
-        dt_us: 100,
+        dt_us: SIM_DT_US,
         ..NirImportOptions::default()
     };
     let c = convert_file_opts(nir, opts, true).expect("converts under --sim-units");

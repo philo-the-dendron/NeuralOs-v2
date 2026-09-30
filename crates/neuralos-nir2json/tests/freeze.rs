@@ -222,3 +222,78 @@ fn dt_sets_the_step_and_refuses_zero() {
     );
     assert_eq!(run("0").status.code(), Some(1), "--dt 0 is a usage error");
 }
+
+#[test]
+fn a_drive_file_freezes_its_runs_and_the_sidecar_carries_the_report() {
+    let dir = scratch("freeze-drive");
+    let run_file = |file: &str| {
+        Command::new(env!("CARGO_BIN_EXE_neuralos-nir2json"))
+            .args(["--sim-units", "--freeze"])
+            .arg(dir.join("src/snntorch_two_layer.rs"))
+            .arg("--drive")
+            .arg(dir.join(file))
+            .arg(repo(
+                "crates/neuralos-nir2json/tests/fixtures/community/snnTorch_two_layer.nir",
+            ))
+            .arg(dir.join("snntorch_two_layer.json"))
+            .output()
+            .expect("the binary runs")
+    };
+    let run = |drive: &str| {
+        fs::write(dir.join("drive.txt"), drive).expect("the drive file");
+        run_file("drive.txt")
+    };
+    let out = run("# a burst, then quiet\n10 1\n40 0\n");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let module = fs::read_to_string(dir.join("src/snntorch_two_layer.rs")).expect("the module");
+    assert!(
+        module.contains("        (10, [1000, 0]),\n        (40, [0, 0]),\n"),
+        "{module}"
+    );
+    let trace = fs::read_to_string(dir.join("src/snntorch_two_layer.trace")).expect("the trace");
+    assert_eq!(trace.lines().count(), 51, "the header and 50 rows");
+    let sidecar =
+        fs::read_to_string(dir.join("snntorch_two_layer.json.meta.json")).expect("the sidecar");
+    assert!(
+        sidecar.contains("\"assembly\":{\"neurons\":2,\"synapses\":1,"),
+        "{sidecar}"
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(", 50 steps)"),
+        "the steps it prints: {stdout}"
+    );
+
+    let out = run("10 1\n40\n");
+    assert_eq!(out.status.code(), Some(1), "a line that does not read");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("drive.txt: line 2:"), "{stderr}");
+
+    let out = run("4294967295 1\n1 1\n");
+    assert_eq!(out.status.code(), Some(1), "more steps than a u32 counts");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("more steps than a trace counts"),
+        "{stderr}"
+    );
+
+    let out = run("10 1,1\n");
+    assert_eq!(out.status.code(), Some(1), "a run of the wrong length");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(
+            "drive.txt: run 1 gives 2 values; the graph has 1 input feature, one value each"
+        ),
+        "{stderr}"
+    );
+
+    let out = run_file("no-such-drive.txt");
+    assert_eq!(out.status.code(), Some(1), "a missing drive file");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("cannot read"), "{stderr}");
+}
