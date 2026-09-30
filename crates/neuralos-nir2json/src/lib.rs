@@ -71,6 +71,12 @@ use neuralos_snn::trace::{self, Kind, Rows, row};
 /// Tool version (sidecar stamp).
 pub const TOOL_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The time step under `--sim-units` when `--dt` is not given, µs:
+/// snnTorch's exporter writes `tau = dt / (1 - beta)` with `dt = 1e-4`
+/// fixed, and a `.nir` file carries no step. The CLI's default, and the
+/// step of this crate's tests of simulation units.
+pub const SIM_DT_US: u32 = 100;
+
 /// The deflate filter id (H5Z_FILTER_DEFLATE) — the only compression
 /// the census admits.
 const FILTER_DEFLATE: u16 = 1;
@@ -621,18 +627,10 @@ fn volt_scale(v_leak: &[f64], v_threshold: &[f64], v_reset: Option<&[f64]>) -> f
     let potential = largest(v_leak)
         .max(threshold)
         .max(v_reset.map_or(0.0, largest));
-    let by_threshold = if threshold > 0.0 {
-        10.0 / threshold
-    } else {
-        f64::INFINITY
-    };
-    let by_range = if potential > 0.0 {
-        45.0 / potential
-    } else {
-        f64::INFINITY
-    };
-    let v = by_threshold.min(by_range);
-    // a zero threshold is refused by the import (ThresholdZero)
+    // a term over 0 is +inf, which leaves the other term to decide
+    let v = (10.0 / threshold).min(45.0 / potential);
+    // both at 0: a zero threshold, which the import refuses by name
+    // (ThresholdZero) whatever finite V it gets
     if v.is_finite() { v } else { 1.0 }
 }
 
@@ -650,6 +648,44 @@ pub struct Frozen {
     pub neurons: usize,
     /// The network's synapses.
     pub synapses: usize,
+    /// What the library noted as it assembled the graph.
+    pub assembly: Assembly,
+}
+
+/// The library's assembly report (`neuralos_snn::nir::NirAssemblyReport`),
+/// owned: `--freeze` prints its notes and writes all of it in the
+/// sidecar (README § Freeze).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Assembly {
+    /// Neurons, every population's.
+    pub neurons: usize,
+    /// Synapses, the LIF→LIF pairs' and the spiking Linear edges'.
+    pub synapses: usize,
+    /// Input nodes.
+    pub inputs: usize,
+    /// Linear nodes that feed a LIF, from an Input or a LIF.
+    pub drive_linears: usize,
+    /// Quantized encoder matrices.
+    pub stages: usize,
+    /// Each stage composed from two tensors or more, root first.
+    pub fused: Vec<Fused>,
+    /// The LIF populations and Linear encoders no input reaches.
+    pub undriven: Vec<String>,
+    /// The gain note: in native units, more than one drive Linear, each
+    /// scaled by its own absmax.
+    pub multi_linear_gain: bool,
+    /// Plasticity frozen at assembly.
+    pub plasticity_frozen: bool,
+}
+
+/// One fused stage: its chain of Linear nodes, root first, and each
+/// tensor's quantization scale in chain order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fused {
+    /// The composed nodes' names, root first, target last.
+    pub chain: Vec<String>,
+    /// Each component tensor's quantization scale, in `chain` order.
+    pub scales: Vec<f64>,
 }
 
 /// Everything that stops `--freeze`, each nameable in one line.
@@ -666,8 +702,16 @@ pub enum FreezeError {
     /// Plasticity on: a `FixedNetwork` has none (never, from NIR:
     /// `build_network` freezes it).
     Plasticity,
-    /// `--input` does not give one value per input feature.
-    Input { given: usize, features: usize },
+    /// A run of the drive does not give one value per input feature;
+    /// `run` counts from 1.
+    Input {
+        run: usize,
+        given: usize,
+        features: usize,
+    },
+    /// The drive holds no run, a run of 0 steps, or more steps than a
+    /// trace counts (`u32`).
+    Drive(&'static str),
     /// `name` is not a [`module_name`], which `freeze` needs: the
     /// module is named `name`, and the trace's case name is `name` with
     /// `_` made `-`. Never from the CLI, which passes `module_name`'s
@@ -685,10 +729,17 @@ impl fmt::Display for FreezeError {
                 "{n} neurons: a FixedNetwork neuron id is a u16, at most 65,535"
             ),
             Self::Plasticity => write!(f, "plasticity is on: a FixedNetwork has none"),
-            Self::Input { given, features } => write!(
+            Self::Input {
+                run,
+                given,
+                features,
+            } => write!(
                 f,
-                "--input gives {given} values; the graph has {features} input features, one value each"
+                "the drive's run {run} gives {given} value{}; the graph has {features} input feature{}, one value each",
+                if *given == 1 { "" } else { "s" },
+                if *features == 1 { "" } else { "s" },
             ),
+            Self::Drive(why) => write!(f, "the drive holds {why}"),
             Self::Name(n) => write!(
                 f,
                 "{n:?} is not a module name: lowercase ASCII letters, digits and _, a letter or _ first, not _ alone, not a Rust keyword"
@@ -729,10 +780,11 @@ pub fn module_name(stem: &str) -> Option<String> {
 /// Freeze a converted graph: import `json` under `opts` (the
 /// conversion's own, [`effective_options`]), build it (`build_network`),
 /// and write one module named `name` (a [`module_name`]) holding its
-/// arrays, `kind=stranger` in its header, and its drive: one run of
-/// `steps` steps of the currents the graph's encoder gives for `input`,
-/// one value per input feature in Input order, `None` meaning 1 for every
-/// feature. With it, the trace of that run on the host.
+/// arrays, `kind=stranger` in its header, and its drive: each run of
+/// `drive`, a step count and one value per input feature in Input order
+/// (`None` meaning 1 for every feature), as the currents the graph's
+/// encoder gives for it. With it, the trace of that drive on the host,
+/// and what the library noted as it assembled the graph.
 ///
 /// The trace is the std network's, plasticity off, the network
 /// `FixedNetwork::try_from` would convert, each row written by
@@ -766,8 +818,7 @@ pub fn freeze(
     json: &[u8],
     opts: NirImportOptions,
     name: &str,
-    steps: u32,
-    input: Option<&[i16]>,
+    drive: &[(u32, Option<&[i16]>)],
 ) -> Result<Frozen, FreezeError> {
     if module_name(name).as_deref() != Some(name) {
         return Err(FreezeError::Name(name.to_string()));
@@ -777,32 +828,46 @@ pub fn freeze(
     if graph.lifs.len() > usize::from(u16::MAX) {
         return Err(FreezeError::TooManyNeurons(graph.lifs.len()));
     }
-    let (mut net, enc, _report) = graph
+    let (mut net, enc, report) = graph
         .build_network()
         .map_err(|e| FreezeError::Assembly(e.to_string()))?;
     if net.plasticity_enabled() {
         return Err(FreezeError::Plasticity);
     }
 
-    let features: usize = (0..enc.input_count()).map(|i| enc.input_features(i)).sum();
-    let values = match input {
-        Some(v) if v.len() != features => {
-            return Err(FreezeError::Input {
-                given: v.len(),
-                features,
-            });
-        }
-        Some(v) => v.to_vec(),
-        None => vec![1; features],
-    };
-    let mut per_input: Vec<&[i16]> = Vec::with_capacity(enc.input_count());
-    let mut rest = values.as_slice();
-    for i in 0..enc.input_count() {
-        let (this, others) = rest.split_at(enc.input_features(i));
-        per_input.push(this);
-        rest = others;
+    if drive.is_empty() {
+        return Err(FreezeError::Drive("no run"));
     }
-    let currents = enc.encode(&per_input);
+    let features: usize = (0..enc.input_count()).map(|i| enc.input_features(i)).sum();
+    let mut steps = 0u32;
+    let mut runs: Vec<(u32, Vec<i16>)> = Vec::with_capacity(drive.len());
+    for (run, &(count, input)) in (1..).zip(drive) {
+        if count == 0 {
+            return Err(FreezeError::Drive("a run of 0 steps"));
+        }
+        steps = steps
+            .checked_add(count)
+            .ok_or(FreezeError::Drive("more steps than a trace counts"))?;
+        let values = match input {
+            Some(v) if v.len() != features => {
+                return Err(FreezeError::Input {
+                    run,
+                    given: v.len(),
+                    features,
+                });
+            }
+            Some(v) => v.to_vec(),
+            None => vec![1; features],
+        };
+        let mut per_input: Vec<&[i16]> = Vec::with_capacity(enc.input_count());
+        let mut rest = values.as_slice();
+        for i in 0..enc.input_count() {
+            let (this, others) = rest.split_at(enc.input_features(i));
+            per_input.push(this);
+            rest = others;
+        }
+        runs.push((count, enc.encode(&per_input)));
+    }
 
     // build_network builds the network at opts.dt_us, every neuron on
     // opts.resolution, plasticity off (refused above)
@@ -810,31 +875,48 @@ pub fn freeze(
     let header = trace::header(&net, &case, Kind::Stranger, steps, Rows::All)
         .expect("one grid, the options', and a case name from module_name");
     let synapses = FixedSynapse::from_network(&net).len();
-    let module = freezer::module(
-        &net,
-        &case,
-        Kind::Stranger,
-        steps,
-        Rows::All,
-        &[(steps, currents.clone())],
-    );
+    let module = freezer::module(&net, &case, Kind::Stranger, steps, Rows::All, &runs);
 
     let mut trace = format!("{header}\n");
     let mut fired = vec![false; net.neurons().len()];
-    for step in 0..steps {
-        let time_us = net.current_time_us();
-        let spikes = net.step(&currents).expect("an assembled network steps");
-        fired.fill(false);
-        for spike in spikes {
-            fired[usize::from(spike.neuron_id)] = true;
+    let mut step = 0u32;
+    for (count, currents) in &runs {
+        for _ in 0..*count {
+            let time_us = net.current_time_us();
+            let spikes = net.step(currents).expect("an assembled network steps");
+            fired.fill(false);
+            for spike in spikes {
+                fired[usize::from(spike.neuron_id)] = true;
+            }
+            row(&mut trace, step, time_us, &fired, net.neurons())
+                .expect("a String takes every write");
+            step += 1;
         }
-        row(&mut trace, step, time_us, &fired, net.neurons()).expect("a String takes every write");
     }
+    let assembly = Assembly {
+        neurons: report.neurons,
+        synapses: report.synapses,
+        inputs: report.inputs,
+        drive_linears: report.drive_linears,
+        stages: report.stages,
+        fused: report
+            .fused
+            .iter()
+            .map(|f| Fused {
+                chain: f.chain.iter().map(|n| (*n).to_string()).collect(),
+                scales: f.scales.clone(),
+            })
+            .collect(),
+        undriven: report.undriven.iter().map(|n| (*n).to_string()).collect(),
+        multi_linear_gain: report.multi_linear_gain,
+        plasticity_frozen: report.plasticity_frozen,
+    };
     Ok(Frozen {
         module,
         trace,
         neurons: net.neurons().len(),
         synapses,
+        assembly,
     })
 }
 
@@ -847,25 +929,20 @@ fn resolution_name(opts: NirImportOptions) -> &'static str {
 
 /// Render the sidecar stamp document (hand-built — the tool writes
 /// exactly two small documents, this and the export's canonical bytes;
-/// no serializer dependency).
+/// no serializer dependency). With `--freeze`'s [`Assembly`], the
+/// document carries it too, as `assembly`.
 #[must_use]
-pub fn stamp_json(s: &Stamp, source: &Path) -> String {
+pub fn stamp_json(s: &Stamp, source: &Path, assembly: Option<&Assembly>) -> String {
     let mut out = String::from("{\"tool\":\"neuralos-nir2json\",\"version\":\"");
     out.push_str(TOOL_VERSION);
     out.push_str("\",\"source\":\"");
-    out.push_str(
-        &source
-            .display()
-            .to_string()
-            .replace('\\', "\\\\")
-            .replace('"', "\\\""),
-    );
+    out.push_str(&json_escape(&source.display().to_string()));
     out.push_str("\",\"nir_version\":\"");
-    out.push_str(&s.nir_version.replace('\\', "\\\\").replace('"', "\\\""));
+    out.push_str(&json_escape(&s.nir_version));
     out.push_str("\",\"dt_us\":");
     out.push_str(&s.dt_us.to_string());
     out.push_str(",\"resolution\":\"");
-    out.push_str(s.resolution);
+    out.push_str(&json_escape(s.resolution));
     out.push_str("\",\"sim_units\":");
     out.push_str(if s.sim_units { "true" } else { "false" });
     if s.sim_units {
@@ -876,7 +953,7 @@ pub fn stamp_json(s: &Stamp, source: &Path) -> String {
             if i > 0 {
                 out.push(',');
             }
-            out.push_str(&format!("\"{}\":{v}", name.replace('"', "\\\"")));
+            out.push_str(&format!("\"{}\":{v}", json_escape(name)));
         }
         out.push('}');
     }
@@ -885,17 +962,79 @@ pub fn stamp_json(s: &Stamp, source: &Path) -> String {
         if i > 0 {
             out.push(',');
         }
-        out.push_str(&format!("\"{}\"", d.replace('"', "\\\"")));
+        out.push_str(&format!("\"{}\"", json_escape(d)));
     }
     out.push_str("],\"nodes\":{");
     for (i, (name, kind)) in s.node_census.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
-        out.push_str(&format!("\"{}\":\"{}\"", name.replace('"', "\\\""), kind));
+        out.push_str(&format!(
+            "\"{}\":\"{}\"",
+            json_escape(name),
+            json_escape(kind)
+        ));
     }
-    out.push_str("}}");
+    out.push('}');
+    if let Some(a) = assembly {
+        out.push_str(&assembly_json(a));
+    }
+    out.push('}');
     out
+}
+
+/// A string as a JSON string's contents: `"`, `\` and the control
+/// characters escaped. The export refuses a node name that holds any of
+/// them (`NirError::NonAsciiNodeName`), so no conversion writes such a
+/// name into the sidecar; the file's own version string and a file path
+/// can hold one, and a caller of [`stamp_json`] can pass anything.
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if c < ' ' => out.push_str(&format!("\\u{:04x}", u32::from(c))),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// The sidecar's `assembly` member, its leading comma included.
+fn assembly_json(a: &Assembly) -> String {
+    let names = |xs: &[String]| {
+        xs.iter()
+            .map(|x| format!("\"{}\"", json_escape(x)))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let fused = a
+        .fused
+        .iter()
+        .map(|f| {
+            let scales: Vec<String> = f.scales.iter().map(f64::to_string).collect();
+            format!(
+                "{{\"chain\":[{}],\"scales\":[{}]}}",
+                names(&f.chain),
+                scales.join(",")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        ",\"assembly\":{{\"neurons\":{},\"synapses\":{},\"inputs\":{},\"drive_linears\":{},\
+         \"stages\":{},\"fused\":[{fused}],\"undriven\":[{}],\"multi_linear_gain\":{},\
+         \"plasticity_frozen\":{}}}",
+        a.neurons,
+        a.synapses,
+        a.inputs,
+        a.drive_linears,
+        a.stages,
+        names(&a.undriven),
+        a.multi_linear_gain,
+        a.plasticity_frozen
+    )
 }
 
 #[cfg(test)]
@@ -984,7 +1123,7 @@ mod tests {
     #[test]
     fn freeze_refuses_a_name_that_is_not_a_module_name_first() {
         for bad in ["Graph", "3chain", "loop", "_", "", "two-layer"] {
-            match freeze(b"not json", NirImportOptions::default(), bad, 1, None) {
+            match freeze(b"not json", NirImportOptions::default(), bad, &[(1, None)]) {
                 Err(FreezeError::Name(n)) => assert_eq!(n, bad),
                 Err(e) => panic!("{bad:?}: refused as {e:?}, not by its name"),
                 Ok(_) => panic!("{bad:?}: frozen"),
@@ -996,7 +1135,12 @@ mod tests {
                 .contains("not a module name")
         );
         assert!(matches!(
-            freeze(b"not json", NirImportOptions::default(), "graph", 1, None),
+            freeze(
+                b"not json",
+                NirImportOptions::default(),
+                "graph",
+                &[(1, None)]
+            ),
             Err(FreezeError::Import(_))
         ));
     }
@@ -1031,8 +1175,228 @@ mod tests {
             NirImportOptions::default(),
         )
         .expect("converts");
-        let s = stamp_json(&c.stamp, std::path::Path::new("x.nir"));
+        let s = stamp_json(&c.stamp, std::path::Path::new("x.nir"), None);
         serde_json::from_str::<serde_json::Value>(&s).expect("sidecar is valid JSON");
         assert!(s.contains("\"f32_widened\":[]"));
+    }
+
+    /// A graph converted under `--sim-units` at the CLI's default step,
+    /// and the options `--freeze` builds it under.
+    fn sim_conversion(name: &str) -> (Converted, NirImportOptions) {
+        let opts = NirImportOptions {
+            dt_us: SIM_DT_US,
+            ..NirImportOptions::default()
+        };
+        let c = convert_file_opts(&fixture(name), opts, true).expect("converts under --sim-units");
+        (c, effective_options(opts, true))
+    }
+
+    #[test]
+    fn the_voltage_scale_s_range_term_binds_under_one() {
+        // the range's, 45 / 0.9, under the threshold's, 10 / 0.1: a
+        // largest potential under 1 decides too
+        assert_eq!(volt_scale(&[0.9], &[0.1], None), 50.0);
+    }
+
+    #[test]
+    fn a_native_sidecar_carries_no_simulation_keys() {
+        let c = convert_file(
+            &rt_fixture("chain_population.nir"),
+            NirImportOptions::default(),
+        )
+        .expect("converts");
+        let s = stamp_json(&c.stamp, std::path::Path::new("x.nir"), None);
+        assert!(s.contains("\"sim_units\":false"), "{s}");
+        assert!(!s.contains("current_quanta"), "{s}");
+        assert!(!s.contains("volt_scale"), "{s}");
+    }
+
+    #[test]
+    fn the_sidecar_escapes_every_name() {
+        let odd = "a\\b\"c\u{1}d";
+        let stamp = Stamp {
+            nir_version: odd.to_string(),
+            node_census: vec![(odd.to_string(), odd.to_string())],
+            f32_datasets: vec![odd.to_string()],
+            dt_us: SIM_DT_US,
+            resolution: odd,
+            sim_units: true,
+            volt_scale: vec![(odd.to_string(), 10.0)],
+        };
+        let assembly = Assembly {
+            neurons: 1,
+            synapses: 0,
+            inputs: 1,
+            drive_linears: 1,
+            stages: 1,
+            fused: vec![Fused {
+                chain: vec![odd.to_string()],
+                scales: vec![0.5],
+            }],
+            undriven: vec![odd.to_string()],
+            multi_linear_gain: false,
+            plasticity_frozen: true,
+        };
+        let s = stamp_json(&stamp, std::path::Path::new(odd), Some(&assembly));
+        let v: serde_json::Value = serde_json::from_str(&s).expect("the sidecar is valid JSON");
+        assert_eq!(v["source"], odd);
+        assert_eq!(v["nir_version"], odd);
+        assert_eq!(v["resolution"], odd);
+        assert_eq!(v["volt_scale"][odd], 10.0);
+        assert_eq!(v["f32_widened"][0], odd);
+        assert_eq!(v["nodes"][odd], odd);
+        assert_eq!(v["assembly"]["fused"][0]["chain"][0], odd);
+        assert_eq!(v["assembly"]["undriven"][0], odd);
+    }
+
+    /// The escape stops below the space: 0x1f is written `\u001f`, and
+    /// 0x20, a space, is kept.
+    #[test]
+    fn the_escape_stops_below_the_space() {
+        assert_eq!(json_escape("a\u{1f} b"), "a\\u001f b");
+    }
+
+    #[test]
+    fn freeze_steps_each_run_of_its_drive() {
+        let (c, opts) = sim_conversion("community/snnTorch_two_layer.nir");
+        let on = freeze(&c.json, opts, "graph", &[(8, Some(&[1]))]).expect("freezes");
+        let split = freeze(&c.json, opts, "graph", &[(4, Some(&[1])), (4, None)]).expect("freezes");
+        assert_eq!(split.trace, on.trace, "one input in two runs, one trace");
+        assert_eq!(split.trace.lines().count(), 9, "the header and 8 rows");
+        let off =
+            freeze(&c.json, opts, "graph", &[(4, Some(&[1])), (4, Some(&[0]))]).expect("freezes");
+        assert!(
+            off.module
+                .contains("        (4, [1000, 0]),\n        (4, [0, 0]),\n")
+        );
+        assert!(off.module.contains("pub const STEPS: u32 = 8;"));
+        let first = |t: &str| t.lines().take(5).map(str::to_owned).collect::<Vec<_>>();
+        assert_eq!(
+            first(&off.trace),
+            first(&on.trace),
+            "the runs step in order: the header, then the first run's 4 rows"
+        );
+        assert_ne!(off.trace, on.trace, "the second run drives nothing");
+    }
+
+    #[test]
+    fn freeze_refuses_a_drive_it_cannot_step_by_name() {
+        let (c, opts) = sim_conversion("community/snnTorch_two_layer.nir");
+        let refusal = |drive: &[(u32, Option<&[i16]>)]| {
+            freeze(&c.json, opts, "graph", drive)
+                .map(|_| ())
+                .expect_err("refused")
+                .to_string()
+        };
+        assert_eq!(refusal(&[]), "the drive holds no run");
+        assert_eq!(
+            refusal(&[(1, None), (0, None)]),
+            "the drive holds a run of 0 steps"
+        );
+        assert_eq!(
+            refusal(&[(u32::MAX, None), (1, None)]),
+            "the drive holds more steps than a trace counts"
+        );
+        assert_eq!(
+            refusal(&[(1, None), (1, Some(&[1, 1]))]),
+            "the drive's run 2 gives 2 values; the graph has 1 input feature, one value each"
+        );
+        // each count the other way: one value, two features
+        assert_eq!(
+            FreezeError::Input {
+                run: 1,
+                given: 1,
+                features: 2,
+            }
+            .to_string(),
+            "the drive's run 1 gives 1 value; the graph has 2 input features, one value each"
+        );
+    }
+
+    #[test]
+    fn freeze_returns_the_assembly_report_the_sidecar_carries() {
+        let (c, opts) = sim_conversion("community/snnTorch_two_layer.nir");
+        let f = freeze(&c.json, opts, "graph", &[(1, None)]).expect("freezes");
+        assert_eq!(
+            f.assembly,
+            Assembly {
+                neurons: 2,
+                synapses: 1,
+                inputs: 1,
+                drive_linears: 2,
+                stages: 1,
+                fused: vec![],
+                undriven: vec![],
+                multi_linear_gain: false,
+                plasticity_frozen: true,
+            }
+        );
+        let s = stamp_json(&c.stamp, std::path::Path::new("x.nir"), Some(&f.assembly));
+        let v: serde_json::Value = serde_json::from_str(&s).expect("the sidecar is valid JSON");
+        assert_eq!(v["assembly"]["drive_linears"], 2);
+        assert_eq!(v["assembly"]["multi_linear_gain"], false);
+        let bare = stamp_json(&c.stamp, std::path::Path::new("x.nir"), None);
+        assert!(!bare.contains("assembly"), "{bare}");
+    }
+
+    /// The branch graph of the library's `nir_assembly_gate` (its gate
+    /// 1): one Input and two stages, one fused from two tensors, and in
+    /// native units the gain note. Its `inputs` and `stages` differ and
+    /// its fused stage carries its scales, so the report is held whole,
+    /// as `freeze` copies it and as the sidecar writes it.
+    #[test]
+    fn freeze_and_the_sidecar_carry_a_two_stage_report_whole() {
+        let branch = include_bytes!("../../neuralos-snn/tests/nir_fixtures/branch.json");
+        let f =
+            freeze(branch, NirImportOptions::default(), "branch", &[(1, None)]).expect("freezes");
+        // each tensor's absmax is 1.0, so each scale is 1 / 32767
+        let scale = 1.0 / 32767.0;
+        assert_eq!(
+            f.assembly,
+            Assembly {
+                neurons: 4,
+                synapses: 0,
+                inputs: 1,
+                drive_linears: 2,
+                stages: 2,
+                fused: vec![Fused {
+                    chain: vec!["l1".to_string(), "l2".to_string()],
+                    scales: vec![scale, scale],
+                }],
+                undriven: vec![],
+                multi_linear_gain: true,
+                plasticity_frozen: true,
+            }
+        );
+        // the stamp is not under test here, the report is
+        let stamp = Stamp {
+            nir_version: "1.0.0".to_string(),
+            node_census: vec![],
+            f32_datasets: vec![],
+            dt_us: 1_000,
+            resolution: "mv",
+            sim_units: false,
+            volt_scale: vec![],
+        };
+        let s = stamp_json(
+            &stamp,
+            std::path::Path::new("branch.json"),
+            Some(&f.assembly),
+        );
+        let v: serde_json::Value = serde_json::from_str(&s).expect("the sidecar is valid JSON");
+        assert_eq!(
+            v["assembly"],
+            serde_json::json!({
+                "neurons": 4,
+                "synapses": 0,
+                "inputs": 1,
+                "drive_linears": 2,
+                "stages": 2,
+                "fused": [{"chain": ["l1", "l2"], "scales": [scale, scale]}],
+                "undriven": [],
+                "multi_linear_gain": true,
+                "plasticity_frozen": true
+            })
+        );
     }
 }

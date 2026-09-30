@@ -14,7 +14,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use neuralos_nir2json::{ConvertError, convert_file, convert_file_opts};
+use neuralos_nir2json::{ConvertError, SIM_DT_US, convert_file, convert_file_opts};
 use neuralos_snn::nir::NirImportOptions;
 
 fn fixture(name: &str) -> std::path::PathBuf {
@@ -212,15 +212,13 @@ fn stranger_smoke_two_lif_with_sim_units_pins_discrete_centi() {
         c.stamp.volt_scale,
         [("lif1".to_string(), 10.0), ("lif2".to_string(), 0.5)]
     );
-    // centi opts ride the document; import under them for the pins
+    // the document's own units, simulation on the centi grid, for the
+    // pins: the export marks them, and native options are refused
     let g = neuralos_snn::nir::NirImport::from_json(
         &c.json,
-        neuralos_snn::nir::NirImportOptions::new(
-            1_000,
-            neuralos_snn::VoltageResolution::CentiMillivolt,
-        ),
+        neuralos_snn::nir::NirImportOptions::sim_units(1_000),
     )
-    .expect("imports under centi");
+    .expect("imports in simulation units");
     assert_eq!(
         g.lifs.len(),
         2,
@@ -288,10 +286,7 @@ fn stranger_emitter_skew_rockpool_transform_pins_the_f32_path() {
     );
     let g = neuralos_snn::nir::NirImport::from_json(
         &c.json,
-        neuralos_snn::nir::NirImportOptions::new(
-            1_000,
-            neuralos_snn::VoltageResolution::CentiMillivolt,
-        ),
+        neuralos_snn::nir::NirImportOptions::sim_units(1_000),
     )
     .expect("imports");
     let lif = &g.lifs[0];
@@ -341,7 +336,7 @@ fn stranger_fallback_snntorch_two_layer_completes_full_path_sim_units() {
     assert!(matches!(err, ConvertError::SimUnits { .. }), "{err:?}");
     // the CLI's --sim-units defaults: snnTorch's 0.1 ms step
     let sim_step = NirImportOptions {
-        dt_us: 100,
+        dt_us: SIM_DT_US,
         ..NirImportOptions::default()
     };
     let c = convert_file_opts(&path, sim_step, true).expect("converts under --sim-units");
@@ -351,8 +346,9 @@ fn stranger_fallback_snntorch_two_layer_completes_full_path_sim_units() {
         "torch's float32 widened: {:?}",
         c.stamp.f32_datasets
     );
-    let g = neuralos_snn::nir::NirImport::from_json(&c.json, NirImportOptions::sim_units(100))
-        .expect("imports in simulation units");
+    let g =
+        neuralos_snn::nir::NirImport::from_json(&c.json, NirImportOptions::sim_units(SIM_DT_US))
+            .expect("imports in simulation units");
     for l in &g.lifs {
         assert_eq!(
             (
@@ -395,7 +391,7 @@ fn the_snn_witness_fixtures_are_this_converter_s_bytes() {
     ] {
         // the CLI's --sim-units default step, 0.1 ms
         let sim_step = NirImportOptions {
-            dt_us: 100,
+            dt_us: SIM_DT_US,
             ..NirImportOptions::default()
         };
         let c =

@@ -13,13 +13,13 @@ nir 1.0.9.dev1+g7883c3c85, torch 2.13.0+cpu):
 
 `reference.json` holds snnTorch's spikes: `reset_mechanism="zero"`,
 what NIR's LIF means (snnTorch's exporter writes `v_reset = 0` for
-every model), input 1 on every feature at every step, 1,500 steps of
-0.1 ms. A second run writes it byte for byte.
+every model), 1,500 steps of 0.1 ms, and each graph's input: 1 on
+every feature at every step, or, for the 16 → 8 → 4 graph, a random 0
+or 1 per feature at p 0.3, held as one bitmask a step.
 
-The `.nir` files do not come out byte for byte: the exporter writes the
-edge list in another order each run, and the nodes, their parameters
-and the set of edges stay the same (a second run's files pass the
-test). The committed emission is pinned by `SHA256SUMS`, from this
-directory:
+The exporter writes the edge list in the order Python's hash seed
+gives, so the script runs itself under `PYTHONHASHSEED=0`: a second run
+writes every file byte for byte, the `.nir` files and `reference.json`.
+`SHA256SUMS` pins them, from this directory:
 
     sha256sum -c SHA256SUMS

@@ -7,7 +7,7 @@ features bring, flate2's rust backend among them;
 `cargo tree -p neuralos-nir2json -e normal` lists them).
 
 ```
-neuralos-nir2json [--sim-units] [--dt µs] [--freeze <out.rs> [--steps N] [--input v1,v2,…]] <input.nir> <output.json>
+neuralos-nir2json [--sim-units] [--dt µs] [--freeze <out.rs> [--steps N] [--input v1,v2,…] [--drive <file>]] <input.nir> <output.json>
 ```
 
 Exit codes: `0` converted (a sidecar `<output>.meta.json` carries the
@@ -15,8 +15,8 @@ audit stamp) · `1` usage/IO · `2` named refusal.
 
 Single-writer by construction: HDF5 → typed values → snn's own
 `NirBuilder` (the quantizer) → snn's own `nir_export` (the schema
-writer). The tool never writes JSON itself; there is no second
-implementation to drift.
+writer). The tool never writes the graph's JSON itself; there is no
+second implementation to drift.
 
 ## Install
 
@@ -60,7 +60,11 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   and has no refractory period. The step is 0.1 ms unless `--dt` gives
   another: snnTorch's exporter assumes it, and a `.nir` file carries
   none. The transform is opt-in and sidecar-stamped, each node's `V`
-  with it: an interpretive act is never silent. What does not fit is
+  with it: an interpretive act is never silent. The JSON carries a
+  mark too, `"units":"simulation"` on each LIF node, and the library
+  refuses it under native options, and a file with no mark under
+  simulation ones (`NirError::UnitsMismatch`); a `--sim-units` file
+  from before the mark has none: convert it again. What does not fit is
   refused by name: a weight past ±32,767 quanta at true scale, an `r`
   that `V` takes past 65,535 MΩ, a `tau` past 1,000 steps. Limits,
   named: `r` is whole MΩ, so a node whose `r · V` is near 1 rounds
@@ -86,7 +90,7 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
 ## Freeze: the arrays a `FixedNetwork` steps
 
 ```
-neuralos-nir2json [--sim-units] [--dt µs] --freeze <out.rs> [--steps N] [--input v1,v2,…] <input.nir> <output.json>
+neuralos-nir2json [--sim-units] [--dt µs] --freeze <out.rs> [--steps N] [--input v1,v2,…] [--drive <file>] <input.nir> <output.json>
 ```
 
 After the conversion, `--freeze` builds the network the JSON describes
@@ -101,10 +105,13 @@ sidecar:
   the time step, the run, the trace's header line (`kind=stranger`),
   and `DRIVE`, one run of `--steps` steps (default 150) of the currents
   the graph's own encoder gives for `--input`: one integer per input
-  feature, in Input order, default 1 for every feature. The library's
+  feature, in Input order, default 1 for every feature. `--drive
+  <file>` gives runs instead, one a line, a step count and then the
+  integers (`10 1,0`; blank lines and `#` lines skipped), each run the
+  currents its integers give, one after the other. The library's
   freezer writes it (`neuralos_snn::fixed::freeze::module`), the one
   that writes the library's own frozen traces.
-- **`<out>.trace`**, that run on the host in `neuralos-trace v1`: the
+- **`<out>.trace`**, that drive on the host in `neuralos-trace v1`: the
   header line, then one row per step, the spikes and every membrane,
   written by `neuralos_snn::trace::row`, the row writer the firmware
   uses. The host steps the library's std network with plasticity off,
@@ -113,11 +120,25 @@ sidecar:
   tests), and this crate's test builds a module and steps it to the
   same rows.
 
+It prints what the library noted as it assembled the graph, one line
+each: a stage fused from two Linear tensors or more, the populations
+and encoders no input reaches, and, in native units, the gain note (more
+than one drive Linear, each scaled by its own absmax). The sidecar
+carries the whole report as `assembly`: the neurons, the synapses, the
+inputs, the drive Linears, the stages, the fused chains with their
+scales, the undriven names, the gain note and the plasticity flag.
+
 Refused by name, exit 2, nothing written: a graph that does not
 assemble (the library names why, e.g. a readout to Output or a graph
 with no LIF), plasticity on (never, from NIR), more than 65,535 neurons
-(a neuron id is a `u16`). A `--input` of the wrong length, a `--steps`
-of 0, or a stem that gives no module name is a usage error, exit 1.
+(a neuron id is a `u16`). A usage error, exit 1: a `--freeze`,
+`--steps`, `--input` or `--drive` with no value, a `--steps` that is not
+a count of at least 1, a `--input` that is not comma-separated `i16`s, a
+`--input` or a `--drive` run of the wrong length, a `--drive` line that
+does not read, a `--drive` file with no run, more steps than a `u32`
+counts, `--steps`, `--input` or `--drive` without `--freeze`, `--drive`
+beside `--steps` or `--input`, or a stem that gives no module name. A
+`--drive` file that does not open is an IO error, exit 1 too.
 
 What the module is for: the ESP32-C3 firmware's slot for a stranger's
 graph, filled by one command, `firmware/esp32c3/stranger.sh` (its
@@ -174,6 +195,7 @@ emission: `tools/gen_snnTorch_stranger.py` (throwaway venv; the script
 header carries the exact stack), and the two-layer witness of D8:
 `tools/gen_snnTorch_two_layer.py` (the repo's `.nirenv`; not
 byte-stable across runs, so the committed emission is pinned by its
-sha in PROVENANCE.md).
+sha in PROVENANCE.md; the exporter's edge order follows Python's hash
+seed, and under `PYTHONHASHSEED=0` a second run writes the same bytes).
 
 [`neuralos-snn`]: https://crates.io/crates/neuralos-snn
