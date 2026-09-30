@@ -36,7 +36,8 @@
 //! NIR numbers are float; the substrate is i16 fixed-point. Every
 //! float→i16 hop is recorded in the node's quant record and rendered
 //! into the export's `metadata.neuralos` block (`provenance` = source
-//! floats, `quant` = the derived integers' scales/errors):
+//! floats, `quant` = the derived integers' scales/errors, and in
+//! simulation units the units mark):
 //!
 //! - **Linear**: `q = round(w / scale)`, `scale = absmax/32767`
 //!   (dequant `w' = q · scale`), `max_abs_err = max|w − w'|`. An
@@ -163,15 +164,31 @@ pub enum NirError<'a> {
     DuplicateEdge,
     /// A node name appears twice in `nodes`.
     DuplicateNodeName,
-    /// Topology outside the slice-1 assembly (the format layer still
-    /// imports it; only `NirImport::build_chain_network` rejects —
-    /// e.g. a LIF population whose size ≠ the feeding Linear's
-    /// rows).
+    /// A graph the assembly does not build, though the format layer
+    /// imports it. Both builders refuse by name:
+    /// `NirImport::build_chain_network` anything but its chain (e.g. a
+    /// LIF population whose size ≠ the feeding Linear's rows), and
+    /// `NirImport::build_network` each graph it cannot assemble (e.g. no
+    /// Input node, or a spike edge on the mV grid, whose message is the
+    /// remedy).
     UnsupportedTopology(&'static str),
     /// [`NirUnits::Simulation`] given to the slice-1 chain builder,
     /// `NirImport::build_chain_network`, which reads native units only;
     /// `build_network` assembles such a graph.
     UnsupportedUnits,
+    /// A node's units disagree with the import options'. The export
+    /// marks each LIF node of a graph in [`NirUnits::Simulation`]
+    /// (`"units":"simulation"` in its `metadata.neuralos.quant`); the
+    /// import reads a mark on any node, and a LIF node with no mark
+    /// reads as [`NirUnits::Native`]: under the other units every
+    /// potential, `r` and weight would read on another scale.
+    UnitsMismatch {
+        /// The units a node of the file is in: its mark, or native
+        /// units for a LIF node with none.
+        file: NirUnits,
+        /// The units the import options read.
+        options: NirUnits,
+    },
     /// A per-edge type-shape mismatch (reference `check_types`
     /// parity): the `src → dst` edge's tensor shapes disagree.
     EdgeShapeMismatch {
@@ -229,11 +246,41 @@ impl core::fmt::Display for NirError<'_> {
                 f,
                 "the chain builder reads native units only — build_network takes simulation units"
             ),
+            Self::UnitsMismatch { file, options } => write!(
+                f,
+                "the file is in {} units and the options read {} units — {}",
+                units_name(*file),
+                units_name(*options),
+                units_remedy(*file)
+            ),
             Self::EdgeShapeMismatch { src, dst } => write!(
                 f,
                 "edge shape mismatch: '{src}' -> '{dst}' (reference type-check parity)"
             ),
             Self::ExportTooSmall => write!(f, "export byte buffer too small"),
+        }
+    }
+}
+
+/// A unit system's name in [`NirError::UnitsMismatch`]'s message.
+const fn units_name(u: NirUnits) -> &'static str {
+    match u {
+        NirUnits::Native => "native",
+        NirUnits::Simulation => "simulation",
+    }
+}
+
+/// The options a file in `file` units imports with, copy-pasteable.
+const fn units_remedy(file: NirUnits) -> &'static str {
+    match file {
+        NirUnits::Native => {
+            "import it with NirImportOptions::default(), or a graph with a spike edge with \
+             NirImportOptions { resolution: VoltageResolution::CentiMillivolt, \
+             ..NirImportOptions::default() }; a neuralos-nir2json --sim-units file written \
+             before the units mark has none: convert its .nir again"
+        }
+        NirUnits::Simulation => {
+            "import a neuralos-nir2json --sim-units file with NirImportOptions::sim_units(dt_us)"
         }
     }
 }
@@ -768,7 +815,9 @@ impl NirImportOptions {
 /// How an imported graph's numbers read. NIR carries no units, so the
 /// caller says: [`NirImportOptions::new`] and `Default` give
 /// [`Native`](Self::Native), [`NirImportOptions::sim_units`] gives
-/// [`Simulation`](Self::Simulation).
+/// [`Simulation`](Self::Simulation). The export marks a graph in
+/// simulation units, and the JSON import refuses a file whose units
+/// are not the options' ([`NirError::UnitsMismatch`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum NirUnits {
@@ -916,9 +965,11 @@ pub fn quantize_lif(
     }
     // simulation units store it one quantum up (`substrate_neuron`):
     // at the ceiling, that is a threshold the membrane never reaches
-    if opts.units == NirUnits::Simulation
-        && i32::from(threshold_q) >= i32::from(MEMBRANE_MV_MAX) * s
-    {
+    let stored_q = match opts.units {
+        NirUnits::Native => i32::from(threshold_q),
+        NirUnits::Simulation => i32::from(threshold_q) + 1,
+    };
+    if stored_q > i32::from(MEMBRANE_MV_MAX) * s {
         return Err(NirError::PotentialOutOfRange("v_threshold + 1"));
     }
     let (reset_q, e3) = quant_potential(v_reset_v, "v_reset", s)?;
@@ -1205,7 +1256,9 @@ fn count_array(
 
 /// Import a NIR JSON document into caller buffers. Fills `nodes` in
 /// document order, `edges` as resolved node-index pairs, and the
-/// quantized weights into the arena. On any error nothing is promised
+/// quantized weights into the arena. A units mark, on any node, and
+/// the native units of a LIF node with none must be `opts.units`
+/// ([`NirError::UnitsMismatch`]). On any error nothing is promised
 /// about buffer contents.
 // two documented walks (nodes, then edges) + their trailing checks;
 // the 100-line cap is crossed by the EOF checks alone (network.rs
@@ -1439,6 +1492,45 @@ fn finish_lif_population(
     })
 }
 
+/// A node's units mark, `neuralos.quant.units` in its `metadata`: the
+/// export writes `"simulation"` on each LIF node of a graph in
+/// [`NirUnits::Simulation`], and nothing in native units. `None` when
+/// the node carries no mark; any other value is refused. The rest of
+/// `metadata` is skipped, whatever its shape.
+fn read_units_mark(r: &mut Reader<'_>) -> Result<Option<NirUnits>, NirError<'static>> {
+    let mut mark = None;
+    if r.peek() != Some(b'{') {
+        r.skip_value(0)?;
+        return Ok(mark);
+    }
+    let mut first = true;
+    while let Some(key) = r.object_step(&mut first)? {
+        if key != "neuralos" || r.peek() != Some(b'{') {
+            r.skip_value(1)?;
+            continue;
+        }
+        let mut nfirst = true;
+        while let Some(nkey) = r.object_step(&mut nfirst)? {
+            if nkey != "quant" || r.peek() != Some(b'{') {
+                r.skip_value(2)?;
+                continue;
+            }
+            let mut qfirst = true;
+            while let Some(qkey) = r.object_step(&mut qfirst)? {
+                if qkey == "units" {
+                    if r.read_string()? != "simulation" {
+                        return Err(NirError::BadShape("units"));
+                    }
+                    mark = Some(NirUnits::Simulation);
+                } else {
+                    r.skip_value(3)?;
+                }
+            }
+        }
+    }
+    Ok(mark)
+}
+
 // 106 lines once rustfmt reflows the call sites (2026-09-02); the body
 // did not grow, the line count did
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
@@ -1473,6 +1565,7 @@ fn import_node<'a>(
     let mut v_leak: Option<(usize, usize)> = None;
     let mut v_threshold: Option<(usize, usize)> = None;
     let mut v_reset: Option<(usize, usize)> = None;
+    let mut mark: Option<NirUnits> = None;
 
     let mut first = true;
     while let Some(key) = r.object_step(&mut first)? {
@@ -1515,11 +1608,24 @@ fn import_node<'a>(
                 bufs.nodes[idx].linear = Some(lin);
                 *weight_fill += lin.rows * lin.cols;
             }
-            _ => r.skip_value(0)?, // metadata + unknown fields tolerated
+            "metadata" => mark = read_units_mark(r)?,
+            _ => r.skip_value(0)?, // unknown fields tolerated
         }
     }
 
     let kind = kind.ok_or(NirError::MissingField("type"))?;
+    // a LIF node with no units mark reads as native units
+    let file = match (kind, mark) {
+        (_, Some(units)) => Some(units),
+        ("LIF", None) => Some(NirUnits::Native),
+        (_, None) => None,
+    };
+    if let Some(file) = file.filter(|&units| units != opts.units) {
+        return Err(NirError::UnitsMismatch {
+            file,
+            options: opts.units,
+        });
+    }
     bufs.nodes[idx].shape = shape;
     bufs.nodes[idx].shape_len = shape_len;
     bufs.nodes[idx].kind = match kind {
@@ -1671,7 +1777,9 @@ fn name_is_writable(s: &str) -> bool {
 
 /// Export an imported graph: the SAME dict schema, canonical bytes —
 /// fixed key order, derived (substrate-exact) values in the schema
-/// fields, provenance + quant records in `metadata.neuralos`.
+/// fields, provenance + quant records in `metadata.neuralos`. In
+/// [`NirUnits::Simulation`] each LIF node's quant record carries the
+/// units mark, `"units":"simulation"`, which [`nir_import`] checks.
 /// Returns the byte length written. Importing the export must
 /// reproduce the import bit-for-bit (the idempotence gate).
 ///
@@ -1860,6 +1968,12 @@ fn export_node(
             })?;
             w.push_str("\",\"dt_us\":")?;
             write_u32(w, opts.dt_us)?;
+            // the units mark (`read_units_mark`): a native export keeps
+            // its bytes, since no mark reads as native units
+            match opts.units {
+                NirUnits::Native => {}
+                NirUnits::Simulation => w.push_str(",\"units\":\"simulation\"")?,
+            }
             w.push_str(",\"tau_err_s\":[")?;
             for i in 0..pop.len {
                 if i > 0 {
@@ -2685,7 +2799,8 @@ mod std_assembly {
     mod spiking_linear_tests {
         use super::{
             NirBuilder, NirError, NirGraphEncoder, NirImport, NirImportOptions, NirLifParams,
-            D8_WEIGHT_DIVISOR, LINEAR_GAIN_DIVISOR, RECURRENT_MV_REMEDY, SPIKING_LINEAR_MV_REMEDY,
+            NirUnits, D8_WEIGHT_DIVISOR, LINEAR_GAIN_DIVISOR, RECURRENT_MV_REMEDY,
+            SPIKING_LINEAR_MV_REMEDY,
         };
         use crate::fixed::FixedSynapse;
         use crate::lif_neuron::VoltageResolution;
@@ -2839,26 +2954,125 @@ mod std_assembly {
             assert_eq!(lif2, Vec::<u32>::new());
         }
 
-        /// D1's grid rule extends to D8: both witnesses reject by name on
-        /// the mV grid, with the remedy.
+        /// Both witnesses carry the units mark, so native options refuse
+        /// them at import on either grid, before the mV grid rule could,
+        /// and the message names the options they need.
         #[test]
-        fn the_mv_grid_rejects_both_witnesses_by_name() {
+        fn native_options_refuse_both_witnesses_by_their_units() {
             for (label, doc) in [("snntorch", SNNTORCH), ("two_lif", TWO_LIF)] {
-                let graph = NirImport::from_json(doc, NirImportOptions::default())
-                    .unwrap_or_else(|e| panic!("{label}: imports on mV: {e}"));
-                let err = graph
-                    .build_network()
-                    .expect_err("mV must reject a spiking Linear edge");
-                assert!(
-                    matches!(err, NirError::UnsupportedTopology(m) if m == SPIKING_LINEAR_MV_REMEDY),
-                    "{label}: {err:?}"
+                for opts in [NirImportOptions::default(), centi()] {
+                    let err = NirImport::from_json(doc, opts)
+                        .map(|_| ())
+                        .expect_err("a file in simulation units");
+                    assert_eq!(
+                        err,
+                        NirError::UnitsMismatch {
+                            file: NirUnits::Simulation,
+                            options: NirUnits::Native,
+                        },
+                        "{label}"
+                    );
+                    assert_eq!(
+                        err.to_string(),
+                        "the file is in simulation units and the options read native units — \
+                         import a neuralos-nir2json --sim-units file with \
+                         NirImportOptions::sim_units(dt_us)",
+                        "{label}"
+                    );
+                }
+            }
+        }
+
+        /// The other way: a file with no mark reads as native units, so
+        /// simulation options refuse it. The message names the native
+        /// options, and says a `--sim-units` file written before the mark
+        /// is converted again. `chain.json` is a reference emission, with
+        /// no mark.
+        #[test]
+        fn simulation_options_refuse_a_file_with_no_mark() {
+            let chain = include_bytes!("../tests/nir_fixtures/chain.json");
+            let err = NirImport::from_json(chain, NirImportOptions::sim_units(1_000))
+                .map(|_| ())
+                .expect_err("no mark: native units");
+            assert_eq!(
+                err,
+                NirError::UnitsMismatch {
+                    file: NirUnits::Native,
+                    options: NirUnits::Simulation,
+                }
+            );
+            assert_eq!(
+                err.to_string(),
+                "the file is in native units and the options read simulation units — import it \
+                 with NirImportOptions::default(), or a graph with a spike edge with \
+                 NirImportOptions { resolution: VoltageResolution::CentiMillivolt, \
+                 ..NirImportOptions::default() }; a neuralos-nir2json --sim-units file written \
+                 before the units mark has none: convert its .nir again"
+            );
+        }
+
+        /// A mark the export never writes is refused, whatever the
+        /// options.
+        #[test]
+        fn a_units_mark_other_than_simulation_is_refused() {
+            let doc = String::from_utf8(SNNTORCH.to_vec())
+                .expect("ASCII")
+                .replace("\"units\":\"simulation\"", "\"units\":\"native\"");
+            for opts in [
+                NirImportOptions::sim_units(100),
+                NirImportOptions::default(),
+            ] {
+                assert_eq!(
+                    NirImport::from_json(doc.as_bytes(), opts).map(|_| ()),
+                    Err(NirError::BadShape("units"))
                 );
             }
         }
 
-        /// A `--sim-units` file with a spiking Linear edge or a LIF→LIF
-        /// edge, imported on the default mV options, is refused with one
-        /// of these remedies, and each names the options such a file needs.
+        /// D6's note is a native one: in simulation units no absmax scale
+        /// absorbs a branch's gain, so the witness's two drive Linears
+        /// note none.
+        #[test]
+        fn simulation_units_note_no_multi_linear_gain() {
+            let graph = NirImport::from_json(SNNTORCH, NirImportOptions::sim_units(100))
+                .expect("the emission imports");
+            let (_, _, rep) = graph.build_network().expect("the two-layer graph builds");
+            assert_eq!(rep.drive_linears, 2);
+            assert!(!rep.multi_linear_gain);
+        }
+
+        /// D1's grid rule extends to D8: a spiking Linear edge on the mV
+        /// grid is refused by name, with the remedy. A builder's graph
+        /// carries no units mark, so the grid rule is what it meets.
+        #[test]
+        fn the_mv_grid_rejects_a_spiking_linear_edge_by_name() {
+            let mut bld = NirBuilder::new(NirImportOptions::default());
+            let inp = bld.add_input("input", &[1]).expect("input");
+            let l0 = bld.add_linear("l0", &[1.0], 1, 1).expect("linear");
+            let pre = lif(&mut bld, "a", 1);
+            let l1 = bld.add_linear("l1", &[1.0], 1, 1).expect("linear");
+            let post = lif(&mut bld, "b", 1);
+            let out = bld.add_output("out", &[1]).expect("output");
+            wire(
+                &mut bld,
+                &[(inp, l0), (l0, pre), (pre, l1), (l1, post), (post, out)],
+            );
+            let graph = bld.build().expect("builds");
+            let err = graph
+                .build_network()
+                .map(|_| ())
+                .expect_err("mV must reject a spiking Linear edge");
+            assert!(
+                matches!(err, NirError::UnsupportedTopology(m) if m == SPIKING_LINEAR_MV_REMEDY),
+                "{err:?}"
+            );
+        }
+
+        /// A graph with a spiking Linear edge or a LIF→LIF edge on the
+        /// default mV options is refused with one of these remedies, and
+        /// each names the options a graph in simulation units needs: a
+        /// builder's graph carries no units mark, and neither does a file
+        /// the converter wrote before the mark.
         #[test]
         fn the_mv_remedies_name_the_simulation_units_options() {
             for remedy in [SPIKING_LINEAR_MV_REMEDY, RECURRENT_MV_REMEDY] {
@@ -3143,8 +3357,9 @@ mod std_assembly {
         pub fn build_chain_network(
             &self,
         ) -> Result<(SpikingNeuralNetwork, ChainEncoder<'_>), NirError<'_>> {
-            if self.opts.units == NirUnits::Simulation {
-                return Err(NirError::UnsupportedUnits);
+            match self.opts.units {
+                NirUnits::Native => {}
+                NirUnits::Simulation => return Err(NirError::UnsupportedUnits),
             }
             let mut input_n = None;
             let mut linear_n = None;
@@ -3241,7 +3456,8 @@ mod std_assembly {
         /// drive stage's quanta are `round(w · SIM_CURRENT_QUANTA)`, a
         /// LIF→LIF pair is `10 · SIM_CURRENT_QUANTA`, one unit a spike,
         /// and a spiking Linear edge makes one synapse per nonzero std
-        /// weight, `round(w · 10 · SIM_CURRENT_QUANTA)`.
+        /// weight, `round(w · 10 · SIM_CURRENT_QUANTA)`; no gain is
+        /// absorbed, so the report notes no multi-Linear gain.
         ///
         /// The import options ARE the grid request (one channel, no
         /// overrides): a graph with any LIF→LIF or LIF→Linear edge
@@ -3330,10 +3546,9 @@ mod std_assembly {
             // LIF->LIF edges -> EDGE_PULSE_QUANTA synapse pairs, or one
             // unit a spike in simulation units (identity element mapping;
             // equal sizes shape-checked)
-            let d1 = if self.opts.units == NirUnits::Simulation {
-                10 * SIM_CURRENT_QUANTA
-            } else {
-                EDGE_PULSE_QUANTA
+            let d1 = match self.opts.units {
+                NirUnits::Native => EDGE_PULSE_QUANTA,
+                NirUnits::Simulation => 10 * SIM_CURRENT_QUANTA,
             };
             let mut synapses = 0usize;
             for &(a, b) in &self.edges {
@@ -3361,10 +3576,9 @@ mod std_assembly {
             let undriven = self.undriven_notes(&inputs, &rooted);
             let encoder = NirGraphEncoder {
                 total,
-                gain_divisor: if self.opts.units == NirUnits::Simulation {
-                    1
-                } else {
-                    i64::from(LINEAR_GAIN_DIVISOR)
+                gain_divisor: match self.opts.units {
+                    NirUnits::Native => i64::from(LINEAR_GAIN_DIVISOR),
+                    NirUnits::Simulation => 1,
                 },
                 input_feats: inputs
                     .iter()
@@ -3381,7 +3595,12 @@ mod std_assembly {
                 stages: encoder.mats.len(),
                 fused,
                 undriven,
-                multi_linear_gain: drive_linears > 1,
+                // D6's premise, an absmax scale that absorbs a branch's
+                // gain, holds in native units only
+                multi_linear_gain: match self.opts.units {
+                    NirUnits::Native => drive_linears > 1,
+                    NirUnits::Simulation => false,
+                },
                 plasticity_frozen: !net.plasticity_enabled(),
             };
             Ok((net, encoder, report))
@@ -3706,7 +3925,6 @@ mod std_assembly {
                     }
                     let mut q = vec![0i16; rows * f];
                     super::quantize_linear(&flat, rows, f, &mut q, 0)?;
-                    let sim = self.opts.units == NirUnits::Simulation;
                     if self.nodes[*root].kind == NirNodeKind::Lif {
                         // D8: pre j of the root population to post i of
                         // each LIF this Linear feeds, one synapse per
@@ -3717,15 +3935,18 @@ mod std_assembly {
                             for i in 0..rows {
                                 for j in 0..f {
                                     let qij = q[i * f + j];
-                                    // simulation units: the true-scale std
-                                    // weight, and a zero one makes no synapse
-                                    let wij = if sim {
-                                        sim_quanta(flat[i * f + j], 10)?
-                                    } else {
-                                        qij / D8_WEIGHT_DIVISOR
+                                    // a zero makes no synapse: the quanta
+                                    // natively, in simulation units the
+                                    // true-scale std weight
+                                    let (wij, zero) = match self.opts.units {
+                                        NirUnits::Native => (qij / D8_WEIGHT_DIVISOR, qij == 0),
+                                        NirUnits::Simulation => {
+                                            let w = sim_quanta(flat[i * f + j], 10)?;
+                                            (w, w == 0)
+                                        }
                                     };
-                                    if (sim && wij == 0) || (!sim && qij == 0) {
-                                        continue; // a zero q makes no synapse
+                                    if zero {
+                                        continue;
                                     }
                                     let (pre, post) = (pre_base + j, post_base + i);
                                     if pre == post {
@@ -3739,12 +3960,12 @@ mod std_assembly {
                         }
                     } else {
                         let mat = mats.len();
-                        let q = if sim {
-                            flat.iter()
+                        let q = match self.opts.units {
+                            NirUnits::Native => q,
+                            NirUnits::Simulation => flat
+                                .iter()
                                 .map(|&w| sim_quanta(w, 1))
-                                .collect::<Result<Vec<_>, _>>()?
-                        } else {
-                            q
+                                .collect::<Result<Vec<_>, _>>()?,
                         };
                         mats.push(QuantMat { q, rows, cols: f });
                         let root_ord = inputs
@@ -3971,7 +4192,7 @@ mod std_assembly {
         /// scale absorbs its branch's true gain — the dequantizing
         /// global-scale encode is a named follow-up, NOT this surface).
         /// Under [`NirUnits::Simulation`] the weights keep their true
-        /// scale and no gain is absorbed; the note fires all the same.
+        /// scale and no gain is absorbed, so the note does not fire.
         pub drive_linears: usize,
         /// Quantized (drive Linear × root) encoder matrices.
         pub stages: usize,
@@ -3980,7 +4201,8 @@ mod std_assembly {
         /// `UndrivenPopulation` notes, node order (permanently-silent
         /// LIF populations; never-invoked Linear encoders).
         pub undriven: Vec<&'a str>,
-        /// The D6 graph-level gain note: `drive_linears > 1`.
+        /// The D6 graph-level gain note: `drive_linears > 1` in
+        /// [`NirUnits::Native`], never in [`NirUnits::Simulation`].
         pub multi_linear_gain: bool,
         /// Plasticity frozen at assembly (NIR has no plasticity term).
         pub plasticity_frozen: bool,
@@ -4009,7 +4231,8 @@ mod std_assembly {
         //! refusals. The graphs are what `--sim-units` writes at V 10:
         //! τ 5 ms, r 50 → 500 MΩ, threshold 1.0 → 10 mV, leak and reset 0.
         use super::super::{
-            NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, SIM_CURRENT_QUANTA,
+            nir_export, NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams,
+            SIM_CURRENT_QUANTA,
         };
         use crate::fixed::FixedSynapse;
         use crate::lif_neuron::VoltageResolution;
@@ -4061,6 +4284,23 @@ mod std_assembly {
 
         fn sim() -> NirImportOptions {
             NirImportOptions::sim_units(100)
+        }
+
+        /// The units mark rides the export in simulation units only, one
+        /// on each LIF node's quant record; a native export has none, so
+        /// it keeps its bytes. The marked export imports back.
+        #[test]
+        fn the_export_marks_simulation_units_only() {
+            let native = NirImportOptions::new(100, VoltageResolution::CentiMillivolt);
+            for (opts, marks) in [(sim(), 2), (native, 0)] {
+                let g = graph(opts, 1.0, Some(0.3), false);
+                let mut out = vec![0u8; 1 << 16];
+                let n = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut out)
+                    .expect("exports");
+                let json = core::str::from_utf8(&out[..n]).expect("ASCII");
+                assert_eq!(json.matches("\"units\":\"simulation\"").count(), marks);
+                assert!(NirImport::from_json(&out[..n], opts).is_ok());
+            }
         }
 
         #[test]
@@ -4187,19 +4427,18 @@ mod std_assembly {
     /// units, so its inline block stays the native mapping this one is
     /// compared with.
     fn substrate_neuron(id: u16, p: &NirLif, opts: NirImportOptions) -> LIFNeuron {
-        let sim = opts.units == NirUnits::Simulation;
+        // NIR's LIF has no refractory: 0 in simulation units, the
+        // native minimum otherwise
+        let (threshold, refractory_us) = match opts.units {
+            NirUnits::Native => (p.threshold_q, 1_000),
+            NirUnits::Simulation => (p.threshold_q.saturating_add(1), 0), // NIR's strict `>`
+        };
         LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, opts.resolution)
             .with_resting_potential(p.leak_q) // the membrane with it: built at rest
-            .with_threshold(if sim {
-                p.threshold_q.saturating_add(1) // NIR's strict `>`
-            } else {
-                p.threshold_q
-            })
+            .with_threshold(threshold)
             .with_reset_potential(p.reset_q)
             .with_tau_membrane_us(p.tau_us)
-            // NIR's LIF has no refractory: 0 in simulation units, the
-            // native minimum otherwise
-            .with_tau_refractory_us(if sim { 0 } else { 1_000 })
+            .with_tau_refractory_us(refractory_us)
             .with_capacitance_pf(p.capacitance_pf)
             .with_resistance_mohm(p.resistance_mohm)
             .with_noise_amplitude_ua(0) // import is deterministic
@@ -5196,7 +5435,8 @@ mod tests {
 
     /// A node's field nests 64 containers deep, `MAX_SKIP_DEPTH`,
     /// wherever a walk skips it, counted from the field's value: in the
-    /// scan, in the import's node walk and in its edge walk. One more is
+    /// scan, in the import's node walk, at each level of `metadata` the
+    /// units reader skips, and in the import's edge walk. One more is
     /// refused as malformed, by the scan and the import alike.
     #[test]
     fn a_node_field_nests_64_containers_wherever_it_is_skipped() {
@@ -5205,6 +5445,21 @@ mod tests {
         for (label, open, levels) in [
             ("a field the import does not read", "\"deep\":", 0),
             ("metadata that is not an object", "\"metadata\":", 0),
+            (
+                "a metadata key other than neuralos",
+                "\"metadata\":{\"other\":",
+                1,
+            ),
+            (
+                "a neuralos key other than quant",
+                "\"metadata\":{\"neuralos\":{\"other\":",
+                2,
+            ),
+            (
+                "a quant key other than units",
+                "\"metadata\":{\"neuralos\":{\"quant\":{\"other\":",
+                3,
+            ),
         ] {
             let field = |n: usize| {
                 let arrays = n - levels;
@@ -5239,6 +5494,61 @@ mod tests {
                 "{label}: the import, 65"
             );
         }
+    }
+
+    /// The units mark is `metadata.neuralos.quant.units` and nothing
+    /// else: `metadata` of any other shape is skipped unread, a `units`
+    /// key off that path included, and the LIF node reads as native
+    /// units, both ways.
+    #[test]
+    fn metadata_of_any_other_shape_carries_no_mark() {
+        for metadata in [
+            "5",
+            "{\"neuralos\":5}",
+            "{\"neuralos\":{\"quant\":5}}",
+            "{\"other\":{\"quant\":{\"units\":\"simulation\"}}}",
+            "{\"neuralos\":{\"other\":{\"units\":\"simulation\"}}}",
+        ] {
+            let doc = chain_with(&format!("\"metadata\":{metadata}"));
+            assert_eq!(
+                import_chain_variant(&doc, NirImportOptions::default()).map(|_| ()),
+                Ok(()),
+                "{metadata}"
+            );
+            assert_eq!(
+                import_chain_variant(&doc, NirImportOptions::sim_units(1_000)).map(|_| ()),
+                Err(NirError::UnitsMismatch {
+                    file: NirUnits::Native,
+                    options: NirUnits::Simulation,
+                }),
+                "{metadata}"
+            );
+        }
+    }
+
+    /// The import reads a units mark on any node, not only on the LIF
+    /// nodes the export marks: CHAIN's Linear marked `simulation` is
+    /// refused under native options, and, its LIF node unmarked, under
+    /// simulation options too.
+    #[test]
+    fn a_units_mark_on_a_linear_node_is_read() {
+        let mark = "\"metadata\":{\"neuralos\":{\"quant\":{\"units\":\"simulation\"}}}";
+        let doc = CHAIN.replacen("\"linear\":{", &format!("\"linear\":{{{mark},"), 1);
+        assert_ne!(doc, CHAIN, "the Linear node takes the mark");
+        assert_eq!(
+            import_chain_variant(&doc, NirImportOptions::default()).map(|_| ()),
+            Err(NirError::UnitsMismatch {
+                file: NirUnits::Simulation,
+                options: NirUnits::Native,
+            })
+        );
+        assert_eq!(
+            import_chain_variant(&doc, NirImportOptions::sim_units(1_000)).map(|_| ()),
+            Err(NirError::UnitsMismatch {
+                file: NirUnits::Native,
+                options: NirUnits::Simulation,
+            })
+        );
     }
 
     #[test]

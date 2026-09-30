@@ -212,15 +212,13 @@ fn stranger_smoke_two_lif_with_sim_units_pins_discrete_centi() {
         c.stamp.volt_scale,
         [("lif1".to_string(), 10.0), ("lif2".to_string(), 0.5)]
     );
-    // centi opts ride the document; import under them for the pins
+    // the document's own units, simulation on the centi grid, for the
+    // pins: the export marks them, and native options are refused
     let g = neuralos_snn::nir::NirImport::from_json(
         &c.json,
-        neuralos_snn::nir::NirImportOptions::new(
-            1_000,
-            neuralos_snn::VoltageResolution::CentiMillivolt,
-        ),
+        neuralos_snn::nir::NirImportOptions::sim_units(1_000),
     )
-    .expect("imports under centi");
+    .expect("imports in simulation units");
     assert_eq!(
         g.lifs.len(),
         2,
@@ -288,10 +286,7 @@ fn stranger_emitter_skew_rockpool_transform_pins_the_f32_path() {
     );
     let g = neuralos_snn::nir::NirImport::from_json(
         &c.json,
-        neuralos_snn::nir::NirImportOptions::new(
-            1_000,
-            neuralos_snn::VoltageResolution::CentiMillivolt,
-        ),
+        neuralos_snn::nir::NirImportOptions::sim_units(1_000),
     )
     .expect("imports");
     let lif = &g.lifs[0];

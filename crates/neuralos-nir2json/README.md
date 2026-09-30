@@ -60,7 +60,11 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   and has no refractory period. The step is 0.1 ms unless `--dt` gives
   another: snnTorch's exporter assumes it, and a `.nir` file carries
   none. The transform is opt-in and sidecar-stamped, each node's `V`
-  with it: an interpretive act is never silent. What does not fit is
+  with it: an interpretive act is never silent. The JSON carries a
+  mark too, `"units":"simulation"` on each LIF node, and the library
+  refuses it under native options, and a file with no mark under
+  simulation ones (`NirError::UnitsMismatch`); a `--sim-units` file
+  from before the mark has none: convert it again. What does not fit is
   refused by name: a weight past ±32,767 quanta at true scale, an `r`
   that `V` takes past 65,535 MΩ, a `tau` past 1,000 steps. Limits,
   named: `r` is whole MΩ, so a node whose `r · V` is near 1 rounds
