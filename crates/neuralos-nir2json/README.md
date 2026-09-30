@@ -28,8 +28,9 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
 
 ## What converts, what refuses — and why
 
-- **Node kinds:** `Input`, `LIF`, `Linear`, `Output` convert. Anything
-  else (e.g. `Affine`, `Conv`, RNN blocks) is refused **loudly with the
+- **Node kinds:** `Input`, `LIF`, `Linear`, `Output` convert, and
+  `Affine` under `--sim-units` (below). Anything else (e.g. `Conv`, RNN
+  blocks), and `Affine` in native units, is refused **loudly with the
   node's name and kind** — a recorded result, never a partial file.
 - **Filters:** none or gzip (deflate) — the reference emission
   conventions. `lzf`, `szip`, anything else: refused by name before a
@@ -86,6 +87,20 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   never silent corruption.
   Linear-only graphs (encoders, readout heads) convert cleanly from
   any emitter, no flag needed.
+- **Affine** (`y = W·x + b`, snnTorch's export of a biased `nn.Linear`,
+  PyTorch's default): under `--sim-units` the converter rewrites it. `W`
+  becomes a Linear under the Affine's name, and a bias not all zero an
+  `Input` of one feature, `<affine>/bias`, into a one-column Linear,
+  `<affine>/b`, holding `b`, into each LIF the Affine feeds; an all-zero
+  bias adds nothing. The library's JSON stays four kinds. A bias input
+  is 0 before its population's depth and 1 from it: the depth counts the
+  spike edges between the population and an Input, since a spike reaches
+  the next population one step late, so a bias one spiking layer deep
+  starts at step 1. Refused by name: a bias that feeds anything but a
+  LIF (an Output, or a Linear before its LIF), one whose LIF no Input
+  reaches or two paths from the Inputs reach at two depths (a loop
+  among them), and one that feeds LIFs at two depths. In native units
+  `Affine` stays refused.
 
 ## Freeze: the arrays a `FixedNetwork` steps
 
@@ -189,12 +204,12 @@ cargo test -p neuralos-nir2json   # corpus v2: fixtures live in tests/fixtures/
 
 Fixture provenance (the stranger files, sha-pinned): see
 `tests/fixtures/community/PROVENANCE.md`. Regenerate the derived
-fixtures (f32 twins, big graph): `.nirenv/bin/python3
-tools/gen_nir2json_fixtures.py`. Regenerate the snnTorch fallback
-emission: `tools/gen_snnTorch_stranger.py` (throwaway venv; the script
-header carries the exact stack), and the two-layer witness of D8:
-`tools/gen_snnTorch_two_layer.py` (the repo's `.nirenv`; not
-byte-stable across runs, so the committed emission is pinned by its
+fixtures (f32 twins, big graph, the Affine graphs, a 1-D weight):
+`.nirenv/bin/python3 tools/gen_nir2json_fixtures.py`. Regenerate the
+snnTorch fallback emission: `tools/gen_snnTorch_stranger.py` (throwaway
+venv; the script header carries the exact stack), and the two-layer
+witness of D8: `tools/gen_snnTorch_two_layer.py` (the repo's `.nirenv`;
+not byte-stable across runs, so the committed emission is pinned by its
 sha in PROVENANCE.md; the exporter's edge order follows Python's hash
 seed, and under `PYTHONHASHSEED=0` a second run writes the same bytes).
 

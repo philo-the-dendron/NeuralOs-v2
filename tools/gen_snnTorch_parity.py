@@ -28,8 +28,9 @@ a 4 → 3 → 2 graph with fan-in, torch's own initialisation (seed 0) times
 (seed 1) times 3, per-neuron β 0.9, under random input, 0 or 1 at p 0.3
 (torch seed 7), a known miss the test pins by its counts. Weights are OUR
 values through THEIR pipeline, the pre-authorized class of
-gen_snnTorch_stranger.py. No bias anywhere: a biased `nn.Linear` exports as
-`Affine`, which the converter refuses.
+gen_snnTorch_stranger.py. No bias anywhere: each `nn.Linear` is built with
+`bias=False`, which snnTorch exports as `Linear`; a biased one exports as
+`Affine`.
 
 The exporter writes the edge list in the order Python's hash seed gives, so
 the script runs itself under `PYTHONHASHSEED=0`: a second run writes every

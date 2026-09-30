@@ -10,7 +10,7 @@ tables). sha256 below; verify with `sha256sum -c SHA256SUMS`.
 |---|---|---|
 | two_lif_neurons.nir | paper/01_lif/debug_spike_representation/two_lif_neurons.nir | SMOKE — full path expected |
 | lif_rockpool.nir | paper/01_lif/lif_rockpool.nir | EMITTER SKEW (rockpool's to_nir) — full path expected |
-| lif_norse.nir | paper/01_lif/lif_norse.nir | EMITTER SKEW (norse's to_nir) — carries an `Affine` node: honest-wall probe, named rejection expected |
+| lif_norse.nir | paper/01_lif/lif_norse.nir | EMITTER SKEW (norse's to_nir) — carries an `Affine` node, its bias 0: in native units an honest-wall probe, named rejection expected; under `--sim-units` the full path, the Affine a plain Linear |
 | cnn_sinabs.nir | paper/02_cnn/cnn_sinabs.nir | HONEST WALL (out-of-subset node kinds) |
 | braille_noDelay_bias_zero.nir | paper/03_rnn/braille_noDelay_bias_zero.nir | HONEST WALL |
 | braille_noDelay_noBias_subtract.nir | paper/03_rnn/braille_noDelay_noBias_subtract.nir | HONEST WALL |
