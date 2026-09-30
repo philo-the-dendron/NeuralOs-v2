@@ -128,11 +128,11 @@ The chapter, not the history. Closed work lives in `ISA.md` and the
 records it names in `evidence/INDEX.md`. Four lines, in order:
 
 1. **NIR, the reach.** `--sim-units` imports at true scale, with NIR's
-   firing rule and the exporter's step (round 52); the converter's
-   parity test is the front door's evidence. Next, the graphs it takes:
-   `Affine` (PyTorch's default bias), the converter's assembly report,
-   the input's form, a drive that varies over time. Before the front
-   door.
+   firing rule and the exporter's step (round 52); the JSON marks its
+   units, and `--freeze` takes a drive of runs and prints the library's
+   report (round 53); the converter's parity test is the front door's
+   evidence. Next, the graphs it takes: `Affine` (PyTorch's default
+   bias) and the input's form. Before the front door.
 2. **alpha.9: the pub walk.** What stops being public before the
    crate's surface is promised: paths and re-exports, `LIFNeuron` with
    its noise default, the rest of the field walk. The noise default
