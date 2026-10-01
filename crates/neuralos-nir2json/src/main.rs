@@ -18,7 +18,7 @@ use neuralos_nir2json::{
     Assembly, FreezeError, SIM_DT_US, convert_file_opts, effective_options, freeze, module_name,
     stamp_json,
 };
-use neuralos_snn::nir::NirImportOptions;
+use neuralos_snn::nir::{NirImportOptions, Thousandths};
 
 /// The run `--freeze` writes when `--steps` is not given.
 const DEFAULT_STEPS: u32 = 150;
@@ -32,7 +32,7 @@ struct Args {
     dt_us: Option<u32>,
     freeze: Option<PathBuf>,
     steps: Option<u32>,
-    input: Option<Vec<i16>>,
+    input: Option<Vec<Thousandths>>,
     drive: Option<PathBuf>,
     paths: Vec<String>,
 }
@@ -68,10 +68,9 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--input" => {
                 let v = args.next().ok_or("--input needs v1,v2,…")?;
-                let values: Result<Vec<i16>, _> =
-                    v.split(',').map(|x| x.trim().parse::<i16>()).collect();
-                out.input =
-                    Some(values.map_err(|_| format!("--input {v}: comma-separated i16 values"))?);
+                let values: Option<Vec<Thousandths>> =
+                    v.split(',').map(|x| thousandths(x.trim())).collect();
+                out.input = Some(values.ok_or_else(|| format!("--input {v}: {NUMBERS}"))?);
             }
             "--drive" => out.drive = Some(args.next().ok_or("--drive needs <file>")?.into()),
             flag if flag.starts_with("--") => return Err(format!("unknown flag {flag}")),
@@ -90,11 +89,44 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
     Ok(out)
 }
 
+/// What `--input` and a `--drive` run take, as their refusal says it.
+const NUMBERS: &str = "comma-separated numbers within ±2,147,483.647, at most three decimals each";
+
+/// A number of at most three decimals in [`Thousandths`] of a unit,
+/// within ±2,147,483.647, a sign allowed: `0.5` and `.5` as 500, `-2`
+/// and `-2.` as -2,000, `+2` as 2,000; `None` for anything else (`.`,
+/// `0.0001`, `1e3`).
+fn thousandths(s: &str) -> Option<Thousandths> {
+    let digits = s.strip_prefix(['+', '-']).unwrap_or(s);
+    let (whole, frac) = digits.split_once('.').unwrap_or((digits, ""));
+    let all_digits = |d: &str| d.bytes().all(|b| b.is_ascii_digit());
+    let well_formed = !(whole.is_empty() && frac.is_empty())
+        && frac.len() <= 3
+        && all_digits(whole)
+        && all_digits(frac);
+    if !well_formed {
+        return None;
+    }
+    let whole = if whole.is_empty() {
+        0
+    } else {
+        whole.parse::<i64>().ok()?
+    };
+    let v = whole
+        .checked_mul(1_000)?
+        .checked_add(format!("{frac:0<3}").parse::<i64>().ok()?)?;
+    let v = if s.starts_with('-') { -v } else { v };
+    if v.abs() > i64::from(i32::MAX) {
+        return None;
+    }
+    i32::try_from(v).ok().map(Thousandths)
+}
+
 /// A `--drive` file's runs: one a line, a step count, at least 1, then one
-/// `i16` per input feature, comma-separated (`150 1,0`). Blank lines and
-/// lines that start with `#` are skipped; any other line that does not
-/// read is refused with its number.
-fn parse_drive(text: &str) -> Result<Vec<(u32, Vec<i16>)>, String> {
+/// number per input feature, comma-separated, each with at most three
+/// decimals (`150 0.5,0`). Blank lines and lines that start with `#` are
+/// skipped; any other line that does not read is refused with its number.
+fn parse_drive(text: &str) -> Result<Vec<(u32, Vec<Thousandths>)>, String> {
     let mut runs = Vec::new();
     for (n, line) in (1..).zip(text.lines()) {
         let line = line.trim();
@@ -105,14 +137,13 @@ fn parse_drive(text: &str) -> Result<Vec<(u32, Vec<i16>)>, String> {
             [steps, values] => steps.parse::<u32>().ok().filter(|&s| s > 0).zip(
                 values
                     .split(',')
-                    .map(|v| v.parse::<i16>())
-                    .collect::<Result<Vec<_>, _>>()
-                    .ok(),
+                    .map(thousandths)
+                    .collect::<Option<Vec<_>>>(),
             ),
             _ => None,
         };
         runs.push(run.ok_or(format!(
-            "line {n}: a step count, at least 1, then comma-separated i16 values"
+            "line {n}: a step count, at least 1, then {NUMBERS}"
         ))?);
     }
     if runs.is_empty() {
@@ -165,8 +196,9 @@ fn usage(why: &str) -> ExitCode {
     eprintln!("  --freeze    : also build the network and write <out.rs>, the arrays a");
     eprintln!("                 FixedNetwork steps, and <out>.trace, their run on the host");
     eprintln!("  --steps N   : the run --freeze writes, default {DEFAULT_STEPS} steps");
-    eprintln!("  --input …   : one i16 per feature of the graph's own inputs for that run,");
-    eprintln!("                 default 1 each; the bias inputs are the converter's");
+    eprintln!("  --input …   : one number per feature of the graph's own inputs for that run,");
+    eprintln!("                 at most three decimals, a sign allowed, default 1 each; the");
+    eprintln!("                 bias inputs are the converter's");
     eprintln!("  --drive f   : runs instead, one a line: steps, then v1,v2,… (not with");
     eprintln!("                 --steps or --input)");
     eprintln!("  exit 0: converted (sidecar <output>.meta.json written), frozen with --freeze");
@@ -226,7 +258,7 @@ fn main() -> ExitCode {
                 ));
             };
             let opts = effective_options(opts, args.sim_units);
-            let runs: Vec<(u32, Option<Vec<i16>>)> = match &args.drive {
+            let runs: Vec<(u32, Option<Vec<Thousandths>>)> = match &args.drive {
                 None => vec![(args.steps.unwrap_or(DEFAULT_STEPS), args.input.clone())],
                 Some(path) => {
                     let text = match std::fs::read_to_string(path) {
@@ -242,7 +274,7 @@ fn main() -> ExitCode {
                     }
                 }
             };
-            let drive: Vec<(u32, Option<&[i16]>)> =
+            let drive: Vec<(u32, Option<&[Thousandths]>)> =
                 runs.iter().map(|(n, v)| (*n, v.as_deref())).collect();
             match freeze(&converted.json, opts, &name, &drive, &converted.stamp.bias) {
                 Ok(f) => {
@@ -331,8 +363,9 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::{assembly_notes, counted, parse, parse_drive};
+    use super::{assembly_notes, counted, parse, parse_drive, thousandths};
     use neuralos_nir2json::{Assembly, Fused};
+    use neuralos_snn::nir::Thousandths;
 
     fn args(line: &str) -> Result<super::Args, String> {
         parse(line.split_whitespace().map(String::from))
@@ -340,10 +373,75 @@ mod tests {
 
     #[test]
     fn a_drive_file_reads_its_runs_and_skips_blank_and_comment_lines() {
-        let text = "# two bursts\n150 1,0\n\n   \n  # indented\n  3   0,-2 \n";
+        let text = "# two bursts\n150 1,0\n\n   \n  # indented\n  3   0,-2 \n1 0.25,-0.5\n";
+        let run = |steps, values: [i32; 2]| (steps, values.map(Thousandths).to_vec());
         assert_eq!(
             parse_drive(text),
-            Ok(vec![(150, vec![1, 0]), (3, vec![0, -2])])
+            Ok(vec![
+                run(150, [1_000, 0]),
+                run(3, [0, -2_000]),
+                run(1, [250, -500])
+            ])
+        );
+    }
+
+    #[test]
+    fn a_value_reads_in_thousandths_with_at_most_three_decimals() {
+        for (text, want) in [
+            ("1", 1_000),
+            ("0.5", 500),
+            (".5", 500),
+            ("1.", 1_000),
+            ("-0.25", -250),
+            ("-.25", -250),
+            ("-2.", -2_000),
+            ("+2", 2_000),
+            ("0.001", 1),
+            ("007.5", 7_500),
+            ("255", 255_000),
+            ("2147483.647", i32::MAX),
+            ("-2147483.647", -i32::MAX),
+        ] {
+            assert_eq!(thousandths(text), Some(Thousandths(want)), "{text}");
+        }
+        for text in [
+            "",
+            "-",
+            ".",
+            "-.",
+            "0.0001",
+            "1e3",
+            "1,5",
+            " 1",
+            "1_000",
+            "x",
+            "--1",
+            "1.2.3",
+            "1.+5",
+            "1.-5",
+            "2147483.648",
+            "-2147483.648",
+            "9223372036854775.999",
+        ] {
+            assert_eq!(thousandths(text), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn input_takes_numbers_of_at_most_three_decimals() {
+        let a = args("--freeze g.rs --input 0.5,-1 a.nir a.json").expect("reads");
+        assert_eq!(a.input, Some(vec![Thousandths(500), Thousandths(-1_000)]));
+        // one argument with a space after its comma, as a quoted shell word
+        let words = ["--freeze", "g.rs", "--input", "0.5, -1", "a.nir", "a.json"];
+        let a = parse(words.into_iter().map(String::from)).expect("reads");
+        assert_eq!(a.input, Some(vec![Thousandths(500), Thousandths(-1_000)]));
+        assert_eq!(
+            args("--freeze g.rs --input 0.0001 a.nir a.json")
+                .err()
+                .as_deref(),
+            Some(
+                "--input 0.0001: comma-separated numbers within ±2,147,483.647, at most three decimals each"
+            )
         );
     }
 
@@ -354,7 +452,8 @@ mod tests {
             ("1 1\n1 1,x\n", 2),
             ("5\n", 1),
             ("1 1 1\n", 1),
-            ("1 70000\n", 1),
+            ("1 0.0001\n", 1),
+            ("1 1\n1 2147484\n", 2),
         ] {
             let why = parse_drive(text).expect_err("refused");
             assert!(why.starts_with(&format!("line {n}:")), "{text:?}: {why}");

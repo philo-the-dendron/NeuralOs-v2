@@ -44,7 +44,7 @@ use neuralos_snn::lif_neuron::VoltageResolution;
 use neuralos_snn::network::SpikingNeuralNetwork;
 use neuralos_snn::nir::{
     nir_export, LinearFusedRecord, NirAssemblyReport, NirError, NirGraphEncoder, NirImport,
-    NirImportOptions, EDGE_PULSE_QUANTA,
+    NirImportOptions, Thousandths, EDGE_PULSE_QUANTA,
 };
 
 const CHAIN: &[u8] = include_bytes!("../tests/nir_fixtures/chain.json");
@@ -65,7 +65,7 @@ fn centi() -> NirImportOptions {
 fn raster(
     net: &mut SpikingNeuralNetwork,
     enc: &NirGraphEncoder,
-    drive: &[&[i16]],
+    drive: &[&[Thousandths]],
     steps: usize,
 ) -> Vec<(usize, usize)> {
     let mut out = vec![(usize::MAX, 0usize); net.neurons().len()];
@@ -117,7 +117,7 @@ fn main() {
         .unwrap_or_else(|e| fail(&e.to_string()));
     let (mut net, enc, rep) = g.build_network().unwrap_or_else(|e| fail(&e.to_string()));
     print_report(&rep);
-    let pins = raster(&mut net, &enc, &[&[6, 0, 0]], 100);
+    let pins = raster(&mut net, &enc, &[&[6_000, 0, 0].map(Thousandths)], 100);
     println!(
         "pins    : first-spike per neuron {:?} · counts {:?}",
         pins.iter().map(|p| p.0).collect::<Vec<_>>(),
@@ -143,7 +143,7 @@ fn main() {
     if !rep.multi_linear_gain {
         fail("merge graph must carry the D6 note");
     }
-    let single = raster(&mut net, &enc, &[&[1, 1], &[]], 200);
+    let single = raster(&mut net, &enc, &[&[Thousandths(1_000); 2], &[]], 200);
     if single[0].1 != 0 {
         fail("a single 81 uA branch must stall below the climb");
     }
@@ -152,7 +152,8 @@ fn main() {
     }
     let g2 = NirImport::from_json(MERGE, centi()).unwrap();
     let (mut net2, enc2, _) = g2.build_network().unwrap();
-    let both = raster(&mut net2, &enc2, &[&[1, 1], &[1, 1]], 100);
+    let one = [Thousandths(1_000); 2];
+    let both = raster(&mut net2, &enc2, &[&one, &one], 100);
     if both[0].0 != 52 {
         fail(&format!(
             "summed 162 uA first spike must be step 52 (g: 1620->116 by g/20), got {}",
@@ -173,7 +174,7 @@ fn main() {
     let mut moved_at: Option<usize> = None;
     for t in 0..80 {
         let fired_a0 = net
-            .step(&enc.encode(&[&[1, 0]]))
+            .step(&enc.encode(&[&[1_000, 0].map(Thousandths)]))
             .unwrap()
             .iter()
             .any(|s| s.neuron_id == 0);
@@ -369,7 +370,7 @@ fn main() {
         spikes1 += f1.len();
         raster1.extend(f1.iter().map(|s| s.neuron_id));
         raster2.extend(
-            net2.step(&enc2.encode(&[&[4, 0, 0]]))
+            net2.step(&enc2.encode(&[&[4_000, 0, 0].map(Thousandths)]))
                 .unwrap()
                 .iter()
                 .map(|s| s.neuron_id),

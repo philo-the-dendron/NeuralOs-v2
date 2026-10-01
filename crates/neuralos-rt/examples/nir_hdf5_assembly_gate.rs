@@ -27,7 +27,7 @@ use std::path::PathBuf;
 
 use neuralos_rt::nir_hdf5::{nir_hdf5_read, NirHdfError};
 use neuralos_snn::lif_neuron::VoltageResolution;
-use neuralos_snn::nir::{NirImport, NirImportOptions};
+use neuralos_snn::nir::{NirImport, NirImportOptions, Thousandths};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -114,7 +114,10 @@ fn main() {
     // single branch: neuron 0 stalls over 200 steps
     let mut n0 = 0usize;
     for _ in 0..200 {
-        for s in net.step(&enc.encode(&[&[1, 1], &[]])).unwrap() {
+        for s in net
+            .step(&enc.encode(&[&[Thousandths(1_000); 2], &[]]))
+            .unwrap()
+        {
             if s.neuron_id == 0 {
                 n0 += 1;
             }
@@ -127,7 +130,8 @@ fn main() {
     let (mut net2, enc2, _) = gz.build_network().unwrap();
     let mut first = usize::MAX;
     for t in 0..100 {
-        for s in net2.step(&enc2.encode(&[&[1, 1], &[1, 1]])).unwrap() {
+        let one = [Thousandths(1_000); 2];
+        for s in net2.step(&enc2.encode(&[&one, &one])).unwrap() {
             if s.neuron_id == 0 {
                 first = first.min(t);
             }

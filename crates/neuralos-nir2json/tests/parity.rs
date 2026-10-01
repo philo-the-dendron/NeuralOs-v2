@@ -15,7 +15,7 @@
 use std::path::{Path, PathBuf};
 
 use neuralos_nir2json::{Inputs, SIM_DT_US, convert_file_opts, effective_options};
-use neuralos_snn::nir::{NirImport, NirImportOptions};
+use neuralos_snn::nir::{NirImport, NirImportOptions, Thousandths};
 
 /// The graphs the bridge does not yet run spike for spike: name, the
 /// spike count of each neuron here, and why.
@@ -41,17 +41,21 @@ fn fixtures() -> PathBuf {
 
 /// A config's input, one value per feature a step: `"ones"`, 1 on every
 /// feature at every step, or one bitmask a step, bit i feature i.
-fn input(config: &serde_json::Value, features: usize, steps: u32) -> Vec<Vec<i16>> {
+fn input(config: &serde_json::Value, features: usize, steps: u32) -> Vec<Vec<Thousandths>> {
     let steps = usize::try_from(steps).expect("fits");
     match &config["input"] {
-        serde_json::Value::String(s) if s == "ones" => vec![vec![1; features]; steps],
+        serde_json::Value::String(s) if s == "ones" => {
+            vec![vec![Thousandths(1_000); features]; steps]
+        }
         serde_json::Value::Array(masks) => {
             assert_eq!(masks.len(), steps, "one bitmask a step");
             masks
                 .iter()
                 .map(|m| {
                     let m = m.as_u64().expect("a bitmask");
-                    (0..features).map(|i| i16::from(m >> i & 1 == 1)).collect()
+                    (0..features)
+                        .map(|i| Thousandths(i32::from(m >> i & 1 == 1) * 1_000))
+                        .collect()
                 })
                 .collect()
         }
@@ -63,7 +67,7 @@ fn input(config: &serde_json::Value, features: usize, steps: u32) -> Vec<Vec<i16
 /// `input`, one value per feature of the graph's own Inputs a step; each
 /// bias input the conversion adds is driven as `freeze` drives it
 /// (`Inputs`).
-fn run(nir: &Path, input: &[Vec<i16>]) -> Vec<Vec<u32>> {
+fn run(nir: &Path, input: &[Vec<Thousandths>]) -> Vec<Vec<u32>> {
     let opts = NirImportOptions {
         dt_us: SIM_DT_US,
         ..NirImportOptions::default()
@@ -75,7 +79,7 @@ fn run(nir: &Path, input: &[Vec<i16>]) -> Vec<Vec<u32>> {
     let mut trains = vec![Vec::new(); net.neurons().len()];
     for (step, x) in (0u32..).zip(input) {
         let per_input = inputs.at(step, x);
-        let slices: Vec<&[i16]> = per_input.iter().map(Vec::as_slice).collect();
+        let slices: Vec<&[Thousandths]> = per_input.iter().map(Vec::as_slice).collect();
         let spikes = net.step(&enc.encode(&slices)).expect("steps");
         for spike in spikes {
             trains[usize::from(spike.neuron_id)].push(step);

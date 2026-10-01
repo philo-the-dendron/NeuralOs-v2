@@ -57,7 +57,9 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   it or more down; the node's `r` becomes `r · V` MΩ. Linear weights
   keep their true scale in the library (`NirUnits::Simulation`, 1,000
   current quanta per unit), so the product `r·I` keeps the source's
-  scale. The import follows NIR's LIF: it fires on `v > v_threshold`
+  scale. An input is read in thousandths of a unit (`Thousandths`), and
+  a stage's current rounds to the nearest quantum, half away from zero.
+  The import follows NIR's LIF: it fires on `v > v_threshold`
   and has no refractory period. The step is 0.1 ms unless `--dt` gives
   another: snnTorch's exporter assumes it, and a `.nir` file carries
   none. The transform is opt-in and sidecar-stamped, each node's `V`
@@ -122,13 +124,15 @@ sidecar:
   `neuralos_snn::FixedNetwork<N, S>` steps, the time step, the run, the
   trace's header line (`kind=stranger`), and `DRIVE`, one run of
   `--steps` steps (default 150) of the currents the graph's own encoder
-  gives for `--input`: one integer per feature of the graph's own
-  inputs, in Input order, default 1 for every feature. Each bias input
-  the conversion added is the converter's: 0 before its start and 1 from
-  it, a run split where one starts inside it. `--drive <file>` gives
-  runs instead, one a line, a step count and then the integers
-  (`10 1,0`; blank lines and `#` lines skipped), each run the currents
-  its integers give, one after the other. The library's freezer writes
+  gives for `--input`: one number per feature of the graph's own inputs,
+  in Input order, with at most three decimals, a sign allowed (`0.5`,
+  `-.25`, `+2`; read in thousandths of a unit), default 1 for every
+  feature. Each bias input the conversion added is the converter's: 0
+  before its start and 1 from it, a run split where one starts inside
+  it. `--drive <file>` gives
+  runs instead, one a line, a step count and then the numbers
+  (`10 0.5,0`; blank lines and `#` lines skipped), each run the currents
+  its numbers give, one after the other. The library's freezer writes
   it (`neuralos_snn::fixed::freeze::module`), the one that writes the
   library's own frozen traces.
 - **`<out>.trace`**, that drive on the host in `neuralos-trace v1`: the
@@ -154,8 +158,9 @@ assemble (the library names why, e.g. a readout to Output or a graph
 with no LIF), plasticity on (never, from NIR), more than 65,535 neurons
 (a neuron id is a `u16`). A usage error, exit 1: a `--freeze`,
 `--steps`, `--input` or `--drive` with no value, a `--steps` that is not
-a count of at least 1, a `--input` that is not comma-separated `i16`s, a
-`--input` or a `--drive` run of the wrong length, a `--drive` line that
+a count of at least 1, a `--input` that is not comma-separated numbers
+within ±2,147,483.647 of at most three decimals each, a `--input` or a
+`--drive` run of the wrong length, a `--drive` line that
 does not read, a `--drive` file with no run, more steps than a `u32`
 counts, `--steps`, `--input` or `--drive` without `--freeze`, `--drive`
 beside `--steps` or `--input`, or a stem that gives no module name. A

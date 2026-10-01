@@ -457,7 +457,11 @@ fn stranger_emitter_skew_norse_converts_under_sim_units() {
     );
     let (_, enc, report) = g.build_network().expect("the NIR paper's graph assembles");
     assert_eq!((report.neurons, report.inputs), (1, 1));
-    assert_eq!(enc.encode(&[&[1]]), [1_000], "w 1.0 at true scale");
+    assert_eq!(
+        enc.encode(&[&[neuralos_snn::nir::Thousandths(1_000)]]),
+        [1_000],
+        "w 1.0 at true scale"
+    );
 }
 
 #[test]

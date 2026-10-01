@@ -292,6 +292,22 @@ fn a_drive_file_freezes_its_runs_and_the_sidecar_carries_the_report() {
         "{stderr}"
     );
 
+    // a value in thousandths: 0.5 through a weight of 1.0, 500 quanta
+    let out = run("10 0.5\n");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let module = fs::read_to_string(dir.join("src/snntorch_two_layer.rs")).expect("the module");
+    assert!(module.contains("        (10, [500, 0]),\n"), "{module}");
+
+    let out = run("10 0.0005\n");
+    assert_eq!(out.status.code(), Some(1), "four decimals");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("drive.txt: line 1:"), "{stderr}");
+
     let out = run_file("no-such-drive.txt");
     assert_eq!(out.status.code(), Some(1), "a missing drive file");
     let stderr = String::from_utf8_lossy(&out.stderr);

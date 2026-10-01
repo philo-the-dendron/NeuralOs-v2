@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 
 #[cfg(feature = "unstable-freeze")]
 use neuralos_snn::fixed::freeze;
-use neuralos_snn::nir::{NirImport, NirImportOptions};
+use neuralos_snn::nir::{NirImport, NirImportOptions, Thousandths};
 use neuralos_snn::trace::{self, Kind, Rows};
 use neuralos_snn::{
     LIFNeuron, NetworkTopology, NeuronType, SpikingNeuralNetwork, VoltageResolution,
@@ -525,7 +525,7 @@ fn nir_chain_fixture() -> Run {
     let (net, enc, _report) = g.build_network().expect("the chain assembles");
     Run {
         net,
-        drive: Box::new(move |_| enc.encode(&[&[4, 0, 0]])),
+        drive: Box::new(move |_| enc.encode(&[&[4_000, 0, 0].map(Thousandths)])),
     }
 }
 
@@ -554,7 +554,7 @@ fn ternary_weights() -> Run {
 /// one synapse of 1,000 quanta a spike (a weight of 1.0 at true scale),
 /// driven through the graph's own encoder with the one input feature
 /// `drive(step)`.
-fn witness(json: &'static [u8], drive: fn(u32) -> i16) -> Run {
+fn witness(json: &'static [u8], drive: fn(u32) -> Thousandths) -> Run {
     // 100 µs is neuralos-nir2json's `SIM_DT_US`, the `--sim-units`
     // default: the converter depends on this crate, so its constant is
     // out of reach here
@@ -576,7 +576,7 @@ fn witness(json: &'static [u8], drive: fn(u32) -> i16) -> Run {
 /// after them.
 fn snntorch_two_layer() -> Run {
     witness(SNNTORCH_TWO_LAYER, |step| {
-        i16::from(matches!(step, 0..=9 | 50..=59))
+        Thousandths(i32::from(matches!(step, 0..=9 | 50..=59)) * 1_000)
     })
 }
 
@@ -589,5 +589,5 @@ fn snntorch_two_layer() -> Run {
 /// (threshold 20) stays below threshold, as the paper's model means it
 /// to.
 fn two_lif_neurons() -> Run {
-    witness(TWO_LIF_NEURONS, |_| 1)
+    witness(TWO_LIF_NEURONS, |_| Thousandths(1_000))
 }

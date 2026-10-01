@@ -2044,12 +2044,14 @@ mod std_assembly {
     //!   the chain's matrices in f64, D2 fusion) is quantized ONCE, via
     //!   [`quantize_linear`](super::quantize_linear) natively and at
     //!   true scale in simulation units. At step time the encoder
-    //!   applies the substrate's gain, [`LINEAR_GAIN_DIVISOR`] (1 in
-    //!   simulation units, [`NirUnits::Simulation`], whose quanta are
-    //!   already true scale), per stage and merges saturating-i16 into
-    //!   the global per-step current vector (D5's mechanical merge;
-    //!   multiple Inputs read their own slices, one stage matrix per
-    //!   (drive Linear, root) pair).
+    //!   reads each feature in [`Thousandths`] of a unit and divides
+    //!   each stage's sum by 1,000 and the substrate's gain,
+    //!   [`LINEAR_GAIN_DIVISOR`], truncating, or in simulation units
+    //!   ([`NirUnits::Simulation`], whose quanta are already true
+    //!   scale) by 1,000 alone, rounding half away from zero; the
+    //!   stages merge saturating-i16 into the global per-step current
+    //!   vector (D5's mechanical merge; multiple Inputs read their own
+    //!   slices, one stage matrix per (drive Linear, root) pair).
     //! - **Edges:** LIF→LIF wires `add_synapse(pre_i, post_i,
     //!   EDGE_PULSE_QUANTA)`, or `10 · SIM_CURRENT_QUANTA` in simulation
     //!   units, per neuron pair (identity element mapping — the
@@ -2266,7 +2268,8 @@ mod std_assembly {
     mod assembly_tests {
         use super::super::quantize_linear;
         use super::{
-            NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, EDGE_PULSE_QUANTA,
+            NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, Thousandths,
+            EDGE_PULSE_QUANTA,
         };
         use crate::lif_neuron::VoltageResolution;
 
@@ -2304,9 +2307,11 @@ mod std_assembly {
             let n2: Vec<String> = net2.neurons().iter().map(|n| format!("{n:?}")).collect();
             assert_eq!(n1, n2);
 
-            // encoder output identical on probe drives
+            // encoder output identical on probe drives, a whole input in
+            // thousandths
             for x in [[4, 0, 0], [100, -50, 25], [0, 0, 0], [-32768, 32767, 1]] {
-                assert_eq!(enc1.encode(&x), enc2.encode(&[&x]), "x={x:?}");
+                let units = x.map(|v| Thousandths(i32::from(v) * 1_000));
+                assert_eq!(enc1.encode(&x), enc2.encode(&[&units]), "x={x:?}");
             }
 
             // same drive, same raster over 100 steps
@@ -2320,7 +2325,7 @@ mod std_assembly {
                         .map(|s| s.neuron_id),
                 );
                 r2.extend(
-                    net2.step(&enc2.encode(&[&[4, 0, 0]]))
+                    net2.step(&enc2.encode(&[&[4_000, 0, 0].map(Thousandths)]))
                         .unwrap()
                         .iter()
                         .map(|s| s.neuron_id),
@@ -2375,7 +2380,10 @@ mod std_assembly {
             // every population fires under a seeded drive
             let mut fired = [false; 4];
             for _ in 0..100 {
-                for s in net.step(&enc.encode(&[&[6, 0, 0]])).unwrap() {
+                for s in net
+                    .step(&enc.encode(&[&[6_000, 0, 0].map(Thousandths)]))
+                    .unwrap()
+                {
                     fired[s.neuron_id as usize] = true;
                 }
             }
@@ -2393,7 +2401,10 @@ mod std_assembly {
             let (mut net, enc, _) = g.build_network().unwrap();
             let mut firsts = vec![usize::MAX; 4];
             for t in 0..100 {
-                for s in net.step(&enc.encode(&[&[6, 0, 0]])).unwrap() {
+                for s in net
+                    .step(&enc.encode(&[&[6_000, 0, 0].map(Thousandths)]))
+                    .unwrap()
+                {
                     firsts[s.neuron_id as usize] = firsts[s.neuron_id as usize].min(t);
                 }
             }
@@ -2418,7 +2429,10 @@ mod std_assembly {
             // encoder is live — the stall is the current, not a dead wire)
             let mut counts = [0usize; 2];
             for _ in 0..200 {
-                for s in net.step(&enc.encode(&[&[1, 1], &[]])).unwrap() {
+                for s in net
+                    .step(&enc.encode(&[&[Thousandths(1_000); 2], &[]]))
+                    .unwrap()
+                {
                     counts[s.neuron_id as usize] += 1;
                 }
             }
@@ -2432,7 +2446,8 @@ mod std_assembly {
             let mut first = usize::MAX;
             let mut n0 = 0usize;
             for t in 0..100 {
-                for s in net2.step(&enc2.encode(&[&[1, 0], &[1, 0]])).unwrap() {
+                let x = [1_000, 0].map(Thousandths);
+                for s in net2.step(&enc2.encode(&[&x, &x])).unwrap() {
                     if s.neuron_id == 0 {
                         first = first.min(t);
                         n0 += 1;
@@ -2462,7 +2477,7 @@ mod std_assembly {
             let mut a0_first = usize::MAX;
             for t in 0..80 {
                 let fired_a0 = net
-                    .step(&enc.encode(&[&[1, 0]]))
+                    .step(&enc.encode(&[&[1_000, 0].map(Thousandths)]))
                     .unwrap()
                     .iter()
                     .any(|s| s.neuron_id == 0);
@@ -2781,7 +2796,7 @@ mod std_assembly {
             assert_eq!(rep.neurons, 2);
             let mut counts = [0usize; 2];
             for _ in 0..100 {
-                for s in net.step(&enc.encode(&[&[3]])).unwrap() {
+                for s in net.step(&enc.encode(&[&[Thousandths(3_000)]])).unwrap() {
                     counts[s.neuron_id as usize] += 1;
                 }
             }
@@ -2799,7 +2814,7 @@ mod std_assembly {
     mod spiking_linear_tests {
         use super::{
             NirBuilder, NirError, NirGraphEncoder, NirImport, NirImportOptions, NirLifParams,
-            NirUnits, D8_WEIGHT_DIVISOR, LINEAR_GAIN_DIVISOR, RECURRENT_MV_REMEDY,
+            NirUnits, Thousandths, D8_WEIGHT_DIVISOR, LINEAR_GAIN_DIVISOR, RECURRENT_MV_REMEDY,
             SPIKING_LINEAR_MV_REMEDY,
         };
         use crate::fixed::FixedSynapse;
@@ -2858,7 +2873,7 @@ mod std_assembly {
         }
 
         /// The spike steps of each of two neurons over `steps` steps of
-        /// a one-feature drive.
+        /// a one-feature drive, in whole units.
         fn raster(
             net: &mut SpikingNeuralNetwork,
             enc: &NirGraphEncoder,
@@ -2868,7 +2883,7 @@ mod std_assembly {
             let mut spike_steps = [Vec::new(), Vec::new()];
             for step in 0..steps {
                 let spikes = net
-                    .step(&enc.encode(&[&[drive(step)]]))
+                    .step(&enc.encode(&[&[Thousandths(i32::from(drive(step)) * 1_000)]]))
                     .expect("an assembled network steps");
                 for spike in spikes {
                     spike_steps[usize::from(spike.neuron_id)].push(step);
@@ -2920,7 +2935,7 @@ mod std_assembly {
             assert_eq!(net.synapses()[0].weight, 10_000, "1.0 · 1,000 · 10");
             assert_eq!(FixedSynapse::from_network(&net), ONE_SIM_EDGE);
             assert_eq!(
-                enc.encode(&[&[1]]),
+                enc.encode(&[&[Thousandths(1_000)]]),
                 [1_000, 0],
                 "the drive side, the same 1,000 quanta"
             );
@@ -3147,7 +3162,7 @@ mod std_assembly {
             );
             let graph = bld.build().expect("builds");
             let (net, enc, _) = graph.build_network().expect("assembles");
-            let drive = enc.encode(&[&[1]])[1];
+            let drive = enc.encode(&[&[Thousandths(1_000)]])[1];
             let pulse = FixedSynapse::from_network(&net)[0].pulse_ua;
             assert_eq!((drive, pulse), (327, 327));
             assert_eq!(pulse, 32_767 / LINEAR_GAIN_DIVISOR);
@@ -3576,10 +3591,7 @@ mod std_assembly {
             let undriven = self.undriven_notes(&inputs, &rooted);
             let encoder = NirGraphEncoder {
                 total,
-                gain_divisor: match self.opts.units {
-                    NirUnits::Native => i64::from(LINEAR_GAIN_DIVISOR),
-                    NirUnits::Simulation => 1,
-                },
+                units: self.opts.units,
                 input_feats: inputs
                     .iter()
                     .map(|&i| self.nodes[i].shape.first().copied().unwrap_or(0) as usize)
@@ -4094,19 +4106,44 @@ mod std_assembly {
         mat: usize,
     }
 
-    /// The Linear half of a general graph: root-Input feature
-    /// currents (μA) → the global per-step current vector (μA, one
-    /// entry per neuron). One quantized matrix per (drive Linear,
-    /// root) pair — fused chains arrive as a single composed matrix
-    /// (D2: no hop-by-hop i16 encode-composition) — with the
-    /// substrate's encoder gain, [`LINEAR_GAIN_DIVISOR`] (1 under
-    /// [`NirUnits::Simulation`], whose quanta are already true scale),
-    /// and i64 row accumulation (`ChainEncoder` semantics per stage),
-    /// merged saturating-i16 across stages (D5's mechanical merge).
+    /// One input feature's value at one step, as
+    /// [`NirGraphEncoder::encode`] reads it, in thousandths of a unit:
+    /// `Thousandths(1_000)` is 1.0, a spike or a unit held for the step,
+    /// and `Thousandths(500)` is 0.5. Its own type, so a call written for
+    /// whole units does not compile as thousandths, and an `i32`, so an
+    /// input can pass 32.767 units (raw pixels, 0 to 255, say); the
+    /// current a neuron takes from a stage in one step still saturates
+    /// at ±32,767 quanta.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    pub struct Thousandths(pub i32);
+
+    /// [`Thousandths`] in a unit.
+    const PER_UNIT: i128 = 1_000;
+
+    /// `a / d` rounded half away from zero, as a weight's quanta are
+    /// (`round_half_away`); `d` positive.
+    fn div_round_half_away(a: i128, d: i128) -> i128 {
+        let half = d / 2;
+        if a < 0 {
+            (a - half) / d
+        } else {
+            (a + half) / d
+        }
+    }
+
+    /// The Linear half of a general graph: root-Input feature values,
+    /// [`Thousandths`] of a unit, → the global per-step current vector
+    /// (μA, one entry per neuron). One quantized matrix per (drive
+    /// Linear, root) pair — fused chains arrive as a single composed
+    /// matrix (D2: no hop-by-hop i16 encode-composition) — each row
+    /// summed exactly and divided as [`encode`](Self::encode) says,
+    /// natively by the substrate's encoder gain, [`LINEAR_GAIN_DIVISOR`],
+    /// too (`ChainEncoder`'s current for a whole input), merged
+    /// saturating-i16 across stages (D5's mechanical merge).
     #[derive(Debug)]
     pub struct NirGraphEncoder {
         total: usize,
-        gain_divisor: i64,
+        units: NirUnits,
         input_feats: Vec<usize>,
         mats: Vec<QuantMat>,
         stages: Vec<DriveStage>,
@@ -4139,23 +4176,34 @@ mod std_assembly {
             self.mats.len()
         }
 
-        /// Encode per-Input feature currents into the global per-step
-        /// current vector. Missing Inputs / missing feature entries
-        /// read as 0 (the `ChainEncoder`'s graceful-zeros convention).
+        /// Encode per-Input feature values, each [`Thousandths`] of a
+        /// unit, into the global per-step current vector. A stage sums
+        /// `q · x` over its features, then divides: under
+        /// [`NirUnits::Simulation`], whose quanta are true scale, by
+        /// 1,000, rounding half away from zero as a weight's quanta
+        /// round; natively by 1,000 and [`LINEAR_GAIN_DIVISOR`],
+        /// truncating, `ChainEncoder`'s current for a whole input.
+        /// Missing Inputs / missing feature entries read as 0 (the
+        /// `ChainEncoder`'s graceful-zeros convention).
         #[must_use]
-        pub fn encode(&self, per_input: &[&[i16]]) -> Vec<i16> {
+        pub fn encode(&self, per_input: &[&[Thousandths]]) -> Vec<i16> {
             let mut out = vec![0i16; self.total];
             for st in &self.stages {
                 let m = &self.mats[st.mat];
                 let x = per_input.get(st.root).copied().unwrap_or(&[]);
                 for r in 0..m.rows {
-                    let mut acc: i64 = 0;
+                    // a quantum times a feature is within 2^46, so no
+                    // count of features takes the sum past an i128
+                    let mut acc: i128 = 0;
                     for c in 0..m.cols {
-                        acc += i64::from(m.q[r * m.cols + c])
-                            * i64::from(x.get(c).copied().unwrap_or(0));
+                        acc += i128::from(m.q[r * m.cols + c])
+                            * i128::from(x.get(c).map_or(0, |v| v.0));
                     }
-                    acc /= self.gain_divisor;
-                    let v = acc.clamp(i64::from(i16::MIN), i64::from(i16::MAX)) as i16;
+                    let acc = match self.units {
+                        NirUnits::Native => acc / (PER_UNIT * i128::from(LINEAR_GAIN_DIVISOR)),
+                        NirUnits::Simulation => div_round_half_away(acc, PER_UNIT),
+                    };
+                    let v = acc.clamp(i128::from(i16::MIN), i128::from(i16::MAX)) as i16;
                     out[st.pop_base + r] = out[st.pop_base + r].saturating_add(v);
                 }
             }
@@ -4231,9 +4279,10 @@ mod std_assembly {
         //! refusals. The graphs are what `--sim-units` writes at V 10:
         //! τ 5 ms, r 50 → 500 MΩ, threshold 1.0 → 10 mV, leak and reset 0.
         use super::super::{
-            nir_export, NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams,
-            SIM_CURRENT_QUANTA,
+            nir_export, NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, NirUnits,
+            Thousandths, SIM_CURRENT_QUANTA,
         };
+        use super::{DriveStage, NirGraphEncoder, QuantMat};
         use crate::fixed::FixedSynapse;
         use crate::lif_neuron::VoltageResolution;
 
@@ -4308,12 +4357,104 @@ mod std_assembly {
             let (_, enc, _) = graph(sim(), 0.3, None, false)
                 .build_network()
                 .expect("builds");
-            assert_eq!(enc.encode(&[&[1]]), [300], "0.3 · 1,000, no divisor");
+            assert_eq!(enc.encode(&[&[Thousandths(1_000)]]), [300], "0.3 · 1,000");
             let native = NirImportOptions::new(100, VoltageResolution::CentiMillivolt);
             let (_, enc, _) = graph(native, 0.3, None, false)
                 .build_network()
                 .expect("builds");
-            assert_eq!(enc.encode(&[&[1]]), [327], "native: absmax, / 100");
+            assert_eq!(
+                enc.encode(&[&[Thousandths(1_000)]]),
+                [327],
+                "native: absmax, / 100"
+            );
+        }
+
+        /// An input is thousandths of a unit, and a stage's sum divides by
+        /// 1,000, rounding half away from zero: through 0.5, 500 quanta a
+        /// unit, 0.001 gives half a quantum, so 1, 0.003 gives 1.5, so 2,
+        /// and 0.005 gives 2.5, so 3; each negative the same way down. An
+        /// input past 32.767 units reads whole, and the stage saturates at
+        /// the `i16` bound.
+        #[test]
+        fn an_input_reads_in_thousandths_and_the_division_rounds() {
+            let current = |w: f64, x: i32| {
+                let (_, enc, _) = graph(sim(), w, None, false)
+                    .build_network()
+                    .expect("builds");
+                enc.encode(&[&[Thousandths(x)]])[0]
+            };
+            assert_eq!(
+                [1, 3, 5, -1, -3, -5].map(|x| current(0.5, x)),
+                [1, 2, 3, -1, -2, -3]
+            );
+            assert_eq!(
+                [499, 500, 1_000, 2_000].map(|x| current(0.5, x)),
+                [250, 250, 500, 1_000]
+            );
+            assert_eq!(current(0.1, 255_000), 25_500, "255 units, raw pixels");
+            assert_eq!(
+                [400_000, -400_000].map(|x| current(0.1, x)),
+                [i16::MAX, i16::MIN]
+            );
+        }
+
+        /// Natively an input is thousandths too, and the division by 1,000
+        /// and `LINEAR_GAIN_DIVISOR` truncates: through 32,767 quanta (the
+        /// absmax), 0.5 gives 163.835, so 163, as `ChainEncoder` would give
+        /// it if it took a half.
+        #[test]
+        fn a_native_input_in_thousandths_truncates() {
+            let native = NirImportOptions::new(100, VoltageResolution::CentiMillivolt);
+            let (_, enc, _) = graph(native, 0.3, None, false)
+                .build_network()
+                .expect("builds");
+            let at = |x: i32| enc.encode(&[&[Thousandths(x)]])[0];
+            assert_eq!([500, -500, 1_000, 999].map(at), [163, -163, 327, 327]);
+        }
+
+        /// A missing Input, or a missing feature of one, reads as 0 in
+        /// simulation units too, where one thousandth through 1,000 quanta
+        /// is a whole quantum.
+        #[test]
+        fn a_missing_input_or_feature_reads_as_zero() {
+            let (_, enc, _) = graph(sim(), 1.0, None, false)
+                .build_network()
+                .expect("builds");
+            assert_eq!(enc.encode(&[&[Thousandths(1)]]), [1], "one thousandth");
+            assert_eq!(enc.encode(&[&[]]), [0], "no feature");
+            assert_eq!(enc.encode(&[]), [0], "no Input");
+        }
+
+        /// No count of features takes a stage's sum past its `i128`:
+        /// 140,000 features at the largest input, each through 32,767
+        /// quanta, pass `i64::MAX`, and the stage saturates at +32,767 in
+        /// either units. The encoder is built by hand: the import would
+        /// first compose the stage through a 140,000 × 140,000 identity of
+        /// `f64`s (`build_stages`), 157 GB.
+        #[test]
+        fn a_stage_sums_past_i64_and_saturates() {
+            const N: usize = 140_000;
+            let n = i128::try_from(N).expect("fits");
+            assert!(n * i128::from(i16::MAX) * i128::from(i32::MAX) > i128::from(i64::MAX));
+            for units in [NirUnits::Native, NirUnits::Simulation] {
+                let enc = NirGraphEncoder {
+                    total: 1,
+                    units,
+                    input_feats: vec![N],
+                    mats: vec![QuantMat {
+                        q: vec![i16::MAX; N],
+                        rows: 1,
+                        cols: N,
+                    }],
+                    stages: vec![DriveStage {
+                        pop_base: 0,
+                        root: 0,
+                        mat: 0,
+                    }],
+                };
+                let x = vec![Thousandths(i32::MAX); N];
+                assert_eq!(enc.encode(&[&x]), [i16::MAX], "{units:?}");
+            }
         }
 
         #[test]
@@ -4727,7 +4868,7 @@ mod std_assembly {
 #[cfg(feature = "std")]
 pub use std_assembly::{
     ChainEncoder, LinearFusedRecord, NirAssemblyReport, NirBuilder, NirGraphEncoder, NirImport,
-    EDGE_PULSE_QUANTA, LINEAR_GAIN_DIVISOR,
+    Thousandths, EDGE_PULSE_QUANTA, LINEAR_GAIN_DIVISOR,
 };
 
 #[cfg(test)]
