@@ -130,9 +130,11 @@ records it names in `evidence/INDEX.md`. Four lines, in order:
 1. **NIR, the reach.** `--sim-units` imports at true scale, with NIR's
    firing rule and the exporter's step (round 52); the JSON marks its
    units, and `--freeze` takes a drive of runs and prints the library's
-   report (round 53); the converter's parity test is the front door's
-   evidence. Next, the graphs it takes: `Affine` (PyTorch's default
-   bias) and the input's form. Before the front door.
+   report (round 53); `Affine`, PyTorch's default bias, converts as a
+   Linear and a bias input of its own, and an input reads in
+   thousandths (round 54). The converter's parity test, with a model
+   snnTorch trained among its graphs, is the front door's evidence, its
+   misses named. The reach is in before the front door.
 2. **alpha.9: the pub walk.** What stops being public before the
    crate's surface is promised: paths and re-exports, `LIFNeuron` with
    its noise default, the rest of the field walk. The noise default
