@@ -11,7 +11,9 @@
 use std::path::PathBuf;
 
 use neuralos_rt::nir_hdf5::{nir_hdf5_read, nir_hdf5_write, NirHdfError, NirHdfNodeKind};
-use neuralos_snn::nir::{NirBuilder, NirImport, NirImportOptions, NirLif, NirLifParams};
+use neuralos_snn::nir::{
+    NirBuilder, NirImport, NirImportOptions, NirLif, NirLifParams, Thousandths,
+};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -516,7 +518,10 @@ fn merge_graph_assembles_and_fires_from_the_hdf5_path() {
 
     let mut n0 = 0usize;
     for _ in 0..200 {
-        for s in net.step(&enc.encode(&[&[1, 1], &[]])).unwrap() {
+        for s in net
+            .step(&enc.encode(&[&[Thousandths(1_000); 2], &[]]))
+            .unwrap()
+        {
             if s.neuron_id == 0 {
                 n0 += 1;
             }
@@ -527,7 +532,8 @@ fn merge_graph_assembles_and_fires_from_the_hdf5_path() {
     let (mut net2, enc2, _) = raw.build_network().expect("assembly (uncompressed)");
     let mut first = usize::MAX;
     for t in 0..100 {
-        for s in net2.step(&enc2.encode(&[&[1, 1], &[1, 1]])).unwrap() {
+        let one = [Thousandths(1_000); 2];
+        for s in net2.step(&enc2.encode(&[&one, &one])).unwrap() {
             if s.neuron_id == 0 {
                 first = first.min(t);
             }

@@ -265,8 +265,8 @@ fn a_drive_file_freezes_its_runs_and_the_sidecar_carries_the_report() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains(", 50 steps)"),
-        "the steps it prints: {stdout}"
+        stdout.contains("(module snntorch_two_layer: 2 neurons, 1 synapse, 50 steps)"),
+        "the counts it prints, each noun plural but for one: {stdout}"
     );
 
     let out = run("10 1\n40\n");
@@ -292,8 +292,68 @@ fn a_drive_file_freezes_its_runs_and_the_sidecar_carries_the_report() {
         "{stderr}"
     );
 
+    // a value in thousandths: 0.5 through a weight of 1.0, 500 quanta
+    let out = run("10 0.5\n");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let module = fs::read_to_string(dir.join("src/snntorch_two_layer.rs")).expect("the module");
+    assert!(module.contains("        (10, [500, 0]),\n"), "{module}");
+
+    let out = run("10 0.0005\n");
+    assert_eq!(out.status.code(), Some(1), "four decimals");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("drive.txt: line 1:"), "{stderr}");
+
     let out = run_file("no-such-drive.txt");
     assert_eq!(out.status.code(), Some(1), "a missing drive file");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("cannot read"), "{stderr}");
+}
+
+#[test]
+fn freeze_drives_each_bias_input_and_names_it() {
+    // two biased Affines under --sim-units (the converter's generator):
+    // the summary and the sidecar name each bias input and its start, and
+    // the one run of three steps splits where c/bias starts
+    let dir = scratch("freeze-bias");
+    let out = Command::new(env!("CARGO_BIN_EXE_neuralos-nir2json"))
+        .args(["--sim-units", "--freeze"])
+        .arg(dir.join("src/affine.rs"))
+        .args(["--steps", "3"])
+        .arg(repo(
+            "crates/neuralos-nir2json/tests/fixtures/affine_two_layer.nir",
+        ))
+        .arg(dir.join("affine.json"))
+        .output()
+        .expect("the binary runs");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for line in [
+        "  bias input : a/bias, 1 from step 0\n",
+        "  bias input : c/bias, 1 from step 1\n",
+        "(module affine: 5 neurons, 6 synapses, 3 steps)",
+    ] {
+        assert!(stdout.contains(line), "{line:?} in {stdout}");
+    }
+    let sidecar = fs::read_to_string(dir.join("affine.json.meta.json")).expect("the sidecar");
+    assert!(
+        sidecar.contains("\"bias\":{\"a/bias\":0,\"c/bias\":1}"),
+        "{sidecar}"
+    );
+    let module = fs::read_to_string(dir.join("src/affine.rs")).expect("the module");
+    assert!(
+        module.contains(
+            "        (1, [300, 855, -250, 0, 0]),\n        (2, [300, 855, -250, 30, -10]),\n"
+        ),
+        "{module}"
+    );
 }

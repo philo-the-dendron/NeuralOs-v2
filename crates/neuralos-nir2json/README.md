@@ -28,8 +28,9 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
 
 ## What converts, what refuses — and why
 
-- **Node kinds:** `Input`, `LIF`, `Linear`, `Output` convert. Anything
-  else (e.g. `Affine`, `Conv`, RNN blocks) is refused **loudly with the
+- **Node kinds:** `Input`, `LIF`, `Linear`, `Output` convert, and
+  `Affine` under `--sim-units` (below). Anything else (e.g. `Conv`, RNN
+  blocks), and `Affine` in native units, is refused **loudly with the
   node's name and kind** — a recorded result, never a partial file.
 - **Filters:** none or gzip (deflate) — the reference emission
   conventions. `lzf`, `szip`, anything else: refused by name before a
@@ -56,7 +57,9 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   it or more down; the node's `r` becomes `r · V` MΩ. Linear weights
   keep their true scale in the library (`NirUnits::Simulation`, 1,000
   current quanta per unit), so the product `r·I` keeps the source's
-  scale. The import follows NIR's LIF: it fires on `v > v_threshold`
+  scale. An input is read in thousandths of a unit (`Thousandths`), and
+  a stage's current rounds to the nearest quantum, half away from zero.
+  The import follows NIR's LIF: it fires on `v > v_threshold`
   and has no refractory period. The step is 0.1 ms unless `--dt` gives
   another: snnTorch's exporter assumes it, and a `.nir` file carries
   none. The transform is opt-in and sidecar-stamped, each node's `V`
@@ -86,6 +89,23 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   never silent corruption.
   Linear-only graphs (encoders, readout heads) convert cleanly from
   any emitter, no flag needed.
+- **Affine** (`y = W·x + b`, snnTorch's export of a biased `nn.Linear`,
+  PyTorch's default): under `--sim-units` the converter rewrites it. `W`
+  becomes a Linear under the Affine's name, and a bias not all zero an
+  `Input` of one feature, `<affine>/bias`, into a one-column Linear,
+  `<affine>/b`, holding `b`, into each LIF the Affine feeds; an all-zero
+  bias adds nothing. The library's JSON stays four kinds. A bias input
+  is 0 before its population's depth and 1 from it: the depth counts the
+  spike edges between the population and an Input, since a spike reaches
+  the next population one step late, so a bias one spiking layer deep
+  starts at step 1. The summary and the sidecar's `bias` name each bias
+  input and its start, and `--freeze` drives it so (below); a caller of
+  the library who takes the JSON drives each `<affine>/bias` input the
+  same way, since the library reads an input it is not given as 0.
+  Refused by name: a bias that feeds anything but a LIF (an Output, or a
+  Linear before its LIF), one whose LIF no Input reaches or two paths
+  from the Inputs reach at two depths (a loop among them), and one that
+  feeds LIFs at two depths. In native units `Affine` stays refused.
 
 ## Freeze: the arrays a `FixedNetwork` steps
 
@@ -100,17 +120,21 @@ sidecar:
 
 - **`<out.rs>`**, one `pub mod` named after the file's stem (lowercased,
   anything but a letter, digit or `_` made `_`; a letter or `_` first,
-  not a Rust keyword): `N` neurons and `S`
-  synapses as the arrays a `neuralos_snn::FixedNetwork<N, S>` steps,
-  the time step, the run, the trace's header line (`kind=stranger`),
-  and `DRIVE`, one run of `--steps` steps (default 150) of the currents
-  the graph's own encoder gives for `--input`: one integer per input
-  feature, in Input order, default 1 for every feature. `--drive
-  <file>` gives runs instead, one a line, a step count and then the
-  integers (`10 1,0`; blank lines and `#` lines skipped), each run the
-  currents its integers give, one after the other. The library's
-  freezer writes it (`neuralos_snn::fixed::freeze::module`), the one
-  that writes the library's own frozen traces.
+  not a Rust keyword): `N` neurons and `S` synapses as the arrays a
+  `neuralos_snn::FixedNetwork<N, S>` steps, the time step, the run, the
+  trace's header line (`kind=stranger`), and `DRIVE`, one run of
+  `--steps` steps (default 150) of the currents the graph's own encoder
+  gives for `--input`: one number per feature of the graph's own inputs,
+  in Input order, with at most three decimals, a sign allowed (`0.5`,
+  `-.25`, `+2`; read in thousandths of a unit), default 1 for every
+  feature. Each bias input the conversion added is the converter's: 0
+  before its start and 1 from it, a run split where one starts inside
+  it. `--drive <file>` gives
+  runs instead, one a line, a step count and then the numbers
+  (`10 0.5,0`; blank lines and `#` lines skipped), each run the currents
+  its numbers give, one after the other. The library's freezer writes
+  it (`neuralos_snn::fixed::freeze::module`), the one that writes the
+  library's own frozen traces.
 - **`<out>.trace`**, that drive on the host in `neuralos-trace v1`: the
   header line, then one row per step, the spikes and every membrane,
   written by `neuralos_snn::trace::row`, the row writer the firmware
@@ -121,20 +145,22 @@ sidecar:
   same rows.
 
 It prints what the library noted as it assembled the graph, one line
-each: a stage fused from two Linear tensors or more, the populations
-and encoders no input reaches, and, in native units, the gain note (more
-than one drive Linear, each scaled by its own absmax). The sidecar
-carries the whole report as `assembly`: the neurons, the synapses, the
-inputs, the drive Linears, the stages, the fused chains with their
-scales, the undriven names, the gain note and the plasticity flag.
+each: a stage fused from two Linear tensors or more, the undriven
+populations and encoders (no input reaches them, or they reach no LIF),
+and, in native units, the gain note (more than one drive Linear, each
+scaled by its own absmax). The sidecar carries the whole report as
+`assembly`: the neurons, the synapses, the inputs, the drive Linears,
+the stages, the fused chains with their scales, the undriven names, the
+gain note and the plasticity flag.
 
 Refused by name, exit 2, nothing written: a graph that does not
 assemble (the library names why, e.g. a readout to Output or a graph
 with no LIF), plasticity on (never, from NIR), more than 65,535 neurons
 (a neuron id is a `u16`). A usage error, exit 1: a `--freeze`,
 `--steps`, `--input` or `--drive` with no value, a `--steps` that is not
-a count of at least 1, a `--input` that is not comma-separated `i16`s, a
-`--input` or a `--drive` run of the wrong length, a `--drive` line that
+a count of at least 1, a `--input` that is not comma-separated numbers
+within ±2,147,483.647 of at most three decimals each, a `--input` or a
+`--drive` run of the wrong length, a `--drive` line that
 does not read, a `--drive` file with no run, more steps than a `u32`
 counts, `--steps`, `--input` or `--drive` without `--freeze`, `--drive`
 beside `--steps` or `--input`, or a stem that gives no module name. A
@@ -189,12 +215,12 @@ cargo test -p neuralos-nir2json   # corpus v2: fixtures live in tests/fixtures/
 
 Fixture provenance (the stranger files, sha-pinned): see
 `tests/fixtures/community/PROVENANCE.md`. Regenerate the derived
-fixtures (f32 twins, big graph): `.nirenv/bin/python3
-tools/gen_nir2json_fixtures.py`. Regenerate the snnTorch fallback
-emission: `tools/gen_snnTorch_stranger.py` (throwaway venv; the script
-header carries the exact stack), and the two-layer witness of D8:
-`tools/gen_snnTorch_two_layer.py` (the repo's `.nirenv`; not
-byte-stable across runs, so the committed emission is pinned by its
+fixtures (f32 twins, big graph, the Affine graphs, a 1-D weight):
+`.nirenv/bin/python3 tools/gen_nir2json_fixtures.py`. Regenerate the
+snnTorch fallback emission: `tools/gen_snnTorch_stranger.py` (throwaway
+venv; the script header carries the exact stack), and the two-layer
+witness of D8: `tools/gen_snnTorch_two_layer.py` (the repo's `.nirenv`;
+not byte-stable across runs, so the committed emission is pinned by its
 sha in PROVENANCE.md; the exporter's edge order follows Python's hash
 seed, and under `PYTHONHASHSEED=0` a second run writes the same bytes).
 

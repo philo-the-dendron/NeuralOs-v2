@@ -411,15 +411,15 @@ fn the_snn_witness_fixtures_are_this_converter_s_bytes() {
 
 #[test]
 fn stranger_emitter_skew_norse_is_a_named_wall() {
-    // lif_norse carries an Affine node (Linear+bias) — outside the
-    // four-kind subset. The loud named rejection IS the recorded
-    // result (anti-circularity leg: the emission is genuinely not
-    // ours, and its refusal is honest).
+    // lif_norse carries an Affine node (Linear+bias) — in native units
+    // outside the four-kind subset. The loud named rejection IS the
+    // recorded result (anti-circularity leg: the emission is genuinely
+    // not ours, and its refusal is honest).
     let err = convert_file(
         &fixture("community/lif_norse.nir"),
         NirImportOptions::default(),
     )
-    .expect_err("Affine is out of subset");
+    .expect_err("Affine is refused in native units");
     match &err {
         ConvertError::UnsupportedNode { node, kind } => {
             assert_eq!(kind, "Affine");
@@ -427,6 +427,41 @@ fn stranger_emitter_skew_norse_is_a_named_wall() {
         }
         other => panic!("expected UnsupportedNode, got {other:?}"),
     }
+}
+
+#[test]
+fn stranger_emitter_skew_norse_converts_under_sim_units() {
+    // The NIR paper's own graph, Affine(1, 0) → LIF, as norse emits it:
+    // under --sim-units the all-zero bias adds nothing, and the Affine
+    // is a plain Linear under its own name.
+    use neuralos_snn::nir::NirNodeKind::{Input, Lif, Linear, Output};
+    let sim_step = NirImportOptions {
+        dt_us: SIM_DT_US,
+        ..NirImportOptions::default()
+    };
+    let c = convert_file_opts(&fixture("community/lif_norse.nir"), sim_step, true)
+        .expect("converts under --sim-units");
+    assert!(c.stamp.bias.is_empty(), "{:?}", c.stamp.bias);
+    let g =
+        neuralos_snn::nir::NirImport::from_json(&c.json, NirImportOptions::sim_units(SIM_DT_US))
+            .expect("imports in simulation units");
+    let nodes: Vec<_> = g.nodes.iter().map(|n| (n.name, n.kind)).collect();
+    assert_eq!(
+        nodes,
+        [
+            ("0", Linear),
+            ("1", Lif),
+            ("input", Input),
+            ("output", Output)
+        ]
+    );
+    let (_, enc, report) = g.build_network().expect("the NIR paper's graph assembles");
+    assert_eq!((report.neurons, report.inputs), (1, 1));
+    assert_eq!(
+        enc.encode(&[&[neuralos_snn::nir::Thousandths(1_000)]]),
+        [1_000],
+        "w 1.0 at true scale"
+    );
 }
 
 #[test]

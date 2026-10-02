@@ -45,9 +45,11 @@
 //!
 //! # Out-of-subset honesty
 //!
-//! The supported node kinds are exactly Input, LIF, Linear, Output.
-//! Anything else is refused loudly with the node's name and kind —
-//! a recorded result, never a partial conversion.
+//! The supported node kinds are exactly Input, LIF, Linear, Output, and
+//! under `--sim-units` Affine, rewritten as a Linear and, for a bias not
+//! all zero, an input of its own ([`convert_file_opts`]). Anything else
+//! is refused loudly with the node's name and kind — a recorded result,
+//! never a partial conversion.
 //!
 //! # Freeze
 //!
@@ -64,12 +66,17 @@ use hdf5_pure::{DType, Dataset, File, Group, VlenStringReadOptions};
 use neuralos_snn::FixedSynapse;
 use neuralos_snn::fixed::freeze as freezer;
 use neuralos_snn::nir::{
-    NirBuilder, NirError, NirImport, NirImportOptions, NirLifParams, SIM_CURRENT_QUANTA, nir_export,
+    NirBuilder, NirError, NirGraphEncoder, NirImport, NirImportOptions, NirLifParams, NirNodeKind,
+    SIM_CURRENT_QUANTA, Thousandths, nir_export,
 };
 use neuralos_snn::trace::{self, Kind, Rows, row};
 
 /// Tool version (sidecar stamp).
 pub const TOOL_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// 1.0, a bias input's value from its start and each feature's in a run
+/// of the drive that gives none.
+const ONE: Thousandths = Thousandths(1_000);
 
 /// The time step under `--sim-units` when `--dt` is not given, µs:
 /// snnTorch's exporter writes `tau = dt / (1 - beta)` with `dt = 1e-4`
@@ -95,8 +102,14 @@ pub enum ConvertError {
         id: u16,
         name: String,
     },
-    /// Out-of-subset node kind — named, never partial.
+    /// Out-of-subset node kind — named, never partial. `Affine` is one
+    /// in native units only.
     UnsupportedNode { node: String, kind: String },
+    /// Under `--sim-units`, an `Affine` whose bias has no place: it
+    /// feeds a node that is not a LIF, a LIF that no Input reaches or
+    /// that the Inputs reach at two depths, or LIFs at two depths
+    /// ([`convert_file_opts`]).
+    Bias { node: String, why: String },
     /// Simulation-unit LIF parameters detected without the transform
     /// flag: the DOUBLE wall, named together (r fires first in
     /// quantize_lif's check order, but the dimensionless voltages
@@ -122,10 +135,19 @@ impl fmt::Display for ConvertError {
                 "filter census REFUSES dataset '{dataset}': filter {name} (id {id}) — \
                  policy accepts only none or deflate (gzip); re-emit uncompressed or gzip"
             ),
+            Self::UnsupportedNode { node, kind } if kind == "Affine" => write!(
+                f,
+                "node '{node}' is kind 'Affine' — in native units outside the supported subset \
+                 (Input, LIF, Linear, Output); `--sim-units` converts it, its bias an input of its own"
+            ),
             Self::UnsupportedNode { node, kind } => write!(
                 f,
                 "node '{node}' is kind '{kind}' — outside the supported subset \
                  (Input, LIF, Linear, Output); refusing loudly rather than partially converting"
+            ),
+            Self::Bias { node, why } => write!(
+                f,
+                "node '{node}' is an Affine whose bias has no place: {why}"
             ),
             Self::SimUnits { node, r_ohm } => write!(
                 f,
@@ -162,6 +184,115 @@ pub struct Stamp {
     /// mV per simulation unit, in document order (stamped, as the
     /// transform is).
     pub volt_scale: Vec<(String, f64)>,
+    /// Under `--sim-units`, each bias input the conversion added, in the
+    /// document order of their Affines.
+    pub bias: Vec<Bias>,
+}
+
+/// A bias input `--sim-units` adds for an `Affine` whose bias is not all
+/// zero ([`convert_file_opts`]): an `Input` of one feature, named the
+/// Affine's name and `/bias`, into a one-column Linear, named the
+/// Affine's name and `/b`, which holds the bias and feeds each LIF the
+/// Affine feeds. A `.nir` file names its nodes by HDF5 link names, which
+/// never hold a `/`, so neither name meets one of the file's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Bias {
+    /// The `Input` node's name, the Affine's and `/bias`.
+    pub input: String,
+    /// The first step its value is 1, before it 0: the depth of the LIFs
+    /// its Affine feeds, the count of spike edges between them and an
+    /// Input, since a spike reaches the next population one step late.
+    pub start: u32,
+}
+
+/// A converted graph's Inputs in the order `NirGraphEncoder::encode`
+/// reads them, the graph's node order: each the graph's own, or a
+/// [`Bias`] input with its start. [`freeze`] drives a graph through it,
+/// and so does this crate's parity test.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Inputs {
+    /// Per Input, its features and, for a bias input, its start.
+    slots: Vec<(usize, Option<u32>)>,
+}
+
+impl Inputs {
+    /// The Inputs `enc` reads, `graph`'s in node order, with each of
+    /// `bias` among them.
+    ///
+    /// # Errors
+    ///
+    /// The name of a bias input that is not an Input of one feature in
+    /// `graph`.
+    pub fn new(
+        graph: &NirImport<'_>,
+        enc: &NirGraphEncoder,
+        bias: &[Bias],
+    ) -> Result<Self, String> {
+        // the encoder numbers the Inputs in node order, as here
+        let names: Vec<&str> = graph
+            .nodes
+            .iter()
+            .filter(|n| n.kind == NirNodeKind::Input)
+            .map(|n| n.name)
+            .collect();
+        let slots: Vec<(usize, Option<u32>)> = names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                let start = bias.iter().find(|b| b.input == *name).map(|b| b.start);
+                (enc.input_features(i), start)
+            })
+            .collect();
+        for b in bias {
+            match names.iter().position(|n| *n == b.input) {
+                Some(i) if slots[i].0 == 1 => {}
+                _ => return Err(b.input.clone()),
+            }
+        }
+        Ok(Self { slots })
+    }
+
+    /// The features of the graph's own Inputs: what a drive gives.
+    #[must_use]
+    pub fn features(&self) -> usize {
+        self.slots
+            .iter()
+            .filter(|(_, start)| start.is_none())
+            .map(|(features, _)| features)
+            .sum()
+    }
+
+    /// The steps a bias input starts on, ascending, each once.
+    #[must_use]
+    pub fn starts(&self) -> Vec<u32> {
+        let mut starts: Vec<u32> = self.slots.iter().filter_map(|&(_, s)| s).collect();
+        starts.sort_unstable();
+        starts.dedup();
+        starts
+    }
+
+    /// Every Input's values at `step`, in the encoder's order: the graph's
+    /// own from `own`, one value per feature in Input order, and each
+    /// bias input's 0 before its start and 1 from it.
+    ///
+    /// # Panics
+    ///
+    /// When `own` holds fewer values than [`Self::features`].
+    #[must_use]
+    pub fn at(&self, step: u32, own: &[Thousandths]) -> Vec<Vec<Thousandths>> {
+        let mut rest = own;
+        self.slots
+            .iter()
+            .map(|&(features, start)| match start {
+                Some(s) => vec![if step >= s { ONE } else { Thousandths(0) }; features],
+                None => {
+                    let (this, others) = rest.split_at(features);
+                    rest = others;
+                    this.to_vec()
+                }
+            })
+            .collect()
+    }
 }
 
 /// A completed conversion: canonical JSON + its stamp.
@@ -290,6 +421,140 @@ fn shape_u32(ds: &Dataset, path: &str) -> Result<Vec<u32>, ConvertError> {
     .collect()
 }
 
+/// A Linear's or an Affine's `weight`: its values, rows and columns.
+fn read_weight(
+    g: &Group,
+    name: &str,
+    stamps: &mut Vec<String>,
+) -> Result<(Vec<f64>, usize, usize), ConvertError> {
+    let path = format!("node/nodes/{name}/weight");
+    let ds = g
+        .dataset("weight")
+        .map_err(|e| ConvertError::Layout(format!("weight: {e}")))?;
+    let shape = ds
+        .shape()
+        .map_err(|e| ConvertError::Open(format!("shape: {e}")))?;
+    if shape.len() != 2 {
+        return Err(ConvertError::BadData {
+            dataset: path,
+            what: format!("{}-D weight — expected 2-D", shape.len()),
+        });
+    }
+    let vals = read_param_f64(&ds, &path, stamps)?;
+    let (rows, cols) = (shape[0] as usize, shape[1] as usize);
+    if vals.len() != rows * cols {
+        return Err(ConvertError::BadData {
+            dataset: path,
+            what: format!("{} values != {rows}×{cols}", vals.len()),
+        });
+    }
+    Ok((vals, rows, cols))
+}
+
+/// Under `--sim-units`, the step an `Affine`'s bias starts on: the depth
+/// of the LIFs it feeds, `None` when it feeds nothing. Refused by name
+/// ([`ConvertError::Bias`]) when it feeds anything but a LIF, a LIF with
+/// no one depth, or LIFs at two depths, since its one bias input starts
+/// on one step. `kinds` and `edges` are the file's, by slot.
+fn bias_start(
+    names: &[String],
+    kinds: &[&str],
+    edges: &[(usize, usize)],
+    affine: usize,
+) -> Result<Option<u32>, ConvertError> {
+    // a LIF it feeds and that LIF's depth, which every other must share
+    let mut start: Option<(usize, u32)> = None;
+    for &(_, t) in edges.iter().filter(|&&(a, _)| a == affine) {
+        let why = match kinds[t] {
+            "LIF" => match (depth(kinds, edges, t), start) {
+                (Ok(d), Some((lif, s))) if d != s => format!(
+                    "the LIFs '{}' and '{}' it feeds sit at depths {s} and {d}, and a bias starts at one",
+                    names[lif], names[t]
+                ),
+                (Ok(d), _) => {
+                    start = Some((t, d));
+                    continue;
+                }
+                (Err(NoDepth::Unreached), _) => format!(
+                    "no Input reaches the LIF '{}' it feeds, and a bias starts at its depth",
+                    names[t]
+                ),
+                (Err(NoDepth::Two), _) => format!(
+                    "the Inputs reach the LIF '{}' it feeds at two depths, and a bias starts at one",
+                    names[t]
+                ),
+            },
+            "Output" => format!(
+                "it feeds the Output '{}', and a bias drives a LIF",
+                names[t]
+            ),
+            kind => format!(
+                "it feeds the {kind} '{}', and a bias drives a LIF directly",
+                names[t]
+            ),
+        };
+        return Err(ConvertError::Bias {
+            node: names[affine].clone(),
+            why,
+        });
+    }
+    Ok(start.map(|(_, d)| d))
+}
+
+/// Why a LIF has no depth.
+#[derive(Debug, PartialEq, Eq)]
+enum NoDepth {
+    /// No path from an Input reaches it.
+    Unreached,
+    /// Two paths from the Inputs cross a different count of LIFs, a loop
+    /// among them.
+    Two,
+}
+
+/// A LIF's depth: the spike edges between it and an Input, one count on
+/// every path from the Inputs, since each LIF on the way delays a spike
+/// by one step. `kinds` and `edges` by slot.
+fn depth(kinds: &[&str], edges: &[(usize, usize)], lif: usize) -> Result<u32, NoDepth> {
+    let n = kinds.len();
+    // the nodes with a path to the LIF, the LIF among them
+    let mut feeds = vec![false; n];
+    feeds[lif] = true;
+    let mut work = vec![lif];
+    while let Some(v) = work.pop() {
+        for &(a, b) in edges {
+            if b == v && !feeds[a] {
+                feeds[a] = true;
+                work.push(a);
+            }
+        }
+    }
+    // their depths from the Inputs among them: an edge adds 1 after a
+    // LIF and 0 after any other node, and a node two edges reach must be
+    // reached at one depth
+    let mut at: Vec<Option<u32>> = vec![None; n];
+    let mut work: Vec<(usize, u32)> = Vec::new();
+    for i in (0..n).filter(|&i| feeds[i] && kinds[i] == "Input") {
+        at[i] = Some(0);
+        work.push((i, 0));
+    }
+    while let Some((v, at_v)) = work.pop() {
+        let d = at_v + u32::from(kinds[v] == "LIF");
+        for &(a, b) in edges {
+            if a == v && feeds[b] {
+                match at[b] {
+                    None => {
+                        at[b] = Some(d);
+                        work.push((b, d));
+                    }
+                    Some(e) if e != d => return Err(NoDepth::Two),
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+    at[lif].ok_or(NoDepth::Unreached)
+}
+
 /// Convert one `.nir` file into the snn JSON schema (native units —
 /// biological scale: MΩ, V).
 ///
@@ -320,7 +585,14 @@ pub fn convert_file(path: &Path, opts: NirImportOptions) -> Result<Converted, Co
 /// - `r × V × 1000 / SIM_CURRENT_QUANTA` MΩ, so the product `r·I` keeps
 ///   the source's scale under the library's true-scale weights;
 /// - the import in simulation units, [`effective_options`]: true-scale
-///   weights, NIR's `v > v_threshold`, no refractory period.
+///   weights, NIR's `v > v_threshold`, no refractory period;
+/// - each `Affine`, `y = W·x + b` (snnTorch's export of a biased
+///   `nn.Linear`), rewritten: `W` a Linear under the Affine's name, and a
+///   bias not all zero a [`Bias`] input into a one-column Linear holding
+///   `b`, into each LIF the Affine feeds; an all-zero bias adds nothing.
+///   A bias input's value is 0 before its `start`, the LIFs' depth, and
+///   1 from it: a spike reaches the next population one step late, so a
+///   population one spike edge from an Input takes its bias from step 1.
 ///
 /// The transform is an INTERPRETIVE ACT (a convention assumption about
 /// what the stranger's dimensionless numbers mean) — hence opt-in,
@@ -333,7 +605,12 @@ pub fn convert_file(path: &Path, opts: NirImportOptions) -> Result<Converted, Co
 /// and the flag. Detection is `r < 1e6 Ω` — the only population that
 /// cannot import natively (the marginal [0.5, 1) MΩ band rounds to
 /// the 1 MΩ floor natively; detection deliberately refuses the
-/// ambiguous band rather than guessing).
+/// ambiguous band rather than guessing). An `Affine` is
+/// [`ConvertError::UnsupportedNode`] in native units, and under
+/// `--sim-units` [`ConvertError::Bias`] when its bias feeds anything but
+/// a LIF, a LIF that no Input reaches or that the Inputs reach at two
+/// depths (a loop among them), or LIFs at two depths; a bias whose
+/// length is not `W`'s rows is [`ConvertError::BadData`].
 pub fn convert_file_opts(
     path: &Path,
     opts: NirImportOptions,
@@ -383,12 +660,21 @@ pub fn convert_file_opts(
         resolution: resolution_name(effective),
         sim_units,
         volt_scale: Vec::new(),
+        bias: Vec::new(),
     };
 
     // Owned name storage: NirNode borrows &'a str for the builder's
     // lifetime — collect ALL names first so no push mutates the Vec
-    // while the builder holds borrows into it.
+    // while the builder holds borrows into it. That includes the two
+    // names a bias input takes, made from each node's name: only an
+    // Affine's are used.
     let owned: Vec<String> = node_names.clone();
+    let bias_names: Vec<[String; 2]> = node_names
+        .iter()
+        .map(|n| [format!("{n}/bias"), format!("{n}/b")])
+        .collect();
+    // each Affine whose bias is not all zero: its slot and its bias
+    let mut biased: Vec<(usize, Vec<f64>)> = Vec::new();
     let mut index: std::collections::HashMap<String, usize> =
         std::collections::HashMap::with_capacity(node_names.len());
 
@@ -485,28 +771,28 @@ pub fn convert_file_opts(
                 index.insert(name.clone(), idx);
             }
             "Linear" => {
+                let (vals, rows, cols) = read_weight(&g, name, &mut stamp.f32_datasets)?;
+                let idx = builder
+                    .add_linear(borrowed, &vals, rows, cols)
+                    .map_err(|e| ConvertError::Snn {
+                        stage: "add_linear",
+                        msg: e.to_string(),
+                    })?;
+                index.insert(name.clone(), idx);
+            }
+            // W a Linear under the Affine's name; its bias waits for the
+            // edges, which place it
+            "Affine" if sim_units => {
+                let (vals, rows, cols) = read_weight(&g, name, &mut stamp.f32_datasets)?;
+                let path = format!("node/nodes/{name}/bias");
                 let ds = g
-                    .dataset("weight")
-                    .map_err(|e| ConvertError::Layout(format!("Linear weight: {e}")))?;
-                let shape = ds
-                    .shape()
-                    .map_err(|e| ConvertError::Open(format!("shape: {e}")))?;
-                if shape.len() != 2 {
+                    .dataset("bias")
+                    .map_err(|e| ConvertError::Layout(format!("Affine bias: {e}")))?;
+                let bias = read_param_f64(&ds, &path, &mut stamp.f32_datasets)?;
+                if bias.len() != rows {
                     return Err(ConvertError::BadData {
-                        dataset: format!("node/nodes/{name}/weight"),
-                        what: format!("{}-D weight — expected 2-D", shape.len()),
-                    });
-                }
-                let vals = read_param_f64(
-                    &ds,
-                    &format!("node/nodes/{name}/weight"),
-                    &mut stamp.f32_datasets,
-                )?;
-                let (rows, cols) = (shape[0] as usize, shape[1] as usize);
-                if vals.len() != rows * cols {
-                    return Err(ConvertError::BadData {
-                        dataset: format!("node/nodes/{name}/weight"),
-                        what: format!("{} values != {rows}×{cols}", vals.len()),
+                        dataset: path,
+                        what: format!("{} values != the weight's {rows} rows", bias.len()),
                     });
                 }
                 let idx = builder
@@ -516,6 +802,9 @@ pub fn convert_file_opts(
                         msg: e.to_string(),
                     })?;
                 index.insert(name.clone(), idx);
+                if bias.iter().any(|&b| b != 0.0) {
+                    biased.push((slot, bias));
+                }
             }
             other => {
                 return Err(ConvertError::UnsupportedNode {
@@ -540,6 +829,15 @@ pub fn convert_file_opts(
             flat.len()
         )));
     }
+    let add_edge = |builder: &mut NirBuilder<'_>, a: usize, b: usize| {
+        builder.add_edge(a, b).map_err(|e| ConvertError::Snn {
+            stage: "add_edge",
+            msg: e.to_string(),
+        })
+    };
+    // the builder numbers the file's nodes as it adds them, in document
+    // order, so a node's index is its slot
+    let mut edges: Vec<(usize, usize)> = Vec::with_capacity(flat.len() / 2);
     for pair in flat.as_chunks::<2>().0 {
         let resolve = |n: &str| {
             index
@@ -548,10 +846,38 @@ pub fn convert_file_opts(
                 .ok_or_else(|| ConvertError::Layout(format!("edge names unknown node {n:?}")))
         };
         let (a, b) = (resolve(&pair[0])?, resolve(&pair[1])?);
-        builder.add_edge(a, b).map_err(|e| ConvertError::Snn {
-            stage: "add_edge",
-            msg: e.to_string(),
-        })?;
+        add_edge(&mut builder, a, b)?;
+        edges.push((a, b));
+    }
+
+    // each bias not all zero: an Input of one feature into a one-column
+    // Linear into each LIF its Affine feeds, after the file's nodes
+    let kinds: Vec<&str> = stamp.node_census.iter().map(|(_, k)| k.as_str()).collect();
+    for (slot, bias) in &biased {
+        let Some(start) = bias_start(&node_names, &kinds, &edges, *slot)? else {
+            continue; // the Affine feeds nothing, so neither does its bias
+        };
+        let [input_name, linear_name] = &bias_names[*slot];
+        let input = builder
+            .add_input(input_name, &[1])
+            .map_err(|e| ConvertError::Snn {
+                stage: "add_input",
+                msg: e.to_string(),
+            })?;
+        let linear = builder
+            .add_linear(linear_name, bias, bias.len(), 1)
+            .map_err(|e| ConvertError::Snn {
+                stage: "add_linear",
+                msg: e.to_string(),
+            })?;
+        add_edge(&mut builder, input, linear)?;
+        for &(_, lif) in edges.iter().filter(|&&(a, _)| a == *slot) {
+            add_edge(&mut builder, linear, lif)?;
+        }
+        stamp.bias.push(Bias {
+            input: input_name.clone(),
+            start,
+        });
     }
 
     let graph = builder.build().map_err(|e| ConvertError::Snn {
@@ -669,7 +995,8 @@ pub struct Assembly {
     pub stages: usize,
     /// Each stage composed from two tensors or more, root first.
     pub fused: Vec<Fused>,
-    /// The LIF populations and Linear encoders no input reaches.
+    /// The undriven LIF populations and Linear encoders: no input reaches
+    /// them, or, for an encoder, it reaches no LIF.
     pub undriven: Vec<String>,
     /// The gain note: in native units, more than one drive Linear, each
     /// scaled by its own absmax.
@@ -717,6 +1044,10 @@ pub enum FreezeError {
     /// `_` made `-`. Never from the CLI, which passes `module_name`'s
     /// output.
     Name(String),
+    /// A bias input that is not an Input of one feature in the graph:
+    /// `bias` is not the conversion's that wrote the JSON. Never from the
+    /// CLI, which passes the conversion's own.
+    Bias(String),
 }
 
 impl fmt::Display for FreezeError {
@@ -743,6 +1074,10 @@ impl fmt::Display for FreezeError {
             Self::Name(n) => write!(
                 f,
                 "{n:?} is not a module name: lowercase ASCII letters, digits and _, a letter or _ first, not _ alone, not a Rust keyword"
+            ),
+            Self::Bias(n) => write!(
+                f,
+                "the bias input {n:?} is not an Input of one feature in the graph"
             ),
         }
     }
@@ -781,10 +1116,13 @@ pub fn module_name(stem: &str) -> Option<String> {
 /// conversion's own, [`effective_options`]), build it (`build_network`),
 /// and write one module named `name` (a [`module_name`]) holding its
 /// arrays, `kind=stranger` in its header, and its drive: each run of
-/// `drive`, a step count and one value per input feature in Input order
-/// (`None` meaning 1 for every feature), as the currents the graph's
-/// encoder gives for it. With it, the trace of that drive on the host,
-/// and what the library noted as it assembled the graph.
+/// `drive`, a step count and one value per feature of the graph's own
+/// Inputs, in Input order, in [`Thousandths`] of a unit (`None` meaning
+/// 1.0 for every feature), as the currents the graph's encoder gives
+/// for it. Each bias input of `bias`, the conversion's [`Stamp::bias`],
+/// is 0 before its start and 1 from it ([`Inputs`]), so a run splits
+/// where one starts inside it. With the module, the trace of that drive
+/// on the host, and what the library noted as it assembled the graph.
 ///
 /// The trace is the std network's, plasticity off, the network
 /// `FixedNetwork::try_from` would convert, each row written by
@@ -813,12 +1151,15 @@ pub fn module_name(stem: &str) -> Option<String> {
 /// `build_network` numbers the neurons as it pushes them; and a chain
 /// that does not rebuild its neuron, which would be a defect of the
 /// library, not of a stranger's graph. The drive it is given is the
-/// encoder's output, one current per neuron.
+/// encoder's output, one current per neuron, and [`Inputs::at`] is given
+/// one value per feature of the graph's own Inputs, refused above
+/// otherwise.
 pub fn freeze(
     json: &[u8],
     opts: NirImportOptions,
     name: &str,
-    drive: &[(u32, Option<&[i16]>)],
+    drive: &[(u32, Option<&[Thousandths]>)],
+    bias: &[Bias],
 ) -> Result<Frozen, FreezeError> {
     if module_name(name).as_deref() != Some(name) {
         return Err(FreezeError::Name(name.to_string()));
@@ -835,16 +1176,20 @@ pub fn freeze(
         return Err(FreezeError::Plasticity);
     }
 
+    let inputs = Inputs::new(&graph, &enc, bias).map_err(FreezeError::Bias)?;
+
     if drive.is_empty() {
         return Err(FreezeError::Drive("no run"));
     }
-    let features: usize = (0..enc.input_count()).map(|i| enc.input_features(i)).sum();
+    let features = inputs.features();
+    let starts = inputs.starts();
     let mut steps = 0u32;
     let mut runs: Vec<(u32, Vec<i16>)> = Vec::with_capacity(drive.len());
     for (run, &(count, input)) in (1..).zip(drive) {
         if count == 0 {
             return Err(FreezeError::Drive("a run of 0 steps"));
         }
+        let first = steps;
         steps = steps
             .checked_add(count)
             .ok_or(FreezeError::Drive("more steps than a trace counts"))?;
@@ -857,16 +1202,17 @@ pub fn freeze(
                 });
             }
             Some(v) => v.to_vec(),
-            None => vec![1; features],
+            None => vec![ONE; features],
         };
-        let mut per_input: Vec<&[i16]> = Vec::with_capacity(enc.input_count());
-        let mut rest = values.as_slice();
-        for i in 0..enc.input_count() {
-            let (this, others) = rest.split_at(enc.input_features(i));
-            per_input.push(this);
-            rest = others;
+        // the run splits where a bias input starts inside it
+        let mut from = first;
+        let ends = starts.iter().copied().filter(|&s| s > first && s < steps);
+        for to in ends.chain([steps]) {
+            let per_input = inputs.at(from, &values);
+            let slices: Vec<&[Thousandths]> = per_input.iter().map(Vec::as_slice).collect();
+            runs.push((to - from, enc.encode(&slices)));
+            from = to;
         }
-        runs.push((count, enc.encode(&per_input)));
     }
 
     // build_network builds the network at opts.dt_us, every neuron on
@@ -955,6 +1301,13 @@ pub fn stamp_json(s: &Stamp, source: &Path, assembly: Option<&Assembly>) -> Stri
             }
             out.push_str(&format!("\"{}\":{v}", json_escape(name)));
         }
+        out.push_str("},\"bias\":{");
+        for (i, b) in s.bias.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push_str(&format!("\"{}\":{}", json_escape(&b.input), b.start));
+        }
         out.push('}');
     }
     out.push_str(",\"f32_widened\":[");
@@ -1041,6 +1394,8 @@ fn assembly_json(a: &Assembly) -> String {
 mod tests {
     use super::*;
 
+    const ZERO: Thousandths = Thousandths(0);
+
     fn fixture(name: &str) -> std::path::PathBuf {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures")
@@ -1093,11 +1448,288 @@ mod tests {
             &fixture("community/lif_norse.nir"),
             NirImportOptions::default(),
         )
-        .expect_err("Affine must be refused");
+        .expect_err("Affine is refused in native units");
         match &err {
             ConvertError::UnsupportedNode { kind, .. } => assert_eq!(kind, "Affine"),
             other => panic!("expected UnsupportedNode, got {other:?}"),
         }
+        assert_eq!(
+            err.to_string(),
+            "node '0' is kind 'Affine' — in native units outside the supported subset \
+             (Input, LIF, Linear, Output); `--sim-units` converts it, its bias an input of its own"
+        );
+        // any other kind, the message as before
+        assert_eq!(
+            ConvertError::UnsupportedNode {
+                node: "n".into(),
+                kind: "CubaLIF".into(),
+            }
+            .to_string(),
+            "node 'n' is kind 'CubaLIF' — outside the supported subset \
+             (Input, LIF, Linear, Output); refusing loudly rather than partially converting"
+        );
+    }
+
+    /// Two biased Affines under `--sim-units`
+    /// (`tools/gen_nir2json_fixtures.py`): each `W` a Linear under its
+    /// Affine's name, each bias an Input of one feature into a one-column
+    /// Linear into the LIF it feeds, from that LIF's depth, after the
+    /// file's nodes and edges.
+    #[test]
+    fn an_affine_converts_under_sim_units_its_bias_an_input_of_its_own() {
+        use neuralos_snn::nir::NirNodeKind::{Input, Lif, Linear, Output};
+        let (c, opts) = sim_conversion("affine_two_layer.nir");
+        assert_eq!(
+            c.stamp.bias,
+            [
+                Bias {
+                    input: "a/bias".into(),
+                    start: 0,
+                },
+                Bias {
+                    input: "c/bias".into(),
+                    start: 1,
+                },
+            ]
+        );
+        for d in ["node/nodes/a/bias", "node/nodes/c/bias"] {
+            assert!(
+                c.stamp.f32_datasets.iter().any(|x| x == d),
+                "{d} widened: {:?}",
+                c.stamp.f32_datasets
+            );
+        }
+        let g = NirImport::from_json(&c.json, opts).expect("imports");
+        let nodes: Vec<_> = g.nodes.iter().map(|n| (n.name, n.kind)).collect();
+        assert_eq!(
+            nodes,
+            [
+                ("a", Linear),
+                ("c", Linear),
+                ("input", Input),
+                ("l1", Lif),
+                ("l2", Lif),
+                ("output", Output),
+                ("a/bias", Input),
+                ("a/b", Linear),
+                ("c/bias", Input),
+                ("c/b", Linear),
+            ]
+        );
+        let name = |i: u32| g.nodes[i as usize].name;
+        let edges: Vec<_> = g.edges.iter().map(|&(a, b)| (name(a), name(b))).collect();
+        assert_eq!(
+            edges,
+            [
+                ("input", "a"),
+                ("a", "l1"),
+                ("l1", "c"),
+                ("c", "l2"),
+                ("l2", "output"),
+                ("a/bias", "a/b"),
+                ("a/b", "l1"),
+                ("c/bias", "c/b"),
+                ("c/b", "l2"),
+            ]
+        );
+        let (_, enc, report) = g.build_network().expect("assembles");
+        assert_eq!((report.neurons, report.inputs), (5, 3));
+        // the biases alone, `round(b · 1,000)` quanta a neuron
+        assert_eq!(
+            enc.encode(&[&[ZERO, ZERO], &[ONE], &[ONE]]),
+            [50, -20, 0, 30, -10]
+        );
+        // `W` alone, into l1; l2's `W` is a spike edge, not a drive
+        assert_eq!(
+            enc.encode(&[&[ONE, ZERO], &[ZERO], &[ZERO]]),
+            [500, 125, -500, 0, 0]
+        );
+    }
+
+    #[test]
+    fn an_affine_s_bias_of_the_wrong_length_is_bad_data() {
+        let opts = NirImportOptions {
+            dt_us: SIM_DT_US,
+            ..NirImportOptions::default()
+        };
+        match convert_file_opts(&fixture("affine_bias_length.nir"), opts, true) {
+            Err(ConvertError::BadData { dataset, what }) => {
+                assert_eq!(dataset, "node/nodes/c/bias");
+                assert_eq!(what, "3 values != the weight's 2 rows");
+            }
+            other => panic!("expected BadData, got {other:?}"),
+        }
+    }
+
+    /// A weight of one dimension is refused by name, never read as `W`'s
+    /// rows by its columns (`tools/gen_nir2json_fixtures.py`).
+    #[test]
+    fn a_weight_that_is_not_2_d_is_bad_data() {
+        match convert_file(&fixture("weight_1d.nir"), NirImportOptions::default()) {
+            Err(ConvertError::BadData { dataset, what }) => {
+                assert_eq!(dataset, "node/nodes/linear/weight");
+                assert_eq!(what, "1-D weight — expected 2-D");
+            }
+            other => panic!("expected BadData, got {other:?}"),
+        }
+    }
+
+    /// The two-layer Affine graph and a third Affine, `d`, that feeds
+    /// nothing (`tools/gen_nir2json_fixtures.py`): its `W` a Linear under
+    /// its name, and no input for its bias, which would drive nothing.
+    #[test]
+    fn an_affine_that_feeds_nothing_adds_no_bias_input() {
+        use neuralos_snn::nir::NirNodeKind::Linear;
+        let (c, opts) = sim_conversion("affine_dangling.nir");
+        let bias: Vec<_> = c
+            .stamp
+            .bias
+            .iter()
+            .map(|b| (b.input.as_str(), b.start))
+            .collect();
+        assert_eq!(bias, [("a/bias", 0), ("c/bias", 1)]);
+        let g = NirImport::from_json(&c.json, opts).expect("imports");
+        let d: Vec<_> = g
+            .nodes
+            .iter()
+            .filter(|n| n.name.starts_with('d'))
+            .map(|n| (n.name, n.kind))
+            .collect();
+        assert_eq!(d, [("d", Linear)]);
+    }
+
+    /// Node names by slot, for graphs given by kinds and edges.
+    fn slots(n: usize) -> Vec<String> {
+        (0..n).map(|i| i.to_string()).collect()
+    }
+
+    #[test]
+    fn a_bias_starts_at_the_depth_of_the_lifs_it_feeds() {
+        let start = |kinds: &[&str], edges: &[(usize, usize)], affine: usize| {
+            bias_start(&slots(kinds.len()), kinds, edges, affine).expect("placed")
+        };
+        // input → a → lif → b → lif → c → lif: a bias at each depth
+        let kinds = ["Input", "Affine", "LIF", "Affine", "LIF", "Affine", "LIF"];
+        let edges = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6)];
+        assert_eq!(
+            [1, 3, 5].map(|a| start(&kinds, &edges, a)),
+            [Some(0), Some(1), Some(2)]
+        );
+        // a direct LIF→LIF edge delays a spike too: input → x → lif →
+        // lif → a → lif
+        let kinds = ["Input", "Linear", "LIF", "LIF", "Affine", "LIF"];
+        let edges = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)];
+        assert_eq!(start(&kinds, &edges, 4), Some(2));
+        // two paths at one depth: input → x → a and input → y → a → lif
+        let kinds = ["Input", "Linear", "Linear", "Affine", "LIF"];
+        let edges = [(0, 1), (0, 2), (1, 3), (2, 3), (3, 4)];
+        assert_eq!(start(&kinds, &edges, 3), Some(0));
+        // a skip after the bias's LIF puts a later LIF at two depths, and
+        // that LIF is not the bias's: input → a → lif → lif → output, and
+        // the first lif → lif → the second
+        let kinds = ["Input", "Affine", "LIF", "LIF", "LIF", "Output"];
+        let edges = [(0, 1), (1, 2), (2, 3), (2, 4), (4, 3), (3, 5)];
+        assert_eq!(start(&kinds, &edges, 1), Some(0));
+        // an Affine into two LIFs at one depth: one start
+        assert_eq!(
+            start(
+                &["Input", "Affine", "LIF", "LIF"],
+                &[(0, 1), (1, 2), (1, 3)],
+                1
+            ),
+            Some(0)
+        );
+        // an Affine that feeds nothing places no bias
+        assert_eq!(start(&["Input", "Affine"], &[(0, 1)], 1), None);
+    }
+
+    #[test]
+    fn a_bias_with_no_place_is_refused_by_name() {
+        let refusal = |kinds: &[&str], edges: &[(usize, usize)], affine: usize| match bias_start(
+            &slots(kinds.len()),
+            kinds,
+            edges,
+            affine,
+        ) {
+            Err(ConvertError::Bias { node, why }) => {
+                assert_eq!(node, affine.to_string());
+                why
+            }
+            other => panic!("expected Bias, got {other:?}"),
+        };
+        let chain = [(0, 1), (1, 2), (2, 3), (3, 4)];
+        assert_eq!(
+            refusal(&["Input", "Linear", "LIF", "Affine", "Output"], &chain, 3),
+            "it feeds the Output '4', and a bias drives a LIF"
+        );
+        assert_eq!(
+            refusal(&["Input", "Affine", "Linear", "LIF"], &chain[..3], 1),
+            "it feeds the Linear '2', and a bias drives a LIF directly"
+        );
+        // the LIF at depth 1 through lif 2, and at depth 0 through 5
+        let kinds = ["Input", "Linear", "LIF", "Affine", "LIF", "Linear"];
+        let two = "the Inputs reach the LIF '4' it feeds at two depths, and a bias starts at one";
+        assert_eq!(
+            refusal(&kinds, &[&chain[..], &[(0, 5), (5, 4)]].concat(), 3),
+            two
+        );
+        // the LIF in a loop: depth 1, then 3 around it
+        assert_eq!(
+            refusal(&kinds, &[&chain[..], &[(4, 5), (5, 2)]].concat(), 3),
+            two
+        );
+        // lif 3 → a → lif 5, and no Input reaches lif 3
+        assert_eq!(
+            refusal(
+                &["Input", "Linear", "LIF", "LIF", "Affine", "LIF"],
+                &[(0, 1), (1, 2), (3, 4), (4, 5)],
+                4
+            ),
+            "no Input reaches the LIF '5' it feeds, and a bias starts at its depth"
+        );
+        // a loop back into the Input: the LIF at depth 0, and then the
+        // Input at depth 1
+        assert_eq!(
+            refusal(&["Input", "Affine", "LIF"], &[(0, 1), (1, 2), (2, 0)], 1),
+            "the Inputs reach the LIF '2' it feeds at two depths, and a bias starts at one"
+        );
+        // a LIF first does not place a bias that feeds an Output too
+        assert_eq!(
+            refusal(
+                &["Input", "Affine", "LIF", "Output"],
+                &[(0, 1), (1, 2), (1, 3)],
+                1
+            ),
+            "it feeds the Output '3', and a bias drives a LIF"
+        );
+        // an Affine no Input reaches, into lif 2 at depth 0 and lif 4 at
+        // depth 1: its one bias input has no one start, whichever edge
+        // the file names first
+        let kinds = ["Input", "Linear", "LIF", "Linear", "LIF", "Affine"];
+        for (affine_edges, lifs) in [
+            (
+                [(5, 2), (5, 4)],
+                "the LIFs '2' and '4' it feeds sit at depths 0 and 1",
+            ),
+            (
+                [(5, 4), (5, 2)],
+                "the LIFs '4' and '2' it feeds sit at depths 1 and 0",
+            ),
+        ] {
+            assert_eq!(
+                refusal(&kinds, &[&chain[..], &affine_edges[..]].concat(), 5),
+                format!("{lifs}, and a bias starts at one")
+            );
+        }
+        assert_eq!(
+            ConvertError::Bias {
+                node: "2".into(),
+                why: "it feeds the Output 'out', and a bias drives a LIF".into(),
+            }
+            .to_string(),
+            "node '2' is an Affine whose bias has no place: it feeds the Output 'out', \
+             and a bias drives a LIF"
+        );
     }
 
     #[test]
@@ -1123,7 +1755,13 @@ mod tests {
     #[test]
     fn freeze_refuses_a_name_that_is_not_a_module_name_first() {
         for bad in ["Graph", "3chain", "loop", "_", "", "two-layer"] {
-            match freeze(b"not json", NirImportOptions::default(), bad, &[(1, None)]) {
+            match freeze(
+                b"not json",
+                NirImportOptions::default(),
+                bad,
+                &[(1, None)],
+                &[],
+            ) {
                 Err(FreezeError::Name(n)) => assert_eq!(n, bad),
                 Err(e) => panic!("{bad:?}: refused as {e:?}, not by its name"),
                 Ok(_) => panic!("{bad:?}: frozen"),
@@ -1139,7 +1777,8 @@ mod tests {
                 b"not json",
                 NirImportOptions::default(),
                 "graph",
-                &[(1, None)]
+                &[(1, None)],
+                &[]
             ),
             Err(FreezeError::Import(_))
         ));
@@ -1209,6 +1848,7 @@ mod tests {
         assert!(s.contains("\"sim_units\":false"), "{s}");
         assert!(!s.contains("current_quanta"), "{s}");
         assert!(!s.contains("volt_scale"), "{s}");
+        assert!(!s.contains("\"bias\""), "{s}");
     }
 
     #[test]
@@ -1222,6 +1862,10 @@ mod tests {
             resolution: odd,
             sim_units: true,
             volt_scale: vec![(odd.to_string(), 10.0)],
+            bias: vec![Bias {
+                input: odd.to_string(),
+                start: 3,
+            }],
         };
         let assembly = Assembly {
             neurons: 1,
@@ -1243,6 +1887,7 @@ mod tests {
         assert_eq!(v["nir_version"], odd);
         assert_eq!(v["resolution"], odd);
         assert_eq!(v["volt_scale"][odd], 10.0);
+        assert_eq!(v["bias"][odd], 3);
         assert_eq!(v["f32_widened"][0], odd);
         assert_eq!(v["nodes"][odd], odd);
         assert_eq!(v["assembly"]["fused"][0]["chain"][0], odd);
@@ -1259,12 +1904,19 @@ mod tests {
     #[test]
     fn freeze_steps_each_run_of_its_drive() {
         let (c, opts) = sim_conversion("community/snnTorch_two_layer.nir");
-        let on = freeze(&c.json, opts, "graph", &[(8, Some(&[1]))]).expect("freezes");
-        let split = freeze(&c.json, opts, "graph", &[(4, Some(&[1])), (4, None)]).expect("freezes");
+        let on = freeze(&c.json, opts, "graph", &[(8, Some(&[ONE]))], &[]).expect("freezes");
+        let split =
+            freeze(&c.json, opts, "graph", &[(4, Some(&[ONE])), (4, None)], &[]).expect("freezes");
         assert_eq!(split.trace, on.trace, "one input in two runs, one trace");
         assert_eq!(split.trace.lines().count(), 9, "the header and 8 rows");
-        let off =
-            freeze(&c.json, opts, "graph", &[(4, Some(&[1])), (4, Some(&[0]))]).expect("freezes");
+        let off = freeze(
+            &c.json,
+            opts,
+            "graph",
+            &[(4, Some(&[ONE])), (4, Some(&[ZERO]))],
+            &[],
+        )
+        .expect("freezes");
         assert!(
             off.module
                 .contains("        (4, [1000, 0]),\n        (4, [0, 0]),\n")
@@ -1279,11 +1931,180 @@ mod tests {
         assert_ne!(off.trace, on.trace, "the second run drives nothing");
     }
 
+    /// The two biased Affines' graph: its Inputs in the encoder's order,
+    /// the graph's own two features, then `a/bias` from step 0 and
+    /// `c/bias` from step 1.
+    #[test]
+    fn the_inputs_are_the_graph_s_own_then_each_bias_input_from_its_start() {
+        let (c, opts) = sim_conversion("affine_two_layer.nir");
+        let g = NirImport::from_json(&c.json, opts).expect("imports");
+        let (_, enc, _) = g.build_network().expect("assembles");
+        let inputs = Inputs::new(&g, &enc, &c.stamp.bias).expect("the conversion's bias");
+        assert_eq!(
+            inputs.features(),
+            2,
+            "the graph's own, the bias inputs aside"
+        );
+        assert_eq!(inputs.starts(), [0, 1]);
+        assert_eq!(
+            inputs.at(0, &[ONE, ZERO]),
+            [vec![ONE, ZERO], vec![ONE], vec![ZERO]]
+        );
+        assert_eq!(
+            inputs.at(1, &[ZERO, ONE]),
+            [vec![ZERO, ONE], vec![ONE], vec![ONE]]
+        );
+        // each start once, ascending, whatever the bias inputs' order: the
+        // conversion lists them in the document order of their Affines,
+        // not by depth
+        let starts = |a_start: u32, c_start: u32| {
+            let bias = [
+                Bias {
+                    input: "a/bias".into(),
+                    start: a_start,
+                },
+                Bias {
+                    input: "c/bias".into(),
+                    start: c_start,
+                },
+            ];
+            Inputs::new(&g, &enc, &bias)
+                .expect("the graph's bias inputs")
+                .starts()
+        };
+        assert_eq!(starts(2, 1), [1, 2]);
+        assert_eq!(starts(1, 1), [1]);
+        // a bias input the graph does not hold, or not of one feature
+        let bias = |input: &str| {
+            Inputs::new(
+                &g,
+                &enc,
+                &[Bias {
+                    input: input.into(),
+                    start: 0,
+                }],
+            )
+        };
+        assert_eq!(bias("x/bias"), Err("x/bias".to_string()));
+        assert_eq!(bias("input"), Err("input".to_string()));
+        match freeze(
+            &c.json,
+            opts,
+            "graph",
+            &[(1, None)],
+            &[Bias {
+                input: "x/bias".into(),
+                start: 0,
+            }],
+        ) {
+            Err(e @ FreezeError::Bias(_)) => assert_eq!(
+                e.to_string(),
+                "the bias input \"x/bias\" is not an Input of one feature in the graph"
+            ),
+            other => panic!("expected Bias, got {other:?}"),
+        }
+    }
+
+    /// A graph with two Inputs of its own, the library's merge fixture:
+    /// `at` gives each Input its own values, in Input order.
+    #[test]
+    fn the_inputs_split_a_drive_in_input_order() {
+        let merge = include_bytes!("../../neuralos-snn/tests/nir_fixtures/merge.json");
+        let g = NirImport::from_json(merge, NirImportOptions::default()).expect("imports");
+        let (_, enc, _) = g.build_network().expect("assembles");
+        let inputs = Inputs::new(&g, &enc, &[]).expect("no bias input");
+        assert_eq!((inputs.features(), inputs.starts()), (4, vec![]));
+        let own = [1, 2, 3, 4].map(Thousandths);
+        assert_eq!(inputs.at(0, &own), [own[..2].to_vec(), own[2..].to_vec()]);
+    }
+
+    /// `freeze` drives each bias input 0 before its start and 1 from
+    /// it: the one run of three steps splits at `c/bias`'s start, and a
+    /// run that ends there needs no split. The drive gives the graph's own
+    /// two features alone.
+    #[test]
+    fn freeze_drives_each_bias_input_from_its_start() {
+        let (c, opts) = sim_conversion("affine_two_layer.nir");
+        let bias = &c.stamp.bias;
+        let f = freeze(&c.json, opts, "graph", &[(3, None)], bias).expect("freezes");
+        // W·(1, 1) + b into l1, and from step 1 c's bias into l2
+        assert!(
+            f.module.contains(
+                "        (1, [300, 855, -250, 0, 0]),\n        (2, [300, 855, -250, 30, -10]),\n"
+            ),
+            "{}",
+            f.module
+        );
+        let f = freeze(
+            &c.json,
+            opts,
+            "graph",
+            &[(1, Some(&[ONE, ZERO])), (4, Some(&[ZERO, ONE]))],
+            bias,
+        )
+        .expect("freezes");
+        assert!(
+            f.module.contains(
+                "        (1, [550, 105, -500, 0, 0]),\n        (4, [-200, 730, 250, 30, -10]),\n"
+            ),
+            "{}",
+            f.module
+        );
+        // bias inputs given in any order, a start shared: the run splits
+        // at each start inside it, once, in order
+        let module = |a_start: u32, c_start: u32| {
+            let bias = [
+                Bias {
+                    input: "a/bias".into(),
+                    start: a_start,
+                },
+                Bias {
+                    input: "c/bias".into(),
+                    start: c_start,
+                },
+            ];
+            freeze(&c.json, opts, "graph", &[(3, None)], &bias)
+                .expect("freezes")
+                .module
+        };
+        let m = module(2, 1);
+        assert!(
+            m.contains(concat!(
+                "        (1, [250, 875, -250, 0, 0]),\n",
+                "        (1, [250, 875, -250, 30, -10]),\n",
+                "        (1, [300, 855, -250, 30, -10]),\n",
+            )),
+            "{m}"
+        );
+        let m = module(1, 1);
+        assert!(
+            m.contains(concat!(
+                "        (1, [250, 875, -250, 0, 0]),\n",
+                "        (2, [300, 855, -250, 30, -10]),\n",
+            )),
+            "{m}"
+        );
+        assert!(matches!(
+            freeze(
+                &c.json,
+                opts,
+                "graph",
+                &[(1, Some(&[ONE, ZERO, ONE]))],
+                bias
+            ),
+            Err(FreezeError::Input {
+                run: 1,
+                given: 3,
+                features: 2
+            })
+        ));
+    }
+
     #[test]
     fn freeze_refuses_a_drive_it_cannot_step_by_name() {
         let (c, opts) = sim_conversion("community/snnTorch_two_layer.nir");
-        let refusal = |drive: &[(u32, Option<&[i16]>)]| {
-            freeze(&c.json, opts, "graph", drive)
+        let refusal = |drive: &[(u32, Option<&[Thousandths]>)]| {
+            freeze(&c.json, opts, "graph", drive, &[])
                 .map(|_| ())
                 .expect_err("refused")
                 .to_string()
@@ -1298,7 +2119,7 @@ mod tests {
             "the drive holds more steps than a trace counts"
         );
         assert_eq!(
-            refusal(&[(1, None), (1, Some(&[1, 1]))]),
+            refusal(&[(1, None), (1, Some(&[ONE, ONE]))]),
             "the drive's run 2 gives 2 values; the graph has 1 input feature, one value each"
         );
         // each count the other way: one value, two features
@@ -1316,7 +2137,7 @@ mod tests {
     #[test]
     fn freeze_returns_the_assembly_report_the_sidecar_carries() {
         let (c, opts) = sim_conversion("community/snnTorch_two_layer.nir");
-        let f = freeze(&c.json, opts, "graph", &[(1, None)]).expect("freezes");
+        let f = freeze(&c.json, opts, "graph", &[(1, None)], &[]).expect("freezes");
         assert_eq!(
             f.assembly,
             Assembly {
@@ -1347,8 +2168,14 @@ mod tests {
     #[test]
     fn freeze_and_the_sidecar_carry_a_two_stage_report_whole() {
         let branch = include_bytes!("../../neuralos-snn/tests/nir_fixtures/branch.json");
-        let f =
-            freeze(branch, NirImportOptions::default(), "branch", &[(1, None)]).expect("freezes");
+        let f = freeze(
+            branch,
+            NirImportOptions::default(),
+            "branch",
+            &[(1, None)],
+            &[],
+        )
+        .expect("freezes");
         // each tensor's absmax is 1.0, so each scale is 1 / 32767
         let scale = 1.0 / 32767.0;
         assert_eq!(
@@ -1377,6 +2204,7 @@ mod tests {
             resolution: "mv",
             sim_units: false,
             volt_scale: vec![],
+            bias: vec![],
         };
         let s = stamp_json(
             &stamp,
