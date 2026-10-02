@@ -1,0 +1,8 @@
+# The planted crate's cargo-mutants config, the selftest's: cargo-mutants
+# reads it all, the rules `exclude_re` alone.
+cap_lints = true
+
+# One equivalent of each tool: `reach`'s `< BOUND` made `<= BOUND`, and
+# `BOUND` made 200000001. Each differs only at `BOUND`, which no test
+# reaches.
+exclude_re = ["replace (< with <= in reach|200_000_000 with 200000001)$"]
