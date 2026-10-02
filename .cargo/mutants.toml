@@ -1,0 +1,12 @@
+# The mutation pass's config (tools/mutants.sh): cargo-mutants 27.1.0
+# reads it all, tools/mutants/rules.py `exclude_re` alone. cargo-mutants
+# refuses a key it does not know, so the rules keep none of their own.
+
+# No warning makes a mutant unviable, whatever RUSTFLAGS the caller
+# exports; the rules add the same --cap-lints=warn.
+cap_lints = true
+
+# An equivalent mutant goes here: one regex over its name, which has one
+# shape in both tools (`<file>:<line>:<col>: <what> in <fn>`), with a
+# comment above it saying why no test can kill it.
+exclude_re = []

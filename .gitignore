@@ -37,6 +37,9 @@ bench-rebuild/
 # Per-commit loop scratch (tools/percommit.sh: worktree + target dir) — never committed
 .percommit/
 
+# Mutation pass trees, tables and logs (tools/mutants.sh) — never committed
+.mutants/
+
 # Paper figure venv (repo-local alternative to system python)
 .figvenv/
 

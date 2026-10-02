@@ -1,0 +1,162 @@
+# tools/mutants.sh selftest's known answers: every mutant cargo-mutants
+# and the rules make in this crate, each with its verdict and why, and the
+# blind lines, a pass at a time. Each verdict was written from the code,
+# before a run. The selftest compares every column but the why with its
+# run; `#:` lines are its passes and the cargo-mutants it expects.
+# tests/cli.rs rides the off pass: no tool mutates it, so none of its
+# lines is blind.
+#: cargo-mutants 27.1.0
+#: pass off src/lib.rs src/main.rs src/gated.rs tests/cli.rs
+#: pass on --features x src/gated.rs src/lib.rs:123-126
+pass	verdict	tool	name	note	why
+off	CAUGHT	cargo-mutants	src/lib.rs:27:5: replace run -> Result<(), E> with Ok(())		drive passes: cli.rs reads exit 0, not 1
+off	CAUGHT	cargo-mutants	src/lib.rs:28:9: delete match arm "drive" in run		drive falls to `_`: exit 0, not 1
+off	CAUGHT	cargo-mutants	src/lib.rs:29:9: delete match arm "other" in run		other falls to `_`: exit 0, not 2
+off	CAUGHT	cargo-mutants	src/lib.rs:36:5: replace kind -> usize with 0		kinds wants 3 first; a parameter unused, a warning only
+off	CAUGHT	cargo-mutants	src/lib.rs:36:5: replace kind -> usize with 1		kinds wants 3 first
+off	CAUGHT	cargo-mutants	src/lib.rs:37:20: replace match guard v.len() != n with true in kind		the brief's row, cargo-mutants' guard: a full slice reads n, not 0
+off	CAUGHT	cargo-mutants	src/lib.rs:37:20: replace match guard v.len() != n with false in kind		the brief's row: a short slice reads 0, not n
+off	CAUGHT	cargo-mutants	src/lib.rs:37:28: replace != with == in kind		a short slice reads 0, not n
+off	CAUGHT	cargo-mutants	src/lib.rs:42:27: replace == with != in kind		"x" reads 2, not 3
+off	CAUGHT	cargo-mutants	src/lib.rs:53:5: replace skip -> bool with true		skip("1 2") is false; `line` unused, a warning only
+off	CAUGHT	cargo-mutants	src/lib.rs:53:5: replace skip -> bool with false		skip("  # x") is true
+off	CAUGHT	cargo-mutants	src/lib.rs:54:21: replace || with && in skip		"# x" is not empty: false
+off	CAUGHT	cargo-mutants	src/lib.rs:59:5: replace sorted -> Vec<u32> with vec![]		sorts wants [1, 2]
+off	CAUGHT	cargo-mutants	src/lib.rs:59:5: replace sorted -> Vec<u32> with vec![0]		sorts wants [1, 2]
+off	CAUGHT	cargo-mutants	src/lib.rs:59:5: replace sorted -> Vec<u32> with vec![1]		sorts wants [1, 2]
+off	CAUGHT	cargo-mutants	src/lib.rs:66:5: replace level -> u32 with 0		[5, 5] reads 0, not 1; `xs` unused, a warning only
+off	CAUGHT	cargo-mutants	src/lib.rs:66:5: replace level -> u32 with 1		[5, 6] reads 1, not 2
+off	CAUGHT	cargo-mutants	src/lib.rs:67:14: replace > with == in level		11 == 10 is false: [5, 6] reads 1, not 2
+off	CAUGHT	cargo-mutants	src/lib.rs:67:14: replace > with < in level		11 < 10 is false: [5, 6] reads 1, not 2
+off	CAUGHT	cargo-mutants	src/lib.rs:67:14: replace > with >= in level		10 >= 10: [5, 5] reads 2, not 1
+off	CAUGHT	cargo-mutants	src/lib.rs:76:5: replace fill -> usize with 0		fills wants 3
+off	CAUGHT	cargo-mutants	src/lib.rs:76:5: replace fill -> usize with 1		fills wants 3
+off	CAPPED	cargo-mutants	src/lib.rs:78:25: replace && with || in fill		`v.len() < BOUND` alone holds the loop: the fill passes 1 GB
+off	CAUGHT	cargo-mutants	src/lib.rs:78:17: replace < with == in fill		0 == 3 is false: nothing pushed, 0
+off	CAUGHT	cargo-mutants	src/lib.rs:78:17: replace < with > in fill		0 > 3 is false: nothing pushed, 0
+off	CAUGHT	cargo-mutants	src/lib.rs:78:17: replace < with <= in fill		one push more: 4
+off	CAUGHT	cargo-mutants	src/lib.rs:78:36: replace < with == in fill		0 == BOUND is false: nothing pushed, 0
+off	CAUGHT	cargo-mutants	src/lib.rs:78:36: replace < with > in fill		0 > BOUND is false: nothing pushed, 0
+off	MISSED	cargo-mutants	src/lib.rs:78:36: replace < with <= in fill		differs only at BOUND, which no test reaches; reach's twin is excluded
+off	CAPPED	cargo-mutants	src/lib.rs:79:15: replace += with -= in fill		the brief's row: total falls, only BOUND stops the fill, past 1 GB
+off	CAPPED	cargo-mutants	src/lib.rs:79:15: replace += with *= in fill		total stays 0: the fill runs to BOUND, past 1 GB
+off	CAUGHT	cargo-mutants	src/lib.rs:89:5: replace reach -> usize with 0		reaches wants 2
+off	CAUGHT	cargo-mutants	src/lib.rs:89:5: replace reach -> usize with 1		reaches wants 2
+off	CAUGHT	cargo-mutants	src/lib.rs:91:22: replace < with == in reach		1 == BOUND is false: nothing popped, 0
+off	CAUGHT	cargo-mutants	src/lib.rs:91:22: replace < with > in reach		1 > BOUND is false: nothing popped, 0
+off	EXCLUDED	cargo-mutants	src/lib.rs:91:22: replace < with <= in reach		the brief's row, the planted exclude_re: differs only at BOUND
+off	CAUGHT	cargo-mutants	src/lib.rs:94:23: replace && with || in reach		an edge into v pushes past the set: 0, 1 and 3 seen, 3
+off	CAUGHT	cargo-mutants	src/lib.rs:94:18: replace == with != in reach		the edges out of v push: 0, 3 and 1 seen, 3
+off	CAUGHT	cargo-mutants	src/lib.rs:105:5: replace count -> u32 with 0		counts wants 3
+off	CAUGHT	cargo-mutants	src/lib.rs:105:5: replace count -> u32 with 1		counts wants 3
+off	CAUGHT	cargo-mutants	src/lib.rs:106:13: replace < with == in count		0 == 3 is false: count(3) is 0
+off	CAUGHT	cargo-mutants	src/lib.rs:106:13: replace < with > in count		0 > 3 is false: count(3) is 0
+off	CAUGHT	cargo-mutants	src/lib.rs:106:13: replace < with <= in count		count(3) is 4
+off	CAUGHT	cargo-mutants	src/lib.rs:107:11: replace += with -= in count		0 - 1 overflows a u32: the test panics
+off	TIMEOUT	cargo-mutants	src/lib.rs:107:11: replace += with *= in count		the brief's row: n stays 0, nothing allocates, the timeout ends it
+off	CAUGHT	cargo-mutants	src/lib.rs:115:5: replace depth -> i64 with 0		depths wants 3
+off	CAUGHT	cargo-mutants	src/lib.rs:115:5: replace depth -> i64 with 1		depths wants 3
+off	CAUGHT	cargo-mutants	src/lib.rs:115:5: replace depth -> i64 with -1		depths wants 3
+off	CAUGHT	cargo-mutants	src/lib.rs:115:10: replace <= with > in depth		3 > 0 returns 0
+off	CAUGHT	cargo-mutants	src/lib.rs:118:7: replace + with - in depth		depth(3) is 1
+off	CAUGHT	cargo-mutants	src/lib.rs:118:7: replace + with * in depth		depth(3) is 0
+off	CAUGHT	cargo-mutants	src/lib.rs:118:17: replace - with + in depth	signal 6	n climbs: the stack overflows, SIGABRT
+off	CAUGHT	cargo-mutants	src/lib.rs:118:17: replace - with / in depth	signal 6	n / 1 is n: the stack overflows, SIGABRT
+off	MISSED	cargo-mutants	src/lib.rs:125:5: replace thrice -> u32 with 0		the brief's row: thrice is compiled out with x off, in a file every build reads
+off	MISSED	cargo-mutants	src/lib.rs:125:5: replace thrice -> u32 with 1		the brief's row: thrice is compiled out with x off, in a file every build reads
+off	MISSED	cargo-mutants	src/lib.rs:125:7: replace * with + in thrice		the brief's row: thrice is compiled out with x off, in a file every build reads
+off	MISSED	cargo-mutants	src/lib.rs:125:7: replace * with / in thrice		the brief's row: thrice is compiled out with x off, in a file every build reads
+off	CAUGHT	cargo-mutants	src/lib.rs:130:5: replace label -> String with String::new()		labels wants "a, b nodes"
+off	CAUGHT	cargo-mutants	src/lib.rs:130:5: replace label -> String with "xyzzy".into()		labels wants "a, b nodes"
+off	CAUGHT	cargo-mutants	src/lib.rs:137:5: replace code -> std::process::ExitCode with Default::default()		code(true) reads 0, not 4
+off	CAUGHT	cargo-mutants	src/lib.rs:149:5: replace tag -> String with String::new()		tags wants "ex"
+off	CAUGHT	cargo-mutants	src/lib.rs:149:5: replace tag -> String with "xyzzy".into()		tags wants "ex"
+off	CAUGHT	cargo-mutants	src/lib.rs:150:9: delete match arm "x" in tag		the review's P1: "x" falls to `_`, "" not "ex"
+off	CAUGHT	cargo-mutants	src/lib.rs:162:5: replace push_name with ()		nothing pushed: 0, not 1
+off	CAUGHT	cargo-mutants	src/main.rs:8:5: replace usage -> ExitCode with Default::default()		drive exits 0, not 1; `why` unused, a warning only
+off	CAUGHT	cargo-mutants	src/main.rs:13:5: replace main -> ExitCode with Default::default()		every run exits 0
+off	UNBUILT	cargo-mutants	src/gated.rs:6:5: replace twice -> u32 with 0		the brief's row: no .d file lists src/gated.rs with x off
+off	UNBUILT	cargo-mutants	src/gated.rs:6:5: replace twice -> u32 with 1		the brief's row: no .d file lists src/gated.rs with x off
+off	UNBUILT	cargo-mutants	src/gated.rs:6:7: replace * with + in twice		the brief's row: no .d file lists src/gated.rs with x off
+off	UNBUILT	cargo-mutants	src/gated.rs:6:7: replace * with / in twice		the brief's row: no .d file lists src/gated.rs with x off
+off	UNBUILT	rules	src/gated.rs:6:9: replace 2 with 3 in twice		no .d file lists src/gated.rs with x off
+off	EXCLUDED	rules	src/lib.rs:14:22: replace 200_000_000 with 200000001		the brief's row, the planted exclude_re: differs only at BOUND
+off	CAUGHT	rules	src/lib.rs:38:20: replace 0 with 1 in kind		a full slice reads 1, not 0
+off	CAUGHT	rules	src/lib.rs:40:16: replace if condition key.is_empty() with true in kind		"nodes" reads 1, not 2
+off	CAUGHT	rules	src/lib.rs:40:16: replace if condition key.is_empty() with false in kind		"" reads 3, not 1
+off	UNVIABLE	rules	src/lib.rs:40:19: delete .is_empty() in kind		`if key`: a &str is no bool
+off	CAUGHT	rules	src/lib.rs:41:17: replace 1 with 2 in kind		"" reads 2, not 1
+off	CAUGHT	rules	src/lib.rs:42:23: replace if condition key == "nodes" with true in kind		the brief's row, the string kept: "x" reads 2, not 3
+off	CAUGHT	rules	src/lib.rs:42:23: replace if condition key == "nodes" with false in kind		the brief's row: "nodes" reads 3, not 2
+off	CAUGHT	rules	src/lib.rs:43:17: replace 2 with 3 in kind		"nodes" reads 3, not 2
+off	CAUGHT	rules	src/lib.rs:45:17: replace 3 with 4 in kind		"x" reads 4, not 3
+off	CAUGHT	rules	src/lib.rs:53:20: delete .trim() in skip		the brief's row: "  # x" no longer skips
+off	UNVIABLE	rules	src/lib.rs:54:9: delete .is_empty() in skip		the brief's row: `line || …` does not type-check
+off	UNVIABLE	rules	src/lib.rs:54:28: delete .starts_with('#') in skip		`… || line`: a &str is no bool
+off	MISSED	rules	src/lib.rs:59:5: delete v.sort_unstable(); in sorted		the brief's row: sorts gives sorted input; `mut` unused, a warning only
+off	UNVIABLE	rules	src/lib.rs:66:24: delete .iter() in level		a slice has no sum
+off	UNVIABLE	rules	src/lib.rs:66:31: delete .sum() in level		an iterator is no u32
+off	CAUGHT	rules	src/lib.rs:67:8: replace if condition total > 10 with true in level		the brief's row: `total` left unused, a warning only; [5, 5] reads 2
+off	CAUGHT	rules	src/lib.rs:67:8: replace if condition total > 10 with false in level		[5, 6] reads 1, not 2
+off	CAUGHT	rules	src/lib.rs:67:16: replace 10 with 11 in level		11 > 11 is false: [5, 6] reads 1
+off	CAUGHT	rules	src/lib.rs:68:16: replace 2 with 3 in level		[5, 6] reads 3
+off	CAUGHT	rules	src/lib.rs:70:5: replace 1 with 2 in level		[5, 5] reads 2
+off	CAUGHT	rules	src/lib.rs:77:26: replace 0 with 1 in fill		two pushes: 2, not 3
+off	UNVIABLE	rules	src/lib.rs:78:29: delete .len() in fill		a Vec compared with a usize
+off	CAUGHT	rules	src/lib.rs:79:18: replace 1 with 2 in fill		total steps by 2: two pushes
+off	CAUGHT	rules	src/lib.rs:80:9: delete v.push(total); in fill		nothing pushed: 0; `mut v` unused, a warning only
+off	UNVIABLE	rules	src/lib.rs:82:6: delete .len() in fill		a Vec returned for a usize
+off	UNVIABLE	rules	src/lib.rs:91:15: delete .len() in reach		a Vec compared with a usize
+off	UNVIABLE	rules	src/lib.rs:92:27: delete .pop() in reach		a Vec matched as an Option
+off	CAPPED	rules	src/lib.rs:94:16: replace if condition b == v && seen.insert(a) with true in reach		the brief's row: every pop pushes three, only BOUND stops it, past 1 GB
+off	CAUGHT	rules	src/lib.rs:94:16: replace if condition b == v && seen.insert(a) with false in reach		nothing pushed or seen: 0
+off	UNVIABLE	rules	src/lib.rs:94:30: delete .insert(a) in reach		`b == v && seen`: a set is no bool
+off	CAUGHT	rules	src/lib.rs:95:17: delete work.push(a); in reach		the walk stops after one step: 1
+off	UNVIABLE	rules	src/lib.rs:99:9: delete .len() in reach		a set returned for a usize
+off	CAUGHT	rules	src/lib.rs:105:17: replace 0 with 1 in count		count(0) is 1
+off	CAUGHT	rules	src/lib.rs:107:14: replace 1 with 2 in count		count(3) is 4
+off	CAUGHT	rules	src/lib.rs:115:8: replace if condition n <= 0 with true in depth		depth(3) is 0
+off	CAUGHT	rules	src/lib.rs:115:8: replace if condition n <= 0 with false in depth	signal 6	the brief's row: no base case, the stack overflows, SIGABRT
+off	CAUGHT	rules	src/lib.rs:115:13: replace 0 with 1 in depth		depth(3) is 2
+off	CAUGHT	rules	src/lib.rs:116:16: replace 0 with 1 in depth		depth(3) is 4
+off	CAUGHT	rules	src/lib.rs:118:5: replace 1 with 2 in depth		depth(3) is 6
+off	CAUGHT	rules	src/lib.rs:118:19: replace 1 with 2 in depth		depth(3) is 2
+off	MISSED	rules	src/lib.rs:125:9: replace 3 with 4 in thrice		the brief's row: thrice is compiled out with x off
+off	CAUGHT	rules	src/lib.rs:138:9: delete match arm true in code		the review's P1: true falls to _other, 5 not 4
+off	CAUGHT	rules	src/lib.rs:140:42: replace 4 with 5 in code		code(true) reads 5
+off	UNVIABLE	rules	src/lib.rs:142:9: delete match arm _other in code		false no longer covered
+off	CAUGHT	rules	src/lib.rs:142:48: replace 5 with 6 in code		code(false) reads 6
+off	CAUGHT	rules	src/lib.rs:162:5: delete v.push(String::from( "a name long enough that rustfmt keeps this call statement over three lines", )); in push_name		the review's P1, its sibling: nothing pushed, 0
+off	CAUGHT	rules	src/main.rs:9:20: replace 1 with 2 in usage		drive exits 2, not 1
+off	UNVIABLE	rules	src/main.rs:13:31: delete .nth(1) in main		Args has no unwrap_or_default
+off	CAUGHT	rules	src/main.rs:13:36: replace 1 with 2 in main		every arg reads "": drive exits 0
+off	UNVIABLE	rules	src/main.rs:13:38: delete .unwrap_or_default() in main		an Option where run takes a &str
+off	UNVIABLE	rules	src/main.rs:15:9: delete match arm Ok(()) in main		the brief's row: Ok(_) no longer covered
+off	CAUGHT	rules	src/main.rs:16:9: delete match arm Err(e @ planted::E::Drive(_)) in main		the brief's row: drive falls to Err(e), exit 2; `usage` unused, a warning only
+off	UNVIABLE	rules	src/main.rs:17:9: delete match arm Err(e) in main		Err(Other) no longer covered
+off	CAUGHT	rules	src/main.rs:19:28: replace 2 with 3 in main		other exits 3, not 2
+off	BLIND	-	src/lib.rs:30		`_ => Ok(())`: cargo-mutants deletes the other arms, never `_`; no rule reads Ok(())
+off	BLIND	-	src/lib.rs:66		a let's value, xs.iter().sum(): its two cuts do not build
+off	BLIND	-	src/lib.rs:76		a let's value, Vec::new(): no rule
+off	BLIND	-	src/lib.rs:82		the tail v.len(): its cut does not build
+off	BLIND	-	src/lib.rs:89		a let's value, HashSet::new(): no rule
+off	BLIND	-	src/lib.rs:90		a let's value in a macro, vec![to]: no rule
+off	BLIND	-	src/lib.rs:92		work.pop() in a let-else: its cut does not build, `break` has no rule
+off	BLIND	-	src/lib.rs:99		the tail seen.len(): its cut does not build
+off	BLIND	-	src/lib.rs:130		the brief's row: a format! argument, and no rule reads a macro's arguments
+off	BLIND	-	src/lib.rs:139		the review's P1: the arm's deletion reaches its first line only, and no mutant reaches the eprintln!
+off	BLIND	-	src/lib.rs:151		the review's P1: the same for cargo-mutants' arm; no mutant reaches the let
+off	BLIND	-	src/main.rs:8		an eprintln! statement: macros aside
+off	BLIND	-	src/main.rs:14		the match's scrutinee: no rule
+off	BLIND	-	src/main.rs:18		an eprintln! statement; its arm's deletion does not build
+off	BLIND	-	src/gated.rs:6		every mutant UNBUILT: no build reads src/gated.rs with x off
+on	CAUGHT	cargo-mutants	src/gated.rs:6:5: replace twice -> u32 with 0		the brief's row: with x on, twice(3) reads 0
+on	CAUGHT	cargo-mutants	src/gated.rs:6:5: replace twice -> u32 with 1		twice(3) reads 1
+on	CAUGHT	cargo-mutants	src/gated.rs:6:7: replace * with + in twice		3 + 2 is 5
+on	CAUGHT	cargo-mutants	src/gated.rs:6:7: replace * with / in twice		3 / 2 is 1
+on	CAUGHT	cargo-mutants	src/lib.rs:125:5: replace thrice -> u32 with 0		the brief's row: with x on, thrice(2) reads 0
+on	CAUGHT	cargo-mutants	src/lib.rs:125:5: replace thrice -> u32 with 1		thrice(2) reads 1
+on	CAUGHT	cargo-mutants	src/lib.rs:125:7: replace * with + in thrice		2 + 3 is 5
+on	CAUGHT	cargo-mutants	src/lib.rs:125:7: replace * with / in thrice		2 / 3 is 0
+on	CAUGHT	rules	src/gated.rs:6:9: replace 2 with 3 in twice		twice(3) reads 9
+on	CAUGHT	rules	src/lib.rs:125:9: replace 3 with 4 in thrice		thrice(2) reads 8

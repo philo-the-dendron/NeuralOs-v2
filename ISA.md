@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@25aff18 (PR #50 merged 2026-09-30 17:25 UTC: round 53, tier 2, NIR parity's PR 2a, the first half of the reach: the import's edge walk reading a node's field 64 deep as the scan does, the JSON's units mark and the import's check, `--drive` runs and the assembly report for `--freeze`, the fan-in known miss under random input; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 53 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check; NIR at true scale under `--sim-units`, with its parity test against snnTorch, which ticks no check; the converter surface, the units mark and `--drive` with the report, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/nir-affine, round 54 (NIR PR 2's second half, 2b, tier 2: Affine under `--sim-units`, its bias an input of its own driven from its start; the graph encoder's input in thousandths, `Thousandths`; a model snnTorch trained, in the parity set; five commits), not pushed; no trace, no frozen file and no firmware `.text` moved · open(session): the rewrite's landing and its per-commit loop BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@268b831 (PR #51 merged 2026-10-02 13:51 UTC: round 54, tier 2, NIR parity's PR 2b, the second half of the reach: Affine under `--sim-units`, its bias an input of its own driven from its start; the graph encoder's input in thousandths, `Thousandths`; a model snnTorch trained, in the parity set; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 54 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check; NIR at true scale under `--sim-units`, with its parity test against snnTorch, which ticks no check; the converter surface, the units mark and `--drive` with the report, which ticks no check; Affine under `--sim-units` and the input in thousandths, with a trained model in the parity set, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/mutants-tool, round 55 (tier 3: the mutation pass as one command, `tools/mutants.sh` with the rules and a planted crate; the close-out check, `tools/closeout.py`; the AGENTS clause; five commits), not pushed; no workspace crate, trace, frozen file or firmware `.text` moved · open(session): the per-commit loop on the fix round BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-10-02T01:45:00Z
+updated: 2026-10-02T18:59:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -10003,3 +10003,36 @@ adaptation, then the substrate's resolution, its class snnTorch's on 198
 of 200 digits, most exact trains silent on both sides (of the 532 output
 trains snnTorch fires 25 run exact, 226 with adaptation off). No check
 ticks. **Guards.** 1: appended, head refreshed; 2 and 3: not in play.
+
+## Close-out (round 55 — the mutation pass and the close-out check; tier 3 — 2026-10-02)
+
+Branch `work/mutants-tool` from `main@268b831`, tier 3, five commits:
+`2f372e8` the rules, the trial's script moved in, its if-rule whole, an
+arm rule and a call rule new; `ec576c4` `tools/mutants.sh`, both tools
+in one capped scope, their table and the planted crate; `2631e4b`
+`tools/closeout.py`; `dbf22a8` the AGENTS clause and cut 3; this.
+**Rulings** (philo, 2026-09-29 to 10-02): no dependencies; both
+close-out checks, the form and the ancestry; at the builder's stop (the
+first mutant after a file switch rebuilds its crate), UNBUILT read from
+the run's own `.d` files alone; at the review, blind lines only in a
+package's `src/`, and an arm deleted over several lines reaching its
+first line only. **Falsifiers**: the selftest, 151 rows as planted,
+CAPPED 4 and the scope's `oom_kill` 4, red with CAPPED read as caught,
+with the `.d` check dropped, under an 8 GB cap, each growth then a wrong
+count (peak 1643 MiB), with blind lines read outside `src/`, with arms
+reaching their whole span, or calls their first line only; the close-out
+check's 10 planted cases, red allowing 31 lines. **Real data**, a clone
+with 2a's and 2b's bundles: at 2a's build before its fix round the Drive
+arm and `trim()` MISSED, `:245` and `:255` blind; at `875f926` both
+caught; at `db52d06` the `if true` at `:525` CAPPED, one kill; the
+close-out check red at 2a's first record (no heading) and at 2b's build
+(a sha only a bundle holds), green at `875f926` and `db52d06`, as at
+rounds 45 to 54. **Record-only**, for the hunt: the length check of
+nir2json's `read_weight` made false survives on `main`; at `875f926`,
+`main.rs`'s `.clone()` (`:247`) and the edge count's `1` (`:292`)
+survive; cargo-mutants mutates code under `cfg(all(test, …))`, 156 of
+`simd.rs`'s 178; a call's or a cut's span reaches each line it holds;
+the rules mutate a test module in its own file; no rule mutates a number
+beside `..`; max, min and abs have no planted row; the close-out check
+counts the close-out alone, skips shas of 8+ hex. No check ticks.
+**Guards.** 1: appended, head refreshed; 2 and 3: not in play.

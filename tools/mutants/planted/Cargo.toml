@@ -1,0 +1,15 @@
+[package]
+name = "planted"
+version = "0.0.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "Planted cases for tools/mutants.sh selftest: each item a trap the mutation pass met, with its known verdicts in EXPECTED.tsv"
+
+# Standalone on purpose (as in proofs/): the selftest copies it into
+# .mutants/, and the repo workspace never sees it.
+[workspace]
+
+[features]
+# Off unless a pass names it: src/gated.rs, and `thrice` in src/lib.rs.
+x = []
