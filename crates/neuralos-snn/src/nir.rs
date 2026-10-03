@@ -2411,6 +2411,169 @@ mod std_assembly {
             assert_eq!(firsts, vec![3, 14, 1, 3]);
         }
 
+        /// Two LIF neurons for the stage tests below, at the
+        /// parameters `--sim-units` writes, which import in either units.
+        fn lif2(b: &mut NirBuilder<'_>) -> usize {
+            b.add_lif_population(
+                "lif",
+                &NirLifParams {
+                    tau_s: &[0.005; 2],
+                    r_ohm: &[5e8; 2],
+                    v_leak_v: &[0.0; 2],
+                    v_threshold_v: &[0.01; 2],
+                    v_reset_v: Some(&[0.0; 2]),
+                },
+            )
+            .expect("lif")
+        }
+
+        /// A root that reaches one Linear twice, directly and through
+        /// another Linear (a skip), arrives as the sum of both paths: the
+        /// stage is `W_l·(I + W_p)` of the dequantized weights, whichever
+        /// of the two edges into `l` the graph lists first. Natively a
+        /// stage is quantized against its own absmax; in simulation units
+        /// it keeps its true scale. Both are pinned as the stored identity
+        /// gave them (round 56): the source tensors' product would end in
+        /// 10,922 natively.
+        #[test]
+        fn a_skip_sums_the_direct_path_and_the_composed_one() {
+            let units = [
+                (centi(), [32_767, 13_107, -9_830, 10_923]),
+                (NirImportOptions::sim_units(100), [1_875, 750, -563, 625]),
+            ];
+            for (opts, want) in units {
+                for direct_first in [true, false] {
+                    let mut b = NirBuilder::new(opts);
+                    let inp = b.add_input("input", &[2]).expect("input");
+                    let p = b
+                        .add_linear("p", &[0.5, -0.25, 0.75, 1.0], 2, 2)
+                        .expect("p");
+                    let l = b.add_linear("l", &[1.0, 0.5, -0.5, 0.25], 2, 2).expect("l");
+                    let lif = lif2(&mut b);
+                    let out = b.add_output("out", &[2]).expect("out");
+                    let mut edges = vec![(inp, p), (p, l), (l, lif), (lif, out)];
+                    edges.insert(if direct_first { 0 } else { 2 }, (inp, l));
+                    for (from, to) in edges {
+                        b.add_edge(from, to).expect("edge");
+                    }
+                    let g = b.build().expect("builds");
+                    let (_, enc, rep) = g.build_network().expect("assembles");
+                    assert_eq!(rep.stages, 1, "input → l, one stage");
+                    assert_eq!(rep.fused.len(), 1);
+                    assert_eq!(rep.fused[0].chain, vec!["p", "l"]);
+                    let units = opts.units;
+                    assert_eq!(
+                        enc.mats[0].q, want,
+                        "{units:?}, direct first: {direct_first}"
+                    );
+                }
+            }
+        }
+
+        /// Three Linears in a chain compose as their product,
+        /// `W_3·W_2·W_1` of the dequantized weights, natively and in
+        /// simulation units, pinned as the stored identity gave them
+        /// (round 56). Two chains: 2 → 2 → 2 → 2 features, where each
+        /// composed matrix has two rows and two columns, and 2 → 1 → 1 → 2,
+        /// where each is one row high.
+        #[test]
+        fn three_linears_in_a_chain_compose_as_their_product() {
+            let square: [(&[f64], usize, usize); 3] = [
+                (&[0.5, -0.25, 0.75, 1.0], 2, 2),
+                (&[1.0, 0.5, -0.5, 0.25], 2, 2),
+                (&[0.25, -1.0, 1.0, 0.5], 2, 2),
+            ];
+            let narrow: [(&[f64], usize, usize); 3] =
+                [(&[0.5, -0.25], 1, 2), (&[0.75], 1, 1), (&[1.0, -0.5], 2, 1)];
+            let chains = [
+                (square, centi(), [10_923, -12_136, 32_767, 16_991]),
+                (
+                    square,
+                    NirImportOptions::sim_units(100),
+                    [281, -313, 844, 438],
+                ),
+                (narrow, centi(), [32_767, -16_384, -16_384, 8_192]),
+                (
+                    narrow,
+                    NirImportOptions::sim_units(100),
+                    [375, -188, -188, 94],
+                ),
+            ];
+            for (linears, opts, want) in chains {
+                let mut b = NirBuilder::new(opts);
+                let mut prev = b.add_input("input", &[2]).expect("input");
+                for (name, (w, rows, cols)) in ["l1", "l2", "l3"].into_iter().zip(linears) {
+                    let l = b.add_linear(name, w, rows, cols).expect("linear");
+                    b.add_edge(prev, l).expect("edge");
+                    prev = l;
+                }
+                let lif = lif2(&mut b);
+                let out = b.add_output("out", &[2]).expect("out");
+                b.add_edge(prev, lif).expect("edge");
+                b.add_edge(lif, out).expect("edge");
+                let g = b.build().expect("builds");
+                let (_, enc, rep) = g.build_network().expect("assembles");
+                assert_eq!(rep.stages, 1, "input → l3, one stage");
+                assert_eq!(rep.fused.len(), 1);
+                assert_eq!(rep.fused[0].chain, vec!["l1", "l2", "l3"]);
+                let units = opts.units;
+                assert_eq!(enc.mats[0].q, want, "{units:?}");
+            }
+        }
+
+        /// A root edge listed twice counts twice: the copy sums with the
+        /// first, `2·W_l` alone and `W_l·(2I + W_p)` in a skip whose direct
+        /// edge is listed twice before its composed path. `from_json` and
+        /// `NirBuilder::build` refuse a duplicate edge, but `edges` is
+        /// `pub`, and a caller can push one onto a built graph. Natively
+        /// a stage is quantized against its own absmax, so `2·W_l` shows
+        /// in simulation units alone and the skip in both. Pinned as the
+        /// stored identity gave them (round 56).
+        #[test]
+        fn a_root_edge_listed_twice_counts_twice() {
+            let cases = [
+                (false, centi(), [32_767, 16_384, -16_384, 8_192]),
+                (
+                    false,
+                    NirImportOptions::sim_units(100),
+                    [2_000, 1_000, -1_000, 500],
+                ),
+                (true, centi(), [32_767, 14_247, -12_110, 9_973]),
+                (
+                    true,
+                    NirImportOptions::sim_units(100),
+                    [2_875, 1_250, -1_063, 875],
+                ),
+            ];
+            for (skip, opts, want) in cases {
+                let mut b = NirBuilder::new(opts);
+                let inp = b.add_input("input", &[2]).expect("input");
+                let l = b.add_linear("l", &[1.0, 0.5, -0.5, 0.25], 2, 2).expect("l");
+                let lif = lif2(&mut b);
+                let out = b.add_output("out", &[2]).expect("out");
+                let mut edges = vec![(inp, l), (l, lif), (lif, out)];
+                if skip {
+                    let p = b
+                        .add_linear("p", &[0.5, -0.25, 0.75, 1.0], 2, 2)
+                        .expect("p");
+                    edges.extend([(inp, p), (p, l)]);
+                }
+                for (from, to) in edges {
+                    b.add_edge(from, to).expect("edge");
+                }
+                let mut g = b.build().expect("builds");
+                // the direct edge again, right after itself: before the
+                // skip's composed path
+                let direct = g.edges[0];
+                g.edges.insert(1, direct);
+                let (_, enc, rep) = g.build_network().expect("assembles");
+                assert_eq!(rep.stages, 1, "input → l, one stage");
+                assert_eq!(rep.fused.len(), usize::from(skip));
+                let units = opts.units;
+                assert_eq!(enc.mats[0].q, want, "{units:?}, skip: {skip}");
+            }
+        }
+
         /// The merge fixture at graph scale: one branch stalls below
         /// the climb (81 μA → `V_ss−rest` 810 < the 1500 gap), the
         /// summed fan-in fires (162 μA) — the `transmission_pulses_sum`
