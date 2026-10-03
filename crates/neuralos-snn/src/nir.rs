@@ -3990,7 +3990,13 @@ mod std_assembly {
         /// matrix is `W_L·G`. An Input root's matrix is an encoder
         /// stage; a LIF root's is one synapse per nonzero weight (D8).
         /// D2 fusion records every stage composed from ≥2 matrices,
-        /// with each component tensor's scale, from either root.
+        /// with each component tensor's scale, from either root. A root
+        /// enters as the identity without storing it, so the memory
+        /// grows with the weights: a stage a root feeds once is its
+        /// Linear's own weights, and a chain composes from its first
+        /// Linear. The identity is stored where a root reaches one
+        /// Linear twice: a skip, or an edge listed twice, which only a
+        /// hand-built graph has.
         // the symbolic DAG fold is one coherent unit; splitting the G
         // accumulation from stage quantization would spread the
         // borrowed-g map across two functions (nir_import precedent)
@@ -4012,7 +4018,8 @@ mod std_assembly {
                     lif_children[src as usize].push(dst as usize);
                 }
             }
-            // G: Linear -> (root -> (cols x feat matrix, contributors))
+            // G: Linear -> (root -> (cols x feat matrix, `None` the
+            // identity, contributors))
             let mut g: BTreeMap<usize, GMap> = BTreeMap::new();
             for &l in order {
                 let cols = self.nodes[l].linear.expect("checked").cols;
@@ -4021,13 +4028,18 @@ mod std_assembly {
                     match self.nodes[p].kind {
                         // a root enters as identity: an Input's features,
                         // or (D8) a LIF's spikes, each the value 1 into
-                        // the chain; its width is `cols` (shape-checked)
+                        // the chain; its width is `cols` (shape-checked).
+                        // Stored only when it meets `l` twice: a composed
+                        // path first (a skip), or its own edge listed
+                        // twice, which only a hand-built graph has
                         NirNodeKind::Input | NirNodeKind::Lif => {
-                            let entry_val = acc
-                                .entry(p)
-                                .or_insert_with(|| (mat_zero(cols, cols), Vec::new()));
-                            for i in 0..cols {
-                                entry_val.0[i][i] += 1.0;
+                            if let Some((m, _)) = acc.get_mut(&p) {
+                                let m = m.get_or_insert_with(|| mat_eye(cols));
+                                for (i, row) in m.iter_mut().enumerate() {
+                                    row[i] += 1.0;
+                                }
+                            } else {
+                                acc.insert(p, (None, Vec::new()));
                             }
                         }
                         NirNodeKind::Linear => {
@@ -4035,10 +4047,13 @@ mod std_assembly {
                             let w = &self.weights[lin_p.weight_offset
                                 ..lin_p.weight_offset + lin_p.rows * lin_p.cols];
                             for (root, (m, contrib)) in &g[&p] {
-                                let n_feat = m[0].len();
+                                // the identity's width: the root feeds p
+                                let n_feat = m.as_ref().map_or(lin_p.cols, |gm| gm[0].len());
                                 let entry_val = acc
                                     .entry(*root)
-                                    .or_insert_with(|| (mat_zero(cols, n_feat), Vec::new()));
+                                    .or_insert_with(|| (Some(mat_zero(cols, n_feat)), Vec::new()));
+                                // the root fed l directly too: its identity
+                                let dst = entry_val.0.get_or_insert_with(|| mat_eye(cols));
                                 for row in 0..cols {
                                     for col in 0..lin_p.cols {
                                         // dequantized source value (q·scale) —
@@ -4048,10 +4063,16 @@ mod std_assembly {
                                         // cols (row-major arena layout).
                                         let wv = f64::from(w[row * lin_p.cols + col]) * lin_p.scale;
                                         if wv != 0.0 {
-                                            for (cell, &src) in
-                                                entry_val.0[row].iter_mut().zip(&m[col])
-                                            {
-                                                *cell += wv * src;
+                                            match m {
+                                                // W_p·I: the weight, at its column
+                                                None => dst[row][col] += wv,
+                                                Some(gm) => {
+                                                    for (cell, &src) in
+                                                        dst[row].iter_mut().zip(&gm[col])
+                                                    {
+                                                        *cell += wv * src;
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -4086,16 +4107,24 @@ mod std_assembly {
                 let rows = lin_l.rows;
                 let w = &self.weights[lin_l.weight_offset..lin_l.weight_offset + rows * lin_l.cols];
                 for (root, (m, contrib)) in &g[&lin_idx] {
-                    let f = m[0].len();
-                    // stage matrix: W_L · G  (rows x f, row-major)
+                    let f = m.as_ref().map_or(lin_l.cols, |gm| gm[0].len());
+                    // stage matrix: W_L · G  (rows x f, row-major); W_L
+                    // itself where G is the identity
                     let mut flat = vec![0f64; rows * f];
                     for r in 0..rows {
                         for k in 0..f {
-                            let mut s = 0.0f64;
-                            for c in 0..lin_l.cols {
-                                s += f64::from(w[r * lin_l.cols + c]) * lin_l.scale * m[c][k];
-                            }
-                            flat[r * f + k] = s;
+                            flat[r * f + k] = match m {
+                                None => f64::from(w[r * lin_l.cols + k]) * lin_l.scale,
+                                Some(gm) => {
+                                    let mut s = 0.0f64;
+                                    for c in 0..lin_l.cols {
+                                        s += f64::from(w[r * lin_l.cols + c])
+                                            * lin_l.scale
+                                            * gm[c][k];
+                                    }
+                                    s
+                                }
+                            };
                         }
                     }
                     let mut q = vec![0i16; rows * f];
@@ -4591,9 +4620,8 @@ mod std_assembly {
         /// No count of features takes a stage's sum past its `i128`:
         /// 140,000 features at the largest input, each through 32,767
         /// quanta, pass `i64::MAX`, and the stage saturates at +32,767 in
-        /// either units. The encoder is built by hand: the import would
-        /// first compose the stage through a 140,000 × 140,000 identity of
-        /// `f64`s (`build_stages`), 157 GB.
+        /// either units. The encoder is built by hand: its one matrix
+        /// holds `i16::MAX` in either units.
         #[test]
         fn a_stage_sums_past_i64_and_saturates() {
             const N: usize = 140_000;
@@ -4765,11 +4793,22 @@ mod std_assembly {
         vec![vec![0.0; c]; r]
     }
 
+    /// The identity a root enters with (`n × n`), stored only where the
+    /// root reaches one Linear twice: a skip, or an edge listed twice.
+    fn mat_eye(n: usize) -> Vec<Vec<f64>> {
+        let mut m = mat_zero(n, n);
+        for (i, row) in m.iter_mut().enumerate() {
+            row[i] = 1.0;
+        }
+        m
+    }
+
     /// The value arriving at a Linear's input from one root, an Input
-    /// or (D8) a LIF: the composed matrix (cols × feat) + the
-    /// contributing Linear node indices (topological order,
-    /// deduplicated).
-    type GVal = (Vec<Vec<f64>>, Vec<usize>);
+    /// or (D8) a LIF: the composed matrix (cols × feat), `None` for the
+    /// identity, which is not stored (as a matrix it costs 8 bytes a
+    /// pair of the root's features) + the contributing Linear node
+    /// indices (topological order, deduplicated).
+    type GVal = (Option<Vec<Vec<f64>>>, Vec<usize>);
 
     /// `G(L)`: root node index (an Input or, D8, a LIF) → arriving value.
     type GMap = BTreeMap<usize, GVal>;
