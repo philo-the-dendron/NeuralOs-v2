@@ -9,4 +9,13 @@ cap_lints = true
 # An equivalent mutant goes here: one regex over its name, which has one
 # shape in both tools (`<file>:<line>:<col>: <what> in <fn>`), with a
 # comment above it saying why no test can kill it.
-exclude_re = []
+exclude_re = [
+    # nir2json's `read_weight`, its length check made false (PR #52's first
+    # run, `db52d06`). hdf5-pure reads a dataset whole, at its dataspace's
+    # size or not at all: compact or contiguous data of another size is a
+    # `DataSizeMismatch`, chunked data and unallocated storage fill a
+    # buffer of the dataspace's size. A 2-D weight read gives rows × cols
+    # values, so the check never fires; it stays as the guard before `W` is
+    # read as rows by cols.
+    'crates/neuralos-nir2json/src/lib\.rs:[0-9]+:[0-9]+: replace if condition vals\.len\(\) != rows \* cols with false in read_weight',
+]

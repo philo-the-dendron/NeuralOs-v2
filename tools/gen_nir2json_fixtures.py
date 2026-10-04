@@ -12,6 +12,9 @@ Output : crates/neuralos-nir2json/tests/fixtures/
          - affine_bias_length.nir                    (a bias of the wrong length)
          - affine_dangling.nir                       (an Affine that feeds nothing)
          - weight_1d.nir                             (a Linear's weight of one dimension)
+         - stray_node_key.nir, stray_node_group.nir, stray_input_key.nir,
+           stray_linear_key.nir, stray_affine_key.nir, stray_nodes_key.nir,
+           stray_graph_key.nir, stray_file_key.nir   (one key its group does not carry)
 Run    : .nirenv/bin/python3 tools/gen_nir2json_fixtures.py
 
 The three Affine graphs are the layout snnTorch writes for a biased
@@ -145,6 +148,56 @@ def weight_1d() -> None:
     print(f"1-D    : {dst.name} ({dst.stat().st_size} B)")
 
 
+def stray_key(name: str, where: str) -> None:
+    """input(2) → linear → lif(2) → output, `metadata` groups on the graph
+    and on the input, and one key its group does not carry: `where` is
+    `node` (`v_rest` on the LIF, for `v_reset`), `group` (an `extra`
+    group on the LIF), `input` or `linear` (a `foo` dataset on that node),
+    `affine` (the Linear an Affine, `affine`, with a bias and a `foo`),
+    `nodes` (a `foo` dataset among the nodes), `graph` (a `foo` dataset
+    on the graph) or `file` (a `foo` dataset in the file)."""
+    dst = OUT / name
+    s = h5py.string_dtype(encoding="utf-8")
+    with h5py.File(dst, "w") as f:
+        f.create_dataset("version", data="1.0.9.dev1+g7883c3c85", dtype=s)
+        node = f.create_group("node")
+        node.create_dataset("type", data="NIRGraph", dtype=s)
+        node.create_group("metadata").create_dataset("note", data="graph", dtype=s)
+        nodes = node.create_group("nodes")
+        for key, kind in (("input", "Input"), ("output", "Output")):
+            g = nodes.create_group(key)
+            g.create_dataset("type", data=kind, dtype=s)
+            g.create_dataset("shape", data=[2], compression="gzip")
+        nodes["input"].create_group("metadata").create_dataset("note", data="input", dtype=s)
+        lin = "affine" if where == "affine" else "linear"
+        g = nodes.create_group(lin)
+        g.create_dataset("type", data="Affine" if where == "affine" else "Linear", dtype=s)
+        g.create_dataset("weight", data=[[0.5, 0.25], [0.25, 0.5]], dtype="float64", compression="gzip")
+        if where == "affine":
+            g.create_dataset("bias", data=[0.0, 0.0], dtype="float64", compression="gzip")
+        if where in ("linear", "affine"):
+            g.create_dataset("foo", data=1)
+        if where == "input":
+            nodes["input"].create_dataset("foo", data=1)
+        g = nodes.create_group("lif")
+        g.create_dataset("type", data="LIF", dtype=s)
+        for k, v in (("tau", 0.02), ("r", 1e8), ("v_leak", -0.07), ("v_threshold", -0.055)):
+            g.create_dataset(k, data=[v, v], dtype="float64", compression="gzip")
+        reset = "v_rest" if where == "node" else "v_reset"
+        g.create_dataset(reset, data=[-0.08, -0.08], dtype="float64", compression="gzip")
+        if where == "group":
+            g.create_group("extra")
+        if where == "nodes":
+            nodes.create_dataset("foo", data=1)
+        if where == "graph":
+            node.create_dataset("foo", data=1)
+        if where == "file":
+            f.create_dataset("foo", data=1)
+        edges = [["input", lin], [lin, "lif"], ["lif", "output"]]
+        node.create_dataset("edges", data=edges, dtype=s)
+    print(f"stray  : {dst.name} ({dst.stat().st_size} B)")
+
+
 if __name__ == "__main__":
     twin("chain_population.nir")
     twin("merge.nir")
@@ -153,4 +206,12 @@ if __name__ == "__main__":
     affine("affine_bias_length.nir", [0.03, -0.01, 0.02])
     affine("affine_dangling.nir", [0.03, -0.01], dangling=True)
     weight_1d()
+    stray_key("stray_node_key.nir", "node")
+    stray_key("stray_node_group.nir", "group")
+    stray_key("stray_input_key.nir", "input")
+    stray_key("stray_linear_key.nir", "linear")
+    stray_key("stray_affine_key.nir", "affine")
+    stray_key("stray_nodes_key.nir", "nodes")
+    stray_key("stray_graph_key.nir", "graph")
+    stray_key("stray_file_key.nir", "file")
     print("done — community fixtures are copied, not generated (PROVENANCE.md)")

@@ -49,7 +49,14 @@
 //! under `--sim-units` Affine, rewritten as a Linear and, for a bias not
 //! all zero, an input of its own ([`convert_file_opts`]). Anything else
 //! is refused loudly with the node's name and kind — a recorded result,
-//! never a partial conversion.
+//! never a partial conversion. So is a dataset or group its group does
+//! not carry (a misspelled `v_reset`, a field of a newer NIR, a dataset
+//! among the nodes, one on the graph or in the file beside the
+//! reference's own): refused with its path, the file's NIR version and
+//! the reference this tool reads ([`ConvertError::UnexpectedKey`]),
+//! never skipped. A soft or external link, which `nir.write` never
+//! writes, can pass unseen: hdf5-pure lists none, so a key behind one
+//! reads as absent, a `v_reset` as zeros, where `nir.read` follows it.
 //!
 //! # Freeze
 //!
@@ -66,8 +73,8 @@ use hdf5_pure::{DType, Dataset, File, Group, VlenStringReadOptions};
 use neuralos_snn::FixedSynapse;
 use neuralos_snn::fixed::freeze as freezer;
 use neuralos_snn::nir::{
-    NirBuilder, NirError, NirGraphEncoder, NirImport, NirImportOptions, NirLifParams, NirNodeKind,
-    SIM_CURRENT_QUANTA, Thousandths, nir_export,
+    NIR_REF_SHA, NirBuilder, NirError, NirGraphEncoder, NirImport, NirImportOptions, NirLifParams,
+    NirNodeKind, SIM_CURRENT_QUANTA, Thousandths, nir_export,
 };
 use neuralos_snn::trace::{self, Kind, Rows, row};
 
@@ -118,6 +125,15 @@ pub enum ConvertError {
     SimUnits { node: String, r_ohm: f64 },
     /// A dataset's dtype/shape is not what its node kind requires.
     BadData { dataset: String, what: String },
+    /// A key its group does not carry: a node of a kind this tool
+    /// converts carries its kind's datasets, `type` and a `metadata`
+    /// group; `nodes` its nodes, each a group; the graph `type`,
+    /// `edges`, `nodes` and `metadata`; the file `version` and `node`.
+    /// Never skipped as a dataset or a group: a key skipped in silence
+    /// is a field the conversion would not honor. Behind a soft or
+    /// external link, a key can pass unseen (the crate doc's
+    /// § Out-of-subset honesty).
+    UnexpectedKey { path: String, nir_version: String },
     /// snn's builder/exporter refused the graph (quantization bounds,
     /// edges, duplicates, non-ASCII names) — mapped with the failing
     /// stage named and the error rendered (NirError borrows node
@@ -158,6 +174,13 @@ impl fmt::Display for ConvertError {
                  convention transform (a voltage scale per node, true-scale weights, centi grid)"
             ),
             Self::BadData { dataset, what } => write!(f, "dataset '{dataset}': {what}"),
+            Self::UnexpectedKey { path, nir_version } => write!(
+                f,
+                "'{path}' is not a key NIR carries there, as this tool reads it (the \
+                 reference at {}); the file says NIR {nir_version} — a misspelled key, or a \
+                 field this tool does not convert: refusing rather than skipping it",
+                &NIR_REF_SHA[..7]
+            ),
             Self::Snn { stage, msg } => write!(f, "snn {stage}: {msg}"),
         }
     }
@@ -357,6 +380,54 @@ fn census(node: &Group) -> Result<(), ConvertError> {
 
 fn bad_groups(what: String) -> impl Fn(hdf5_pure::Error) -> ConvertError {
     move |e| ConvertError::Layout(format!("cannot walk {what}: {e}"))
+}
+
+/// The datasets a kind this tool converts carries, as the reference
+/// writes them (`nir.write`, from `to_dict`), `type` included; a
+/// `metadata` group rides any node. `None` for any other kind, which the
+/// conversion refuses by name.
+fn node_keys(kind: &str, sim_units: bool) -> Option<&'static [&'static str]> {
+    match kind {
+        "Input" | "Output" => Some(&["type", "shape"]),
+        "LIF" => Some(&["type", "tau", "r", "v_leak", "v_threshold", "v_reset"]),
+        "Linear" => Some(&["type", "weight"]),
+        "Affine" if sim_units => Some(&["type", "weight", "bias"]),
+        _ => None,
+    }
+}
+
+/// Every dataset and group of the group at `at` (`""` for the file)
+/// against its `datasets` and `groups`: the first other one is refused
+/// with its path and the file's NIR version
+/// ([`ConvertError::UnexpectedKey`]). A soft or external link can pass
+/// unseen: hdf5-pure lists none.
+fn check_keys(
+    g: &Group,
+    at: &str,
+    datasets: &[&str],
+    groups: &[&str],
+    nir_version: &str,
+) -> Result<(), ConvertError> {
+    let unexpected = |key: &str| ConvertError::UnexpectedKey {
+        path: if at.is_empty() {
+            key.to_string()
+        } else {
+            format!("{at}/{key}")
+        },
+        nir_version: nir_version.to_string(),
+    };
+    let walk = || bad_groups(format!("{at}/"));
+    for d in g.datasets().map_err(walk())? {
+        if !datasets.contains(&d.as_str()) {
+            return Err(unexpected(&d));
+        }
+    }
+    for s in g.groups().map_err(walk())? {
+        if !groups.contains(&s.as_str()) {
+            return Err(unexpected(&s));
+        }
+    }
+    Ok(())
 }
 
 fn read_str(ds: &Dataset) -> Result<String, ConvertError> {
@@ -627,6 +698,7 @@ pub fn convert_file_opts(
             .dataset("version")
             .map_err(|e| ConvertError::Layout(format!("version: {e}")))?,
     )?;
+    check_keys(&root, "", &["version"], &["node"], &nir_version)?;
 
     // node group + NIRGraph contract
     let node = root
@@ -642,6 +714,13 @@ pub fn convert_file_opts(
             "node/type is {graph_type:?} — expected \"NIRGraph\""
         )));
     }
+    check_keys(
+        &node,
+        "node",
+        &["type", "edges"],
+        &["nodes", "metadata"],
+        &nir_version,
+    )?;
 
     // PRE-READ census — nothing decodes before every filter is admitted
     census(&node)?;
@@ -650,6 +729,19 @@ pub fn convert_file_opts(
         .group("nodes")
         .map_err(|e| ConvertError::Layout(format!("node/nodes/: {e}")))?;
     let node_names = nodes.groups().map_err(bad_groups("node/nodes".into()))?;
+    // a key of `nodes` is a node, a group: a dataset there is refused, as
+    // the reference's reader and the library's JSON reader refuse it
+    if let Some(d) = nodes
+        .datasets()
+        .map_err(bad_groups("node/nodes".into()))?
+        .into_iter()
+        .next()
+    {
+        return Err(ConvertError::UnexpectedKey {
+            path: format!("node/nodes/{d}"),
+            nir_version,
+        });
+    }
 
     let mut builder = NirBuilder::new(effective);
     let mut stamp = Stamp {
@@ -687,6 +779,12 @@ pub fn convert_file_opts(
             &g.dataset("type")
                 .map_err(|e| ConvertError::Layout(format!("type: {e}")))?,
         )?;
+        // the kind first: any other kind is refused by name below,
+        // whatever keys it carries
+        if let Some(own) = node_keys(&ty, sim_units) {
+            let at = format!("node/nodes/{name}");
+            check_keys(&g, &at, own, &["metadata"], &stamp.nir_version)?;
+        }
         match ty.as_str() {
             "Input" | "Output" => {
                 let ds = g
@@ -1571,6 +1669,64 @@ mod tests {
                 assert_eq!(what, "1-D weight — expected 2-D");
             }
             other => panic!("expected BadData, got {other:?}"),
+        }
+    }
+
+    /// A key its group does not carry is refused with its path and the
+    /// file's NIR version, never skipped: a misspelled `v_reset`, a group
+    /// on a LIF, a dataset on an Input, on a Linear, among the nodes, on
+    /// the graph and in the file, and on an Affine under `--sim-units`
+    /// (natively, its kind is refused first). The `metadata` groups on
+    /// the graph and on the input pass (`tools/gen_nir2json_fixtures.py`).
+    #[test]
+    fn a_key_its_group_does_not_carry_is_refused_by_path() {
+        for (name, want) in [
+            ("stray_node_key.nir", "node/nodes/lif/v_rest"),
+            ("stray_node_group.nir", "node/nodes/lif/extra"),
+            ("stray_input_key.nir", "node/nodes/input/foo"),
+            ("stray_linear_key.nir", "node/nodes/linear/foo"),
+            ("stray_nodes_key.nir", "node/nodes/foo"),
+            ("stray_graph_key.nir", "node/foo"),
+            ("stray_file_key.nir", "foo"),
+        ] {
+            match convert_file(&fixture(name), NirImportOptions::default()) {
+                Err(ConvertError::UnexpectedKey { path, nir_version }) => {
+                    assert_eq!(path, want, "{name}");
+                    assert_eq!(nir_version, "1.0.9.dev1+g7883c3c85", "{name}");
+                }
+                other => panic!("{name}: expected UnexpectedKey, got {other:?}"),
+            }
+        }
+        // an Affine natively is outside the subset, refused by its kind
+        // whatever keys it carries; under `--sim-units`, by its stray key
+        let affine = fixture("stray_affine_key.nir");
+        match convert_file(&affine, NirImportOptions::default()) {
+            Err(ConvertError::UnsupportedNode { node, kind }) => {
+                assert_eq!((node.as_str(), kind.as_str()), ("affine", "Affine"));
+            }
+            other => panic!("native: expected UnsupportedNode, got {other:?}"),
+        }
+        let sim = NirImportOptions {
+            dt_us: SIM_DT_US,
+            ..NirImportOptions::default()
+        };
+        match convert_file_opts(&affine, sim, true) {
+            Err(ConvertError::UnexpectedKey { path, .. }) => {
+                assert_eq!(path, "node/nodes/affine/foo");
+            }
+            other => panic!("--sim-units: expected UnexpectedKey, got {other:?}"),
+        }
+        let Err(e) = convert_file(&fixture("stray_node_key.nir"), NirImportOptions::default())
+        else {
+            panic!("stray_node_key.nir: expected a refusal");
+        };
+        let msg = e.to_string();
+        for part in [
+            "node/nodes/lif/v_rest",
+            "NIR 1.0.9.dev1+g7883c3c85",
+            &NIR_REF_SHA[..7],
+        ] {
+            assert!(msg.contains(part), "{part} in: {msg}");
         }
     }
 
