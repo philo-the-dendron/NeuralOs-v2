@@ -31,6 +31,17 @@
 //! semantics). Linear (`nir/ir/linear.py`): `weight` (2-D,
 //! `y = W·x`, rows = outputs). Input/Output: `shape`.
 //!
+//! Each node carries its kind's fields, `type` and `metadata`, and
+//! nothing else; the graph object carries `type`, `edges`, `nodes` and
+//! `metadata`, the document `version` and `node`. Any other key, or a
+//! key given twice, is refused by name ([`NirError::UnexpectedField`],
+//! [`NirError::DuplicateField`]), as the reference's `from_dict`,
+//! `cls(**kwargs)`, refuses a key its class lacks (at the document, of
+//! which the reference's reader takes only `node`, the rule is this
+//! module's own): a key skipped in silence is a field this module does
+//! not honor, and a misspelled `v_reset` would reset to 0 V.
+//! `metadata`'s contents stay free.
+//!
 //! # The quantization contract (THE design axis — loud by design)
 //!
 //! NIR numbers are float; the substrate is i16 fixed-point. Every
@@ -164,6 +175,29 @@ pub enum NirError<'a> {
     DuplicateEdge,
     /// A node name appears twice in `nodes`.
     DuplicateNodeName,
+    /// A key its object does not carry: a node carries its kind's
+    /// fields, `type` and `metadata`; the graph object `type`, `edges`,
+    /// `nodes` and `metadata`; the document `version` and `node`. The
+    /// reference's `from_dict` is `cls(**kwargs)`, which refuses any
+    /// other key, a field of another kind included; at the document, of
+    /// which its reader takes only `node`, the rule is this module's.
+    UnexpectedField {
+        /// The node's key in `nodes`; `None` for the graph object and
+        /// the document.
+        node: Option<&'a str>,
+        /// The key.
+        field: &'a str,
+    },
+    /// A key given twice in one object. JSON leaves its meaning open
+    /// and the reference reads no JSON, so the reader refuses it, as it
+    /// refuses a node name or an edge given twice.
+    DuplicateField {
+        /// The node's key in `nodes`; `None` for the graph object and
+        /// the document.
+        node: Option<&'a str>,
+        /// The key.
+        field: &'a str,
+    },
     /// A graph the assembly does not build, though the format layer
     /// imports it. Both builders refuse by name:
     /// `NirImport::build_chain_network` anything but its chain (e.g. a
@@ -239,6 +273,29 @@ impl core::fmt::Display for NirError<'_> {
             Self::UnknownEdgeEndpoint(n) => write!(f, "edge endpoint '{n}' names no node"),
             Self::DuplicateEdge => write!(f, "duplicate edge"),
             Self::DuplicateNodeName => write!(f, "duplicate node name"),
+            Self::UnexpectedField {
+                node: Some(n),
+                field,
+            } => write!(
+                f,
+                "node '{n}' carries '{field}', a key its kind does not have"
+            ),
+            Self::UnexpectedField { node: None, field } => {
+                write!(
+                    f,
+                    "'{field}' is not a key of the graph object or the document"
+                )
+            }
+            Self::DuplicateField {
+                node: Some(n),
+                field,
+            } => write!(f, "node '{n}' gives '{field}' twice"),
+            Self::DuplicateField { node: None, field } => {
+                write!(
+                    f,
+                    "'{field}' is given twice in the graph object or the document"
+                )
+            }
             Self::UnsupportedTopology(n) => {
                 write!(f, "topology unsupported by slice 1: {n}")
             }
@@ -417,11 +474,10 @@ impl<'a> Reader<'a> {
     }
 
     /// Object-key stepper: yields the next key (value left for the
-    /// caller to parse/skip), `None` at `}`. Duplicate keys:
-    /// scalar fields are last-wins (Python `json.loads` semantics);
-    /// repeated container fields (`edges`, `nodes`) are visited in
-    /// order and their contents aggregate. Our exports never repeat
-    /// a key; the reference emitter neither.
+    /// caller to parse/skip), `None` at `}`. A key given twice comes
+    /// back each time it occurs: the document, the graph object and a
+    /// node refuse the repeat (`see_field`, `NodeKeys`), and a repeat
+    /// inside `metadata`, whose contents stay free, is not refused.
     fn object_step(&mut self, first: &mut bool) -> Result<Option<&'a str>, NirError<'static>> {
         if *first {
             self.eat(b'{')?;
@@ -443,7 +499,8 @@ impl<'a> Reader<'a> {
         Ok(Some(key))
     }
 
-    /// Skip one value of any shape (unknown fields, `metadata`).
+    /// Skip one value of any shape: `metadata`, and a node's key no
+    /// kind carries, read whole before its node is judged.
     /// Depth-capped: nesting beyond [`MAX_SKIP_DEPTH`] is rejected as
     /// malformed instead of overflowing the call stack (a 50k-deep
     /// junk array is adversarial input, not a document).
@@ -1073,12 +1130,140 @@ pub fn quantize_linear(
 }
 
 // ---------------------------------------------------------------------------
+// The keys each object carries: the reference's fields, nothing else
+// ---------------------------------------------------------------------------
+
+/// The document's keys: the reference's file holds `version` and `node`.
+const DOCUMENT_FIELDS: [&str; 2] = ["version", "node"];
+
+/// The graph object's keys, as `NIRGraph.to_dict` writes them.
+const GRAPH_FIELDS: [&str; 4] = ["type", "edges", "nodes", "metadata"];
+
+/// Every key a slice-1 node may carry: bit `i` of [`NodeKeys`]'s
+/// `seen` stands for `NODE_FIELDS[i]`.
+const NODE_FIELDS: [&str; 9] = [
+    "type",
+    "shape",
+    "weight",
+    "tau",
+    "r",
+    "v_leak",
+    "v_threshold",
+    "v_reset",
+    "metadata",
+];
+
+/// A slice-1 kind and its keys: its fields as the reference's `to_dict`
+/// writes them (`shape` for Input and Output), `type` and `metadata`.
+/// `None` for any other kind, which the import refuses by name.
+fn kind_fields(kind: &str) -> Option<(NirNodeKind, &'static [&'static str])> {
+    match kind {
+        "Input" => Some((NirNodeKind::Input, &["type", "shape", "metadata"])),
+        "Output" => Some((NirNodeKind::Output, &["type", "shape", "metadata"])),
+        "Linear" => Some((NirNodeKind::Linear, &["type", "weight", "metadata"])),
+        "LIF" => Some((
+            NirNodeKind::Lif,
+            &[
+                "type",
+                "tau",
+                "r",
+                "v_leak",
+                "v_threshold",
+                "v_reset",
+                "metadata",
+            ],
+        )),
+        _ => None,
+    }
+}
+
+/// One key of the document or the graph object, judged as it is read:
+/// refused when `fields` lacks it, or when `seen` holds it already.
+fn see_field<'a>(seen: &mut u8, fields: &[&str], key: &'a str) -> Result<(), NirError<'a>> {
+    let i = fields
+        .iter()
+        .position(|&f| f == key)
+        .ok_or(NirError::UnexpectedField {
+            node: None,
+            field: key,
+        })?;
+    if *seen & (1 << i) != 0 {
+        return Err(NirError::DuplicateField {
+            node: None,
+            field: key,
+        });
+    }
+    *seen |= 1 << i;
+    Ok(())
+}
+
+/// The keys one node object carries, in any order: `type` can come after
+/// the fields (the reference's LIF writes it last), so they are judged
+/// once the object is read and its kind is known.
+#[derive(Default)]
+struct NodeKeys<'a> {
+    /// Bit `i`: `NODE_FIELDS[i]` seen.
+    seen: u16,
+    /// A key given twice, if any.
+    twice: Option<&'a str>,
+    /// A key no slice-1 kind carries, if any.
+    unknown: Option<&'a str>,
+}
+
+impl<'a> NodeKeys<'a> {
+    fn see(&mut self, key: &'a str) {
+        match NODE_FIELDS.iter().position(|&f| f == key) {
+            Some(i) => {
+                if self.seen & (1 << i) != 0 {
+                    self.twice.get_or_insert(key);
+                }
+                self.seen |= 1 << i;
+            }
+            None => {
+                self.unknown.get_or_insert(key);
+            }
+        }
+    }
+
+    /// The node's keys against its kind's, `own`: refuses a key given
+    /// twice, a key no kind carries or a key of another kind. Which one
+    /// is named when a node has several is not part of the contract.
+    fn check(&self, node: &'a str, own: &[&str]) -> Result<(), NirError<'a>> {
+        if let Some(field) = self.twice {
+            return Err(NirError::DuplicateField {
+                node: Some(node),
+                field,
+            });
+        }
+        if let Some(field) = self.unknown {
+            return Err(NirError::UnexpectedField {
+                node: Some(node),
+                field,
+            });
+        }
+        match NODE_FIELDS
+            .iter()
+            .enumerate()
+            .find(|&(i, f)| self.seen & (1 << i) != 0 && !own.contains(f))
+        {
+            Some((_, &field)) => Err(NirError::UnexpectedField {
+                node: Some(node),
+                field,
+            }),
+            None => Ok(()),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Pass 1: scan (counts + version; full shape walk)
 // ---------------------------------------------------------------------------
 
 /// Scan a NIR JSON document: counts + version. Walks the full schema
-/// shape (so malformed structure fails here); param values are NOT
-/// validated — that is import's job.
+/// shape (so malformed structure fails here, a key its object does not
+/// carry and a key given twice included); param values are NOT
+/// validated — that is import's job, as is a node kind outside the
+/// subset.
 pub fn nir_scan(json: &[u8]) -> Result<NirScan<'_>, NirError<'_>> {
     let mut r = Reader::new(json);
     let mut version: Option<&str> = None;
@@ -1089,20 +1274,20 @@ pub fn nir_scan(json: &[u8]) -> Result<NirScan<'_>, NirError<'_>> {
     let mut saw_node = false;
 
     let mut first = true;
+    let mut seen = 0u8;
     while let Some(key) = r.object_step(&mut first)? {
-        match key {
-            "version" => version = Some(r.read_string()?),
-            "node" => {
-                saw_node = true;
-                scan_graph(
-                    &mut r,
-                    &mut node_count,
-                    &mut edge_count,
-                    &mut weight_cells,
-                    &mut lif_neurons,
-                )?;
-            }
-            _ => r.skip_value(0)?,
+        see_field(&mut seen, &DOCUMENT_FIELDS, key)?;
+        if key == "version" {
+            version = Some(r.read_string()?);
+        } else {
+            saw_node = true;
+            scan_graph(
+                &mut r,
+                &mut node_count,
+                &mut edge_count,
+                &mut weight_cells,
+                &mut lif_neurons,
+            )?;
         }
     }
     // strict subset: nothing but whitespace may follow the root object
@@ -1123,15 +1308,17 @@ pub fn nir_scan(json: &[u8]) -> Result<NirScan<'_>, NirError<'_>> {
     })
 }
 
-fn scan_graph(
-    r: &mut Reader<'_>,
+fn scan_graph<'a>(
+    r: &mut Reader<'a>,
     node_count: &mut usize,
     edge_count: &mut usize,
     weight_cells: &mut usize,
     lif_neurons: &mut usize,
-) -> Result<(), NirError<'static>> {
+) -> Result<(), NirError<'a>> {
     let mut first = true;
+    let mut seen = 0u8;
     while let Some(key) = r.object_step(&mut first)? {
+        see_field(&mut seen, &GRAPH_FIELDS, key)?;
         match key {
             "type" => {
                 if r.read_string()? != "NIRGraph" {
@@ -1155,31 +1342,34 @@ fn scan_graph(
             }
             "nodes" => {
                 let mut nfirst = true;
-                while r.object_step(&mut nfirst)?.is_some() {
-                    scan_node(r, weight_cells, lif_neurons)?;
+                while let Some(name) = r.object_step(&mut nfirst)? {
+                    scan_node(r, name, weight_cells, lif_neurons)?;
                     *node_count += 1;
                 }
             }
-            _ => r.skip_value(0)?,
+            _ => r.skip_value(0)?, // `metadata`, its contents free
         }
     }
     Ok(())
 }
 
-fn scan_node(
-    r: &mut Reader<'_>,
+fn scan_node<'a>(
+    r: &mut Reader<'a>,
+    name: &'a str,
     weight_cells: &mut usize,
     lif_neurons: &mut usize,
-) -> Result<(), NirError<'static>> {
+) -> Result<(), NirError<'a>> {
     // per-node LIF population bookkeeping: the five param arrays
     // must all be present-at-equal-length (v_reset may be absent)
     let mut pop: Option<usize> = None;
+    let mut unequal = false;
+    let mut kind: Option<&'a str> = None;
+    let mut keys = NodeKeys::default();
     let mut first = true;
     while let Some(key) = r.object_step(&mut first)? {
+        keys.see(key);
         match key {
-            "type" => {
-                r.read_string()?; // validated at import
-            }
+            "type" => kind = Some(r.read_string()?),
             "weight" => {
                 let mut depth = 0usize;
                 count_array(r, &mut depth, weight_cells)?;
@@ -1188,12 +1378,21 @@ fn scan_node(
                 let n = count_param_array(r)?;
                 match pop {
                     None => pop = Some(n),
-                    Some(p) if p != n => return Err(NirError::BadShape("LIF param")),
+                    Some(p) if p != n => unequal = true,
                     Some(_) => {}
                 }
             }
             _ => r.skip_value(0)?,
         }
+    }
+    // the keys before the lengths, so a field on the wrong kind is
+    // refused by name; a kind outside the subset, or none, is the
+    // import's to refuse
+    if let Some((_, own)) = kind.and_then(kind_fields) {
+        keys.check(name, own)?;
+    }
+    if unequal {
+        return Err(NirError::BadShape("LIF param"));
     }
     *lif_neurons += pop.unwrap_or(0);
     Ok(())
@@ -1263,8 +1462,11 @@ fn count_array(
 /// document order, `edges` as resolved node-index pairs, and the
 /// quantized weights into the arena. A units mark, on any node, and
 /// the native units of a LIF node with none must be `opts.units`
-/// ([`NirError::UnitsMismatch`]). On any error nothing is promised
-/// about buffer contents.
+/// ([`NirError::UnitsMismatch`]). A key its object does not carry, or
+/// one given twice, is refused by name ([`NirError::UnexpectedField`],
+/// [`NirError::DuplicateField`]), a kind outside the subset first
+/// ([`NirError::UnsupportedNodeKind`]). On any error nothing is
+/// promised about buffer contents.
 // two documented walks (nodes, then edges) + their trailing checks;
 // the 100-line cap is crossed by the EOF checks alone (network.rs
 // precedent for the allow)
@@ -1276,17 +1478,22 @@ pub fn nir_import<'a>(
 ) -> Result<NirReport, NirError<'a>> {
     let mut report = NirReport::default();
 
-    // walk 1: nodes (+ weights + LIF populations)
+    // walk 1: nodes (+ weights + LIF populations), and each key of the
+    // document and the graph object judged as it is read
     let mut node_count = 0usize;
     let mut weight_fill = 0usize;
     let mut lif_fill = 0usize;
     {
         let mut r = Reader::new(json);
         let mut first = true;
+        let mut seen = 0u8;
         while let Some(key) = r.object_step(&mut first)? {
+            see_field(&mut seen, &DOCUMENT_FIELDS, key)?;
             if key == "node" {
                 let mut gfirst = true;
+                let mut gseen = 0u8;
                 while let Some(gkey) = r.object_step(&mut gfirst)? {
+                    see_field(&mut gseen, &GRAPH_FIELDS, gkey)?;
                     if gkey == "nodes" {
                         let mut nfirst = true;
                         while let Some(name) = r.object_step(&mut nfirst)? {
@@ -1571,9 +1778,11 @@ fn import_node<'a>(
     let mut v_threshold: Option<(usize, usize)> = None;
     let mut v_reset: Option<(usize, usize)> = None;
     let mut mark: Option<NirUnits> = None;
+    let mut keys = NodeKeys::default();
 
     let mut first = true;
     while let Some(key) = r.object_step(&mut first)? {
+        keys.see(key);
         match key {
             "type" => kind = Some(r.read_string()?),
             "shape" => {
@@ -1614,7 +1823,7 @@ fn import_node<'a>(
                 *weight_fill += lin.rows * lin.cols;
             }
             "metadata" => mark = read_units_mark(r)?,
-            _ => r.skip_value(0)?, // unknown fields tolerated
+            _ => r.skip_value(0)?, // judged below, once the kind is known
         }
     }
 
@@ -1631,31 +1840,36 @@ fn import_node<'a>(
             options: opts.units,
         });
     }
+    // the kind before the keys, so a kind outside the subset is refused
+    // by name whatever keys it carries; the keys before any staged value
+    // is used, since a stray `weight` stages over a LIF's fields
+    let (node_kind, own) = kind_fields(kind).ok_or(NirError::UnsupportedNodeKind(kind))?;
+    keys.check(name, own)?;
     bufs.nodes[idx].shape = shape;
     bufs.nodes[idx].shape_len = shape_len;
-    bufs.nodes[idx].kind = match kind {
-        "Input" => {
+    bufs.nodes[idx].kind = match node_kind {
+        NirNodeKind::Input => {
             if shape_len == 0 {
                 return Err(NirError::MissingField("shape"));
             }
             report.inputs += 1;
             NirNodeKind::Input
         }
-        "Output" => {
+        NirNodeKind::Output => {
             if shape_len == 0 {
                 return Err(NirError::MissingField("shape"));
             }
             report.outputs += 1;
             NirNodeKind::Output
         }
-        "Linear" => {
+        NirNodeKind::Linear => {
             if bufs.nodes[idx].linear.is_none() {
                 return Err(NirError::MissingField("weight"));
             }
             report.linears += 1;
             NirNodeKind::Linear
         }
-        "LIF" => {
+        NirNodeKind::Lif => {
             report.lifs += 1;
             bufs.nodes[idx].lif = Some(finish_lif_population(
                 tau,
@@ -1670,7 +1884,6 @@ fn import_node<'a>(
             )?);
             NirNodeKind::Lif
         }
-        other => return Err(NirError::UnsupportedNodeKind(other)),
     };
     *node_count += 1;
     Ok(())
@@ -5684,6 +5897,243 @@ mod tests {
         assert_eq!(c(&again), c(&lifs), "the round trip keeps C");
     }
 
+    /// `doc` through `nir_import` alone, into buffers wide enough for
+    /// every variant of CHAIN below, so the refusal shown is the
+    /// import's own.
+    fn import_alone(doc: &str) -> Result<(), NirError<'_>> {
+        let mut nodes = [NirNode {
+            name: "",
+            kind: NirNodeKind::Input,
+            shape: [0; 4],
+            shape_len: 0,
+            lif: None,
+            linear: None,
+        }; 8];
+        let mut edges = [(0u32, 0u32); 8];
+        let mut weights = [0i16; 64];
+        let mut lifs = [NirLif::default(); 16];
+        let mut scratch = [0f64; 64];
+        let mut bufs = NirBuffers {
+            nodes: &mut nodes,
+            edges: &mut edges,
+            weights: &mut weights,
+            lifs: &mut lifs,
+            scratch: &mut scratch,
+        };
+        nir_import(doc.as_bytes(), NirImportOptions::default(), &mut bufs).map(|_| ())
+    }
+
+    /// A key its object does not carry, or one given twice, is refused
+    /// by name, by the scan and by the import alone. A field of another
+    /// kind is one: a LIF's `tau` on an Input, or a `weight` after a
+    /// LIF's fields, which staged over them and imported a tau of 30 ms;
+    /// one that voids tau (`[[-1.0]]`) is refused by name too, not as
+    /// `BadNumber("tau")`, since the keys are judged before any staged
+    /// value is used. So is an unknown or misspelled key, at any level.
+    /// The import alone reads values as they come, so a stray field
+    /// whose value is malformed meets the value's refusal there first.
+    #[test]
+    #[allow(clippy::too_many_lines)] // twenty-three cases, one table
+    fn keys_outside_their_object_are_refused_by_name() {
+        let on = |node: &str, field: &str| {
+            let at = format!("\"{node}\":{{");
+            let doc = CHAIN.replacen(&at, &format!("{at}{field},"), 1);
+            assert_ne!(doc, CHAIN, "{node} takes {field}");
+            doc
+        };
+        let swap = |old: &str, new: &str| {
+            let doc = CHAIN.replacen(old, new, 1);
+            assert_ne!(doc, CHAIN, "CHAIN holds {old}");
+            doc
+        };
+        let out = |node: Option<&'static str>, field: &'static str| NirError::UnexpectedField {
+            node,
+            field,
+        };
+        let twice = |node: Option<&'static str>, field: &'static str| NirError::DuplicateField {
+            node,
+            field,
+        };
+        let lif_end = "\"v_reset\":[-0.08,-0.08]}";
+        let cases: Vec<(&str, String, NirError<'static>, Option<NirError<'static>>)> = vec![
+            (
+                "a LIF's tau on an Input",
+                on("input", "\"tau\":[0.02]"),
+                out(Some("input"), "tau"),
+                None,
+            ),
+            (
+                "a weight on an Input",
+                on("input", "\"weight\":[[1.0]]"),
+                out(Some("input"), "weight"),
+                None,
+            ),
+            (
+                "a weight after a LIF's fields",
+                swap(lif_end, "\"v_reset\":[-0.08,-0.08],\"weight\":[[0.03]]}"),
+                out(Some("lif"), "weight"),
+                None,
+            ),
+            (
+                "a weight that voids tau after a LIF's fields",
+                swap(lif_end, "\"v_reset\":[-0.08,-0.08],\"weight\":[[-1.0]]}"),
+                out(Some("lif"), "weight"),
+                None,
+            ),
+            (
+                "a weight on an Output",
+                on("output", "\"weight\":[[2.0,3.0]]"),
+                out(Some("output"), "weight"),
+                None,
+            ),
+            (
+                "a shape on a LIF",
+                on("lif", "\"shape\":[2]"),
+                out(Some("lif"), "shape"),
+                None,
+            ),
+            (
+                "a shape on a Linear",
+                on("linear", "\"shape\":[2]"),
+                out(Some("linear"), "shape"),
+                None,
+            ),
+            (
+                "a LIF's fields on a Linear",
+                on(
+                    "linear",
+                    "\"tau\":[0.02,0.02],\"r\":[1e8,1e8],\"v_leak\":[-0.07,-0.07],\
+                     \"v_threshold\":[-0.055,-0.055]",
+                ),
+                out(Some("linear"), "tau"),
+                None,
+            ),
+            (
+                "a v_reset alone on an Input",
+                on("input", "\"v_reset\":[0.0]"),
+                out(Some("input"), "v_reset"),
+                None,
+            ),
+            (
+                "a tau and an r of two lengths on an Input",
+                on("input", "\"tau\":[0.02,0.03],\"r\":[1e8]"),
+                out(Some("input"), "tau"),
+                None,
+            ),
+            (
+                "a ragged weight on an Output",
+                on("output", "\"weight\":[[1.0,2.0],[3.0]]"),
+                out(Some("output"), "weight"),
+                Some(NirError::BadShape("weight")),
+            ),
+            (
+                "a tau of -1 on an Input",
+                on("input", "\"tau\":[-1.0]"),
+                out(Some("input"), "tau"),
+                None,
+            ),
+            (
+                "an unknown key on an Input",
+                on("input", "\"foo\":1"),
+                out(Some("input"), "foo"),
+                None,
+            ),
+            (
+                "v_rest for v_reset",
+                swap("\"v_reset\"", "\"v_rest\""),
+                out(Some("lif"), "v_rest"),
+                None,
+            ),
+            (
+                "an unknown key on the graph object",
+                swap("\"node\":{", "\"node\":{\"foo\":1,"),
+                out(None, "foo"),
+                None,
+            ),
+            (
+                "an unknown key on the document",
+                swap("{\"version\"", "{\"foo\":1,\"version\""),
+                out(None, "foo"),
+                None,
+            ),
+            (
+                "a tau given twice",
+                swap(lif_end, "\"v_reset\":[-0.08,-0.08],\"tau\":[0.03,0.03]}"),
+                twice(Some("lif"), "tau"),
+                None,
+            ),
+            (
+                "a weight given twice",
+                on("linear", "\"weight\":[[1.0,1.0,1.0],[1.0,1.0,1.0]]"),
+                twice(Some("linear"), "weight"),
+                None,
+            ),
+            (
+                "a shape given twice",
+                on("input", "\"shape\":[3]"),
+                twice(Some("input"), "shape"),
+                None,
+            ),
+            (
+                "a type given twice",
+                on("output", "\"type\":\"Output\""),
+                twice(Some("output"), "type"),
+                None,
+            ),
+            (
+                "a metadata given twice",
+                on("lif", "\"metadata\":{},\"metadata\":{}"),
+                twice(Some("lif"), "metadata"),
+                None,
+            ),
+            (
+                "edges given twice",
+                swap("\"node\":{", "\"node\":{\"edges\":[],"),
+                twice(None, "edges"),
+                None,
+            ),
+            (
+                "a version given twice",
+                swap("{\"version\"", "{\"version\":\"x\",\"version\""),
+                twice(None, "version"),
+                None,
+            ),
+        ];
+        for (label, doc, scan, alone) in cases {
+            assert_eq!(
+                nir_scan(doc.as_bytes()).map(|_| ()),
+                Err(scan),
+                "{label}: the scan"
+            );
+            assert_eq!(
+                import_alone(&doc),
+                Err(alone.unwrap_or(scan)),
+                "{label}: the import alone"
+            );
+        }
+    }
+
+    /// The two key errors name what was refused: the node and the key,
+    /// or, when no node holds it, the graph object and the document.
+    #[test]
+    fn the_key_errors_name_the_node_and_the_key() {
+        let out = |node, field| NirError::UnexpectedField { node, field }.to_string();
+        let twice = |node, field| NirError::DuplicateField { node, field }.to_string();
+        assert_eq!(
+            out(Some("lif"), "v_rest"),
+            "node 'lif' carries 'v_rest', a key its kind does not have"
+        );
+        assert_eq!(
+            out(None, "foo"),
+            "'foo' is not a key of the graph object or the document"
+        );
+        assert_eq!(twice(Some("lif"), "tau"), "node 'lif' gives 'tau' twice");
+        assert_eq!(
+            twice(None, "edges"),
+            "'edges' is given twice in the graph object or the document"
+        );
+    }
+
     #[test]
     fn exported_json_is_valid_shape() {
         let opts = NirImportOptions::default();
@@ -5787,10 +6237,15 @@ mod tests {
     #[test]
     fn skip_value_is_depth_capped() {
         let nest = |n: usize| format!("{}0{}", "[".repeat(n), "]".repeat(n));
-        // deep junk at top level — a Json error, not a stack overflow
-        let doc = format!("{{\"version\":\"x\",\"junk\":{}}}", nest(200));
+        // deep junk in the graph's metadata — a Json error, not a stack
+        // overflow
+        let doc = format!(
+            "{{\"version\":\"x\",\"node\":{{\"type\":\"NIRGraph\",\"metadata\":{},\
+             \"edges\":[],\"nodes\":{{}}}}}}",
+            nest(200)
+        );
         assert!(matches!(nir_scan(doc.as_bytes()), Err(NirError::Json(_))));
-        // deep junk inside a node (the metadata path)
+        // deep junk inside a node, skipped whole before the node is judged
         let doc2 = format!(
             "{{\"version\":\"x\",\"node\":{{\"type\":\"NIRGraph\",\"edges\":[],\
              \"nodes\":{{\"a\":{{\"type\":\"Input\",\"shape\":[1],\"deep\":{}}}}}}}}}",
@@ -5799,38 +6254,69 @@ mod tests {
         assert!(matches!(nir_scan(doc2.as_bytes()), Err(NirError::Json(_))));
         // generous-but-legal nesting still passes (metadata headroom)
         let ok = format!(
-            "{{\"version\":\"x\",\"node\":{{\"type\":\"NIRGraph\",\"edges\":[],\"nodes\":{{}}}},\"junk\":{}}}",
+            "{{\"version\":\"x\",\"node\":{{\"type\":\"NIRGraph\",\"edges\":[],\"nodes\":{{}},\
+             \"metadata\":{}}}}}",
             nest(40)
         );
         assert!(nir_scan(ok.as_bytes()).is_ok());
+        // the graph's metadata at the cap, as a node's field: 64 deep pass
+        // the scan and the import, one more is malformed
+        for (n, ok) in [(64, true), (65, false)] {
+            let doc = format!(
+                "{{\"version\":\"x\",\"node\":{{\"type\":\"NIRGraph\",\"metadata\":{},\
+                 \"edges\":[],\"nodes\":{{}}}}}}",
+                nest(n)
+            );
+            assert_eq!(nir_scan(doc.as_bytes()).is_ok(), ok, "the scan, {n}");
+            assert_eq!(import_alone(&doc).is_ok(), ok, "the import alone, {n}");
+        }
+        // a key the document does not carry is refused before its value
+        // is read, however deep that value nests
+        let junk = format!("{{\"version\":\"x\",\"junk\":{}}}", nest(200));
+        assert_eq!(
+            nir_scan(junk.as_bytes()).map(|_| ()),
+            Err(NirError::UnexpectedField {
+                node: None,
+                field: "junk"
+            })
+        );
     }
 
     /// A node's field nests 64 containers deep, `MAX_SKIP_DEPTH`,
     /// wherever a walk skips it, counted from the field's value: in the
     /// scan, in the import's node walk, at each level of `metadata` the
     /// units reader skips, and in the import's edge walk. One more is
-    /// refused as malformed, by the scan and the import alike.
+    /// refused as malformed, by the scan and the import alike. A key no
+    /// kind carries is skipped whole before its node is judged, so at
+    /// 64 it is refused by name and at 65 as malformed.
     #[test]
     fn a_node_field_nests_64_containers_wherever_it_is_skipped() {
         // each field opens `levels` objects, then nests arrays around a
         // number: `n` containers in all
-        for (label, open, levels) in [
-            ("a field the import does not read", "\"deep\":", 0),
-            ("metadata that is not an object", "\"metadata\":", 0),
+        let deep = NirError::UnexpectedField {
+            node: Some("lif"),
+            field: "deep",
+        };
+        for (label, open, levels, at_64) in [
+            ("a key no kind carries", "\"deep\":", 0, Err(deep)),
+            ("metadata that is not an object", "\"metadata\":", 0, Ok(())),
             (
                 "a metadata key other than neuralos",
                 "\"metadata\":{\"other\":",
                 1,
+                Ok(()),
             ),
             (
                 "a neuralos key other than quant",
                 "\"metadata\":{\"neuralos\":{\"other\":",
                 2,
+                Ok(()),
             ),
             (
                 "a quant key other than units",
                 "\"metadata\":{\"neuralos\":{\"quant\":{\"other\":",
                 3,
+                Ok(()),
             ),
         ] {
             let field = |n: usize| {
@@ -5845,12 +6331,12 @@ mod tests {
             let doc = chain_with(&field(64));
             assert_eq!(
                 nir_scan(doc.as_bytes()).map(|_| ()),
-                Ok(()),
+                at_64,
                 "{label}: the scan, 64"
             );
             assert_eq!(
                 import_chain_variant(&doc, NirImportOptions::default()).map(|_| ()),
-                Ok(()),
+                at_64,
                 "{label}: the import, 64"
             );
             let doc = chain_with(&field(65));
