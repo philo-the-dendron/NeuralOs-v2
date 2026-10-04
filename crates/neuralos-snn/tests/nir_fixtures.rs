@@ -7,8 +7,9 @@
 //!
 //! The mutation loop at the end holds the import path to its rules on
 //! edited documents, one edit a case: each is refused or imported,
-//! never with a panic or a hang, and an import exports to a document
-//! that re-imports to the same records.
+//! never with a panic or a hang; an import exports to a document that
+//! re-imports to the same records; and a buffer one short, the
+//! caller's (`scratch` aside) or the export's, is refused.
 
 use neuralos_snn::nir::{
     nir_export, nir_import, nir_scan, NirBuffers, NirError, NirImport, NirImportOptions, NirLif,
@@ -728,11 +729,12 @@ fn repeat_item(b: &[u8], (a, z): (usize, usize)) -> Vec<u8> {
 }
 
 /// A step, a fixture's in the setup or a case, that runs this long is a
-/// hang; the slowest case measured ran for 1.8 ms in debug (2026-10-04).
+/// hang; the slowest case ran for under 6 ms in debug in each of five
+/// runs (2026-10-04).
 const STALL: Duration = Duration::from_secs(10);
 
 /// The whole loop's budget, setup included: 6 ms a case and at least
-/// 60 s, so 60 s at CI's count, where the loop runs for about 1 s in
+/// 60 s, so 60 s at CI's count, where the loop runs for about 1.5 s in
 /// debug (2026-10-04). A slowdown spread over every case, which leaves
 /// each one far under [`STALL`], fails here.
 fn budget(cases: usize) -> Duration {
@@ -891,42 +893,62 @@ fn same_records(a: &NirImport<'_>, b: &NirImport<'_>) -> Result<(), String> {
     Ok(())
 }
 
+/// Each case is refused or imported, never with a panic or a hang; a case
+/// that imports round-trips ([`import_path`]) and also meets the short
+/// buffers ([`short_buffers`]).
 #[test]
 fn mutated_fixtures_are_refused_or_round_trip() {
     let (cases, seed) = fuzz_config();
     under_watchdog(cases, move |flight| {
         let seeds = mutation_seeds(flight);
         let mut rng = Rng(seed);
+        // the export cuts draw from a generator of their own, seeded from
+        // the seed and never 0, so case N is the same bytes whatever the
+        // cases before it imported
+        let mut cuts = Rng(seed.wrapping_mul(0x2545_F491_4F6C_DD1D) | 1);
         let mut out = [vec![0u8; 1 << 16], vec![0u8; 1 << 16], vec![0u8; 1 << 16]];
         let (mut imported, mut built, mut unedited) = (0usize, 0usize, 0usize);
+        let (mut scratch_tried, mut scratch_held) = (0usize, 0usize);
         for case in 1..=cases {
             let kind = rng.below(EDITS.len());
             let s = &seeds[rng.below(seeds.len())];
             let input = edit(&mut rng, s, kind);
             let what = format!("case {case} at seed {seed}, {} on {}", EDITS[kind], s.name);
             flight.begin_case(what.clone(), &input);
-            let path =
-                panic::catch_unwind(AssertUnwindSafe(|| import_path(&input, s.opts, &mut out)))
-                    .unwrap_or_else(|_| {
-                        panic!(
-                            "{what}: the import path panicked (above); its bytes: {}",
-                            input.escape_ascii()
-                        )
-                    });
+            let path = panic::catch_unwind(AssertUnwindSafe(|| {
+                let imports = import_path(&input, s.opts, &mut out)?;
+                let held = if imports.is_some() {
+                    let g = NirImport::from_json(&input, s.opts).expect("it imported");
+                    short_buffers(&input, &g, &mut out[0], &mut cuts)?
+                } else {
+                    None
+                };
+                Ok::<_, String>((imports, held))
+            }))
+            .unwrap_or_else(|_| {
+                panic!(
+                    "{what}: the import path or a short buffer panicked (above); its bytes: {}",
+                    input.escape_ascii()
+                )
+            });
+            let (imports, held) = path.unwrap_or_else(|rule| {
+                panic!("{what}: {rule}; its bytes: {}", input.escape_ascii())
+            });
             let edited = input != s.bytes;
             unedited += usize::from(!edited);
-            match path {
-                Ok(Some(b)) if edited => {
-                    imported += 1;
-                    built += usize::from(b);
-                }
-                Ok(_) => {}
-                Err(rule) => panic!("{what}: {rule}; its bytes: {}", input.escape_ascii()),
+            if let (Some(b), true) = (imports, edited) {
+                imported += 1;
+                built += usize::from(b);
+            }
+            if let Some(h) = held {
+                scratch_tried += 1;
+                scratch_held += usize::from(h);
             }
         }
         println!(
             "{cases} cases at seed {seed}: {imported} imported, {built} built, not counting \
-             {unedited} cases that left the fixture as it was"
+             {unedited} cases that left the fixture as it was; {scratch_held} of {scratch_tried} \
+             short scratch buffers still imported, with the same records"
         );
         // the floors, about half of what CI's cases reach, count only what
         // an edit changed: an import path that starts refusing what it
@@ -943,4 +965,98 @@ fn mutated_fixtures_are_refused_or_round_trip() {
             );
         }
     });
+}
+
+/// One imported case against short buffers. `nir_import` with the
+/// buffers `nir_scan` asks for gives the owned import's records; with
+/// any of them one short it refuses. `scratch` is the exception: the
+/// doc asks room for every staged value, the import stages one node at
+/// a time, so one short may still be enough, and then gives the same
+/// records; `Ok(Some(true))` says it was, `Ok(Some(false))` that it was
+/// refused, `Ok(None)` that the case stages nothing. An export one byte
+/// short of its document, or cut at random, refuses.
+fn short_buffers(
+    input: &[u8],
+    g: &NirImport<'_>,
+    out: &mut [u8],
+    cuts: &mut Rng,
+) -> Result<Option<bool>, String> {
+    let scan = nir_scan(input).map_err(|e| format!("an import's scan fails: {e:?}"))?;
+    let sizes = [
+        scan.node_count,
+        scan.edge_count,
+        scan.weight_cells,
+        scan.lif_neurons,
+        scan.weight_cells + 5 * scan.lif_neurons,
+    ];
+    let names = ["nodes", "edges", "weights", "lifs", "scratch"];
+    let mut scratch_held = None;
+    for short in [None, Some(0), Some(1), Some(2), Some(3), Some(4)] {
+        if short.is_some_and(|i| sizes[i] == 0) {
+            continue;
+        }
+        let len = |i: usize| sizes[i] - usize::from(short == Some(i));
+        let blank = NirNode {
+            name: "",
+            kind: NirNodeKind::Input,
+            shape: [0; 4],
+            shape_len: 0,
+            lif: None,
+            linear: None,
+        };
+        let mut nodes = vec![blank; len(0)];
+        let mut edges = vec![(0u32, 0u32); len(1)];
+        let mut weights = vec![0i16; len(2)];
+        let mut lifs = vec![NirLif::default(); len(3)];
+        let mut scratch = vec![0f64; len(4)];
+        let r = nir_import(
+            input,
+            g.opts,
+            &mut NirBuffers {
+                nodes: &mut nodes,
+                edges: &mut edges,
+                weights: &mut weights,
+                lifs: &mut lifs,
+                scratch: &mut scratch,
+            },
+        )
+        .map(|_| ());
+        let same = nodes == g.nodes && edges == g.edges && weights == g.weights && lifs == g.lifs;
+        let held = match (short, r) {
+            (None | Some(4), Ok(())) => same,
+            (Some(_), Err(NirError::BufferOverflow)) => true,
+            _ => false,
+        };
+        if !held {
+            let which = short.map_or_else(
+                || "the buffers the scan asks for".to_string(),
+                |i| format!("{} one short", names[i]),
+            );
+            let records = if same { "the same" } else { "other" };
+            return Err(format!(
+                "nir_import with {which} gave {r:?}, {records} records"
+            ));
+        }
+        if short == Some(4) {
+            scratch_held = Some(r.is_ok());
+        }
+    }
+    let full = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, out)
+        .map_err(|e| format!("the import does not export: {e:?}"))?;
+    for cut in [full - 1, cuts.below(full)] {
+        let r = nir_export(
+            &g.nodes,
+            &g.edges,
+            &g.weights,
+            &g.lifs,
+            g.opts,
+            &mut out[..cut],
+        );
+        if r != Err(NirError::ExportTooSmall) {
+            return Err(format!(
+                "an export into {cut} of its {full} bytes gave {r:?}"
+            ));
+        }
+    }
+    Ok(scratch_held)
 }
