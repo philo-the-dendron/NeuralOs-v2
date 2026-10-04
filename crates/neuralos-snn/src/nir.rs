@@ -529,7 +529,10 @@ pub struct NirLif {
     pub tau_us: u32,
     /// `r` on the substrate's grid, MΩ.
     pub resistance_mohm: u16,
-    /// `tau / r` on the substrate's grid, pF.
+    /// The substrate's own `tau` over its own `r`, pF:
+    /// `tau_us / resistance_mohm`, since µs / MΩ is pF. The export
+    /// writes those two, so a re-import computes the same C; the
+    /// source's is `tau_s / r_ohm`.
     pub capacitance_pf: u16,
     /// [`NirNote::CapacitanceClamped`].
     pub capacitance_clamped: bool,
@@ -974,8 +977,10 @@ pub fn quantize_lif(
     }
     let (reset_q, e3) = quant_potential(v_reset_v, "v_reset", s)?;
 
-    // C[F] = tau/r → pF = tau_s/r · 1e12; clamp is informational
-    let c_pf_f = tau_s / r_ohm * 1.0e12;
+    // C = tau/r on the substrate's own integers (µs / MΩ is pF): the
+    // export writes tau_us and r_mohm, so a re-import computes the same
+    // C; the clamp is informational
+    let c_pf_f = f64::from(tau_us) / r_mohm;
     let capacitance_clamped = c_pf_f > f64::from(u16::MAX);
     let capacitance_pf = round_half_away(c_pf_f.clamp(0.0, f64::from(u16::MAX))) as u16;
 
@@ -5653,6 +5658,30 @@ mod tests {
         );
         // provenance rode metadata: the ORIGINAL source floats survive
         assert_eq!(lif2.tau_s, lif1.tau_s);
+    }
+
+    /// C is the substrate's own `tau` over its own `r`, the two integers
+    /// the export writes, so the round trip keeps it: off the µs grid
+    /// with `r` on the MΩ grid (10.0006 ms is 10,001 µs, over 2 MΩ
+    /// 5,000.5 pF, rounded away to 5,001), and with `r` off it (0.5 MΩ
+    /// is 1 MΩ on the substrate: 10,000 pF, not the source's 20,000).
+    #[test]
+    fn capacitance_is_the_substrates_own_tau_over_r() {
+        let opts = NirImportOptions::default();
+        let doc = CHAIN.replacen(
+            "\"tau\":[0.02,0.02],\"r\":[100000000.0,100000000.0]",
+            "\"tau\":[0.0100006,0.01],\"r\":[2000000.0,500000.0]",
+            1,
+        );
+        assert_ne!(doc, CHAIN, "the LIF takes the new tau and r");
+        let (nodes, edges, weights, lifs, _) = import_chain_variant(&doc, opts).expect("imports");
+        let c = |l: &[NirLif]| [l[0].capacitance_pf, l[1].capacitance_pf];
+        assert_eq!(c(&lifs), [5_001, 10_000]);
+        let mut out = [0u8; 4096];
+        let n = nir_export(&nodes, &edges, &weights, &lifs, opts, &mut out).expect("exports");
+        let exported = core::str::from_utf8(&out[..n]).expect("utf8");
+        let (_, _, _, again, _) = import_chain_variant(exported, opts).expect("re-imports");
+        assert_eq!(c(&again), c(&lifs), "the round trip keeps C");
     }
 
     #[test]
