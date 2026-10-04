@@ -32,6 +32,15 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   `Affine` under `--sim-units` (below). Anything else (e.g. `Conv`, RNN
   blocks), and `Affine` in native units, is refused **loudly with the
   node's name and kind** — a recorded result, never a partial file.
+- **Keys:** each group carries the reference's own keys: a node its
+  kind's datasets, `type` and a `metadata` group; `nodes` its nodes,
+  each a group; the graph `type`, `edges`, `nodes` and `metadata`; the
+  file `version` and `node`. Any other dataset or group (a misspelled
+  `v_reset`, a field of a newer NIR) is refused with its path, the
+  file's NIR version and the reference this tool reads, never skipped.
+  A soft or external link, which `nir.write` never writes, can pass
+  unseen: `hdf5-pure` lists none, so a key behind one reads as absent,
+  a `v_reset` as zeros, where `nir.read` follows it.
 - **Filters:** none or gzip (deflate) — the reference emission
   conventions. `lzf`, `szip`, anything else: refused by name before a
   single byte decodes (a filter we cannot decode is a silent-corruption
@@ -129,12 +138,11 @@ sidecar:
   `-.25`, `+2`; read in thousandths of a unit), default 1 for every
   feature. Each bias input the conversion added is the converter's: 0
   before its start and 1 from it, a run split where one starts inside
-  it. `--drive <file>` gives
-  runs instead, one a line, a step count and then the numbers
-  (`10 0.5,0`; blank lines and `#` lines skipped), each run the currents
-  its numbers give, one after the other. The library's freezer writes
-  it (`neuralos_snn::fixed::freeze::module`), the one that writes the
-  library's own frozen traces.
+  it. `--drive <file>` gives runs instead, one a line, a step count and
+  then the numbers (`10 0.5,0`; blank lines and `#` lines skipped), each
+  run the currents its numbers give, one after the other. The library's
+  freezer writes it (`neuralos_snn::fixed::freeze::module`), the one
+  that writes the library's own frozen traces.
 - **`<out>.trace`**, that drive on the host in `neuralos-trace v1`: the
   header line, then one row per step, the spikes and every membrane,
   written by `neuralos_snn::trace::row`, the row writer the firmware

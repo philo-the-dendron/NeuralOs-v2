@@ -3,13 +3,14 @@
 //! <output.json>`.
 //!
 //! Exit codes: 0 converted, and frozen with `--freeze` · 1 usage/IO · 2
-//! named refusal (filter census, out-of-subset node, layout/schema
-//! violation, an Affine's bias with no place; with `--freeze`, a graph
-//! that does not assemble, plasticity on, more than 65,535 neurons),
-//! nothing written. The sidecar `<output>.meta.json` carries the
-//! file-level audit stamp (f32 widening, node census, options);
-//! `--freeze` writes `<out.rs>` and `<out>.trace`, prints the library's
-//! assembly notes and adds its report to the sidecar (README § Freeze).
+//! named refusal (filter census, out-of-subset node, a key its group
+//! does not carry, layout/schema violation, an Affine's bias with no
+//! place; with `--freeze`, a graph that does not assemble, plasticity
+//! on, more than 65,535 neurons), nothing written. The sidecar
+//! `<output>.meta.json` carries the file-level audit stamp (f32
+//! widening, node census, options); `--freeze` writes `<out.rs>` and
+//! `<out>.trace`, prints the library's assembly notes and adds its
+//! report to the sidecar (README § Freeze).
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -203,10 +204,11 @@ fn usage(why: &str) -> ExitCode {
     eprintln!("                 --steps or --input)");
     eprintln!("  exit 0: converted (sidecar <output>.meta.json written), frozen with --freeze");
     eprintln!("  exit 1: usage / IO error");
-    eprintln!("  exit 2: named refusal — filter census, out-of-subset node, layout,");
-    eprintln!("          sim-unit parameters without --sim-units, an Affine's bias with no");
-    eprintln!("          place; with --freeze, a graph that does not assemble, plasticity");
-    eprintln!("          on, more than 65,535 neurons");
+    eprintln!("  exit 2: named refusal — filter census, out-of-subset node, a key its");
+    eprintln!("          group does not carry, layout, sim-unit parameters without");
+    eprintln!("          --sim-units, an Affine's bias with no place; with --freeze, a");
+    eprintln!("          graph that does not assemble, plasticity on, more than 65,535");
+    eprintln!("          neurons");
     ExitCode::from(1)
 }
 
