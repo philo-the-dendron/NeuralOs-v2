@@ -4,11 +4,21 @@
 //! import path. Positive fixtures are the reference's OWN `to_dict()`
 //! emissions; negative fixtures are minimal mutations of that
 //! emission, one error class each.
+//!
+//! The mutation loop at the end holds the import path to its rules on
+//! edited documents, one edit a case: each is refused or imported,
+//! never with a panic or a hang, and an import exports to a document
+//! that re-imports to the same records.
 
 use neuralos_snn::nir::{
     nir_export, nir_import, nir_scan, NirBuffers, NirError, NirImport, NirImportOptions, NirLif,
     NirNode, NirNodeKind, NirNote, EXPORT_VERSION,
 };
+use neuralos_snn::VoltageResolution;
+use std::panic::{self, AssertUnwindSafe};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::{Duration, Instant};
 
 const CHAIN: &str = include_str!("nir_fixtures/chain.json");
 const CHAIN_POP: &str = include_str!("nir_fixtures/chain_population.json");
@@ -325,4 +335,612 @@ fn buffer_api_consumes_reference_emission() {
         );
     }
     assert_eq!(weights, vec![16384, -32767, 8192]);
+}
+
+// ---------------------------------------------------------------------------
+// The mutation loop: each case one edit of one fixture, imported under the
+// fixture's own options. CI runs FUZZ_CASES cases at FUZZ_SEED, the same
+// cases every run. NIR_FUZZ_CASES and NIR_FUZZ_SEED (a nonzero u64) run
+// others by hand, a release round's million in release, at a new seed from
+// the clock each round; the run prints its seed:
+//   NIR_FUZZ_CASES=1000000 NIR_FUZZ_SEED=$(date +%s) cargo test \
+//     -p neuralos-snn --release --test nir_fixtures mutated -- --nocapture
+// A failing case names its number and seed; NIR_FUZZ_CASES at that number
+// replays the cases up to it, and a run under FLOOR_FROM cases runs no
+// floor, so the replay can confirm a fix.
+// ---------------------------------------------------------------------------
+
+const FUZZ_CASES: usize = 10_000;
+const FUZZ_SEED: u64 = 0x9E37_79B9_7F4A_7C15;
+
+/// The reach floors apply from this many cases: under it, a seed's run
+/// can fall under them by chance; from it, none of 1,000 seeds did
+/// (2026-10-04).
+const FLOOR_FROM: usize = 1_000;
+
+/// The case count and the seed: CI's, unless the environment names others.
+fn fuzz_config() -> (usize, u64) {
+    let cases = std::env::var("NIR_FUZZ_CASES").map_or(FUZZ_CASES, |s| {
+        s.parse().expect("NIR_FUZZ_CASES is a case count")
+    });
+    let seed = std::env::var("NIR_FUZZ_SEED")
+        .map_or(FUZZ_SEED, |s| s.parse().expect("NIR_FUZZ_SEED is a u64"));
+    assert!(cases > 0, "NIR_FUZZ_CASES: at least one case");
+    assert!(seed != 0, "NIR_FUZZ_SEED: xorshift needs a nonzero seed");
+    (cases, seed)
+}
+
+/// xorshift64*, a few lines of our own: a seed gives the same cases on
+/// every machine and toolchain.
+struct Rng(u64);
+
+impl Rng {
+    fn next(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.0 = x;
+        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+
+    /// A draw in `0..n`, 0 when `n` is 0.
+    fn below(&mut self, n: usize) -> usize {
+        if n == 0 {
+            0
+        } else {
+            (self.next() % n as u64) as usize
+        }
+    }
+}
+
+/// A fixture as a seed of the loop: its bytes, the options it imports
+/// under and where a JSON edit can land in it. The options are the
+/// default, but simulation units when the default refuses the fixture's
+/// units mark, and the centi-mV grid in native units when the default
+/// imports the fixture, its `build_network` refuses and the centi-mV grid
+/// builds it; a negative made for mV, which the default refuses, stays on
+/// mV.
+struct Seed {
+    name: String,
+    bytes: Vec<u8>,
+    opts: NirImportOptions,
+    spans: Spans,
+}
+
+/// The fixtures as seeds, each fixture a step of the setup, so a hang
+/// there names the fixture.
+fn mutation_seeds(flight: &InFlight) -> Vec<Seed> {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/nir_fixtures");
+    let mut paths: Vec<_> = std::fs::read_dir(dir)
+        .expect("the fixtures folder")
+        .map(|e| e.expect("a fixture").path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    paths.sort();
+    let centi = NirImportOptions {
+        resolution: VoltageResolution::CentiMillivolt,
+        ..NirImportOptions::default()
+    };
+    let builds = |bytes: &[u8], opts: NirImportOptions| {
+        NirImport::from_json(bytes, opts).is_ok_and(|g| g.build_network().is_ok())
+    };
+    paths
+        .iter()
+        .map(|p| {
+            let name = p
+                .file_name()
+                .expect("a name")
+                .to_string_lossy()
+                .into_owned();
+            let bytes = std::fs::read(p).expect("a fixture reads");
+            flight.begin(format!("the setup, {name}"), &bytes);
+            let opts = match NirImport::from_json(&bytes, NirImportOptions::default()) {
+                Err(NirError::UnitsMismatch { .. }) => NirImportOptions::sim_units(100),
+                Ok(g) if g.build_network().is_err() && builds(&bytes, centi) => centi,
+                _ => NirImportOptions::default(),
+            };
+            Seed {
+                name,
+                spans: spans(&bytes),
+                bytes,
+                opts,
+            }
+        })
+        .collect()
+}
+
+/// Where a JSON edit can land in a fixture, each a byte range: its
+/// numbers, its string values and its keys (quotes included), its array
+/// elements and its object members (key to value).
+#[derive(Default)]
+struct Spans {
+    numbers: Vec<(usize, usize)>,
+    strings: Vec<(usize, usize)>,
+    keys: Vec<(usize, usize)>,
+    elements: Vec<(usize, usize)>,
+    members: Vec<(usize, usize)>,
+}
+
+/// The spans of a fixture. A fixture is valid JSON, and this walks the
+/// fixtures only, never an edited document.
+fn spans(json: &[u8]) -> Spans {
+    let mut w = SpanWalk {
+        b: json,
+        i: 0,
+        spans: Spans::default(),
+    };
+    w.value();
+    w.skip_ws();
+    assert_eq!(w.i, json.len(), "a fixture is one JSON value");
+    w.spans
+}
+
+struct SpanWalk<'a> {
+    b: &'a [u8],
+    i: usize,
+    spans: Spans,
+}
+
+impl SpanWalk<'_> {
+    fn skip_ws(&mut self) {
+        while self.b.get(self.i).is_some_and(u8::is_ascii_whitespace) {
+            self.i += 1;
+        }
+    }
+
+    fn string(&mut self) -> (usize, usize) {
+        let start = self.i;
+        self.i += 1;
+        while self.b[self.i] != b'"' {
+            self.i += if self.b[self.i] == b'\\' { 2 } else { 1 };
+        }
+        self.i += 1;
+        (start, self.i)
+    }
+
+    fn value(&mut self) -> (usize, usize) {
+        self.skip_ws();
+        let start = self.i;
+        match self.b[start] {
+            open @ (b'{' | b'[') => {
+                self.i += 1;
+                self.skip_ws();
+                if matches!(self.b[self.i], b'}' | b']') {
+                    self.i += 1;
+                } else {
+                    loop {
+                        if open == b'{' {
+                            self.skip_ws();
+                            let key = self.string();
+                            self.spans.keys.push(key);
+                            self.skip_ws();
+                            self.i += 1; // the colon
+                            let (_, end) = self.value();
+                            self.spans.members.push((key.0, end));
+                        } else {
+                            let element = self.value();
+                            self.spans.elements.push(element);
+                        }
+                        self.skip_ws();
+                        self.i += 1; // a comma, or the close
+                        if matches!(self.b[self.i - 1], b'}' | b']') {
+                            break;
+                        }
+                    }
+                }
+            }
+            b'"' => {
+                let string = self.string();
+                self.spans.strings.push(string);
+            }
+            b'-' | b'0'..=b'9' => {
+                while self
+                    .b
+                    .get(self.i)
+                    .is_some_and(|&c| matches!(c, b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9'))
+                {
+                    self.i += 1;
+                }
+                self.spans.numbers.push((start, self.i));
+            }
+            _ => {
+                while self.b.get(self.i).is_some_and(u8::is_ascii_alphabetic) {
+                    self.i += 1;
+                }
+            }
+        }
+        (start, self.i)
+    }
+}
+
+/// The thirteen edits, one a case. The first five work on bytes: four of
+/// them mostly break the JSON, which is what tests the scanner, a cut file
+/// among them (Python's strict parser refuses 55 %, 99.8 %, 91 % and 78 %
+/// of them), while a digit change mostly keeps it valid (98.6 %) and
+/// imports more than any other edit. The other eight keep it valid and so
+/// reach the import's own checks.
+const EDITS: [&str; 13] = [
+    "flip a bit",
+    "cut the end",
+    "repeat a block",
+    "delete a block",
+    "change digits",
+    "a number to an edge value",
+    "a string to another",
+    "a string to a new name",
+    "a key to another",
+    "drop an element",
+    "repeat an element",
+    "drop a member",
+    "repeat a member",
+];
+
+/// Edge values for a number: zero and its signs, the time step (0.1 ms)
+/// and under it, the weight limits in simulation units and one step past
+/// each (3.2767 on a spiking edge, 32.767 into a drive stage:
+/// `NirError::WeightOutOfRange`), the i16, u16 and u32 bounds, 1e308
+/// (near f64's largest), subnormals, an overflow to infinity, and
+/// membrane potentials.
+const EDGE_NUMBERS: &str = "0 -0 1 -1 2 0.5 -0.5 0.1 1e-4 0.0001 9e-5 1e-5 1e-9 \
+    1e-30 1e-320 5e-324 1e9 1e30 1e308 -1e308 1e400 \
+    3.2767 3.2768 -3.2767 -3.2768 32.767 32.768 -32.767 -32.768 \
+    32767 32768 -32768 -32769 65535 65536 4294967295 4294967296 \
+    9007199254740993 100 1000 0.02 0.001 -0.07 -0.08 -0.065";
+
+/// Edit `kind` of [`EDITS`] on a seed; the seed as it is when it holds
+/// nothing of that shape (no array, say).
+fn edit(rng: &mut Rng, seed: &Seed, kind: usize) -> Vec<u8> {
+    let (b, s) = (&seed.bytes, &seed.spans);
+    let mut out = b.clone();
+    match kind {
+        0 => {
+            let i = rng.below(out.len());
+            out[i] ^= 1 << rng.below(8);
+        }
+        1 => out.truncate(rng.below(out.len())),
+        2 => {
+            let i = rng.below(out.len());
+            let len = 1 + rng.below(32.min(out.len() - i));
+            let block = out[i..i + len].to_vec();
+            let at = rng.below(out.len() + 1);
+            out.splice(at..at, block);
+        }
+        3 => {
+            let i = rng.below(out.len());
+            let len = 1 + rng.below(16.min(out.len() - i));
+            out.drain(i..i + len);
+        }
+        4 => {
+            let digits: Vec<usize> = (0..out.len())
+                .filter(|&i| out[i].is_ascii_digit())
+                .collect();
+            if !digits.is_empty() {
+                let i = digits[rng.below(digits.len())];
+                if rng.below(2) == 0 {
+                    out[i] = b'0' + rng.below(10) as u8;
+                } else {
+                    let more: Vec<u8> = (0..1 + rng.below(6))
+                        .map(|_| b'0' + rng.below(10) as u8)
+                        .collect();
+                    out.splice(i..i, more);
+                }
+            }
+        }
+        5 => {
+            if let Some((a, z)) = pick(rng, &s.numbers) {
+                out = splice(b, (a, z), edge_number(rng, &b[a..z]).as_bytes());
+            }
+        }
+        6 => {
+            if let (Some(at), Some((c, d))) = (pick(rng, &s.strings), pick(rng, &s.strings)) {
+                out = splice(b, at, &b[c..d]);
+            }
+        }
+        7 => {
+            if let Some(at) = pick(rng, &s.strings) {
+                out = splice(b, at, b"\"zz\"");
+            }
+        }
+        8 => {
+            if let (Some(at), Some((c, d))) = (pick(rng, &s.keys), pick(rng, &s.keys)) {
+                out = splice(b, at, &b[c..d]);
+            }
+        }
+        9 => {
+            if let Some(at) = pick(rng, &s.elements) {
+                out = drop_item(b, at);
+            }
+        }
+        10 => {
+            if let Some(at) = pick(rng, &s.elements) {
+                out = repeat_item(b, at);
+            }
+        }
+        11 => {
+            if let Some(at) = pick(rng, &s.members) {
+                out = drop_item(b, at);
+            }
+        }
+        _ => {
+            if let Some(at) = pick(rng, &s.members) {
+                out = repeat_item(b, at);
+            }
+        }
+    }
+    out
+}
+
+fn pick(rng: &mut Rng, spans: &[(usize, usize)]) -> Option<(usize, usize)> {
+    (!spans.is_empty()).then(|| spans[rng.below(spans.len())])
+}
+
+/// A number's edit: an edge value, or the number negated or scaled.
+fn edge_number(rng: &mut Rng, token: &[u8]) -> String {
+    if rng.below(2) == 0 {
+        let n = EDGE_NUMBERS.split_whitespace().count();
+        let value = EDGE_NUMBERS.split_whitespace().nth(rng.below(n));
+        return value.expect("a draw under the count").to_string();
+    }
+    let v: f64 = std::str::from_utf8(token)
+        .ok()
+        .and_then(|t| t.parse().ok())
+        .expect("a fixture's number parses");
+    let w = match rng.below(6) {
+        0 => -v,
+        1 => v * 10.0,
+        2 => v / 10.0,
+        3 => v * 1e3,
+        4 => v / 1e3,
+        _ => v * (1.0 + 1e-9),
+    };
+    format!("{w:e}")
+}
+
+/// `b` with the span `(a, z)` replaced by `with`.
+fn splice(b: &[u8], (a, z): (usize, usize), with: &[u8]) -> Vec<u8> {
+    [&b[..a], with, &b[z..]].concat()
+}
+
+/// `b` without an element or a member, and without one comma beside it.
+fn drop_item(b: &[u8], (a, z): (usize, usize)) -> Vec<u8> {
+    let after = z + b[z..]
+        .iter()
+        .take_while(|c| c.is_ascii_whitespace())
+        .count();
+    if b.get(after) == Some(&b',') {
+        return splice(b, (a, after + 1), b"");
+    }
+    let before = a - b[..a]
+        .iter()
+        .rev()
+        .take_while(|c| c.is_ascii_whitespace())
+        .count();
+    if before > 0 && b[before - 1] == b',' {
+        return splice(b, (before - 1, z), b"");
+    }
+    splice(b, (a, z), b"")
+}
+
+/// `b` with an element or a member given twice.
+fn repeat_item(b: &[u8], (a, z): (usize, usize)) -> Vec<u8> {
+    splice(b, (z, z), &[b",".as_slice(), &b[a..z]].concat())
+}
+
+/// A step, a fixture's in the setup or a case, that runs this long is a
+/// hang; the slowest case measured ran for 1.8 ms in debug (2026-10-04).
+const STALL: Duration = Duration::from_secs(10);
+
+/// The whole loop's budget, setup included: 6 ms a case and at least
+/// 60 s, so 60 s at CI's count, where the loop runs for about 1 s in
+/// debug (2026-10-04). A slowdown spread over every case, which leaves
+/// each one far under [`STALL`], fails here.
+fn budget(cases: usize) -> Duration {
+    Duration::from_millis(6 * cases as u64).max(Duration::from_secs(60))
+}
+
+/// Where the loop is, for the watchdog: how many steps have begun (one a
+/// fixture in the setup, then one a case), how many of them are cases,
+/// and the step in flight, its name and its bytes.
+#[derive(Default)]
+struct InFlight {
+    begun: AtomicUsize,
+    cases: AtomicUsize,
+    step: Mutex<(String, Vec<u8>)>,
+}
+
+impl InFlight {
+    fn begin(&self, what: String, input: &[u8]) {
+        *self.step.lock().expect("the watchdog never holds it long") = (what, input.to_vec());
+        self.begun.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn begin_case(&self, what: String, input: &[u8]) {
+        self.cases.fetch_add(1, Ordering::Relaxed);
+        self.begin(what, input);
+    }
+
+    fn in_flight(&self) -> (String, Vec<u8>) {
+        self.step.lock().map(|s| s.clone()).unwrap_or_default()
+    }
+}
+
+/// Runs the loop on a thread of its own and fails the test when a step
+/// runs past [`STALL`], or the whole loop past its [`budget`] for `cases`,
+/// naming the step in flight and its bytes; a failure inside the loop
+/// fails the test as it is.
+fn under_watchdog(cases: usize, body: impl FnOnce(&InFlight) + Send + 'static) {
+    let (start, limit) = (Instant::now(), budget(cases));
+    let flight = Arc::new(InFlight::default());
+    let (done, finished) = mpsc::channel::<()>();
+    let worker = {
+        let flight = Arc::clone(&flight);
+        std::thread::spawn(move || {
+            body(&flight);
+            let _ = done.send(());
+        })
+    };
+    let (mut seen, mut since) = (0, Instant::now());
+    while let Err(mpsc::RecvTimeoutError::Timeout) =
+        finished.recv_timeout(Duration::from_millis(200))
+    {
+        let begun = flight.begun.load(Ordering::Relaxed);
+        if begun != seen {
+            (seen, since) = (begun, Instant::now());
+        } else if since.elapsed() > STALL {
+            let (what, bytes) = flight.in_flight();
+            panic!(
+                "{what} has run past {STALL:?}, a hang; its bytes: {}",
+                bytes.escape_ascii()
+            );
+        }
+        if start.elapsed() > limit {
+            let (what, bytes) = flight.in_flight();
+            panic!(
+                "the loop has run past {limit:?}, its budget for {cases} cases, and {} \
+                 cases began; in flight, {what}; its bytes: {}",
+                flight.cases.load(Ordering::Relaxed),
+                bytes.escape_ascii()
+            );
+        }
+    }
+    if let Err(payload) = worker.join() {
+        panic::resume_unwind(payload);
+    }
+}
+
+/// One case through the import path: `Ok(None)` when the document is
+/// refused, `Ok(Some(built))` when it imports and round-trips, `Err`
+/// naming the rule it breaks.
+fn import_path(
+    input: &[u8],
+    opts: NirImportOptions,
+    out: &mut [Vec<u8>; 3],
+) -> Result<Option<bool>, String> {
+    let Ok(g) = NirImport::from_json(input, opts) else {
+        return Ok(None);
+    };
+    let built = g.build_network().is_ok();
+    let [e1, e2, e3] = out;
+    let n1 = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, e1)
+        .map_err(|e| format!("the import does not export: {e:?}"))?;
+    let g2 = NirImport::from_json(&e1[..n1], g.opts)
+        .map_err(|e| format!("its export is refused: {e:?}"))?;
+    same_records(&g, &g2)?;
+    // the first export records the source (provenance, the quantization
+    // error) and differs from the second by design; from there it holds
+    let n2 = nir_export(&g2.nodes, &g2.edges, &g2.weights, &g2.lifs, g2.opts, e2)
+        .map_err(|e| format!("the re-import does not export: {e:?}"))?;
+    let g3 = NirImport::from_json(&e2[..n2], g.opts)
+        .map_err(|e| format!("the second export is refused: {e:?}"))?;
+    let n3 = nir_export(&g3.nodes, &g3.edges, &g3.weights, &g3.lifs, g3.opts, e3)
+        .map_err(|e| format!("the third import does not export: {e:?}"))?;
+    if e2[..n2] != e3[..n3] {
+        return Err("the second export and the third differ".to_string());
+    }
+    Ok(Some(built))
+}
+
+/// What a re-import reproduces: every node (its name, kind, shape and
+/// views; a Linear's `absmax` and `max_abs_err` describe its source),
+/// every edge, the weight arena, and each LIF's substrate fields with
+/// C's clamp (its source floats, and the notes on how they quantized,
+/// describe the source too).
+fn same_records(a: &NirImport<'_>, b: &NirImport<'_>) -> Result<(), String> {
+    let linear = |n: &NirNode<'_>| {
+        n.linear.map(|l| {
+            (
+                l.rows,
+                l.cols,
+                l.weight_offset,
+                l.scale.to_bits(),
+                l.zero_tensor,
+            )
+        })
+    };
+    let same_node = |x: &NirNode<'_>, y: &NirNode<'_>| {
+        (x.name, x.kind, x.shape, x.shape_len, x.lif)
+            == (y.name, y.kind, y.shape, y.shape_len, y.lif)
+            && linear(x) == linear(y)
+    };
+    let lif = |l: &NirLif| {
+        (
+            l.tau_us,
+            l.resistance_mohm,
+            l.capacitance_pf,
+            l.capacitance_clamped,
+            l.leak_q,
+            l.threshold_q,
+            l.reset_q,
+        )
+    };
+    let nodes_hold = a.nodes.len() == b.nodes.len()
+        && a.nodes.iter().zip(&b.nodes).all(|(x, y)| same_node(x, y));
+    if !nodes_hold {
+        return Err("the export re-imports other nodes".to_string());
+    }
+    if a.edges != b.edges {
+        return Err("the export re-imports other edges".to_string());
+    }
+    if a.weights != b.weights {
+        return Err("the export re-imports other weights".to_string());
+    }
+    if !a.lifs.iter().map(lif).eq(b.lifs.iter().map(lif)) {
+        return Err("the export re-imports other LIF records".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn mutated_fixtures_are_refused_or_round_trip() {
+    let (cases, seed) = fuzz_config();
+    under_watchdog(cases, move |flight| {
+        let seeds = mutation_seeds(flight);
+        let mut rng = Rng(seed);
+        let mut out = [vec![0u8; 1 << 16], vec![0u8; 1 << 16], vec![0u8; 1 << 16]];
+        let (mut imported, mut built, mut unedited) = (0usize, 0usize, 0usize);
+        for case in 1..=cases {
+            let kind = rng.below(EDITS.len());
+            let s = &seeds[rng.below(seeds.len())];
+            let input = edit(&mut rng, s, kind);
+            let what = format!("case {case} at seed {seed}, {} on {}", EDITS[kind], s.name);
+            flight.begin_case(what.clone(), &input);
+            let path =
+                panic::catch_unwind(AssertUnwindSafe(|| import_path(&input, s.opts, &mut out)))
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "{what}: the import path panicked (above); its bytes: {}",
+                            input.escape_ascii()
+                        )
+                    });
+            let edited = input != s.bytes;
+            unedited += usize::from(!edited);
+            match path {
+                Ok(Some(b)) if edited => {
+                    imported += 1;
+                    built += usize::from(b);
+                }
+                Ok(_) => {}
+                Err(rule) => panic!("{what}: {rule}; its bytes: {}", input.escape_ascii()),
+            }
+        }
+        println!(
+            "{cases} cases at seed {seed}: {imported} imported, {built} built, not counting \
+             {unedited} cases that left the fixture as it was"
+        );
+        // the floors, about half of what CI's cases reach, count only what
+        // an edit changed: an import path that starts refusing what it
+        // took, or edits that stop reaching it or stop editing, fail here
+        // instead of passing on nothing
+        if cases >= FLOOR_FROM {
+            assert!(
+                imported * 1000 >= cases * 55,
+                "{imported} of {cases} cases imported, under the floor of 5.5 %"
+            );
+            assert!(
+                built * 1000 >= cases * 25,
+                "{built} of {cases} cases built a network, under the floor of 2.5 %"
+            );
+        }
+    });
 }
