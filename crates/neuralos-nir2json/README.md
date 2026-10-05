@@ -45,6 +45,13 @@ or grab a prebuilt static binary from the releases (linux-x86_64).
   conventions. `lzf`, `szip`, anything else: refused by name before a
   single byte decodes (a filter we cannot decode is a silent-corruption
   hazard).
+- **Size:** before any dataset is read, every dataset the conversion
+  reads is counted from its dims. A file past `MAX_VALUES` values in
+  all (the crate's constant, 2^22), or with a dataset stored in chunks
+  of more than that many values each, is refused by name, with the
+  dataset and its dims. `hdf5-pure` sizes a read's buffer from the
+  dims and the chunk dims a file states and trusts them; the count
+  bounds both. Not bounded: a variable-length string's payload.
 - **float32:** stranger files (snnTorch exports default to fp32) are
   widened to f64 bit-exactly; every widened dataset is listed in the
   sidecar's `f32_widened` array. No durability illusion: snn re-exports

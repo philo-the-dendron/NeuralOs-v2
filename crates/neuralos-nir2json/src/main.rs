@@ -3,10 +3,11 @@
 //! <output.json>`.
 //!
 //! Exit codes: 0 converted, and frozen with `--freeze` · 1 usage/IO · 2
-//! named refusal (filter census, out-of-subset node, a key its group
-//! does not carry, layout/schema violation, an Affine's bias with no
-//! place; with `--freeze`, a graph that does not assemble, plasticity
-//! on, more than 65,535 neurons), nothing written. The sidecar
+//! named refusal (filter census, a file past `MAX_VALUES` values,
+//! out-of-subset node, a key its group does not carry, layout/schema
+//! violation, an Affine's bias with no place; with `--freeze`, a graph
+//! that does not assemble, plasticity on, more than 65,535 neurons),
+//! nothing written. The sidecar
 //! `<output>.meta.json` carries the file-level audit stamp (f32
 //! widening, node census, options); `--freeze` writes `<out.rs>` and
 //! `<out>.trace`, prints the library's assembly notes and adds its
@@ -16,8 +17,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use neuralos_nir2json::{
-    Assembly, FreezeError, SIM_DT_US, convert_file_opts, effective_options, freeze, module_name,
-    stamp_json,
+    Assembly, FreezeError, MAX_VALUES, SIM_DT_US, convert_file_opts, effective_options, freeze,
+    grouped, module_name, stamp_json,
 };
 use neuralos_snn::nir::{NirImportOptions, Thousandths};
 
@@ -204,11 +205,14 @@ fn usage(why: &str) -> ExitCode {
     eprintln!("                 --steps or --input)");
     eprintln!("  exit 0: converted (sidecar <output>.meta.json written), frozen with --freeze");
     eprintln!("  exit 1: usage / IO error");
-    eprintln!("  exit 2: named refusal — filter census, out-of-subset node, a key its");
-    eprintln!("          group does not carry, layout, sim-unit parameters without");
-    eprintln!("          --sim-units, an Affine's bias with no place; with --freeze, a");
-    eprintln!("          graph that does not assemble, plasticity on, more than 65,535");
-    eprintln!("          neurons");
+    eprintln!(
+        "  exit 2: named refusal — filter census, a file past {} values,",
+        grouped(MAX_VALUES)
+    );
+    eprintln!("          out-of-subset node, a key its group does not carry, layout,");
+    eprintln!("          sim-unit parameters without --sim-units, an Affine's bias with");
+    eprintln!("          no place; with --freeze, a graph that does not assemble,");
+    eprintln!("          plasticity on, more than 65,535 neurons");
     ExitCode::from(1)
 }
 
