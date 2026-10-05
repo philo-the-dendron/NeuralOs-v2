@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@f51e83e (PR #54 merged 2026-10-04 18:35 UTC: round 57, tier 2, the NIR round trip: C from the substrate's own tau and r, so a re-import keeps it; the library's reader and the converter refuse a key their object or group does not carry; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 57 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check; NIR at true scale under `--sim-units`, with its parity test against snnTorch, which ticks no check; the converter surface, the units mark and `--drive` with the report, which ticks no check; Affine under `--sim-units` and the input in thousandths, with a trained model in the parity set, which ticks no check; the mutation pass and the close-out check, which ticks no check; the import's memory with the weights, which ticks no check; the NIR round trip, C and an object's own keys, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/nir-fuzz, round 58 (tier 3, the NIR mutation loop: 10,000 seeded cases a run, one edit of a fixture each, refused or round-tripped, never a panic or a hang, and each caller buffer one short refused, `scratch` aside; tests only; three commits), not pushed; no trace, frozen file or firmware `.text` moved · open(session): the per-commit loop BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@8bf2551 (PR #55 merged 2026-10-05 01:12 UTC: round 58, tier 3, the NIR mutation loop: 10,000 seeded cases a run, one edit of a fixture each, refused or round-tripped, never a panic or a hang, and each caller buffer one short refused, `scratch` aside; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 58 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check; NIR at true scale under `--sim-units`, with its parity test against snnTorch, which ticks no check; the converter surface, the units mark and `--drive` with the report, which ticks no check; Affine under `--sim-units` and the input in thousandths, with a trained model in the parity set, which ticks no check; the mutation pass and the close-out check, which ticks no check; the import's memory with the weights, which ticks no check; the NIR round trip, C and an object's own keys, which ticks no check; the NIR mutation loop, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/nir-overflow, round 59 (tier 2, BREAKING: a Linear weight of f64's largest refused at import, not at export as before, and four uses of it that worked refused with it; the mutation loop steps each network it builds, a floor per fixture from 3,000 cases, and every cut of every fixture meets its rules; what `NirError::Json` and the scan's counts cover; the manifest's comment; six commits, rewritten once after two reviews), not pushed; no trace, frozen file, public item or firmware `.text` moved · open(session): the helper's check of the rewrite, then the landing, the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-10-04T23:36:00Z
+updated: 2026-10-05T05:56:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -10134,4 +10134,37 @@ the converter keeps it alone (7 nodes against 5 on
 round trip cannot see a defect the re-import repeats, or an export value
 the re-import absorbs or never reads: three hand mutants stay green in
 the loop, each red in other tests. No check ticks.
+**Guards.** 1: appended, head refreshed; 2 and 3: not in play.
+
+## Close-out (round 59 — the NIR overflow fix and the loop's loose ends; tier 2 — 2026-10-04)
+
+Branch `work/nir-overflow` from `main@8bf2551`, tier 2, six commits,
+rewritten once after two reviews: `a4069d5` a Linear weight of f64's
+largest refused at import, BREAKING; `874d83d` what `NirError::Json` and
+the scan's counts cover; `67da432` the loop steps what it builds, a
+floor per fixture; `1933bc6` every cut of every fixture; `68669d8` the
+manifest's comment names four members; this. **Rulings** (philo,
+2026-10-04: one tier 2 PR before the consolidation sitting, six items,
+the guard in `quantize_linear`, a floor per fixture, `Json`'s doc and
+message, the manifest's comment its own commit; 2026-10-05, on the
+reviews: `fix(snn)!`, the four uses that worked named; the floors from
+3,000 cases; one rewrite by the designer). **Falsifiers**, 14 hand
+mutants on the final code, each against every test of the library and
+the converter, 13 red: the guard gone (three tests, the loop at case
+467), from one double below or under another name (the three tests); the
+0-scale guard gone (two unit tests); the fusion seam ignoring a refusal
+(its new test); `Json` as `BadShape` (the new test,
+`scan_rejects_malformed`); the scan refusing a kind outside the subset
+(its test); a panic in `step` past 100 ms (the loop, case 1664); the
+centi-mV or simulation arm dropped, `merge.json` never edited (the
+floor, naming the fixture); the bytes' end as a close (the cut test); an
+empty export buffer by another name (it and the loop); the 14th,
+`Json`'s message reworded, green: prose no test reads. The pass: 6 of 6
+viable caught. **Unmoved**: no trace, frozen file, public item or
+firmware `.text`. **Counts**: `nir_fixtures` 9 to 13 tests, the
+library's 216 to 218; at CI's seed 1,178 imported, 552 built and
+stepped; 15,530 cuts, 32 imported; 17,057 short export buffers.
+**Record-only**: TODO's "simulation units already refuse it" did not
+hold, they imported it; round 58's floors "from 1,000 cases" apply from
+3,000 now. No check ticks.
 **Guards.** 1: appended, head refreshed; 2 and 3: not in play.

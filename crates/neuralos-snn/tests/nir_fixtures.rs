@@ -8,14 +8,16 @@
 //! The mutation loop at the end holds the import path to its rules on
 //! edited documents, one edit a case: each is refused or imported,
 //! never with a panic or a hang; an import exports to a document that
-//! re-imports to the same records; and a buffer one short, the
-//! caller's (`scratch` aside) or the export's, is refused.
+//! re-imports to the same records, and a network it builds steps; and a
+//! buffer one short, the caller's (`scratch` aside) or the export's, is
+//! refused. Every cut of every fixture meets the same rules, and every
+//! export buffer shorter than a fixture's export is refused.
 
 use neuralos_snn::nir::{
-    nir_export, nir_import, nir_scan, NirBuffers, NirError, NirImport, NirImportOptions, NirLif,
-    NirNode, NirNodeKind, NirNote, EXPORT_VERSION,
+    nir_export, nir_import, nir_scan, NirBuffers, NirError, NirGraphEncoder, NirImport,
+    NirImportOptions, NirLif, NirNode, NirNodeKind, NirNote, Thousandths, EXPORT_VERSION,
 };
-use neuralos_snn::VoltageResolution;
+use neuralos_snn::{SpikingNeuralNetwork, VoltageResolution};
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -282,6 +284,53 @@ fn negative_fixtures_reject_with_the_named_error() {
     }
 }
 
+/// `NirError::Json` names the byte where the reader stopped, for JSON
+/// that is malformed and for well-formed JSON with a value of another type
+/// than the schema's: a string where `tau`'s array goes, a number where
+/// `type`'s string goes.
+#[test]
+fn a_value_of_another_json_type_is_refused_as_json_at_its_byte() {
+    for (from, to) in [
+        ("\"tau\":[0.02]", "\"tau\":\"0.02\""),
+        ("\"type\":\"LIF\"", "\"type\":5"),
+    ] {
+        let doc = CHAIN.replacen(from, to, 1);
+        assert_ne!(doc, CHAIN, "{to}: the edit matched");
+        let at = doc.find(to).expect("the edit") + to.find(':').expect("a key") + 1;
+        assert_eq!(
+            nir_scan(doc.as_bytes()).err(),
+            Some(NirError::Json(at)),
+            "{to}"
+        );
+        assert_eq!(import_owned(&doc).err(), Some(NirError::Json(at)), "{to}");
+    }
+}
+
+/// The scan's counts are exact for a document the import takes, and only
+/// for those: a node of a kind outside the subset, or with no `type`,
+/// still counts its arrays, and the import refuses the document.
+#[test]
+fn the_scan_counts_the_arrays_of_a_node_the_import_refuses() {
+    // the Linear's 3 cells and the Affine's 1
+    assert_eq!(nir_scan(AFFINE.as_bytes()).map(|s| s.weight_cells), Ok(4));
+    assert_eq!(
+        import_owned(AFFINE).err(),
+        Some(NirError::UnsupportedNodeKind("Affine"))
+    );
+    // the LIF's one neuron and the two of a node with no type
+    let untyped = CHAIN.replacen(
+        "\"nodes\":{",
+        "\"nodes\":{\"stray\":{\"tau\":[0.02,0.02]},",
+        1,
+    );
+    assert_ne!(untyped, CHAIN, "the edit matched");
+    assert_eq!(nir_scan(untyped.as_bytes()).map(|s| s.lif_neurons), Ok(3));
+    assert_eq!(
+        import_owned(&untyped).err(),
+        Some(NirError::MissingField("type"))
+    );
+}
+
 #[test]
 fn non_chain_topology_rejects_at_assembly_only() {
     // duplicate edge fixture is a VALID graph shape-wise? no — dup edge
@@ -297,6 +346,45 @@ fn non_chain_topology_rejects_at_assembly_only() {
     // and the raw buffer API never rejects on topology:
     let scan = nir_scan(doc.as_bytes()).unwrap();
     assert_eq!(scan.node_count, 2);
+}
+
+/// A Linear weight of f64's largest is refused at import, in native and
+/// simulation units: the cell at full scale dequantizes to infinity, so
+/// the import recorded an infinite `max_abs_err` and its export refused
+/// it, `BadNumber("export value")`. `merge.json` with this edit is the
+/// mutation loop's case 467 at CI's seed today, the value drawn as an
+/// edge value; a new fixture, edit kind or edge value moves it. One
+/// double below, the document imports and round-trips.
+#[test]
+fn a_weight_of_f64_s_largest_is_refused_at_import() {
+    let merge = include_str!("nir_fixtures/merge.json");
+    let sim = include_str!("nir_fixtures/two_lif_neurons_sim.json");
+    let in_merge = |w: &str| merge.replacen("[[0.25,0.0],", &format!("[[0.25,{w}],"), 1);
+    let in_sim = |w: &str| sim.replacen("\"weight\":[[1]]", &format!("\"weight\":[[{w}]]"), 1);
+    let sim_units = NirImportOptions::sim_units(100);
+    let mut out = [vec![0u8; 1 << 16], vec![0u8; 1 << 16], vec![0u8; 1 << 16]];
+    for w in ["1.7976931348623157e308", "-1.7976931348623157e308"] {
+        let (native, simulation) = (in_merge(w), in_sim(w));
+        assert!(native != merge && simulation != sim, "the edits matched");
+        assert_eq!(
+            NirImport::from_json(native.as_bytes(), NirImportOptions::default()).err(),
+            Some(NirError::BadNumber("weight")),
+            "{w} in merge.json"
+        );
+        assert_eq!(
+            NirImport::from_json(simulation.as_bytes(), sim_units).err(),
+            Some(NirError::BadNumber("weight")),
+            "{w} in two_lif_neurons_sim.json"
+        );
+    }
+    let below = "1.7976931348623155e308";
+    for (doc, opts) in [
+        (in_merge(below), NirImportOptions::default()),
+        (in_sim(below), sim_units),
+    ] {
+        let path = import_path(doc.as_bytes(), opts, &mut out);
+        assert!(matches!(path, Ok(Some(_))), "one below: {path:?}");
+    }
 }
 
 // keep NirBuffers in scope as a public-API consumer (the fixture
@@ -354,10 +442,14 @@ fn buffer_api_consumes_reference_emission() {
 const FUZZ_CASES: usize = 10_000;
 const FUZZ_SEED: u64 = 0x9E37_79B9_7F4A_7C15;
 
-/// The reach floors apply from this many cases: under it, a seed's run
-/// can fall under them by chance; from it, none of 1,000 seeds did
-/// (2026-10-04).
-const FLOOR_FROM: usize = 1_000;
+/// The reach floors apply from this many cases; under it, a run can fall
+/// under them by chance. The floor each fixture has sets it: on seeds 1
+/// to 1,000 and 2,000 others (2026-10-05) it failed 2 of the 3,000 seeds
+/// at 2,000 cases and none from 3,000, and a model of CI's rates gives a
+/// seed 7.7e-6 at 3,000. The floors on the totals failed no seed from
+/// 700. A new fixture, edit kind or edge value draws another stream of
+/// cases: measure the margin again.
+const FLOOR_FROM: usize = 3_000;
 
 /// The case count and the seed: CI's, unless the environment names others.
 fn fuzz_config() -> (usize, u64) {
@@ -409,9 +501,8 @@ struct Seed {
     spans: Spans,
 }
 
-/// The fixtures as seeds, each fixture a step of the setup, so a hang
-/// there names the fixture.
-fn mutation_seeds(flight: &InFlight) -> Vec<Seed> {
+/// The JSON fixtures' paths, in name order.
+fn fixture_paths() -> Vec<std::path::PathBuf> {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/nir_fixtures");
     let mut paths: Vec<_> = std::fs::read_dir(dir)
         .expect("the fixtures folder")
@@ -419,6 +510,12 @@ fn mutation_seeds(flight: &InFlight) -> Vec<Seed> {
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
         .collect();
     paths.sort();
+    paths
+}
+
+/// The fixtures as seeds, each fixture a step of the setup, so a hang
+/// there names the fixture.
+fn mutation_seeds(flight: &InFlight) -> Vec<Seed> {
     let centi = NirImportOptions {
         resolution: VoltageResolution::CentiMillivolt,
         ..NirImportOptions::default()
@@ -426,7 +523,7 @@ fn mutation_seeds(flight: &InFlight) -> Vec<Seed> {
     let builds = |bytes: &[u8], opts: NirImportOptions| {
         NirImport::from_json(bytes, opts).is_ok_and(|g| g.build_network().is_ok())
     };
-    paths
+    fixture_paths()
         .iter()
         .map(|p| {
             let name = p
@@ -580,11 +677,11 @@ const EDITS: [&str; 13] = [
 /// Edge values for a number: zero and its signs, the time step (0.1 ms)
 /// and under it, the weight limits in simulation units and one step past
 /// each (3.2767 on a spiking edge, 32.767 into a drive stage:
-/// `NirError::WeightOutOfRange`), the i16, u16 and u32 bounds, 1e308
-/// (near f64's largest), subnormals, an overflow to infinity, and
-/// membrane potentials.
+/// `NirError::WeightOutOfRange`), the i16, u16 and u32 bounds, 1e308 and
+/// f64's largest, subnormals, an overflow to infinity, and membrane
+/// potentials.
 const EDGE_NUMBERS: &str = "0 -0 1 -1 2 0.5 -0.5 0.1 1e-4 0.0001 9e-5 1e-5 1e-9 \
-    1e-30 1e-320 5e-324 1e9 1e30 1e308 -1e308 1e400 \
+    1e-30 1e-320 5e-324 1e9 1e30 1e308 -1e308 1.7976931348623157e308 1e400 \
     3.2767 3.2768 -3.2767 -3.2768 32.767 32.768 -32.767 -32.768 \
     32767 32768 -32768 -32769 65535 65536 4294967295 4294967296 \
     9007199254740993 100 1000 0.02 0.001 -0.07 -0.08 -0.065";
@@ -812,8 +909,9 @@ fn under_watchdog(cases: usize, body: impl FnOnce(&InFlight) + Send + 'static) {
 }
 
 /// One case through the import path: `Ok(None)` when the document is
-/// refused, `Ok(Some(built))` when it imports and round-trips, `Err`
-/// naming the rule it breaks.
+/// refused, `Ok(Some(built))` when it imports and round-trips, `built`
+/// true when it builds a network, which then [`steps`]; `Err` names the
+/// rule it breaks.
 fn import_path(
     input: &[u8],
     opts: NirImportOptions,
@@ -822,7 +920,13 @@ fn import_path(
     let Ok(g) = NirImport::from_json(input, opts) else {
         return Ok(None);
     };
-    let built = g.build_network().is_ok();
+    let built = match g.build_network() {
+        Ok((mut net, enc, _)) => {
+            steps(&mut net, &enc)?;
+            true
+        }
+        Err(_) => false,
+    };
     let [e1, e2, e3] = out;
     let n1 = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, e1)
         .map_err(|e| format!("the import does not export: {e:?}"))?;
@@ -841,6 +945,25 @@ fn import_path(
         return Err("the second export and the third differ".to_string());
     }
     Ok(Some(built))
+}
+
+/// How many times a network the loop builds steps.
+const STEPS: usize = 20;
+
+/// A built network, [`STEPS`] steps at a drive of 1.0 on every feature of
+/// every Input: each step gives `Ok`, and a panic fails the case where
+/// the loop catches it.
+fn steps(net: &mut SpikingNeuralNetwork, enc: &NirGraphEncoder) -> Result<(), String> {
+    let drive: Vec<Vec<Thousandths>> = (0..enc.input_count())
+        .map(|i| vec![Thousandths(1_000); enc.input_features(i)])
+        .collect();
+    let per_input: Vec<&[Thousandths]> = drive.iter().map(Vec::as_slice).collect();
+    let currents = enc.encode(&per_input);
+    for step in 1..=STEPS {
+        net.step(&currents)
+            .map_err(|e| format!("step {step} of the network it builds: {e:?}"))?;
+    }
+    Ok(())
 }
 
 /// What a re-import reproduces: every node (its name, kind, shape and
@@ -909,9 +1032,12 @@ fn mutated_fixtures_are_refused_or_round_trip() {
         let mut out = [vec![0u8; 1 << 16], vec![0u8; 1 << 16], vec![0u8; 1 << 16]];
         let (mut imported, mut built, mut unedited) = (0usize, 0usize, 0usize);
         let (mut scratch_tried, mut scratch_held) = (0usize, 0usize);
+        // per fixture, its edited cases that imported and that built
+        let mut reach = vec![(0usize, 0usize); seeds.len()];
         for case in 1..=cases {
             let kind = rng.below(EDITS.len());
-            let s = &seeds[rng.below(seeds.len())];
+            let at = rng.below(seeds.len());
+            let s = &seeds[at];
             let input = edit(&mut rng, s, kind);
             let what = format!("case {case} at seed {seed}, {} on {}", EDITS[kind], s.name);
             flight.begin_case(what.clone(), &input);
@@ -939,21 +1065,32 @@ fn mutated_fixtures_are_refused_or_round_trip() {
             if let (Some(b), true) = (imports, edited) {
                 imported += 1;
                 built += usize::from(b);
+                reach[at].0 += 1;
+                reach[at].1 += usize::from(b);
             }
             if let Some(h) = held {
                 scratch_tried += 1;
                 scratch_held += usize::from(h);
             }
         }
+        let per_fixture: Vec<String> = seeds
+            .iter()
+            .zip(&reach)
+            .map(|(s, (i, b))| format!("{} {i}/{b}", s.name))
+            .collect();
         println!(
-            "{cases} cases at seed {seed}: {imported} imported, {built} built, not counting \
-             {unedited} cases that left the fixture as it was; {scratch_held} of {scratch_tried} \
-             short scratch buffers still imported, with the same records"
+            "{cases} cases at seed {seed}: {imported} imported, {built} built and stepped, not \
+             counting {unedited} cases that left the fixture as it was; {scratch_held} of \
+             {scratch_tried} short scratch buffers still imported, with the same records; per \
+             fixture, its edited cases imported/built: {}",
+            per_fixture.join(", ")
         );
         // the floors, about half of what CI's cases reach, count only what
         // an edit changed: an import path that starts refusing what it
         // took, or edits that stop reaching it or stop editing, fail here
-        // instead of passing on nothing
+        // instead of passing on nothing; and each fixture that is not a
+        // negative (`neg_*`) builds in at least one of its edited cases,
+        // since the totals cannot see one fixture's builds fall to none
         if cases >= FLOOR_FROM {
             assert!(
                 imported * 1000 >= cases * 55,
@@ -963,6 +1100,13 @@ fn mutated_fixtures_are_refused_or_round_trip() {
                 built * 1000 >= cases * 25,
                 "{built} of {cases} cases built a network, under the floor of 2.5 %"
             );
+            for (s, (_, b)) in seeds.iter().zip(&reach) {
+                assert!(
+                    *b > 0 || s.name.starts_with("neg_"),
+                    "{} built no network in its edited cases, and is not a negative",
+                    s.name
+                );
+            }
         }
     });
 }
@@ -1059,4 +1203,81 @@ fn short_buffers(
         }
     }
     Ok(scratch_held)
+}
+
+/// Every cut of every fixture, from 0 bytes to the whole, through the
+/// loop's import path: each is refused or round-trips, never with a panic
+/// or a hang, and imports only when what it cuts off is trailing
+/// whitespace of a fixture that imports. Then each fixture that imports is
+/// exported into every buffer shorter than its export, 0 included, and
+/// each refuses with `ExportTooSmall`. The loop's "cut the end" meets some
+/// of these positions at random; this meets each one.
+#[test]
+fn every_cut_of_a_fixture_is_refused_or_round_trips() {
+    let cuts: usize = fixture_paths()
+        .iter()
+        .map(|p| std::fs::metadata(p).expect("a fixture").len() as usize + 1)
+        .sum();
+    under_watchdog(cuts, move |flight| {
+        let seeds = mutation_seeds(flight);
+        let mut out = [vec![0u8; 1 << 16], vec![0u8; 1 << 16], vec![0u8; 1 << 16]];
+        let (mut imported, mut built, mut exports, mut short) = (0usize, 0usize, 0usize, 0usize);
+        for s in &seeds {
+            let n = s.bytes.len();
+            let whole_imports = NirImport::from_json(&s.bytes, s.opts).is_ok();
+            for len in 0..=n {
+                let input = &s.bytes[..len];
+                let what = format!("{} cut to {len} of its {n} bytes", s.name);
+                flight.begin_case(what.clone(), input);
+                let path =
+                    panic::catch_unwind(AssertUnwindSafe(|| import_path(input, s.opts, &mut out)))
+                        .unwrap_or_else(|_| panic!("{what}: the import path panicked (above)"))
+                        .unwrap_or_else(|rule| panic!("{what}: {rule}"));
+                let only_whitespace = s.bytes[len..].iter().all(u8::is_ascii_whitespace);
+                assert_eq!(
+                    path.is_some(),
+                    whole_imports && only_whitespace,
+                    "{what}: imported is {}",
+                    path.is_some()
+                );
+                if let Some(b) = path {
+                    imported += 1;
+                    built += usize::from(b);
+                }
+            }
+            let Ok(g) = NirImport::from_json(&s.bytes, s.opts) else {
+                continue;
+            };
+            let full = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut out[0])
+                .expect("an import exports");
+            exports += 1;
+            for cut in 0..full {
+                flight.begin(
+                    format!("{} exported into {cut} of its {full} bytes", s.name),
+                    &[],
+                );
+                let r = nir_export(
+                    &g.nodes,
+                    &g.edges,
+                    &g.weights,
+                    &g.lifs,
+                    g.opts,
+                    &mut out[0][..cut],
+                );
+                assert_eq!(
+                    r,
+                    Err(NirError::ExportTooSmall),
+                    "{} exported into {cut} of its {full} bytes",
+                    s.name
+                );
+                short += 1;
+            }
+        }
+        println!(
+            "{cuts} cuts of {} fixtures: {imported} imported, {built} built and stepped, each \
+             a fixture whole or without its trailing whitespace; {exports} fixtures exported \
+             into each of {short} short buffers, each refused",
+            seeds.len()
+        );
+    });
 }

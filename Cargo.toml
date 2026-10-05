@@ -1,8 +1,9 @@
 # NeuralOs-v2 workspace
 #
 # Members: neuralos-snn (published crate), neuralos-app (Slint
-# visualizer), neuralos-rt (ternary-LLM runtime). Further crates are
-# added when they have real code — no empty scaffolding (v0.1 lesson).
+# visualizer), neuralos-rt (ternary-LLM runtime), neuralos-nir2json (the
+# .nir→JSON converter). Further crates are added when they have real
+# code — no empty scaffolding (v0.1 lesson).
 
 [workspace]
 resolver = "2"
