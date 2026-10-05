@@ -129,7 +129,10 @@ const I16_FS: f64 = 32_767.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum NirError<'a> {
-    /// Malformed JSON at byte `pos`.
+    /// JSON the reader cannot read, at byte `pos`: malformed, nested
+    /// deeper than the reader walks, or well-formed with a value of
+    /// another JSON type than the schema's (a string where `tau`'s array
+    /// goes, say).
     Json(usize),
     /// A string we must read (type/name/version/edge endpoint) carries
     /// a JSON escape or non-ASCII byte — outside the documented subset.
@@ -242,7 +245,11 @@ pub enum NirError<'a> {
 impl core::fmt::Display for NirError<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Json(p) => write!(f, "malformed JSON at byte {p}"),
+            Self::Json(p) => write!(
+                f,
+                "JSON the reader cannot read at byte {p}: malformed, nested too deep, \
+                 or a value of another JSON type than the schema's"
+            ),
             Self::EscapedOrNonAsciiString(p) => write!(
                 f,
                 "string at byte {p} uses escapes/non-ASCII — outside the documented subset"
@@ -807,12 +814,17 @@ pub struct NirScan<'a> {
     pub node_count: usize,
     /// Entries of the document's `edges` list.
     pub edge_count: usize,
-    /// Cells the weight arena needs.
+    /// Cells the weight arena needs: the elements of every node's
+    /// `weight`, exact for a document the import takes. A node of a kind
+    /// outside the subset, or with no `type`, still counts its `weight`,
+    /// and the import refuses the document: overprovision only, never
+    /// under.
     pub weight_cells: usize,
-    /// Total per-neuron LIF records (`sum` of the param array
-    /// lengths). Foreign `tau`-like arrays on non-LIF nodes may
-    /// inflate this bound on malformed documents (overprovision
-    /// only, never under).
+    /// Total per-neuron LIF records (`sum` of the param array lengths),
+    /// exact for a document the import takes. A node of a kind outside
+    /// the subset, or with no `type`, still counts its `tau`-like arrays,
+    /// and the import refuses the document: overprovision only, never
+    /// under.
     pub lif_neurons: usize,
 }
 

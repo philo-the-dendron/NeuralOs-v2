@@ -282,6 +282,53 @@ fn negative_fixtures_reject_with_the_named_error() {
     }
 }
 
+/// `NirError::Json` names the byte where the reader stopped, for JSON
+/// that is malformed and for well-formed JSON with a value of another type
+/// than the schema's: a string where `tau`'s array goes, a number where
+/// `type`'s string goes.
+#[test]
+fn a_value_of_another_json_type_is_refused_as_json_at_its_byte() {
+    for (from, to) in [
+        ("\"tau\":[0.02]", "\"tau\":\"0.02\""),
+        ("\"type\":\"LIF\"", "\"type\":5"),
+    ] {
+        let doc = CHAIN.replacen(from, to, 1);
+        assert_ne!(doc, CHAIN, "{to}: the edit matched");
+        let at = doc.find(to).expect("the edit") + to.find(':').expect("a key") + 1;
+        assert_eq!(
+            nir_scan(doc.as_bytes()).err(),
+            Some(NirError::Json(at)),
+            "{to}"
+        );
+        assert_eq!(import_owned(&doc).err(), Some(NirError::Json(at)), "{to}");
+    }
+}
+
+/// The scan's counts are exact for a document the import takes, and only
+/// for those: a node of a kind outside the subset, or with no `type`,
+/// still counts its arrays, and the import refuses the document.
+#[test]
+fn the_scan_counts_the_arrays_of_a_node_the_import_refuses() {
+    // the Linear's 3 cells and the Affine's 1
+    assert_eq!(nir_scan(AFFINE.as_bytes()).map(|s| s.weight_cells), Ok(4));
+    assert_eq!(
+        import_owned(AFFINE).err(),
+        Some(NirError::UnsupportedNodeKind("Affine"))
+    );
+    // the LIF's one neuron and the two of a node with no type
+    let untyped = CHAIN.replacen(
+        "\"nodes\":{",
+        "\"nodes\":{\"stray\":{\"tau\":[0.02,0.02]},",
+        1,
+    );
+    assert_ne!(untyped, CHAIN, "the edit matched");
+    assert_eq!(nir_scan(untyped.as_bytes()).map(|s| s.lif_neurons), Ok(3));
+    assert_eq!(
+        import_owned(&untyped).err(),
+        Some(NirError::MissingField("type"))
+    );
+}
+
 #[test]
 fn non_chain_topology_rejects_at_assembly_only() {
     // duplicate edge fixture is a VALID graph shape-wise? no — dup edge
