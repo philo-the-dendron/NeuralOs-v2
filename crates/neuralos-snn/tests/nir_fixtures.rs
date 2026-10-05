@@ -10,7 +10,8 @@
 //! never with a panic or a hang; an import exports to a document that
 //! re-imports to the same records, and a network it builds steps; and a
 //! buffer one short, the caller's (`scratch` aside) or the export's, is
-//! refused.
+//! refused. Every cut of every fixture meets the same rules, and every
+//! export buffer shorter than a fixture's export is refused.
 
 use neuralos_snn::nir::{
     nir_export, nir_import, nir_scan, NirBuffers, NirError, NirGraphEncoder, NirImport,
@@ -500,9 +501,8 @@ struct Seed {
     spans: Spans,
 }
 
-/// The fixtures as seeds, each fixture a step of the setup, so a hang
-/// there names the fixture.
-fn mutation_seeds(flight: &InFlight) -> Vec<Seed> {
+/// The JSON fixtures' paths, in name order.
+fn fixture_paths() -> Vec<std::path::PathBuf> {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/nir_fixtures");
     let mut paths: Vec<_> = std::fs::read_dir(dir)
         .expect("the fixtures folder")
@@ -510,6 +510,12 @@ fn mutation_seeds(flight: &InFlight) -> Vec<Seed> {
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
         .collect();
     paths.sort();
+    paths
+}
+
+/// The fixtures as seeds, each fixture a step of the setup, so a hang
+/// there names the fixture.
+fn mutation_seeds(flight: &InFlight) -> Vec<Seed> {
     let centi = NirImportOptions {
         resolution: VoltageResolution::CentiMillivolt,
         ..NirImportOptions::default()
@@ -517,7 +523,7 @@ fn mutation_seeds(flight: &InFlight) -> Vec<Seed> {
     let builds = |bytes: &[u8], opts: NirImportOptions| {
         NirImport::from_json(bytes, opts).is_ok_and(|g| g.build_network().is_ok())
     };
-    paths
+    fixture_paths()
         .iter()
         .map(|p| {
             let name = p
@@ -1197,4 +1203,81 @@ fn short_buffers(
         }
     }
     Ok(scratch_held)
+}
+
+/// Every cut of every fixture, from 0 bytes to the whole, through the
+/// loop's import path: each is refused or round-trips, never with a panic
+/// or a hang, and imports only when what it cuts off is trailing
+/// whitespace of a fixture that imports. Then each fixture that imports is
+/// exported into every buffer shorter than its export, 0 included, and
+/// each refuses with `ExportTooSmall`. The loop's "cut the end" meets some
+/// of these positions at random; this meets each one.
+#[test]
+fn every_cut_of_a_fixture_is_refused_or_round_trips() {
+    let cuts: usize = fixture_paths()
+        .iter()
+        .map(|p| std::fs::metadata(p).expect("a fixture").len() as usize + 1)
+        .sum();
+    under_watchdog(cuts, move |flight| {
+        let seeds = mutation_seeds(flight);
+        let mut out = [vec![0u8; 1 << 16], vec![0u8; 1 << 16], vec![0u8; 1 << 16]];
+        let (mut imported, mut built, mut exports, mut short) = (0usize, 0usize, 0usize, 0usize);
+        for s in &seeds {
+            let n = s.bytes.len();
+            let whole_imports = NirImport::from_json(&s.bytes, s.opts).is_ok();
+            for len in 0..=n {
+                let input = &s.bytes[..len];
+                let what = format!("{} cut to {len} of its {n} bytes", s.name);
+                flight.begin_case(what.clone(), input);
+                let path =
+                    panic::catch_unwind(AssertUnwindSafe(|| import_path(input, s.opts, &mut out)))
+                        .unwrap_or_else(|_| panic!("{what}: the import path panicked (above)"))
+                        .unwrap_or_else(|rule| panic!("{what}: {rule}"));
+                let only_whitespace = s.bytes[len..].iter().all(u8::is_ascii_whitespace);
+                assert_eq!(
+                    path.is_some(),
+                    whole_imports && only_whitespace,
+                    "{what}: imported is {}",
+                    path.is_some()
+                );
+                if let Some(b) = path {
+                    imported += 1;
+                    built += usize::from(b);
+                }
+            }
+            let Ok(g) = NirImport::from_json(&s.bytes, s.opts) else {
+                continue;
+            };
+            let full = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, &mut out[0])
+                .expect("an import exports");
+            exports += 1;
+            for cut in 0..full {
+                flight.begin(
+                    format!("{} exported into {cut} of its {full} bytes", s.name),
+                    &[],
+                );
+                let r = nir_export(
+                    &g.nodes,
+                    &g.edges,
+                    &g.weights,
+                    &g.lifs,
+                    g.opts,
+                    &mut out[0][..cut],
+                );
+                assert_eq!(
+                    r,
+                    Err(NirError::ExportTooSmall),
+                    "{} exported into {cut} of its {full} bytes",
+                    s.name
+                );
+                short += 1;
+            }
+        }
+        println!(
+            "{cuts} cuts of {} fixtures: {imported} imported, {built} built and stepped, each \
+             a fixture whole or without its trailing whitespace; {exports} fixtures exported \
+             into each of {short} short buffers, each refused",
+            seeds.len()
+        );
+    });
 }
