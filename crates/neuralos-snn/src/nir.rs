@@ -147,7 +147,11 @@ pub enum NirError<'a> {
     /// A field has the wrong JSON shape (e.g. scalar where the
     /// reference emits an array, weight not 2-D).
     BadShape(&'static str),
-    /// `tau ≤ 0`, `r ≤ 0`/out of range, or a non-finite number.
+    /// `tau ≤ 0`, `r ≤ 0`/out of range, a non-finite number, or a
+    /// Linear weight [`quantize_linear`] cannot record: an `absmax` so
+    /// small that the scale underflows to 0, or f64's largest, whose
+    /// scale is finite but whose cell at full scale dequantizes to
+    /// infinity, and its `max_abs_err` with it.
     BadNumber(&'static str),
     /// `tau < dt` — the derived decay would be nonsense.
     TauBelowDt,
@@ -1071,8 +1075,10 @@ pub fn quantize_lif(
 /// [`NirError::BadShape("weight")`](NirError::BadShape) unless `values.len()` is exactly
 /// `rows·cols` with both nonzero; [`NirError::BufferOverflow`] when
 /// the arena cannot hold `offset + rows·cols`; [`NirError::BadNumber`]
-/// on any non-finite value or a `scale` that underflows to 0 (denormal
-/// `absmax` — the record would lie, per the R3 review finding).
+/// on any non-finite value, a `scale` that underflows to 0 (denormal
+/// `absmax` — the record would lie, per the R3 review finding), or an
+/// `absmax` of f64's largest, whose cell at full scale, `32767·scale`,
+/// rounds to infinity.
 pub fn quantize_linear(
     values: &[f64],
     rows: usize,
@@ -1110,6 +1116,14 @@ pub fn quantize_linear(
     // (NaN unreachable: absmax is finite and I16_FS is a nonzero
     // constant, so `== 0.0` is exact, not partial-order fuzz.)
     if scale == 0.0 {
+        return Err(NirError::BadNumber("weight"));
+    }
+    // f64's largest as `absmax`: the scale is finite, but the cell at
+    // full scale dequantizes to 32767·scale, which rounds to infinity,
+    // so `max_abs_err` would be infinite and the export, which writes
+    // q·scale, would refuse its own import. Loud too. No smaller
+    // `absmax` rounds that far: one double below, it holds.
+    if !(I16_FS * scale).is_finite() {
         return Err(NirError::BadNumber("weight"));
     }
     let mut max_abs_err = 0.0f64;
@@ -6688,6 +6702,29 @@ mod tests {
     }
 
     #[test]
+    fn quantize_linear_f64_max_absmax_is_loud() {
+        // absmax/32767 is finite, but the cell at full scale, 32767·scale,
+        // rounds to infinity: the record's max_abs_err would be infinite
+        // and the export would refuse the weight it writes
+        for v in [f64::MAX, -f64::MAX] {
+            let mut arena = [0i16; 4];
+            assert_eq!(
+                quantize_linear(&[1.0, v], 1, 2, &mut arena, 0),
+                Err(NirError::BadNumber("weight")),
+                "{v:e}"
+            );
+        }
+        // one double below, the cell at full scale is the weight itself
+        let below = 1.797_693_134_862_315_5e308;
+        assert_eq!(below, f64::MAX.next_down());
+        let mut arena = [0i16; 4];
+        let lin = quantize_linear(&[below], 1, 1, &mut arena, 0).expect("quantizes");
+        assert_eq!(arena[0], 32767);
+        assert_eq!(f64::from(arena[0]) * lin.scale, below);
+        assert_eq!(lin.max_abs_err, 0.0);
+    }
+
+    #[test]
     fn quantize_linear_rejects_loudly() {
         let mut arena = [0i16; 8];
         // non-finite (`1e400` reaches this same door via JSON parse)
@@ -6918,6 +6955,43 @@ mod tests {
         // validate_structure parity)
         b2.add_edge(i2, o2).expect("edge");
         assert!(matches!(b2.build(), Err(NirError::DuplicateEdge)));
+    }
+
+    #[test]
+    fn a_stage_composed_to_f64_s_largest_is_refused_at_the_build() {
+        // build_network quantizes each stage as the import quantizes a
+        // weight: 10 then 1.7976931348623158e307, each a Linear that
+        // imports, compose to exactly f64's largest (-10 to its
+        // negative), 10 then 1e308 past it; 10 then
+        // 1.7976931348623155e307 compose under it and build
+        let chain = |w1: f64, w2: f64| {
+            let mut bld = NirBuilder::new(NirImportOptions::default());
+            let inp = bld.add_input("input", &[1]).expect("input");
+            let l1 = bld.add_linear("l1", &[w1], 1, 1).expect("l1 imports");
+            let l2 = bld.add_linear("l2", &[w2], 1, 1).expect("l2 imports");
+            let lif = bld
+                .add_lif_population("lif", &lif_params_single())
+                .expect("lif");
+            let out = bld.add_output("output", &[1]).expect("output");
+            for (a, c) in [(inp, l1), (l1, l2), (l2, lif), (lif, out)] {
+                bld.add_edge(a, c).expect("edge");
+            }
+            bld.build().expect("builds")
+        };
+        for (w1, w2) in [
+            (10.0, 1.797_693_134_862_315_8e307),
+            (-10.0, 1.797_693_134_862_315_8e307),
+            (10.0, 1e308),
+        ] {
+            assert_eq!(
+                chain(w1, w2).build_network().err(),
+                Some(NirError::BadNumber("weight")),
+                "{w1:e} then {w2:e}"
+            );
+        }
+        assert!(chain(10.0, 1.797_693_134_862_315_5e307)
+            .build_network()
+            .is_ok());
     }
 
     #[test]

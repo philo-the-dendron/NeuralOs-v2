@@ -299,6 +299,45 @@ fn non_chain_topology_rejects_at_assembly_only() {
     assert_eq!(scan.node_count, 2);
 }
 
+/// A Linear weight of f64's largest is refused at import, in native and
+/// simulation units: the cell at full scale dequantizes to infinity, so
+/// the import recorded an infinite `max_abs_err` and its export refused
+/// it, `BadNumber("export value")`. `merge.json` with this edit is the
+/// mutation loop's case 467 at CI's seed today, the value drawn as an
+/// edge value; a new fixture, edit kind or edge value moves it. One
+/// double below, the document imports and round-trips.
+#[test]
+fn a_weight_of_f64_s_largest_is_refused_at_import() {
+    let merge = include_str!("nir_fixtures/merge.json");
+    let sim = include_str!("nir_fixtures/two_lif_neurons_sim.json");
+    let in_merge = |w: &str| merge.replacen("[[0.25,0.0],", &format!("[[0.25,{w}],"), 1);
+    let in_sim = |w: &str| sim.replacen("\"weight\":[[1]]", &format!("\"weight\":[[{w}]]"), 1);
+    let sim_units = NirImportOptions::sim_units(100);
+    let mut out = [vec![0u8; 1 << 16], vec![0u8; 1 << 16], vec![0u8; 1 << 16]];
+    for w in ["1.7976931348623157e308", "-1.7976931348623157e308"] {
+        let (native, simulation) = (in_merge(w), in_sim(w));
+        assert!(native != merge && simulation != sim, "the edits matched");
+        assert_eq!(
+            NirImport::from_json(native.as_bytes(), NirImportOptions::default()).err(),
+            Some(NirError::BadNumber("weight")),
+            "{w} in merge.json"
+        );
+        assert_eq!(
+            NirImport::from_json(simulation.as_bytes(), sim_units).err(),
+            Some(NirError::BadNumber("weight")),
+            "{w} in two_lif_neurons_sim.json"
+        );
+    }
+    let below = "1.7976931348623155e308";
+    for (doc, opts) in [
+        (in_merge(below), NirImportOptions::default()),
+        (in_sim(below), sim_units),
+    ] {
+        let path = import_path(doc.as_bytes(), opts, &mut out);
+        assert!(matches!(path, Ok(Some(_))), "one below: {path:?}");
+    }
+}
+
 // keep NirBuffers in scope as a public-API consumer (the fixture
 // suite exercises NirImport; the buffer API is pinned in unit tests)
 #[test]
@@ -580,11 +619,11 @@ const EDITS: [&str; 13] = [
 /// Edge values for a number: zero and its signs, the time step (0.1 ms)
 /// and under it, the weight limits in simulation units and one step past
 /// each (3.2767 on a spiking edge, 32.767 into a drive stage:
-/// `NirError::WeightOutOfRange`), the i16, u16 and u32 bounds, 1e308
-/// (near f64's largest), subnormals, an overflow to infinity, and
-/// membrane potentials.
+/// `NirError::WeightOutOfRange`), the i16, u16 and u32 bounds, 1e308 and
+/// f64's largest, subnormals, an overflow to infinity, and membrane
+/// potentials.
 const EDGE_NUMBERS: &str = "0 -0 1 -1 2 0.5 -0.5 0.1 1e-4 0.0001 9e-5 1e-5 1e-9 \
-    1e-30 1e-320 5e-324 1e9 1e30 1e308 -1e308 1e400 \
+    1e-30 1e-320 5e-324 1e9 1e30 1e308 -1e308 1.7976931348623157e308 1e400 \
     3.2767 3.2768 -3.2767 -3.2768 32.767 32.768 -32.767 -32.768 \
     32767 32768 -32768 -32769 65535 65536 4294967295 4294967296 \
     9007199254740993 100 1000 0.02 0.001 -0.07 -0.08 -0.065";
