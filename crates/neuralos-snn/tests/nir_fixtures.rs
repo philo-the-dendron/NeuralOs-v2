@@ -8,14 +8,15 @@
 //! The mutation loop at the end holds the import path to its rules on
 //! edited documents, one edit a case: each is refused or imported,
 //! never with a panic or a hang; an import exports to a document that
-//! re-imports to the same records; and a buffer one short, the
-//! caller's (`scratch` aside) or the export's, is refused.
+//! re-imports to the same records, and a network it builds steps; and a
+//! buffer one short, the caller's (`scratch` aside) or the export's, is
+//! refused.
 
 use neuralos_snn::nir::{
-    nir_export, nir_import, nir_scan, NirBuffers, NirError, NirImport, NirImportOptions, NirLif,
-    NirNode, NirNodeKind, NirNote, EXPORT_VERSION,
+    nir_export, nir_import, nir_scan, NirBuffers, NirError, NirGraphEncoder, NirImport,
+    NirImportOptions, NirLif, NirNode, NirNodeKind, NirNote, Thousandths, EXPORT_VERSION,
 };
-use neuralos_snn::VoltageResolution;
+use neuralos_snn::{SpikingNeuralNetwork, VoltageResolution};
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -440,10 +441,14 @@ fn buffer_api_consumes_reference_emission() {
 const FUZZ_CASES: usize = 10_000;
 const FUZZ_SEED: u64 = 0x9E37_79B9_7F4A_7C15;
 
-/// The reach floors apply from this many cases: under it, a seed's run
-/// can fall under them by chance; from it, none of 1,000 seeds did
-/// (2026-10-04).
-const FLOOR_FROM: usize = 1_000;
+/// The reach floors apply from this many cases; under it, a run can fall
+/// under them by chance. The floor each fixture has sets it: on seeds 1
+/// to 1,000 and 2,000 others (2026-10-05) it failed 2 of the 3,000 seeds
+/// at 2,000 cases and none from 3,000, and a model of CI's rates gives a
+/// seed 7.7e-6 at 3,000. The floors on the totals failed no seed from
+/// 700. A new fixture, edit kind or edge value draws another stream of
+/// cases: measure the margin again.
+const FLOOR_FROM: usize = 3_000;
 
 /// The case count and the seed: CI's, unless the environment names others.
 fn fuzz_config() -> (usize, u64) {
@@ -898,8 +903,9 @@ fn under_watchdog(cases: usize, body: impl FnOnce(&InFlight) + Send + 'static) {
 }
 
 /// One case through the import path: `Ok(None)` when the document is
-/// refused, `Ok(Some(built))` when it imports and round-trips, `Err`
-/// naming the rule it breaks.
+/// refused, `Ok(Some(built))` when it imports and round-trips, `built`
+/// true when it builds a network, which then [`steps`]; `Err` names the
+/// rule it breaks.
 fn import_path(
     input: &[u8],
     opts: NirImportOptions,
@@ -908,7 +914,13 @@ fn import_path(
     let Ok(g) = NirImport::from_json(input, opts) else {
         return Ok(None);
     };
-    let built = g.build_network().is_ok();
+    let built = match g.build_network() {
+        Ok((mut net, enc, _)) => {
+            steps(&mut net, &enc)?;
+            true
+        }
+        Err(_) => false,
+    };
     let [e1, e2, e3] = out;
     let n1 = nir_export(&g.nodes, &g.edges, &g.weights, &g.lifs, g.opts, e1)
         .map_err(|e| format!("the import does not export: {e:?}"))?;
@@ -927,6 +939,25 @@ fn import_path(
         return Err("the second export and the third differ".to_string());
     }
     Ok(Some(built))
+}
+
+/// How many times a network the loop builds steps.
+const STEPS: usize = 20;
+
+/// A built network, [`STEPS`] steps at a drive of 1.0 on every feature of
+/// every Input: each step gives `Ok`, and a panic fails the case where
+/// the loop catches it.
+fn steps(net: &mut SpikingNeuralNetwork, enc: &NirGraphEncoder) -> Result<(), String> {
+    let drive: Vec<Vec<Thousandths>> = (0..enc.input_count())
+        .map(|i| vec![Thousandths(1_000); enc.input_features(i)])
+        .collect();
+    let per_input: Vec<&[Thousandths]> = drive.iter().map(Vec::as_slice).collect();
+    let currents = enc.encode(&per_input);
+    for step in 1..=STEPS {
+        net.step(&currents)
+            .map_err(|e| format!("step {step} of the network it builds: {e:?}"))?;
+    }
+    Ok(())
 }
 
 /// What a re-import reproduces: every node (its name, kind, shape and
@@ -995,9 +1026,12 @@ fn mutated_fixtures_are_refused_or_round_trip() {
         let mut out = [vec![0u8; 1 << 16], vec![0u8; 1 << 16], vec![0u8; 1 << 16]];
         let (mut imported, mut built, mut unedited) = (0usize, 0usize, 0usize);
         let (mut scratch_tried, mut scratch_held) = (0usize, 0usize);
+        // per fixture, its edited cases that imported and that built
+        let mut reach = vec![(0usize, 0usize); seeds.len()];
         for case in 1..=cases {
             let kind = rng.below(EDITS.len());
-            let s = &seeds[rng.below(seeds.len())];
+            let at = rng.below(seeds.len());
+            let s = &seeds[at];
             let input = edit(&mut rng, s, kind);
             let what = format!("case {case} at seed {seed}, {} on {}", EDITS[kind], s.name);
             flight.begin_case(what.clone(), &input);
@@ -1025,21 +1059,32 @@ fn mutated_fixtures_are_refused_or_round_trip() {
             if let (Some(b), true) = (imports, edited) {
                 imported += 1;
                 built += usize::from(b);
+                reach[at].0 += 1;
+                reach[at].1 += usize::from(b);
             }
             if let Some(h) = held {
                 scratch_tried += 1;
                 scratch_held += usize::from(h);
             }
         }
+        let per_fixture: Vec<String> = seeds
+            .iter()
+            .zip(&reach)
+            .map(|(s, (i, b))| format!("{} {i}/{b}", s.name))
+            .collect();
         println!(
-            "{cases} cases at seed {seed}: {imported} imported, {built} built, not counting \
-             {unedited} cases that left the fixture as it was; {scratch_held} of {scratch_tried} \
-             short scratch buffers still imported, with the same records"
+            "{cases} cases at seed {seed}: {imported} imported, {built} built and stepped, not \
+             counting {unedited} cases that left the fixture as it was; {scratch_held} of \
+             {scratch_tried} short scratch buffers still imported, with the same records; per \
+             fixture, its edited cases imported/built: {}",
+            per_fixture.join(", ")
         );
         // the floors, about half of what CI's cases reach, count only what
         // an edit changed: an import path that starts refusing what it
         // took, or edits that stop reaching it or stop editing, fail here
-        // instead of passing on nothing
+        // instead of passing on nothing; and each fixture that is not a
+        // negative (`neg_*`) builds in at least one of its edited cases,
+        // since the totals cannot see one fixture's builds fall to none
         if cases >= FLOOR_FROM {
             assert!(
                 imported * 1000 >= cases * 55,
@@ -1049,6 +1094,13 @@ fn mutated_fixtures_are_refused_or_round_trip() {
                 built * 1000 >= cases * 25,
                 "{built} of {cases} cases built a network, under the floor of 2.5 %"
             );
+            for (s, (_, b)) in seeds.iter().zip(&reach) {
+                assert!(
+                    *b > 0 || s.name.starts_with("neg_"),
+                    "{} built no network in its edited cases, and is not a negative",
+                    s.name
+                );
+            }
         }
     });
 }
