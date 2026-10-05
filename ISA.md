@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@8f3bf8f (PR #53 merged 2026-10-03 22:28 UTC: round 56, tier 2, NIR 2b's S8, the import's memory: a root's identity stored only where the root meets a Linear twice, 2.0 MiB at assembly at 4,000 features where `main` held 124 MiB; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 56 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check; NIR at true scale under `--sim-units`, with its parity test against snnTorch, which ticks no check; the converter surface, the units mark and `--drive` with the report, which ticks no check; Affine under `--sim-units` and the input in thousandths, with a trained model in the parity set, which ticks no check; the mutation pass and the close-out check, which ticks no check; the import's memory with the weights, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/nir-round-trip, round 57 (tier 2, NIR round trip: C from the substrate's own tau and r, so a re-import keeps it; the library's reader takes only an object's own keys and refuses any other or a key given twice by name, a kind outside the subset first, and the converter any dataset or group its group does not carry; two `NirError` variants new; four commits), not pushed; no trace, frozen file or firmware `.text` moved · open(session): the per-commit loop BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@f51e83e (PR #54 merged 2026-10-04 18:35 UTC: round 57, tier 2, the NIR round trip: C from the substrate's own tau and r, so a re-import keeps it; the library's reader and the converter refuse a key their object or group does not carry; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 57 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check; NIR at true scale under `--sim-units`, with its parity test against snnTorch, which ticks no check; the converter surface, the units mark and `--drive` with the report, which ticks no check; Affine under `--sim-units` and the input in thousandths, with a trained model in the parity set, which ticks no check; the mutation pass and the close-out check, which ticks no check; the import's memory with the weights, which ticks no check; the NIR round trip, C and an object's own keys, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/nir-fuzz, round 58 (tier 3, the NIR mutation loop: 10,000 seeded cases a run, one edit of a fixture each, refused or round-tripped, never a panic or a hang, and each caller buffer one short refused, `scratch` aside; tests only; three commits), not pushed; no trace, frozen file or firmware `.text` moved · open(session): the per-commit loop BEFORE the push, then the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-10-04T16:55:00Z
+updated: 2026-10-04T23:36:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -10101,4 +10101,37 @@ followed by `nir.read`: a key behind one reads as absent); from round
 copied edge held by the banked probes and the random-graph differential;
 `da5b722d` did not reproduce in that review's clone (`bb57e67e`), while
 the per-commit job of #53 printed it at each commit. No check ticks.
+**Guards.** 1: appended, head refreshed; 2 and 3: not in play.
+
+## Close-out (round 58 — the NIR mutation loop; tier 3 — 2026-10-04)
+
+Branch `work/nir-fuzz` from `main@f51e83e`, tier 3, tests only, three
+commits: `4f1cafe` a seeded mutation loop over the NIR fixtures;
+`e9dc51d` the loop meets short buffers; this. **Rulings** (philo,
+2026-10-03: a seeded loop in the library's own tests, no dependency, in
+CI on every PR, a round trip on what imports; 2026-10-04: the reach
+measured at `main` first, then the leans, one edit a case of thirteen,
+each fixture under its own options, a reach floor, a watchdog, the short
+buffers in, the `.nir` round a probe first; after the review: our own
+xorshift, not `proptest`, the same cases on any toolchain or upgrade;
+the watchdog per case and per loop; the short buffers in the same test;
+the cosmetic items in; after the stop: the overflow at f64's largest its
+own fix PR next, the loop without that value). **Falsifiers**, 27
+mutants on the final code (15 planted, the review's 10, 2 of ours): 16
+red naming their case; a hang in the setup naming its fixture; a slow
+scan red at the budget; 5 red at a floor (an Input refusing `metadata`
+407 imported, the options swapped 255, the strict `lifs` bound 203, no
+edit 0, the floor from case 1, 0 of 12); green, the centi-mV arm dropped
+(`recurrent.json` builds 44 to 0) and the three below. A million cases
+in release and 300,000 in debug: green. **Unmoved**: no library line,
+trace, frozen file or firmware `.text`. **Counts**: `nir_fixtures` 8 to
+9 tests; floors of 5.5 % and 2.5 % from 1,000 cases; at CI's seed 1,178
+of 10,000 cases import and 551 build, edited; `scratch` one short still
+imports in 1,011 of 1,152. **Record-only**: from round 57's d3 review, a
+node no edge names gets an Input and an Output of its own in `nir.read`,
+the converter keeps it alone (7 nodes against 5 on
+`n3_nodes_hardlink_group.nir`), any node with no edge, not ruled; the
+round trip cannot see a defect the re-import repeats, or an export value
+the re-import absorbs or never reads: three hand mutants stay green in
+the loop, each red in other tests. No check ticks.
 **Guards.** 1: appended, head refreshed; 2 and 3: not in play.
