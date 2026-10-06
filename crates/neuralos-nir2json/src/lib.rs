@@ -33,6 +33,21 @@
 //! EVERYTHING else loudly BY NAME (`lzf`, `szip`, …) — a filter we
 //! cannot decode is a silent-corruption hazard, not an inconvenience.
 //!
+//! # Size count (pre-read, per file — stated policy)
+//!
+//! Before any dataset is read, every dataset the conversion reads is
+//! counted from its dims, a scalar as one value: a file past
+//! [`MAX_VALUES`] in all is refused by name, with the dataset that
+//! passes it and its dims ([`ConvertError::TooLarge`]). So is a dataset
+//! stored in chunks of more than [`MAX_VALUES`] values each, whatever
+//! its dims: hdf5-pure reads a chunk whole. hdf5-pure sizes a read's
+//! buffer from the dims and the chunk dims a file states and trusts
+//! them; the count bounds both, in values. A numeric value is 4 or 8
+//! bytes once its dataset's dtype passes, which the decode checks
+//! before the read. Not bounded: a variable-length string's payload,
+//! which hdf5-pure reads apart from its dataset (`version`, each
+//! `type`, the edges).
+//!
 //! # f32 handling
 //!
 //! Stranger files (snnTorch exports default to fp32) carrying F32
@@ -95,6 +110,12 @@ pub const SIM_DT_US: u32 = 100;
 /// the census admits.
 const FILTER_DEFLATE: u16 = 1;
 
+/// The most values a conversion reads from one file, 2^22, and the most
+/// in one chunk: every dataset it reads, counted from its dims and its
+/// chunk dims before any is read (§ Size count). Raising it later
+/// refuses no file that converts today; lowering it would.
+pub const MAX_VALUES: u64 = 1 << 22;
+
 /// Everything that can stop a conversion, each nameable in one line.
 #[derive(Debug)]
 pub enum ConvertError {
@@ -125,6 +146,16 @@ pub enum ConvertError {
     SimUnits { node: String, r_ohm: f64 },
     /// A dataset's dtype/shape is not what its node kind requires.
     BadData { dataset: String, what: String },
+    /// The datasets the conversion reads hold more than [`MAX_VALUES`]
+    /// values in all, counted from their dims before any is read: the
+    /// dataset that passes it, with its dims. Or one of them is stored
+    /// in chunks of more than [`MAX_VALUES`] values each, a chunk being
+    /// read whole: that dataset, its dims and its chunk dims, `chunk`.
+    TooLarge {
+        dataset: String,
+        dims: Vec<u64>,
+        chunk: Option<Vec<u64>>,
+    },
     /// A key its group does not carry: a node of a kind this tool
     /// converts carries its kind's datasets, `type` and a `metadata`
     /// group; `nodes` its nodes, each a group; the graph `type`,
@@ -174,6 +205,28 @@ impl fmt::Display for ConvertError {
                  convention transform (a voltage scale per node, true-scale weights, centi grid)"
             ),
             Self::BadData { dataset, what } => write!(f, "dataset '{dataset}': {what}"),
+            Self::TooLarge {
+                dataset,
+                dims,
+                chunk: None,
+            } => write!(
+                f,
+                "the file holds more than {} values, the most this tool reads from one \
+                 file: the count passes it at dataset '{dataset}' (dims {dims:?}); \
+                 refused before any read",
+                grouped(MAX_VALUES)
+            ),
+            Self::TooLarge {
+                dataset,
+                dims,
+                chunk: Some(chunk),
+            } => write!(
+                f,
+                "dataset '{dataset}' (dims {dims:?}) is stored in chunks of {chunk:?}, \
+                 more than {} values each, the most this tool reads from one file, and a \
+                 chunk is read whole; refused before any read",
+                grouped(MAX_VALUES)
+            ),
             Self::UnexpectedKey { path, nir_version } => write!(
                 f,
                 "'{path}' is not a key NIR carries there, as this tool reads it (the \
@@ -184,6 +237,21 @@ impl fmt::Display for ConvertError {
             Self::Snn { stage, msg } => write!(f, "snn {stage}: {msg}"),
         }
     }
+}
+
+/// `n` with its digits in groups of three, `4,194,304`: the bound as
+/// [`ConvertError::TooLarge`] and the CLI's usage print it.
+#[must_use]
+pub fn grouped(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// The file-level audit annotation (sidecar `<out>.meta.json`).
@@ -334,6 +402,86 @@ fn filter_name(id: u16) -> String {
         5 => "nbit".into(),
         6 => "scaleoffset".into(),
         other => format!("unknown-filter-{other}"),
+    }
+}
+
+/// The pre-read size count (crate doc § Size count): the file's
+/// `version`, then in the census's order the graph's `type` and `edges`
+/// and each node's datasets, each counted from its dims, a scalar as
+/// one value. Past `bound` in all, the dataset that passes it is
+/// refused with its dims ([`ConvertError::TooLarge`]); else a chunked
+/// dataset whose chunk holds more than `bound` values is refused with
+/// its dims and its chunk dims; else the count. Nothing is read. A
+/// dataset, group, dims or chunk dims it cannot open is skipped: the
+/// census, before any node is decoded, or the decode refuses it by its
+/// own name.
+fn count_values(root: &Group, bound: u64) -> Result<u64, ConvertError> {
+    fn add(
+        total: &mut u64,
+        bound: u64,
+        g: &Group,
+        at: &str,
+        name: &str,
+    ) -> Result<(), ConvertError> {
+        let Some((ds, dims)) = g
+            .dataset(name)
+            .ok()
+            .and_then(|ds| ds.shape().ok().map(|dims| (ds, dims)))
+        else {
+            return Ok(());
+        };
+        let too_large = |dims, chunk| ConvertError::TooLarge {
+            dataset: format!("{at}{name}"),
+            dims,
+            chunk,
+        };
+        match values(&dims).and_then(|n| total.checked_add(n)) {
+            Some(t) if t <= bound => *total = t,
+            _ => return Err(too_large(dims, None)),
+        }
+        // a chunk is read whole, at its own size, whatever the dims
+        let chunk = ds.chunk_shape();
+        if !chunk_fits(&chunk, bound) {
+            return Err(too_large(dims, chunk.ok().flatten()));
+        }
+        Ok(())
+    }
+    let mut total = 0;
+    add(&mut total, bound, root, "", "version")?;
+    let Ok(node) = root.group("node") else {
+        return Ok(total);
+    };
+    add(&mut total, bound, &node, "node/", "type")?;
+    add(&mut total, bound, &node, "node/", "edges")?;
+    let Ok(nodes) = node.group("nodes") else {
+        return Ok(total);
+    };
+    for name in nodes.groups().unwrap_or_default() {
+        let Ok(g) = nodes.group(&name) else {
+            continue;
+        };
+        let at = format!("node/nodes/{name}/");
+        for d in g.datasets().unwrap_or_default() {
+            add(&mut total, bound, &g, &at, &d)?;
+        }
+    }
+    Ok(total)
+}
+
+/// The values `dims` hold, `None` past u64.
+fn values(dims: &[u64]) -> Option<u64> {
+    dims.iter().try_fold(1u64, |n, &d| n.checked_mul(d))
+}
+
+/// Whether one chunk of a dataset holds at most `bound` values, from its
+/// chunk dims as hdf5-pure's `chunk_shape` gives them: a chunk whose
+/// dims' product passes u64 does not; a dataset not chunked does, and so
+/// does one whose layout hdf5-pure cannot read, which the count skips as
+/// it skips what it cannot open.
+fn chunk_fits<E>(chunk: &Result<Option<Vec<u64>>, E>, bound: u64) -> bool {
+    match chunk {
+        Ok(Some(dims)) => values(dims).is_some_and(|n| n <= bound),
+        Ok(None) | Err(_) => true,
     }
 }
 
@@ -635,8 +783,15 @@ fn depth(kinds: &[&str], edges: &[(usize, usize)], lif: usize) -> Result<u32, No
 ///
 /// # Panics
 ///
-/// Never on stranger input (all decode paths are checked); the export
-/// buffer growth loop terminates at 64 MiB + data scale.
+/// None known. Every dataset it reads is counted from its dims and its
+/// chunk dims before any is read: a file past [`MAX_VALUES`] values in
+/// all, or with a chunk past it, is refused, so hdf5-pure, which sizes
+/// a read's buffer from the dims and the chunk dims a file states,
+/// never sizes one past that many values (crate doc § Size count). A
+/// variable-length string's payload is not bounded.
+/// The export buffer starts at the data's scale, 40 bytes a weight and
+/// 300 a LIF, at least 64 KiB, and grows fourfold until the JSON fits;
+/// a buffer past 1 GiB that is still too small refuses the file.
 pub fn convert_file(path: &Path, opts: NirImportOptions) -> Result<Converted, ConvertError> {
     convert_file_opts(path, opts, false)
 }
@@ -691,6 +846,10 @@ pub fn convert_file_opts(
     let effective = effective_options(opts, sim_units);
     let f = File::open(path).map_err(|e| ConvertError::Open(format!("{}: {e}", path.display())))?;
     let root = f.root();
+
+    // PRE-READ size count — no dataset is read before the file's values
+    // are counted from their dims
+    count_values(&root, MAX_VALUES)?;
 
     // version (recorded, never behavior-switching)
     let nir_version = read_str(
@@ -983,7 +1142,8 @@ pub fn convert_file_opts(
         msg: e.to_string(),
     })?;
 
-    // Export with bounded buffer growth (start at data scale, ×4, four tries).
+    // Export with bounded buffer growth: start at the data's scale, ×4
+    // until the JSON fits, refused once a buffer past 1 GiB is too small.
     let w = graph.weights.len();
     let l = graph.lifs.len();
     let mut cap = 1usize << 16;
@@ -1508,6 +1668,158 @@ mod tests {
             .join(name);
         assert!(p.exists(), "rt fixture missing: {}", p.display());
         p
+    }
+
+    #[test]
+    fn the_bound_is_2_to_the_22() {
+        // ruled 2026-10-05: raising it later refuses no file that
+        // converts today; lowering it would
+        assert_eq!(MAX_VALUES, 4_194_304);
+    }
+
+    #[test]
+    fn the_count_takes_every_dataset_read_in_the_census_s_order() {
+        let f = File::open(fixture("merge_f32.nir")).expect("opens");
+        let root = f.root();
+        // version 1, the graph's type 1 and edges 5×2, then each node's
+        // datasets: 39 values
+        assert_eq!(count_values(&root, MAX_VALUES).expect("counts"), 39);
+        assert_eq!(count_values(&root, 39).expect("at the bound"), 39);
+        // under a smaller bound, the dataset whose values pass it
+        for (bound, dataset, dims) in [
+            (0, "version", vec![]),
+            (1, "node/type", vec![]),
+            (2, "node/edges", vec![5, 2]),
+            (12, "node/nodes/in1/shape", vec![1]),
+            (38, "node/nodes/out/type", vec![]),
+        ] {
+            match count_values(&root, bound) {
+                Err(ConvertError::TooLarge {
+                    dataset: d,
+                    dims: m,
+                    chunk: None,
+                }) => {
+                    assert_eq!((d.as_str(), m), (dataset, dims), "bound {bound}");
+                }
+                other => panic!("bound {bound}: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn a_chunk_fits_the_bound_by_its_dims_product() {
+        // the chunk's check as numbers: no writer makes a chunk past
+        // 4 GiB, so no file a test makes holds a product past u64; four
+        // dims of 2^16 make 2^64, which a wrapping multiply turns into 0
+        let fits = |chunk: Result<Option<Vec<u64>>, ()>, bound| chunk_fits(&chunk, bound);
+        assert!(fits(Ok(Some(vec![2048, 2048])), 1 << 22));
+        assert!(!fits(Ok(Some(vec![2049, 2048])), 1 << 22));
+        assert!(!fits(Ok(Some(vec![1 << 16; 4])), u64::MAX));
+        // a dataset not chunked, and one whose layout hdf5-pure cannot
+        // read, which the count skips
+        assert!(fits(Ok(None), 0));
+        assert!(fits(Err(()), 0));
+    }
+
+    #[test]
+    fn the_bound_prints_in_groups_of_three() {
+        assert_eq!(
+            [999, 1_000, 65_535, 4_194_304].map(grouped),
+            ["999", "1,000", "65,535", "4,194,304"]
+        );
+    }
+
+    #[test]
+    fn a_file_past_the_bound_is_refused_by_the_count_before_any_other_refusal() {
+        // each file is also refused by an earlier step of the
+        // conversion without the count: `version` an int64 that the
+        // string read refuses; a key at the root that the key check
+        // refuses, beside a weight past the bound; an lzf `shape` that
+        // the filter census refuses, beside the same weight (each past
+        // the bound never written, so the files stay small)
+        let sim = NirImportOptions {
+            dt_us: SIM_DT_US,
+            ..NirImportOptions::default()
+        };
+        for (name, dataset) in [
+            ("order_version_int64.nir", "version"),
+            ("order_root_key.nir", "node/nodes/linear/weight"),
+            ("order_lzf_shape.nir", "node/nodes/linear/weight"),
+        ] {
+            for (opts, units) in [(NirImportOptions::default(), false), (sim, true)] {
+                match convert_file_opts(&fixture(name), opts, units) {
+                    Err(ConvertError::TooLarge {
+                        dataset: d,
+                        chunk: None,
+                        ..
+                    }) => assert_eq!(d, dataset, "{name}"),
+                    other => panic!("{name}, sim {units}: {other:?}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_chunk_past_the_bound_is_refused_whatever_the_dims() {
+        // a 2×2 weight stored in one chunk of 2049×2048 values, which a
+        // read allocates whole
+        let path = fixture("chunk_past_bound.nir");
+        let sim = NirImportOptions {
+            dt_us: SIM_DT_US,
+            ..NirImportOptions::default()
+        };
+        for (opts, units) in [(NirImportOptions::default(), false), (sim, true)] {
+            let e = convert_file_opts(&path, opts, units)
+                .err()
+                .unwrap_or_else(|| panic!("sim {units}: converted"));
+            let m = e.to_string();
+            match e {
+                ConvertError::TooLarge {
+                    dataset,
+                    dims,
+                    chunk,
+                } => assert_eq!(
+                    (dataset.as_str(), dims, chunk),
+                    (
+                        "node/nodes/linear/weight",
+                        vec![2, 2],
+                        Some(vec![2049, 2048])
+                    ),
+                    "sim {units}"
+                ),
+                other => panic!("sim {units}: {other:?}"),
+            }
+            assert!(m.contains("chunks of [2049, 2048]"), "{m}");
+            assert!(m.contains("4,194,304"), "{m}");
+        }
+        // the count's own view: a chunk of the bound passes, one value
+        // more is refused, and where the dims pass the bound first the
+        // refusal is theirs (version 1, type 1, edges 2×2, the input's
+        // two datasets, the weight's type: 9 values before the weight)
+        let f = File::open(&path).expect("opens");
+        let root = f.root();
+        let chunk = 2049 * 2048;
+        assert_eq!(
+            count_values(&root, chunk).expect("a chunk of the bound"),
+            15
+        );
+        for (bound, dims, want) in [
+            (chunk - 1, vec![2, 2], Some(vec![2049, 2048])),
+            (12, vec![2, 2], None),
+        ] {
+            match count_values(&root, bound) {
+                Err(ConvertError::TooLarge {
+                    dataset,
+                    dims: d,
+                    chunk: c,
+                }) => assert_eq!(
+                    (dataset.as_str(), d, c),
+                    ("node/nodes/linear/weight", dims, want),
+                    "bound {bound}"
+                ),
+                other => panic!("bound {bound}: {other:?}"),
+            }
+        }
     }
 
     #[test]

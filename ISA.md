@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@8bf2551 (PR #55 merged 2026-10-05 01:12 UTC: round 58, tier 3, the NIR mutation loop: 10,000 seeded cases a run, one edit of a fixture each, refused or round-tripped, never a panic or a hang, and each caller buffer one short refused, `scratch` aside; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 58 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check; NIR at true scale under `--sim-units`, with its parity test against snnTorch, which ticks no check; the converter surface, the units mark and `--drive` with the report, which ticks no check; Affine under `--sim-units` and the input in thousandths, with a trained model in the parity set, which ticks no check; the mutation pass and the close-out check, which ticks no check; the import's memory with the weights, which ticks no check; the NIR round trip, C and an object's own keys, which ticks no check; the NIR mutation loop, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/nir-overflow, round 59 (tier 2, BREAKING: a Linear weight of f64's largest refused at import, not at export as before, and four uses of it that worked refused with it; the mutation loop steps each network it builds, a floor per fixture from 3,000 cases, and every cut of every fixture meets its rules; what `NirError::Json` and the scan's counts cover; the manifest's comment; six commits, rewritten once after two reviews), not pushed; no trace, frozen file, public item or firmware `.text` moved · open(session): the helper's check of the rewrite, then the landing, the push and the PR on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@62cda67 (PR #56 merged 2026-10-05 15:27 UTC: round 59, tier 2, the NIR overflow fix and the loop's loose ends: a Linear weight of f64's largest refused at import, BREAKING; the loop steps what it builds, a floor per fixture from 3,000 cases, every cut of every fixture; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 59 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check; NIR at true scale under `--sim-units`, with its parity test against snnTorch, which ticks no check; the converter surface, the units mark and `--drive` with the report, which ticks no check; Affine under `--sim-units` and the input in thousandths, with a trained model in the parity set, which ticks no check; the mutation pass and the close-out check, which ticks no check; the import's memory with the weights, which ticks no check; the NIR round trip, C and an object's own keys, which ticks no check; the NIR mutation loop, which ticks no check; the NIR overflow fix, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/nir-file-fix, round 60 (tier 2, BREAKING: `NirBuilder::add_input` and `add_output` refuse an empty shape, as the reader does; the converter counts a file's values from its dims before any read and refuses one past 2^22, or with a chunk past it, `ConvertError::TooLarge`; three commits, rebuilt once after the review), not pushed; no trace, frozen file, library public item or firmware `.text` moved · open(session): what checks the rebuild, then the landing, the push and the PR, each on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-10-05T05:56:00Z
+updated: 2026-10-05T23:32:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -10167,4 +10167,37 @@ stepped; 15,530 cuts, 32 imported; 17,057 short export buffers.
 **Record-only**: TODO's "simulation units already refuse it" did not
 hold, they imported it; round 58's floors "from 1,000 cases" apply from
 3,000 now. No check ticks.
+**Guards.** 1: appended, head refreshed; 2 and 3: not in play.
+
+## Close-out (round 60 — the `.nir` file fix, an empty shape and a file's size; tier 2 — 2026-10-05)
+
+Branch `work/nir-file-fix` from `main@62cda67`, tier 2, three commits
+built in scratch, rebuilt once after the review: `b818520` the builder
+refuses an Input's or an Output's empty shape, BREAKING; `2dbbec0` a
+file's values counted from its dims before any read, past 2^22 refused,
+or a chunk past it; this. **Rulings** (philo, 2026-10-05): F1 and F3 one
+PR, F1's error `BadShape("shape")`; the bound 2^22, counted before any
+read; the series first; no export ceiling, its doc fixed; on the review,
+the chunk check, tested on numbers, and its words; the count's place
+pinned; the walk's by-name opens later. **Falsifiers**: 75 hand mutants
+on the final code, each against every test of the crates it reaches, 73
+red: the empty-shape check, both ends of 1 to 4, builder and reader; the
+count's calls, walk, place, bound, sums, message, skips; the chunk
+check's bound, place, overflow, skips; the grouping. The 2 green: one
+skip no file reaches, a group that lists but fails to open. The pass: 81
+mutants run or read, none missed; each blind line is a hand mutant's but
+the usage text and `add`'s signature. **Replay**, the probe's 398 files,
+release CLI, both units: at `main` 319 panics, 94 aborts, a kill at 4
+GiB, 120 conversions (73 `"shape":[]`); at the tip 796 refusals, 682 by
+the count, none by a chunk, the peak 1 MiB. **At the bound**: 200 MiB
+resident at most (699,048 f32 neurons, a 145 MB JSON), each output as at
+`main`. **Unmoved**: no trace, frozen file, library public item or
+firmware `.text`; the converter gains `MAX_VALUES`, `grouped` and
+`ConvertError::TooLarge`. **Counts**, both crates in one run: the
+library's unit tests 218 to 220, the converter's 26 to 32,
+`edited_files` 3. **Record-only**: the report's 57 F1 cases are 57 files
+from 49; its 8 s "hangs" ran under `--freeze`; the filter census never
+sees `version`, so an lzf one converts, at `main` too; hdf5-pure refuses
+valid old-style groups with link names not UTF-8; past the bound, an
+unsupported kind reads as too large before its name. No check ticks.
 **Guards.** 1: appended, head refreshed; 2 and 3: not in play.

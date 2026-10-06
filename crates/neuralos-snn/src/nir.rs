@@ -5138,18 +5138,22 @@ mod std_assembly {
         ///
         /// # Errors
         ///
-        /// [`NirError::BadShape("shape")`](NirError::BadShape) beyond 4 dims.
+        /// [`NirError::BadShape("shape")`](NirError::BadShape) outside 1–4
+        /// dims; the reader refuses an empty shape too, as
+        /// [`NirError::MissingField("shape")`](NirError::MissingField).
         pub fn add_input(&mut self, name: &'a str, shape: &[u32]) -> Result<usize, NirError<'a>> {
-            self.push_node(name, NirNodeKind::Input, shape)
+            self.push_carrier(name, NirNodeKind::Input, shape)
         }
 
         /// Add an `Output` node (shape carrier; 1–4 dims).
         ///
         /// # Errors
         ///
-        /// [`NirError::BadShape("shape")`](NirError::BadShape) beyond 4 dims.
+        /// [`NirError::BadShape("shape")`](NirError::BadShape) outside 1–4
+        /// dims; the reader refuses an empty shape too, as
+        /// [`NirError::MissingField("shape")`](NirError::MissingField).
         pub fn add_output(&mut self, name: &'a str, shape: &[u32]) -> Result<usize, NirError<'a>> {
-            self.push_node(name, NirNodeKind::Output, shape)
+            self.push_carrier(name, NirNodeKind::Output, shape)
         }
 
         /// Add a `LIF` population from per-neuron source-unit
@@ -5285,6 +5289,21 @@ mod std_assembly {
                 opts: self.opts,
                 ref_sha: NIR_REF_SHA,
             })
+        }
+
+        /// An `Input` or an `Output`: a shape of 1 to 4 dims, as the
+        /// reader takes one. A Linear and a LIF carry none, so
+        /// `push_node` itself takes an empty shape.
+        fn push_carrier(
+            &mut self,
+            name: &'a str,
+            kind: NirNodeKind,
+            shape: &[u32],
+        ) -> Result<usize, NirError<'a>> {
+            if shape.is_empty() {
+                return Err(NirError::BadShape("shape"));
+            }
+            self.push_node(name, kind, shape)
         }
 
         fn push_node(
@@ -6967,6 +6986,63 @@ mod tests {
         // validate_structure parity)
         b2.add_edge(i2, o2).expect("edge");
         assert!(matches!(b2.build(), Err(NirError::DuplicateEdge)));
+    }
+
+    /// An Input `i` feeding an Output `o`, each with the shape given as
+    /// JSON.
+    fn carriers(input: &str, output: &str) -> String {
+        format!(
+            "{{\"version\":\"test\",\"node\":{{\"type\":\"NIRGraph\",\
+             \"edges\":[[\"i\",\"o\"]],\"nodes\":{{\
+             \"i\":{{\"type\":\"Input\",\"shape\":{input}}},\
+             \"o\":{{\"type\":\"Output\",\"shape\":{output}}}}}}}}}"
+        )
+    }
+
+    #[test]
+    fn an_empty_shape_is_refused_by_the_builder_as_by_the_reader() {
+        let opts = NirImportOptions::default();
+        let whole = carriers("[1]", "[1]");
+        assert!(NirImport::from_json(whole.as_bytes(), opts).is_ok());
+        for (input, output) in [("[]", "[1]"), ("[1]", "[]")] {
+            let d = carriers(input, output);
+            assert_eq!(
+                NirImport::from_json(d.as_bytes(), opts).err(),
+                Some(NirError::MissingField("shape")),
+                "input {input}, output {output}"
+            );
+        }
+        // the builder refuses each by the error it gives past 4 dims,
+        // and keeps no node of either
+        let mut b = NirBuilder::new(opts);
+        assert_eq!(b.add_input("i", &[]), Err(NirError::BadShape("shape")));
+        assert_eq!(b.add_output("o", &[]), Err(NirError::BadShape("shape")));
+        let i = b.add_input("i", &[1]).expect("input");
+        let o = b.add_output("o", &[1]).expect("output");
+        assert_eq!((i, o), (0, 1));
+    }
+
+    #[test]
+    fn four_dims_are_taken_and_a_fifth_refused_by_the_builder_as_by_the_reader() {
+        // the other end of 1–4: the reader's own shape array holds four
+        let opts = NirImportOptions::default();
+        let four = carriers("[1,1,1,1]", "[1,1,1,1]");
+        assert!(NirImport::from_json(four.as_bytes(), opts).is_ok());
+        for (input, output) in [("[1,1,1,1,1]", "[1]"), ("[1]", "[1,1,1,1,1]")] {
+            let d = carriers(input, output);
+            assert_eq!(
+                NirImport::from_json(d.as_bytes(), opts).err(),
+                Some(NirError::BadShape("shape")),
+                "input {input}, output {output}"
+            );
+        }
+        let mut b = NirBuilder::new(opts);
+        let five = [1; 5];
+        assert_eq!(b.add_input("i", &five), Err(NirError::BadShape("shape")));
+        assert_eq!(b.add_output("o", &five), Err(NirError::BadShape("shape")));
+        let i = b.add_input("i", &[1; 4]).expect("input");
+        let o = b.add_output("o", &[1; 4]).expect("output");
+        assert_eq!((i, o), (0, 1));
     }
 
     #[test]

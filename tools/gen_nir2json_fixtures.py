@@ -15,6 +15,10 @@ Output : crates/neuralos-nir2json/tests/fixtures/
          - stray_node_key.nir, stray_node_group.nir, stray_input_key.nir,
            stray_linear_key.nir, stray_affine_key.nir, stray_nodes_key.nir,
            stray_graph_key.nir, stray_file_key.nir   (one key its group does not carry)
+         - order_version_int64.nir, order_root_key.nir,
+           order_lzf_shape.nir                       (past the size count, and
+                                                      refused by an earlier step)
+         - chunk_past_bound.nir                      (a chunk past the size count)
 Run    : .nirenv/bin/python3 tools/gen_nir2json_fixtures.py
 
 The three Affine graphs are the layout snnTorch writes for a biased
@@ -198,6 +202,51 @@ def stray_key(name: str, where: str) -> None:
     print(f"stray  : {dst.name} ({dst.stat().st_size} B)")
 
 
+BOUND = 1 << 22  # the converter's MAX_VALUES, its size count
+
+
+def past_the_bound(name: str, what: str) -> None:
+    """input(2) → linear → output, one dataset past the converter's size
+    count, BOUND values. `version`: the file's version an int64 of
+    2 × BOUND values, which the string read refuses. `key`: a 2^20 × 2^20
+    weight beside a `foo` dataset in the file, which the key check
+    refuses. `lzf`: the same weight beside an lzf-filtered input `shape`,
+    which the filter census refuses. Those past the bound are never
+    written, so each file stays small. `chunk`: the 2×2 weight stored in
+    one chunk of 2049 × 2048 values, past BOUND, which a reader allocates
+    whole."""
+    dst = OUT / name
+    s = h5py.string_dtype(encoding="utf-8")
+    with h5py.File(dst, "w") as f:
+        if what == "version":
+            f.create_dataset("version", shape=(2 * BOUND,), dtype="int64", chunks=(1 << 16,), compression="gzip")
+        else:
+            f.create_dataset("version", data="1.0.9.dev1+g7883c3c85", dtype=s)
+        node = f.create_group("node")
+        node.create_dataset("type", data="NIRGraph", dtype=s)
+        nodes = node.create_group("nodes")
+        for key, kind in (("input", "Input"), ("output", "Output")):
+            g = nodes.create_group(key)
+            g.create_dataset("type", data=kind, dtype=s)
+            if key == "input" and what == "lzf":
+                g.create_dataset("shape", data=[2], chunks=(1,), compression="lzf")
+            else:
+                g.create_dataset("shape", data=[2], compression="gzip")
+        g = nodes.create_group("linear")
+        g.create_dataset("type", data="Linear", dtype=s)
+        w = [[0.5, 0.25], [0.25, 0.5]]
+        if what in ("key", "lzf"):
+            g.create_dataset("weight", shape=(1 << 20, 1 << 20), dtype="float64", chunks=(1024, 1024), compression="gzip")
+        elif what == "chunk":
+            g.create_dataset("weight", data=w, dtype="float64", chunks=(2049, 2048), maxshape=(None, None), compression="gzip")
+        else:
+            g.create_dataset("weight", data=w, dtype="float64", compression="gzip")
+        if what == "key":
+            f.create_dataset("foo", data=1)
+        node.create_dataset("edges", data=[["input", "linear"], ["linear", "output"]], dtype=s)
+    print(f"bound  : {dst.name} ({dst.stat().st_size} B)")
+
+
 if __name__ == "__main__":
     twin("chain_population.nir")
     twin("merge.nir")
@@ -214,4 +263,8 @@ if __name__ == "__main__":
     stray_key("stray_nodes_key.nir", "nodes")
     stray_key("stray_graph_key.nir", "graph")
     stray_key("stray_file_key.nir", "file")
+    past_the_bound("order_version_int64.nir", "version")
+    past_the_bound("order_root_key.nir", "key")
+    past_the_bound("order_lzf_shape.nir", "lzf")
+    past_the_bound("chunk_past_bound.nir", "chunk")
     print("done — community fixtures are copied, not generated (PROVENANCE.md)")
