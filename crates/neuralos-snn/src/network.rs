@@ -203,10 +203,19 @@ pub struct SpikingNeuralNetwork {
     synaptic_input_divisor: u16,
 }
 
+/// The noise amplitude (μA) a topology builder gives the neurons it makes: the
+/// amplitude every neuron had by default until round 61, so a network built by
+/// [`SpikingNeuralNetwork::new`] runs as it always did. A neuron built by its
+/// own constructor has none.
+const BUILT_NEURON_NOISE_UA: u8 = 5;
+
 impl SpikingNeuralNetwork {
     /// Construct a network with `neuron_count` neurons, `time_step_us` simulation
     /// step, and the given `topology`. Neurons are created with the biological
     /// 80/20 E/I ratio unless the topology overrides (e.g., Feedforward is all E).
+    /// Each has noise amplitude 5 μA (`BUILT_NEURON_NOISE_UA`), unlike a neuron
+    /// from `LIFNeuron::new`, which is silent; [`from_neurons`](Self::from_neurons)
+    /// takes neurons as given.
     ///
     /// # Errors
     ///
@@ -265,7 +274,10 @@ impl SpikingNeuralNetwork {
             } else {
                 NeuronType::Inhibitory
             };
-            neurons.push(LIFNeuron::new_with_type_resolution(id, nt, resolution));
+            neurons.push(
+                LIFNeuron::new_with_type_resolution(id, nt, resolution)
+                    .with_noise_amplitude_ua(BUILT_NEURON_NOISE_UA),
+            );
         }
 
         let estimated_synapses = estimate_synapses(neuron_count, &topology);
@@ -2415,6 +2427,32 @@ mod tests {
         // The neuron's own stamps are the low 32 bits: 599.
         assert_eq!(net.neurons[0].last_update_time_us, 599);
         assert_eq!(net.neurons[0].last_spike_time_us, 599);
+    }
+
+    /// A topology builder gives every neuron noise 5, whatever the topology
+    /// and the grid; `from_neurons` keeps the neurons as given.
+    #[test]
+    fn a_topology_builder_gives_its_neurons_noise() {
+        for res in [
+            VoltageResolution::Millivolt,
+            VoltageResolution::CentiMillivolt,
+        ] {
+            for topology in [
+                NetworkTopology::default(),
+                NetworkTopology::Random { connectivity: 0.0 },
+            ] {
+                let net =
+                    SpikingNeuralNetwork::new_with_voltage_resolution(10, 1000, topology, res)
+                        .expect("builds");
+                assert!(
+                    net.neurons().iter().all(|n| n.noise_amplitude_ua == 5),
+                    "{res:?}"
+                );
+            }
+        }
+        let given =
+            SpikingNeuralNetwork::from_neurons(vec![LIFNeuron::new(0)], 1000).expect("builds");
+        assert_eq!(given.neurons()[0].noise_amplitude_ua, 0);
     }
 
     /// STDP does the same past 2^32 μs as at the start: the three pairings the

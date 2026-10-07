@@ -40,10 +40,10 @@
 //! grid a steady current below ~200 μA at rest moves the membrane by exactly
 //! zero forever ([`crate::lif_neuron`] § the dead zone), so a ≤2 mV
 //! approximation sits inside the grid's own blindness. The older phrasing here
-//! compared a millivolt error against the ±5 μA default noise amplitude, which
-//! are different units and not comparable. The scalar reference here uses exact
-//! `/1000`. The correctness test asserts the two agree within ±2 mV per neuron,
-//! not bit-exact.
+//! compared a millivolt error against the ±5 μA noise amplitude of a built
+//! network's neurons, which are different units and not comparable. The scalar
+//! reference here uses exact `/1000`. The correctness test asserts the two
+//! agree within ±2 mV per neuron, not bit-exact.
 //!
 //! ## Corrected 2026-08-30: the two divisions must round the same way
 //!
@@ -309,7 +309,7 @@
 //!
 //! At the default 1 ms / 20 ms step (`dt_over_tau = 50`) and the default
 //! `resistance = 100` MΩ, the current bound admits `|input| ≤ 1000` μA, two
-//! orders of magnitude above the ±5 μA default noise.
+//! orders of magnitude above the ±5 μA noise of a built network's neurons.
 //!
 //! # Grid limitation — mV only
 //!

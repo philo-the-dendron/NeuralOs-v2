@@ -170,9 +170,9 @@ pub fn render(case: &Case) -> String {
     out
 }
 
-/// A neuron with the noise set; the network's constructors keep the
-/// default (5 μA), and a case that wants silence builds its neurons here
-/// and hands them to `from_neurons`.
+/// A neuron with the noise set. A topology builder gives its neurons 5 μA
+/// and a neuron constructor 0; a case that wants silence builds its neurons
+/// here and hands them to `from_neurons`.
 fn neuron(id: u16, kind: NeuronType, res: VoltageResolution, noise_ua: u8) -> LIFNeuron {
     let mut n = LIFNeuron::new_with_type_resolution(id, kind, res);
     n.noise_amplitude_ua = noise_ua;
@@ -275,11 +275,12 @@ fn neuron_reference() -> Run {
 }
 
 /// The firmware's neuron (`firmware/esp32c3/src/main.rs`): excitatory,
-/// centi-mV grid, the constructor's noise, 160 μA, one step per ms for
+/// centi-mV grid, the constructor's noise (0), 160 μA, one step per ms for
 /// 10,000 steps. The network's step does what the firmware's `step` does
 /// (adaptation decay, then integrate at `step × DT_US`), so the spike
 /// rows fold to the board's record: 147 spikes, the first at step 55,
-/// checksum `0b78b456` (`evidence/esp32c3-bringup/README.md`).
+/// checksum `8cd1e63b` (`evidence/esp32c3-bringup/README.md`; with the
+/// noise at 5, as before round 61, it was `0b78b456`).
 fn one_neuron_board() -> Run {
     let net = wired(
         vec![LIFNeuron::new_with_type_resolution(
@@ -320,7 +321,7 @@ fn chain_3() -> Run {
 }
 
 /// The `Feedforward` topology builder, layers 3-3-2, on the centi-mV
-/// grid with the constructor's noise (the builder's neurons cannot be
+/// grid with the builder's noise, 5 μA (the builder's neurons cannot be
 /// reached before the first step; the LFSR is deterministic). Divisor 1,
 /// so the builder's 100-weight edges land as 100 μA pulses, +50 quanta
 /// on an excitatory neuron. The first layer is driven to fire every ten

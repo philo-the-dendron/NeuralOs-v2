@@ -293,7 +293,8 @@ pub struct LIFNeuron {
     /// Membrane resistance (MΩ).
     pub resistance_mohm: u16,
 
-    /// Noise amplitude (μA). `0` = silent.
+    /// Noise amplitude (μA). `0` = silent, what the constructors build; the
+    /// topology builders of `SpikingNeuralNetwork` write 5.
     pub noise_amplitude_ua: u8,
     /// Spike-frequency adaptation current (μA). Decays between spikes, jumps on each spike.
     pub adaptation_current_ua: i16,
@@ -301,6 +302,10 @@ pub struct LIFNeuron {
 
 impl LIFNeuron {
     /// New excitatory neuron with default biological parameters.
+    ///
+    /// Its noise amplitude is 0: the neuron is silent and deterministic until
+    /// the caller asks for noise (`with_noise_amplitude_ua`). The topology
+    /// builders of `SpikingNeuralNetwork` ask for 5 μA.
     ///
     /// `const`, like the constructor it forwards to: see
     /// [`new_with_type_resolution`](Self::new_with_type_resolution) for
@@ -324,6 +329,7 @@ impl LIFNeuron {
     ///
     /// All four potentials are constructed on the chosen grid (e.g. resting
     /// `-70` mV / `-7_000` centi-mV). Currents and times are grid-independent.
+    /// The noise amplitude is 0, silent: a caller that wants noise sets it.
     ///
     /// # The chain
     ///
@@ -376,7 +382,7 @@ impl LIFNeuron {
             synaptic_current_ua: 0,
             capacitance_pf,
             resistance_mohm: 100,
-            noise_amplitude_ua: 5,
+            noise_amplitude_ua: 0,
             adaptation_current_ua: 0,
         }
     }
@@ -548,9 +554,11 @@ impl LIFNeuron {
     ///    a 16-bit LFSR seeded by `id XOR current_time_us`. It is a function
     ///    of those three values and of nothing else, so two runs, or a host
     ///    and a board, agree bit for bit. It lies in `−amp ..= 127·amp/128`:
-    ///    −5..=4 at the default 5. Amplitude 0 is silent
+    ///    −5..=4 at amplitude 5, what a topology builder gives its neurons.
+    ///    The constructors build amplitude 0, which is silent
     ///    (`noise_lies_in_minus_amp_to_127_amp_over_128`,
-    ///    `noise_is_zero_when_amplitude_is_zero`).
+    ///    `noise_is_zero_when_amplitude_is_zero`,
+    ///    `a_neuron_is_built_silent`).
     /// 5. **The leak and the update.** With `I` the current, `V` the
     ///    membrane and `s` the grid's scale
     ///    ([`VoltageResolution::scale`]: 1 on mV, 100 on centi-mV):
@@ -924,6 +932,7 @@ mod tests {
         assert_eq!(n.membrane_potential, -70);
         assert_eq!(n.threshold, -55);
         assert_eq!(n.tau_membrane_us, 20_000);
+        assert_eq!(n.noise_amplitude_ua, 0);
     }
 
     #[test]
@@ -1210,7 +1219,8 @@ mod tests {
     #[test]
     fn noise_varies_with_time_for_same_id() {
         // Regression for v0.1 bug: noise seeded only by id → constant per neuron.
-        let n = LIFNeuron::new(13);
+        let mut n = LIFNeuron::new(13);
+        n.noise_amplitude_ua = 5;
         let samples: [i16; 8] = [
             n.generate_noise(100),
             n.generate_noise(101),
@@ -1228,6 +1238,24 @@ mod tests {
             !all_same,
             "noise must vary with time — got identical values across 8 samples (all = {first})"
         );
+    }
+
+    /// The constructors build a silent neuron: noise is the caller's to ask
+    /// for. A topology builder asks for 5
+    /// (`a_topology_builder_gives_its_neurons_noise`).
+    #[test]
+    fn a_neuron_is_built_silent() {
+        for ty in [NeuronType::Excitatory, NeuronType::Inhibitory] {
+            for res in [
+                VoltageResolution::Millivolt,
+                VoltageResolution::CentiMillivolt,
+            ] {
+                let n = LIFNeuron::new_with_type_resolution(7, ty, res);
+                assert_eq!(n.noise_amplitude_ua, 0, "{ty:?} on {res:?}");
+            }
+        }
+        assert_eq!(LIFNeuron::new(0).noise_amplitude_ua, 0);
+        assert_eq!(LIFNeuron::default().noise_amplitude_ua, 0);
     }
 
     /// The noise reads only the low 12 bits of its seed, `id XOR time`: the
@@ -1724,8 +1752,9 @@ mod tests {
     /// freezer's destructure, which a `..` answers — so this literal is
     /// the one that stands between a new field and a silent frozen file.
     /// Its values are ARBITRARY on purpose: the defaults have their home
-    /// in `new_excitatory_neuron_has_default_params`, and one of them
-    /// moves when the noise default is decided. An in-crate literal
+    /// in `new_excitatory_neuron_has_default_params` (the noise among
+    /// them, 0; a topology builder's 5 is held by
+    /// `a_topology_builder_gives_its_neurons_noise`). An in-crate literal
     /// closes no door: it stays legal under `#[non_exhaustive]` and with
     /// private fields.
     ///
@@ -1736,9 +1765,9 @@ mod tests {
     /// value's own lines deeper: a nested struct, a list, a string
     /// holding `": "` or an escaped newline all count once (measured).
     /// WHAT WOULD FOOL IT: a hand-written `Debug` on `LIFNeuron`, which
-    /// would blind the freezer's guard with it — and neither of them the
-    /// literal above. The number can be edited, like any pin, with the
-    /// same message in front of whoever edits it.
+    /// would blind this count, and the freezer's guard with it, but not the
+    /// literal above, which the compiler checks. The number can be edited,
+    /// like any pin, with the same message in front of whoever edits it.
     ///
     /// `17` has one home: this test.
     #[test]

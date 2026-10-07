@@ -39,7 +39,7 @@ const FORMAT: &str = "neuralos-trace v1";
 /// fold `× 31 + step` over the spike steps, both burst arms.
 const BOARD_SPIKES: usize = 147;
 const BOARD_FIRST_STEP: u32 = 55;
-const BOARD_CHECKSUM: u32 = 0x0b78_b456;
+const BOARD_CHECKSUM: u32 = 0x8cd1_e63b;
 
 /// The network arm: the frozen `feedforward-8` stepped `NETWORK_STEPS`
 /// steps on its constant drive, not its 150-step trace. The spike count,
