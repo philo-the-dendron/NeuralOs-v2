@@ -45,7 +45,8 @@ bare-metal. No libc overclaim in either direction.
 | `replay-alpha8.log` | the trace replay (round 33, 2026-09-14): the twelve plasticity-off traces stepped by `FixedNetwork` on bare-metal riscv64gc, as `proofs/qemu-trace-replay/build.sh` captured them from the UART; identical to the tree's files by `tools/esp32c3_trace_diff.py` (§ The trace replay) |
 | `replay-alpha9-g.log` | the trace replay re-run at PR G (round 34, 2026-09-14): the fourteen plasticity-off traces, the two D8 witnesses among them, every row written by the library's `neuralos_snn::fixed::row`; identical to the tree's files, `14 cases, 0 red` (§ The trace replay) |
 | `replay-r52.log` | the trace replay re-run at round 52 (NIR parity's first PR, 2026-09-28): the fourteen plasticity-off traces, the two D8 witnesses in simulation units at 0.1 ms; identical to the tree's files, `14 cases, 0 red` (§ The trace replay) |
-| `SHA256SUMS` | pins the six logs and this README |
+| `replay-r61.log` | the trace replay re-run at round 61 (the noise default and the clock, 2026-10-07): the fourteen plasticity-off traces, `one-neuron-board` without noise; identical to the tree's files, `14 cases, 0 red` (§ The trace replay) |
+| `SHA256SUMS` | pins the seven logs and this README |
 | `../../proofs/qemu-riscv-leg-a/` | the committed, rebuildable Leg A harness crate (standalone workspace; repo workspace untouched) |
 | `../../proofs/qemu-trace-replay/` | the trace replay's crate (standalone workspace, like Leg A's) and its `build.sh` |
 
@@ -180,8 +181,16 @@ same bytes as a run of the same code in a scratch clone). Against
 witness cases, and nowhere else; `replay-alpha9-g.log` stays as
 pinned, the capture of round 34's tree.
 
+Re-run at round 61 (the noise default and the clock, 2026-10-07),
+`replay-r61.log` is the fourteen cases, 0 red, `one-neuron-board` run
+without noise (1,512 lines, 41,959 bytes, the same bytes as a run of the
+same code in a scratch clone). Against `replay-r52.log` it differs in
+that case alone, 131 of its 147 rows between lines 158 and 299, and
+nowhere else; `replay-r52.log` stays as pinned, the capture of round
+52's tree.
+
 ```bash
 rustup target add riscv64gc-unknown-none-elf
 proofs/qemu-trace-replay/build.sh      # the capture into its target/replay.log, the diff, the verdict
-cmp proofs/qemu-trace-replay/target/replay.log evidence/qemu-riscv-gate/replay-r52.log   # at the tree that added it; replay-alpha9-g.log at round 34's, replay-alpha8.log at round 33's
+cmp proofs/qemu-trace-replay/target/replay.log evidence/qemu-riscv-gate/replay-r61.log   # at the tree that added it; replay-r52.log at round 52's, replay-alpha9-g.log at round 34's, replay-alpha8.log at round 33's
 ```
