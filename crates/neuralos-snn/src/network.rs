@@ -11,8 +11,8 @@
 //! # Invariants (testable)
 //!
 //! - `SpikingNeuralNetwork::new(0, ...)` always returns `Err`.
-//! - `step()` advances `current_time_us` by exactly `time_step_us`, until the
-//!   `u32` ceiling, where it saturates.
+//! - `step()` advances `current_time_us`, a `u64`, by exactly `time_step_us`
+//!   (saturating at `u64::MAX`, about 585,000 years of model time).
 //! - Topology builders never create self-connections.
 //! - LFSR RNG is deterministic: same seed → same network connectivity.
 //! - Synapse weights respect the presynaptic neuron's type (E → positive, I → negative).
@@ -128,8 +128,10 @@ impl Default for NetworkTopology {
 pub struct Spike {
     /// ID of the neuron that fired.
     pub neuron_id: u16,
-    /// Simulation time (μs) at which the spike occurred.
-    pub time_us: u32,
+    /// Simulation time (μs) at which the spike occurred. A `u64`: past 2^32 μs
+    /// (71.6 min) it no longer fits a `u32`, and the neuron's own
+    /// `last_spike_time_us` holds its low 32 bits.
+    pub time_us: u64,
     /// Spike weight (fixed-point, 1000 = 1.0). Always 1000 for direct neuron spikes.
     pub weight: i16,
 }
@@ -141,7 +143,7 @@ pub struct Spike {
 /// propagation pass just used.
 /// Drained by [`SpikingNeuralNetwork::update_plasticity`].
 #[cfg(feature = "unstable-stdp")]
-type PlasticityEntry = (u16, u16, usize, u32);
+type PlasticityEntry = (u16, u16, usize, u64);
 
 /// Main spiking neural network orchestrator.
 ///
@@ -164,7 +166,7 @@ pub struct SpikingNeuralNetwork {
     /// the corresponding CSR slot is kept in sync after every STDP update.
     synapse_matrix: SparseSynapseMatrix,
     time_step_us: u32,
-    current_time_us: u32,
+    current_time_us: u64,
     #[cfg(feature = "unstable-stdp")]
     plasticity_rule: STDPRule,
     stats: NetworkStats,
@@ -201,10 +203,19 @@ pub struct SpikingNeuralNetwork {
     synaptic_input_divisor: u16,
 }
 
+/// The noise amplitude (μA) a topology builder gives the neurons it makes: the
+/// amplitude every neuron had by default until round 61, so a network built by
+/// [`SpikingNeuralNetwork::new`] runs as it always did. A neuron built by its
+/// own constructor has none.
+const BUILT_NEURON_NOISE_UA: u8 = 5;
+
 impl SpikingNeuralNetwork {
     /// Construct a network with `neuron_count` neurons, `time_step_us` simulation
     /// step, and the given `topology`. Neurons are created with the biological
     /// 80/20 E/I ratio unless the topology overrides (e.g., Feedforward is all E).
+    /// Each has noise amplitude 5 μA (`BUILT_NEURON_NOISE_UA`), unlike a neuron
+    /// from `LIFNeuron::new`, which is silent; [`from_neurons`](Self::from_neurons)
+    /// takes neurons as given.
     ///
     /// # Errors
     ///
@@ -263,7 +274,10 @@ impl SpikingNeuralNetwork {
             } else {
                 NeuronType::Inhibitory
             };
-            neurons.push(LIFNeuron::new_with_type_resolution(id, nt, resolution));
+            neurons.push(
+                LIFNeuron::new_with_type_resolution(id, nt, resolution)
+                    .with_noise_amplitude_ua(BUILT_NEURON_NOISE_UA),
+            );
         }
 
         let estimated_synapses = estimate_synapses(neuron_count, &topology);
@@ -382,9 +396,11 @@ impl SpikingNeuralNetwork {
     ///    (`set_plasticity_enabled`; a network starts with it off), the STDP
     ///    passes run on this step's spikes. A build without the feature has
     ///    no item 5.
-    /// 6. The time advances by `time_step_us`, saturating at `u32::MAX`: a
-    ///    step at the ceiling runs at the same time again
-    ///    (`the_clock_saturates_at_the_u32_ceiling`).
+    /// 6. The time advances by `time_step_us`. It is a `u64`, saturating at
+    ///    `u64::MAX`, about 585,000 years of model time: no run reaches it.
+    ///    The neurons are handed its low 32 bits, which wrap at 2^32 μs (71.6
+    ///    min) without changing a spike
+    ///    (`the_clock_runs_past_the_u32_ceiling`).
     ///
     /// [`FixedNetwork::step`](crate::fixed::FixedNetwork::step) is this order
     /// without item 5, in every build.
@@ -433,9 +449,12 @@ impl SpikingNeuralNetwork {
         // the pulses used to be cleared before this read, so recurrent
         // transmission was structurally dead — every network-dynamic number
         // in the lineage was re-pinned on this fix.)
+        // The neurons keep the low 32 bits of the clock
+        // (`LIFNeuron::integrate_and_fire` § Semantics item 1).
+        let now_us = self.current_time_us as u32;
         for (idx, neuron) in self.neurons.iter_mut().enumerate() {
             let current_ua = input_currents.get(idx).copied().unwrap_or(0);
-            if neuron.integrate_and_fire(current_ua, self.time_step_us, self.current_time_us) {
+            if neuron.integrate_and_fire(current_ua, self.time_step_us, now_us) {
                 let neuron_id = idx as u16;
                 let spike = Spike {
                     neuron_id,
@@ -484,11 +503,27 @@ impl SpikingNeuralNetwork {
         }
 
         // Advance time and stats.
-        self.current_time_us = self.current_time_us.saturating_add(self.time_step_us);
+        self.current_time_us = self
+            .current_time_us
+            .saturating_add(u64::from(self.time_step_us));
         self.stats.total_spikes += output_spikes.len() as u64;
         self.update_stats();
 
         Ok(output_spikes)
+    }
+
+    /// `pre − post` in μs for two times read from a clock wider than the
+    /// neurons' 32-bit stamps: the difference of their low 32 bits, as a
+    /// two's-complement `i32`. It is exact while the real gap is under 2^31 μs
+    /// (35.8 min), and the rule is zero from |dt| = τ on (20 ms at the
+    /// defaults, and in effect from about 16 ms: the integer product
+    /// truncates), so a pair further apart counts for nothing. A stamp a whole
+    /// number of 71.6-minute turns stale pairs by chance, at the rate of the
+    /// nonzero values of dt over the turn: 32,259 of 2^32 at the defaults,
+    /// about 1 in 133,000 (`stdp_pairs_the_same_past_the_u32_ceiling`).
+    #[cfg(feature = "unstable-stdp")]
+    fn stamp_dt_us(pre_time: u64, post_time: u64) -> i32 {
+        (pre_time as u32).wrapping_sub(post_time as u32) as i32
     }
 
     /// Apply pairwise STDP for this step — both halves of the rule.
@@ -550,12 +585,10 @@ impl SpikingNeuralNetwork {
                     // the window once the sim has run a while).
                     self.neurons
                         .get(post_id as usize)
-                        .map_or(0, |n| n.last_spike_time_us)
+                        .map_or(0, |n| u64::from(n.last_spike_time_us))
                 };
                 // dt = pre_time - post_time. Positive (pre after post) → LTD.
-                let dt_us: i32 = (pre_time as i64 - post_time as i64)
-                    .clamp(i32::MIN as i64, i32::MAX as i64)
-                    as i32;
+                let dt_us = Self::stamp_dt_us(pre_time, post_time);
                 let delta = self.plasticity_rule.calculate_weight_change(dt_us);
                 if delta != 0 {
                     // In-window pairing: bucket by dt for the histogram
@@ -594,14 +627,12 @@ impl SpikingNeuralNetwork {
                 let Some(pre_n) = self.neurons.get(pre_id as usize) else {
                     continue;
                 };
-                let pre_time = pre_n.last_spike_time_us;
+                let pre_time = u64::from(pre_n.last_spike_time_us);
                 if pre_time == 0 {
                     continue; // pre never fired — no real pre-before-post pair.
                 }
                 // dt = pre_time - post_time < 0 (pre fired earlier) → LTP branch.
-                let dt_us: i32 = (pre_time as i64 - post_time as i64)
-                    .clamp(i32::MIN as i64, i32::MAX as i64)
-                    as i32;
+                let dt_us = Self::stamp_dt_us(pre_time, post_time);
                 if dt_us >= 0 {
                     continue; // defensive: only the LTP (dt<0) branch belongs here.
                 }
@@ -917,9 +948,10 @@ impl SpikingNeuralNetwork {
         &self.stats
     }
 
-    /// Current simulation time (μs).
+    /// Current simulation time (μs), a `u64`: it does not reach its ceiling in
+    /// any run (about 585,000 years of model time).
     #[must_use]
-    pub fn current_time_us(&self) -> u32 {
+    pub fn current_time_us(&self) -> u64 {
         self.current_time_us
     }
 
@@ -2377,17 +2409,115 @@ mod tests {
         let _ = net.step(&[3000, 0]);
     }
 
-    /// The time saturates: a step at the ceiling runs at the same time again.
+    /// The clock runs past 2^32 μs, where it used to saturate: the neurons are
+    /// handed its low 32 bits, and a spike carries the whole clock.
     #[test]
-    fn the_clock_saturates_at_the_u32_ceiling() {
+    fn the_clock_runs_past_the_u32_ceiling() {
         let mut net =
             SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
                 .expect("constructs");
-        net.current_time_us = u32::MAX - 400;
+        net.current_time_us = u64::from(u32::MAX) - 400;
         net.step(&[0, 0]).expect("step");
-        assert_eq!(net.current_time_us(), u32::MAX);
-        net.step(&[0, 0]).expect("step");
-        assert_eq!(net.current_time_us(), u32::MAX);
+        assert_eq!(net.current_time_us(), u64::from(u32::MAX) + 600);
+        // Neuron 0 fires on the second step, which runs at 2^32 + 599.
+        let spikes = net.step(&[i16::MAX, 0]).expect("step");
+        assert_eq!(net.current_time_us(), u64::from(u32::MAX) + 1_600);
+        assert_eq!(spikes.len(), 1, "neuron 0 fires, neuron 1 does not");
+        assert_eq!(spikes[0].time_us, u64::from(u32::MAX) + 600);
+        // The neuron's own stamps are the low 32 bits: 599.
+        assert_eq!(net.neurons[0].last_update_time_us, 599);
+        assert_eq!(net.neurons[0].last_spike_time_us, 599);
+    }
+
+    /// A topology builder gives every neuron noise 5, whatever the topology
+    /// and the grid; `from_neurons` keeps the neurons as given.
+    #[test]
+    fn a_topology_builder_gives_its_neurons_noise() {
+        for res in [
+            VoltageResolution::Millivolt,
+            VoltageResolution::CentiMillivolt,
+        ] {
+            for topology in [
+                NetworkTopology::default(),
+                NetworkTopology::Random { connectivity: 0.0 },
+            ] {
+                let net =
+                    SpikingNeuralNetwork::new_with_voltage_resolution(10, 1000, topology, res)
+                        .expect("builds");
+                assert!(
+                    net.neurons().iter().all(|n| n.noise_amplitude_ua == 5),
+                    "{res:?}"
+                );
+            }
+        }
+        let given =
+            SpikingNeuralNetwork::from_neurons(vec![LIFNeuron::new(0)], 1000).expect("builds");
+        assert_eq!(given.neurons()[0].noise_amplitude_ua, 0);
+    }
+
+    /// STDP does the same past 2^32 μs as at the start: the three pairings the
+    /// rule tells apart give a weight change of −3, +3 and 0 at time 0 and at
+    /// 2^32 + 10^7 μs alike. The neurons carry 32-bit stamps and the clock is
+    /// a `u64`, so the pairing takes the difference of their low 32 bits
+    /// (`stamp_dt_us`). At the old saturated clock every pre spike whose post
+    /// had fired since the ceiling gained +5, whatever the timing; in this
+    /// test's shape, a fresh network per pairing, the three read +5, 0 and 0.
+    #[cfg(feature = "unstable-stdp")]
+    #[test]
+    fn stdp_pairs_the_same_past_the_u32_ceiling() {
+        use crate::lif_neuron::{NeuronType, VoltageResolution};
+        // `first` fires, then `gap` steps later the other (gap 0: it alone).
+        let change = |start_us: u64, first: usize, gap: u64| -> i16 {
+            let quiet = |id| {
+                LIFNeuron::new_with_type_resolution(
+                    id,
+                    NeuronType::Excitatory,
+                    VoltageResolution::Millivolt,
+                )
+                .with_noise_amplitude_ua(0)
+            };
+            let mut net =
+                SpikingNeuralNetwork::from_neurons(vec![quiet(0), quiet(1)], 1_000).expect("two");
+            net.add_synapse(0, 1, 500).expect("0 -> 1");
+            net.finalize_synapses();
+            net.set_plasticity_enabled(true);
+            net.current_time_us = start_us;
+            let fire = |net: &mut SpikingNeuralNetwork, id: usize| {
+                let mut input = [0i16; 2];
+                input[id] = i16::MAX;
+                let ids: Vec<u16> = net
+                    .step(&input)
+                    .expect("steps")
+                    .iter()
+                    .map(|s| s.neuron_id)
+                    .collect();
+                assert_eq!(ids, [id as u16], "only neuron {id} fires");
+            };
+            for _ in 0..2_000 {
+                net.step(&[0, 0]).expect("steps");
+            }
+            fire(&mut net, first);
+            if gap > 0 {
+                for _ in 1..gap {
+                    net.step(&[0, 0]).expect("steps");
+                }
+                fire(&mut net, 1 - first);
+            }
+            net.synapses()[0].weight - 500
+        };
+        for start_us in [0, (1u64 << 32) + 10_000_000] {
+            assert_eq!(
+                change(start_us, 1, 5),
+                -3,
+                "post 5 steps before pre, from {start_us}"
+            );
+            assert_eq!(
+                change(start_us, 0, 5),
+                3,
+                "pre 5 steps before post, from {start_us}"
+            );
+            assert_eq!(change(start_us, 0, 0), 0, "pre alone, from {start_us}");
+        }
     }
 
     #[test]
@@ -2497,8 +2627,8 @@ mod tests {
         }
 
         /// step() advances time by exactly time_step_us, regardless of input,
-        /// from time 0: far from the `u32` ceiling, where the time saturates
-        /// (`the_clock_saturates_at_the_u32_ceiling`).
+        /// from time 0. Past the `u32` ceiling the clock keeps running
+        /// (`the_clock_runs_past_the_u32_ceiling`).
         #[test]
         fn prop_step_advances_time(
             n in 5u16..=50,
@@ -2509,7 +2639,7 @@ mod tests {
             net.build_topology()?;
             let inputs = vec![input_value; n as usize];
             net.step(&inputs)?;
-            prop_assert_eq!(net.current_time_us(), dt);
+            prop_assert_eq!(net.current_time_us(), u64::from(dt));
         }
 
         /// No topologies create self-connections (pre != post for every synapse).

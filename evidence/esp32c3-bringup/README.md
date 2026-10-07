@@ -42,6 +42,7 @@ low), red LED is power. Host: the laptop, espflash 4.5.0, Rust 1.92.0
 | `board-r36-neurons.log` | the ninth entry: the neuron corner (5,957 neurons, no synapse) in the slot by `stranger.sh run --steps 20 --seconds 30` (ELF `f25500df…`), 30 s after reset; the script's `target/stranger/neurons.capture.log`, byte for byte, the largest log in `evidence/` (§ Ninth entry) |
 | `board-r36-dense.log` | the ninth entry: the dense corner (402 neurons, 40,401 synapses) the same way (ELF `3eeb2d72…`), 30 s after reset; `target/stranger/dense.capture.log`, byte for byte (§ Ninth entry) |
 | `board-r52-head.log` | the tenth entry (ISA round 52, 2026-09-28): the default firmware at head, the two NIR witnesses of its replay in simulation units at 0.1 ms, built by `build.sh` on 1.98.1 in the main clone (ELF `dad40393…`), 20 s after reset (§ Tenth entry) |
+| `board-r61-head.log` | the eleventh entry (ISA round 61, 2026-10-07): the default firmware at head, its neuron built silent and the networks' clock a `u64`, built by `build.sh` on 1.98.1 in the main clone (ELF `ad5dc163…`), 20 s after reset (§ Eleventh entry) |
 | `SHA256SUMS` | pins the logs and this README |
 | `../../tools/esp32c3_capture.py` | the capture tool (reset + read from one process) |
 | `../../tools/esp32c3_trace_diff.py` | the replay diff: every plasticity-off trace of `crates/neuralos-snn/tests/traces/` against its case in a capture, one line per case (§ Sixth entry) |
@@ -1025,6 +1026,84 @@ at the same ns per step, and the real-time loop, whose first spike
 lands at step 53, against 57, with 287 spikes in the window against
 288; not read further.
 
+## Eleventh entry: round 61, the noise default and the clock (2026-10-07)
+
+Same SuperMini (MAC `70:af:09:07:f6:3c`, esp32c3 revision v0.4, as
+`espflash board-info` read them), same port, same tool, 20 s after
+reset, the ELF built and flashed from the main clone. Why this entry
+exists: round 61 changes the neuron the firmware steps. A neuron is
+built silent, its noise amplitude 0 where it was 5 µA, and a topology
+builder adds the 5 µA; the networks' clock is a `u64`, the neuron's
+stays 32 bits. The two neuron arms and the real-time loop build their
+neuron with the constructor, so they run without noise now, and
+`one-neuron-board`, the same run on the host, moves with them: its trace
+and its module's line in `frozen.rs`. The network arm and the other
+replays take the amplitudes their frozen modules write, and the network
+arm's `FixedNetwork` counts its time in a `u64`. The firmware's own
+sources change in two comments.
+
+Head: `build.sh` on 1.98.1 in the main clone, `NEURALOS_GRAPH` unset,
+from the sources of the commit that adds this entry: ELF `ad5dc163…`,
+`.text` `3a9eb352…` and 149,676 B, the pin appended as "round 61, the
+noise default and the clock" (§ Rebuild + run); the gate 0 hits, the
+trim-paths canary still unstable on 1.98.1 (exit 101); `main`'s frame
+`0x430`, 16 B more than round 52's `0x420`. At a scratch path the same
+sources read `.text` `6d07fe14…`, as the round's two scratch builds did:
+the same code in another order, the same 162 symbols at the same sizes
+by `llvm-nm`, laid out by two crate hashes that follow the clone's path
+(`tools/remap.sh`). Flashed from the head's ELF, `board-r61-head.log`,
+53,486 bytes. A first capture right after the flash overlaps the run the
+flash started and was dropped; this one holds two boots, as in the sixth
+to tenth entries: it opens with the tail of the boot the dropped capture
+started, two spike lines of the real-time loop, no trace line in them,
+cut by the capture's reset. Every figure below is from after the `rst:`
+line.
+
+| Measurement | Round 52 (head) | Round 61 (head) |
+|---|---|---|
+| Burst, pinned arm | 15,715 µs → 1,571 ns/step | 15,041 µs → 1,504 ns/step |
+| Burst, free arm | 3,617 µs → 361 ns/step | 2,996 µs → 299 ns/step |
+| Burst spikes, first spike step, checksum, both neuron arms | 147, 55, `0b78b456` | 147, 55, `8cd1e63b` |
+| Burst, network arm (8 neurons, 6 synapses a step) | 140,588 µs → 14,058 ns/step | 140,959 µs → 14,095 ns/step |
+| Network arm: spikes, first spike step, checksum | 3,377, 5, `7e700ee1` | 3,377, 5, `7e700ee1` |
+| `main`'s frame, from the prologue | 1,056 B | 1,072 B |
+| Stack high-water mark, of `.stack` | 1,432 of 316,316 B | 1,448 of 316,316 B |
+| `.stack` free at the mark | 314,884 B | 314,868 B |
+| First spike, real-time loop | step 53, 53,150 µs | step 55, 55,156 µs |
+| Spikes after the reset | 287 in 20 s | 288 in 20 s |
+| Replay diff, last line | `14 cases, 0 red` | `14 cases, 0 red` |
+
+The gates hold.
+`python3 tools/esp32c3_trace_diff.py evidence/esp32c3-bringup/board-r61-head.log`
+reads the fourteen plasticity-off cases identical, `one-neuron-board`
+with the 147 rows of this tree's trace, and ends `14 cases, 0 red`, as
+under QEMU (`evidence/qemu-riscv-gate/README.md` § The trace replay,
+`replay-r61.log`). Both neuron arms fold to `8cd1e63b`, 147 spikes from
+step 55, as the host's `one-neuron-board` rows do; the network arm reads
+round 52's three figures. The real-time loop runs without noise now: its
+first 147 spikes land on the trace's 147 steps, 55, 123, 191 and every
+68 steps on, where round 52's began 53, 119, 186, 258.
+
+Two labels. The before column is round 52's head, the last capture on
+record, not the pin's build (`main@291fdcc`): for this round's own
+change compare the instruction counts under QEMU, the free arm 412,966 →
+306,200 over its 10,000 steps (−25.9 %) and the pinned 1,903,255 →
+1,786,783 (−6.1 %), counted at the pin and at this round's code by a
+harness kept outside the repo that runs the firmware's arms line for
+line on QEMU `virt` rv32. And the free arm's drop is the optimizer
+folding the amplitude 0, its neuron in plain sight; the pinned arm,
+behind `black_box` like a network's neuron, is the one that stands for a
+network.
+
+The rest is reported, not gated: the free and pinned bursts run 17.2 %
+and 4.3 % faster than round 52's head and the network burst 0.26 %
+slower, figures of two builds and not of this round's change alone (the
+labels); the stack's mark rises 16 B, as `main`'s frame does; the loop
+holds 288 spikes in the window, against 287; not read further. The board
+was then given back the image it held before the flash (the 4 MB read
+out and written back, on-chip MD5 `582b942d…` equal to the read-out's),
+and a capture of that image reads round 52's burst figures to 1 µs.
+
 ## Rebuild + run (from the repo root; board on /dev/ttyACM0)
 
 ```bash
@@ -1066,6 +1145,7 @@ llvm-objcopy -O binary --only-section=.text <ELF> text.bin && sha256sum text.bin
 #   701490cf49dfa5cbaacac411a4c0857f89acb651dcdd8197d9fc58af45f3fc99  round 36 base (build.sh at fbc2bd7 on 1.98.1, main clone, NEURALOS_GRAPH unset: e5d3125's firmware sources, the slot with its large-array allow; round 35's .text, unmoved)
 #   9e2e6ef1e0e0627d3d245e64b004f0d42ce91f39f4c77ef7034e265b71d48c9b  round 36, the mark (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line: the stack's paint and scan, report()'s step count)
 #   768a1957e7103b69c8cda65b01ddd03f30d916e85b5da7c3aa74eb7aa8a621fb  round 52, the witnesses at 0.1 ms (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line)
+#   3a9eb352b4ad8b392ad6044a7671cba93d760ce39990cd3d816cd360870ca87c  round 61, the noise default and the clock (build.sh on 1.98.1, main clone, NEURALOS_GRAPH unset, from the sources of the commit that adds this line)
 ```
 
 The third pin is the second one rebuilt by `build.sh` (round 26,
@@ -1109,7 +1189,10 @@ timed span contains it. The fourteenth is round 52's, the default
 build of the commit that adds it: the thirteenth's firmware sources,
 the two NIR witnesses of the replay in simulation units at 0.1 ms,
 whose modules in `frozen.rs` move the `.text` on their own (§ Tenth
-entry).
+entry). The fifteenth is round 61's, the default build of the commit
+that adds it: the fourteenth's firmware sources but two comments, on a
+library whose neuron is built silent and whose networks' clock is a
+`u64` (§ Eleventh entry).
 
 ### Release asset (the procedure since round 26)
 

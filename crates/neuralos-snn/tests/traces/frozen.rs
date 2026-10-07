@@ -48,7 +48,7 @@ pub mod one_neuron_board {
     pub const SPIKES_ONLY: bool = true;
     pub const HEADER: &str = "# neuralos-trace v1 case=one-neuron-board kind=regression n=1 dt_us=1000 res=cmV plasticity=off divisor=10 steps=10000 rows=spikes";
     pub const NEURONS: [LIFNeuron; N] = [
-        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(5),
+        LIFNeuron::new_with_type_resolution(0, NeuronType::Excitatory, VoltageResolution::CentiMillivolt).with_resting_potential(-7000).with_threshold(-5500).with_reset_potential(-8000).with_tau_membrane_us(20000).with_tau_refractory_us(2000).with_capacitance_pf(100).with_resistance_mohm(100).with_noise_amplitude_ua(0),
     ];
     pub const SYNAPSES: [FixedSynapse; S] = [];
     pub const DRIVE: &[(u32, [i16; N])] = &[

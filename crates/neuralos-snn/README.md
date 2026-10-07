@@ -25,9 +25,10 @@ spike step 55`. Those come from the firmware's burst arm, where
 simulated time advances exactly 1 ms a step, so the board and the host
 agree spike for spike — the captures are in
 `evidence/esp32c3-bringup/README.md`. The firmware's real-time loop is a
-second arm, paced by the wall clock, and its first spike moves between
-runs — 54 to 59 across the record, the 56 the version notes below print
-among them. The assert here is the burst's 55.
+second arm, paced by the wall clock. Its neuron is silent too, so its first
+spike is step 55 as well, and only the microseconds it prints vary between
+runs (the version notes below, written while the neuron still had noise,
+print a loop's first spike at step 56). The assert here is the burst's 55.
 
 ```rust
 use neuralos_snn::{LIFNeuron, NeuronType, VoltageResolution};

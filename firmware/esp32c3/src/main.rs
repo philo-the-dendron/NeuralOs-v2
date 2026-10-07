@@ -50,9 +50,10 @@
 //! (`above_threshold_current_blind_on_mv_spikes_on_centi` in
 //! `lif_neuron.rs`); on the centi grid the same current fires, first spike
 //! at step 55, then about 15 spikes per second sustained, a blink the eye
-//! can see. Noise stays at the crate default (±5 µA at most); the tests use
-//! noise 0, so the trace here is not the tests' trace, only the same
-//! arithmetic.
+//! can see. The neuron has the constructor's noise, 0, so the two neuron arms
+//! and the real-time loop run noise-free: `one-neuron-board` on the host is
+//! the same run, spike for spike. The network arm and the replays take the
+//! amplitudes their frozen modules write.
 //!
 //! Board note: on the Espressif DevKitM-1 / DevKitC-02, GPIO8 drives a WS2812
 //! RGB LED, not a plain LED, so a bare toggle shows nothing there; the serial
@@ -289,8 +290,9 @@ fn main() -> ! {
         checksum,
     );
 
-    //    Pinned: a fresh neuron with the free arm's id, because the noise is
-    //    seeded by `id ^ current_time_us`, so it computes the same values.
+    //    Pinned: a fresh neuron with the free arm's id, so it computes the
+    //    same values (the noise, were it on, is seeded by
+    //    `id ^ current_time_us`).
     //    `black_box(&mut n)` once per step: the optimizer must assume the
     //    neuron is read and written behind its back, so it stays in memory,
     //    as in a network. dt is read once through `black_box` and passed in,
