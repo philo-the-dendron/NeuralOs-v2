@@ -153,9 +153,10 @@ pub(crate) fn is_case_name(case: &str) -> bool {
 /// One row of `neuralos-trace v1` (the module doc), its newline included:
 /// `<step> <time_us> | <ids of the neurons that fired, ascending> |
 /// <membrane of every neuron>`, all decimal; when no neuron fired, nothing
-/// stands between the bars but their two spaces. The one writer of a frozen
-/// network's rows: the trace tests write them into a `String`, the ESP32-C3
-/// firmware and the QEMU replay to a serial port.
+/// stands between the bars but their two spaces. `time_us` is a `u64`: it
+/// prints whole, whatever its size. The one writer of a frozen network's
+/// rows: the trace tests write them into a `String`, the ESP32-C3 firmware
+/// and the QEMU replay to a serial port.
 ///
 /// # Errors
 ///
@@ -166,7 +167,7 @@ pub(crate) fn is_case_name(case: &str) -> bool {
 pub fn row(
     out: &mut impl Write,
     step: u32,
-    time_us: u32,
+    time_us: u64,
     fired: &[bool],
     neurons: &[LIFNeuron],
 ) -> fmt::Result {
@@ -203,6 +204,15 @@ mod tests {
             })
             .collect();
         SpikingNeuralNetwork::from_neurons(neurons, 500).expect("neurons given")
+    }
+
+    /// The time prints whole past the `u32` range.
+    #[test]
+    fn a_time_past_the_u32_range_prints_whole() {
+        let mut out = String::new();
+        row(&mut out, 7, 5_000_000_000, &[false], &[LIFNeuron::new(0)]).expect("a String");
+        assert!(out.starts_with("7 5000000000 | "), "{out:?}");
+        assert!(out.ends_with('\n'), "{out:?}");
     }
 
     /// Every field of the line, each kind's and each rows' word: the

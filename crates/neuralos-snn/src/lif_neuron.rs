@@ -65,7 +65,9 @@
 // Casts between them are part of the design and bounded by physics:
 //   - dt_us ≤ ~2^31 μs (35 min) — realistic sim step ceiling
 //   - membrane_potential in [-100, 50] — clamped after every integration
-//   - spike intervals bounded by u32 — sim runs ≤ ~71 min before any risk
+//   - the clock the neuron is handed, and its two stamps, are the low 32 bits of
+//     the caller's clock: they wrap at 2^32 μs (71.6 min), a stamp pair is
+//     compared with `wrapping_sub`, and the networks keep a `u64` clock
 // Allow clippy's cast lints for the hot path; every narrowing cast sits after a clamp
 // or against a documented bound.
 #![allow(
@@ -277,9 +279,11 @@ pub struct LIFNeuron {
     /// Remaining refractory time (μs). `0` when not refractory.
     pub refractory_time_us: u32,
     /// Last simulation time the neuron was updated (μs).
-    /// Owned by the caller via `integrate_and_fire(current_time_us)`.
+    /// Owned by the caller via `integrate_and_fire(current_time_us)`: the low
+    /// 32 bits of the caller's clock, wrapping at 2^32 μs (71.6 min).
     pub last_update_time_us: u32,
-    /// Timestamp of the last spike (μs).
+    /// Timestamp of the last spike (μs), the low 32 bits of the clock like
+    /// `last_update_time_us`: two stamps are compared with `wrapping_sub`.
     pub last_spike_time_us: u32,
     /// Accumulated synaptic current (μA).
     pub synaptic_current_ua: i16,
@@ -504,7 +508,9 @@ impl LIFNeuron {
     ///
     /// - `input_current_ua`: external input current (μA)
     /// - `dt_us`: time step (μs)
-    /// - `current_time_us`: simulation time (μs) — **owned by the caller**, not the neuron
+    /// - `current_time_us`: simulation time (μs), a `u32` — **owned by the
+    ///   caller**, not the neuron. A clock wider than 32 bits hands over its
+    ///   low 32 bits, as both networks do.
     ///
     /// # Semantics
     ///
@@ -518,7 +524,14 @@ impl LIFNeuron {
     ///
     /// 1. **The clock is the caller's.** `current_time_us` is stored as
     ///    `last_update_time_us`, seeds the noise and stamps a spike. The
-    ///    neuron keeps no clock and does not compare it with `dt_us`.
+    ///    neuron keeps no clock and does not compare it with `dt_us`. It is
+    ///    the low 32 bits of the caller's clock: it wraps at 2^32 μs (71.6
+    ///    min), the two stamps wrap with it, and a caller compares stamps with
+    ///    `wrapping_sub`. The noise reads only the low 12 bits of its seed
+    ///    (`noise_reads_only_the_low_12_bits_of_its_seed`) and 2^32 is a
+    ///    multiple of 4096, so a wrap changes nothing the neuron computes: past
+    ///    it the spikes are those a clock that never wrapped would give
+    ///    (`a_clock_past_the_u32_boundary_gives_the_same_noise`).
     /// 2. **Refractory.** While `refractory_time_us > 0` the step subtracts
     ///    `dt_us` from it, saturating at 0, and returns `false`: nothing is
     ///    integrated, the input and the synaptic current are ignored, the
@@ -1215,6 +1228,29 @@ mod tests {
             !all_same,
             "noise must vary with time — got identical values across 8 samples (all = {first})"
         );
+    }
+
+    /// The noise reads only the low 12 bits of its seed, `id XOR time`: the
+    /// reason a 32-bit clock wrap (2^32 is a multiple of 4096) changes nothing
+    /// the neuron computes. Exhaustive over the low 16 bits of the time, with
+    /// four high parts and four ids.
+    #[test]
+    fn noise_reads_only_the_low_12_bits_of_its_seed() {
+        for id in [0u16, 1, 0x5A5A, u16::MAX] {
+            let mut n = quiet_neuron(id, VoltageResolution::Millivolt);
+            n.noise_amplitude_ua = 127;
+            for low in 0..=u32::from(u16::MAX) {
+                let want = n.generate_noise(low & 0xFFF);
+                for high in [0u32, 0x1_0000, 0xDEAD_0000, 0xFFFF_0000] {
+                    assert_eq!(
+                        n.generate_noise(high | low),
+                        want,
+                        "id {id}, time {:#x}",
+                        high | low
+                    );
+                }
+            }
+        }
     }
 
     // ----- Property tests (Cardano-grade rigor) -----

@@ -222,7 +222,7 @@ impl SimRunner {
     #[must_use]
     pub fn stats_text(&self) -> String {
         let s = self.net.stats();
-        let sim_ms = f64::from(self.net.current_time_us()) / 1000.0;
+        let sim_ms = self.net.current_time_us() as f64 / 1000.0;
 
         // STDP learning readouts: mean weight + % of synapses changed since start.
         let syns = self.net.synapses();
@@ -279,6 +279,27 @@ mod tests {
         let mut runner = SimRunner::new(64, 1000).unwrap();
         let (w, h, bytes) = runner.raster_display();
         assert_eq!(w * h * 4, bytes.len());
+    }
+
+    /// The status bar's simulated time is the network's clock in ms, read from
+    /// a `u64` (`as f64`: `f64::from(u64)` does not exist). `new` runs 150
+    /// ticks of 1 ms and 1,850 more make 2,000: "2000 ms sim". A divisor of
+    /// 1,001, a `%` or a `*` reads another number, and the line ends with the
+    /// network's own counts.
+    #[test]
+    fn stats_text_reads_the_simulated_time() {
+        let mut runner = SimRunner::new(80, 1000).expect("80 neurons valid");
+        for _ in 0..1_850 {
+            runner.tick(600);
+        }
+        let text = runner.stats_text();
+        assert!(text.contains("  ·  2000 ms sim  ·  "), "{text}");
+        let counts = format!(
+            "{} neurons / {} synapses",
+            runner.net.neuron_count(),
+            runner.net.synapse_count()
+        );
+        assert!(text.ends_with(&counts), "{text}");
     }
 
     #[test]

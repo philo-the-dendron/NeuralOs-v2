@@ -107,7 +107,7 @@ pub struct FixedNetwork<const N: usize, const S: usize> {
     neurons: [LIFNeuron; N],
     synapses: [FixedSynapse; S],
     dt_us: u32,
-    time_us: u32,
+    time_us: u64,
 }
 
 impl<const N: usize, const S: usize> FixedNetwork<N, S> {
@@ -131,7 +131,10 @@ impl<const N: usize, const S: usize> FixedNetwork<N, S> {
     /// decay every neuron's adaptation current; integrate each with
     /// `input[i]` at this step's time, writing `fired[i]`; clear every
     /// synaptic current; deliver each synapse whose `pre` fired, in array
-    /// order; advance the time, saturating.
+    /// order; advance the time by `dt_us`. The clock is a `u64`, saturating at
+    /// `u64::MAX` (about 585,000 years of model time: no run reaches it); the
+    /// neurons are handed its low 32 bits, which wrap at 2^32 μs (71.6 min)
+    /// without changing a spike (`the_clock_runs_past_the_u32_ceiling`).
     ///
     /// A pulse is read by the next step's integration: the one-step
     /// synaptic delay of the std network. A spike at step t reaches `post`
@@ -173,8 +176,12 @@ impl<const N: usize, const S: usize> FixedNetwork<N, S> {
         for n in &mut self.neurons {
             n.decay_adaptation_current();
         }
+        // The neurons keep the low 32 bits of the clock
+        // (`LIFNeuron::integrate_and_fire` § Semantics item 1).
+        #[allow(clippy::cast_possible_truncation)]
+        let now_us = self.time_us as u32;
         for ((n, &current_ua), spiked) in self.neurons.iter_mut().zip(input).zip(fired.iter_mut()) {
-            *spiked = n.integrate_and_fire(current_ua, self.dt_us, self.time_us);
+            *spiked = n.integrate_and_fire(current_ua, self.dt_us, now_us);
         }
         for n in &mut self.neurons {
             n.clear_synaptic_current();
@@ -186,7 +193,7 @@ impl<const N: usize, const S: usize> FixedNetwork<N, S> {
                 }
             }
         }
-        self.time_us = self.time_us.saturating_add(self.dt_us);
+        self.time_us = self.time_us.saturating_add(u64::from(self.dt_us));
     }
 
     /// The neurons, by id.
@@ -214,11 +221,12 @@ impl<const N: usize, const S: usize> FixedNetwork<N, S> {
         self.dt_us
     }
 
-    /// The time of the next step, μs: the timestamp its integration and its
-    /// spikes carry. Starts at 0 from [`new`](Self::new), at the network's
-    /// current time from `try_from`.
+    /// The time of the next step, μs, a `u64`: the timestamp its integration
+    /// and its spikes carry (the neurons are handed its low 32 bits). Starts
+    /// at 0 from [`new`](Self::new), at the network's current time from
+    /// `try_from`.
     #[must_use]
-    pub const fn time_us(&self) -> u32 {
+    pub const fn time_us(&self) -> u64 {
         self.time_us
     }
 }
@@ -334,6 +342,61 @@ mod tests {
     #[test]
     fn a_synapse_is_six_bytes() {
         assert_eq!(core::mem::size_of::<FixedSynapse>(), 6);
+    }
+
+    /// The clock runs past 2^32 μs, where it used to saturate, and the
+    /// neurons are handed its low 32 bits.
+    #[test]
+    fn the_clock_runs_past_the_u32_ceiling() {
+        let mut net = FixedNetwork::new([quiet(0)], [], 1_000);
+        net.time_us = u64::from(u32::MAX) - 400;
+        let mut fired = [false];
+        net.step(&[0], &mut fired);
+        assert_eq!(net.time_us(), u64::from(u32::MAX) + 600);
+        net.step(&[0], &mut fired);
+        assert_eq!(net.time_us(), u64::from(u32::MAX) + 1_600);
+        // The second step ran at 2^32 + 599: the neuron's stamp is 599.
+        assert_eq!(net.neurons()[0].last_update_time_us, 599);
+    }
+
+    /// Past 2^32 μs a noisy network does what the same network does 2^32 μs
+    /// earlier: the neurons see the clock's low 32 bits and the noise reads
+    /// only the seed's low 12, so the wrap is invisible to the spikes. At the
+    /// threshold current the noise decides each spike, so the fold would move.
+    #[cfg(feature = "std")]
+    #[test]
+    fn a_clock_past_the_u32_boundary_gives_the_same_noise() {
+        let noisy = |id: u16| {
+            let mut n = LIFNeuron::new_with_type_resolution(
+                id,
+                NeuronType::Excitatory,
+                VoltageResolution::CentiMillivolt,
+            );
+            n.noise_amplitude_ua = 5;
+            n
+        };
+        let run = |start_us: u64| {
+            let mut net = FixedNetwork::new([noisy(0), noisy(1), noisy(2), noisy(3)], [], 1_000);
+            net.time_us = start_us;
+            let mut fired = [false; 4];
+            let mut fold = 0u32;
+            for step in 0..2_000u32 {
+                net.step(&[150; 4], &mut fired);
+                for (id, &f) in (0u32..).zip(fired.iter()) {
+                    if f {
+                        fold = fold
+                            .wrapping_mul(31)
+                            .wrapping_add(step)
+                            .wrapping_mul(31)
+                            .wrapping_add(id);
+                    }
+                }
+            }
+            fold
+        };
+        let before = run(1_234_000);
+        assert_ne!(before, 0, "the run fires, or the test shows nothing");
+        assert_eq!(run(1_234_000 + (1 << 32)), before);
     }
 
     /// Saturating adds do not commute, so the array order is the delivery
