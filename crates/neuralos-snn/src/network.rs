@@ -101,14 +101,18 @@ pub enum NetworkTopology {
         /// Probability a local connection is rewired.
         rewiring_prob: f64,
     },
-    /// Layered feedforward. `layers` defines the neuron count per layer; layers
-    /// must sum to the network's `neuron_count`.
+    /// Layered feedforward. `layers` defines the neuron count per layer:
+    /// every layer has at least one neuron, and the sizes sum to the
+    /// network's `neuron_count`. `build_topology` refuses any other list.
     Feedforward {
         /// Neuron count per layer, input first.
         layers: &'static [u16],
     },
     /// Balanced E/I network with 4 connection classes (E→E, E→I, I→E, I→I).
     /// `excitatory_ratio ∈ (0.0, 1.0)` is the fraction of neurons that are excitatory.
+    /// The excitatory count is the neuron count times the ratio, truncated,
+    /// and `build_topology` refuses a network it leaves with no neuron of
+    /// one type: one neuron at the default 0.8 has no excitatory neuron.
     Balanced {
         /// Fraction of the neurons that are excitatory.
         excitatory_ratio: f64,
@@ -1051,12 +1055,10 @@ impl SpikingNeuralNetwork {
     }
 
     /// Layered feedforward: connect each layer to the next with sparse projection.
+    /// Under the layer rule (`layer_sizes_fit`) the `u16` sums below stay
+    /// within the count, and no layer is divided by zero.
     fn build_feedforward(&mut self, layers: &[u16]) -> Result<()> {
-        if layers.is_empty() {
-            return Err(Error::InvalidParameter);
-        }
-        let total: u16 = layers.iter().sum();
-        if total as usize != self.neurons.len() {
+        if !layer_sizes_fit(layers, self.neurons.len()) {
             return Err(Error::InvalidParameter);
         }
         let mut offset = 0u16;
@@ -1085,7 +1087,9 @@ impl SpikingNeuralNetwork {
         let n = self.neurons.len() as u16;
         let exc_count = (n as f64 * excitatory_ratio.clamp(0.0, 1.0)) as u16;
         let inh_count = n - exc_count;
-        if inh_count == 0 {
+        // A neuron of each type, or an edge class below has no target: with
+        // no excitatory neuron the I→E edges divide by `exc_count`.
+        if exc_count == 0 || inh_count == 0 {
             return Err(Error::InvalidParameter);
         }
         let mut rng = self.seed;
@@ -1155,6 +1159,16 @@ fn advance_lfsr(lfsr: u32) -> u32 {
     (lfsr >> 1) ^ (if lfsr & 1 != 0 { LFSR_TAP } else { 0 })
 }
 
+/// The `Feedforward` rule: every layer has a neuron, and the sizes sum to
+/// the neuron count. Summed in `usize`, since the sizes' `u16` overflows
+/// past 65,535; an empty list sums to 0, which no network's count is. Its
+/// one home: `build_feedforward` refuses a list that breaks it, and
+/// `estimate_synapses` sizes none.
+fn layer_sizes_fit(layers: &[u16], neuron_count: usize) -> bool {
+    !layers.contains(&0)
+        && layers.iter().map(|&size| usize::from(size)).sum::<usize>() == neuron_count
+}
+
 /// Estimate synapse count for capacity pre-allocation.
 fn estimate_synapses(neuron_count: u16, topology: &NetworkTopology) -> usize {
     match topology {
@@ -1165,12 +1179,22 @@ fn estimate_synapses(neuron_count: u16, topology: &NetworkTopology) -> usize {
         NetworkTopology::SmallWorld {
             local_connections, ..
         } => neuron_count as usize * (*local_connections as usize),
-        NetworkTopology::Feedforward { layers } => layers
-            .windows(2)
-            .map(|w| w[0] as usize * w[1] as usize / 2)
-            .sum(),
+        // Only a list the layer rule takes: `build_topology` refuses any
+        // other before its first synapse, and a list's windows can ask for
+        // gigabytes (two layers of 32,768 ask for 2^29 synapses, 16 GiB).
+        NetworkTopology::Feedforward { layers }
+            if layer_sizes_fit(layers, usize::from(neuron_count)) =>
+        {
+            layers
+                .windows(2)
+                .map(|w| w[0] as usize * w[1] as usize / 2)
+                .sum()
+        }
+        NetworkTopology::Feedforward { .. } => 0,
         NetworkTopology::Balanced { excitatory_ratio } => {
-            let exc = (neuron_count as f64 * excitatory_ratio) as usize;
+            // Clamped as `new_with_voltage_resolution` and `build_balanced`
+            // clamp it: unclamped, a ratio above 1 takes `inh` below 0.
+            let exc = (neuron_count as f64 * excitatory_ratio.clamp(0.0, 1.0)) as usize;
             let inh = neuron_count as usize - exc;
             exc * 5 + exc * 3 + inh * 8 + inh * 2
         }
@@ -1287,6 +1311,103 @@ mod tests {
         .expect("valid net init");
         let err = net.build_topology();
         assert!(err.is_err(), "mismatched layer total must error");
+        // sums to 10, not 11: a neuron in no layer
+        let mut net =
+            SpikingNeuralNetwork::new(11, 1000, NetworkTopology::Feedforward { layers: &[5, 5] })
+                .expect("valid net init");
+        let err = net.build_topology();
+        assert!(err.is_err(), "a total below the count must error");
+    }
+
+    /// A layer of no neuron, first or not, is refused: after the first one
+    /// the projection divided by its size, a panic; a first one built a
+    /// network whose first layer sends nothing. One neuron a layer builds.
+    #[test]
+    fn feedforward_layer_of_no_neuron_rejected() {
+        for layers in [&[5, 0, 5][..], &[10, 0], &[0, 10]] {
+            let mut net =
+                SpikingNeuralNetwork::new(10, 1000, NetworkTopology::Feedforward { layers })
+                    .expect("valid net init");
+            assert_eq!(
+                net.build_topology(),
+                Err(Error::InvalidParameter),
+                "{layers:?}"
+            );
+        }
+        let mut net =
+            SpikingNeuralNetwork::new(3, 1000, NetworkTopology::Feedforward { layers: &[1, 1, 1] })
+                .expect("valid net init");
+        net.build_topology().expect("one neuron a layer");
+        assert_eq!(net.synapse_count(), 2);
+    }
+
+    /// Layer sizes past 65,535 are summed whole: in a `u16`, `[65535, 11]`
+    /// wrapped to 10 and passed the check on 10 neurons (a panic in a debug
+    /// build, a neuron id out of range from the projection in release),
+    /// and `[65535, 1]` on 65,535 overflowed too.
+    #[test]
+    fn feedforward_sum_past_u16_rejected() {
+        for (n, layers) in [(10, &[65_535, 11][..]), (65_535, &[65_535, 1])] {
+            let mut net =
+                SpikingNeuralNetwork::new(n, 1000, NetworkTopology::Feedforward { layers })
+                    .expect("valid net init");
+            assert_eq!(
+                net.build_topology(),
+                Err(Error::InvalidParameter),
+                "{layers:?} on {n}"
+            );
+        }
+    }
+
+    /// The capacity estimate sizes only a list the layer rule takes: two
+    /// layers of 32,768 on 65,535 neurons asked for 2^29 synapses of 32
+    /// bytes, 16 GiB, and `new` aborted on the allocation before
+    /// `build_topology` could refuse the list. A list the rule takes is
+    /// sized as before.
+    #[test]
+    fn the_estimate_sizes_no_list_the_layer_rule_refuses() {
+        let ff = |layers: &'static [u16]| NetworkTopology::Feedforward { layers };
+        assert_eq!(estimate_synapses(65_535, &ff(&[32_768, 32_768])), 0);
+        assert_eq!(estimate_synapses(10, &ff(&[5, 0, 5])), 0);
+        assert_eq!(
+            estimate_synapses(30, &ff(&[10, 15, 5])),
+            10 * 15 / 2 + 15 * 5 / 2
+        );
+        let mut net =
+            SpikingNeuralNetwork::new(65_535, 1000, ff(&[32_768, 32_768])).expect("valid net init");
+        assert_eq!(net.build_topology(), Err(Error::InvalidParameter));
+    }
+
+    /// The balanced rule's other half: no excitatory neuron. The I→E edges
+    /// divided by the excitatory count, a panic, for one neuron at the
+    /// default ratio, for a ratio of 0, one that truncates to no neuron,
+    /// one below 0, or NaN. One neuron of each type builds.
+    #[test]
+    fn balanced_zero_excitatory_rejected() {
+        for (n, ratio) in [(1, 0.8), (10, 0.0), (4, 0.2), (10, -0.5), (10, f64::NAN)] {
+            let mut net = SpikingNeuralNetwork::new(
+                n,
+                1000,
+                NetworkTopology::Balanced {
+                    excitatory_ratio: ratio,
+                },
+            )
+            .expect("valid net init");
+            assert_eq!(
+                net.build_topology(),
+                Err(Error::InvalidParameter),
+                "{ratio} on {n}"
+            );
+        }
+        let mut net = SpikingNeuralNetwork::new(
+            2,
+            1000,
+            NetworkTopology::Balanced {
+                excitatory_ratio: 0.5,
+            },
+        )
+        .expect("valid net init");
+        net.build_topology().expect("one neuron of each type");
     }
 
     #[test]
@@ -1301,6 +1422,22 @@ mod tests {
         .expect("valid net init");
         let err = net.build_topology();
         assert!(err.is_err(), "0 inhibitory must error");
+    }
+
+    /// A ratio above 1 leaves no inhibitory neuron, as 1 does: the builders
+    /// clamp it, and `new`'s capacity estimate took it below zero, a panic
+    /// in a debug build before `build_topology` could refuse it.
+    #[test]
+    fn balanced_ratio_above_one_rejected() {
+        let mut net = SpikingNeuralNetwork::new(
+            10,
+            1000,
+            NetworkTopology::Balanced {
+                excitatory_ratio: 1.5,
+            },
+        )
+        .expect("valid net init");
+        assert_eq!(net.build_topology(), Err(Error::InvalidParameter));
     }
 
     #[test]
