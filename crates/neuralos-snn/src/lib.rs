@@ -89,7 +89,9 @@ pub enum Error {
     /// A network whose CSR does not deliver each synapse under its own
     /// `pre`, in the order added (`FixedNetwork::try_from`).
     StaleCsr,
-    /// Neurons on more than one voltage grid (`trace::header`).
+    /// Neurons on more than one voltage grid: a network keeps one
+    /// (`SpikingNeuralNetwork::from_neurons`, and `trace::header` as a
+    /// guard).
     MixedVoltageGrids,
     /// A trace case name that is empty or holds anything but lowercase
     /// ASCII letters, digits and `-` (`trace::header`).

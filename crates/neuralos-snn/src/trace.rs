@@ -92,9 +92,10 @@ pub enum Rows {
 /// # Errors
 ///
 /// [`Error::MixedVoltageGrids`] when `net`'s neurons do not all store their
-/// potentials on one grid, since `res=` names one for the whole trace;
-/// [`Error::BadCaseName`] when `case` is empty or holds anything but
-/// lowercase ASCII letters, digits and `-`.
+/// potentials on one grid, since `res=` names one for the whole trace: a
+/// guard, which no network the public API builds meets (`from_neurons`
+/// refuses two grids); [`Error::BadCaseName`] when `case` is empty or holds
+/// anything but lowercase ASCII letters, digits and `-`.
 #[cfg(feature = "std")]
 pub fn header(
     net: &SpikingNeuralNetwork,
@@ -132,8 +133,8 @@ pub fn header(
 }
 
 /// The grid every neuron of `net` stores its potentials on, when they all
-/// share one; `None` when they do not, or when `net` has no neuron, which
-/// no constructor builds.
+/// share one; `None` when they do not, or when `net` has no neuron. No
+/// public constructor builds either: `from_neurons` refuses both.
 #[cfg(feature = "std")]
 pub(crate) fn one_grid(net: &SpikingNeuralNetwork) -> Option<VoltageResolution> {
     let mut grids = net.neurons().iter().map(|n| n.voltage_resolution);
@@ -195,15 +196,18 @@ mod tests {
 
     /// A network of one neuron per grid given, no synapse, a 0.5 ms step:
     /// every trace runs at 1 ms or 0.1 ms, so a step off both shows
-    /// `dt_us` is read.
+    /// `dt_us` is read. Built on the first grid, then each neuron put in
+    /// its slot: `from_neurons` refuses two grids, so a network on two is
+    /// one only the crate itself builds.
     fn on_grids(grids: &[VoltageResolution]) -> SpikingNeuralNetwork {
-        let neurons = (0u16..)
-            .zip(grids)
-            .map(|(id, &grid)| {
-                LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, grid)
-            })
-            .collect();
-        SpikingNeuralNetwork::from_neurons(neurons, 500).expect("neurons given")
+        let neuron =
+            |id, grid| LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, grid);
+        let first = (0u16..).zip(grids).map(|(id, _)| neuron(id, grids[0]));
+        let mut net = SpikingNeuralNetwork::from_neurons(first.collect(), 500).expect("one grid");
+        for ((id, &grid), slot) in (0u16..).zip(grids).zip(net.neurons_mut()) {
+            *slot = neuron(id, grid);
+        }
+        net
     }
 
     /// The time prints whole past the `u32` range.
@@ -243,7 +247,8 @@ mod tests {
     }
 
     /// `res=` names one grid for the whole trace, so a network whose
-    /// neurons do not share one is refused rather than misdescribed.
+    /// neurons do not share one is refused rather than misdescribed: the
+    /// guard, met only by a network the crate builds itself (`on_grids`).
     #[test]
     fn a_network_on_two_grids_is_refused() {
         let mixed = on_grids(&[

@@ -190,9 +190,9 @@ pub struct SpikingNeuralNetwork {
     /// `seed` (topology) so plasticity randomness decorrelates from wiring.
     #[cfg(feature = "unstable-stdp")]
     ternary_flip_lfsr: u32,
-    /// Voltage grid every neuron was constructed on (see
-    /// [`LIFNeuron::voltage_resolution`]). Kept at network level so stats can
-    /// convert native quanta back to mV.
+    /// The voltage grid every neuron is on, one per network: `from_neurons`
+    /// refuses two (see [`LIFNeuron::voltage_resolution`]). Kept at network
+    /// level so stats can convert native quanta back to mV.
     voltage_resolution: VoltageResolution,
     /// Synaptic transmission divisor — **THE coupling knob** (R4(ii),
     /// 2026-08-20). Each presynaptic spike injects
@@ -321,7 +321,9 @@ impl SpikingNeuralNetwork {
     ///
     /// [`Error::NeuronCountOutOfRange`] unless `neurons` holds 1 to 65,535
     /// neurons, since ids are `u16` (`Spike::neuron_id`, `add_synapse`) and
-    /// so is the count; [`Error::ZeroTimeStep`] when `time_step_us == 0`.
+    /// so is the count; [`Error::ZeroTimeStep`] when `time_step_us == 0`;
+    /// [`Error::MixedVoltageGrids`] unless every neuron is on one voltage
+    /// grid, the one the network keeps for its stats.
     pub fn from_neurons(neurons: Vec<LIFNeuron>, time_step_us: u32) -> Result<Self> {
         if !(1..=usize::from(u16::MAX)).contains(&neurons.len()) {
             return Err(Error::NeuronCountOutOfRange);
@@ -329,8 +331,11 @@ impl SpikingNeuralNetwork {
         if time_step_us == 0 {
             return Err(Error::ZeroTimeStep);
         }
-        let neuron_count = neurons.len() as u16; // exact: at most 65,535
         let resolution = neurons[0].voltage_resolution;
+        if neurons.iter().any(|n| n.voltage_resolution != resolution) {
+            return Err(Error::MixedVoltageGrids);
+        }
+        let neuron_count = neurons.len() as u16; // exact: at most 65,535
         Ok(Self {
             neurons,
             synapses: Vec::new(),
@@ -958,6 +963,14 @@ impl SpikingNeuralNetwork {
         &self.neurons
     }
 
+    /// The neurons, writable, for the crate's own tests: the one way to a
+    /// network on two grids, which `from_neurons` refuses, so the guards
+    /// in `trace::header` and the freezer keep a test each.
+    #[cfg(test)]
+    pub(crate) fn neurons_mut(&mut self) -> &mut [LIFNeuron] {
+        &mut self.neurons
+    }
+
     /// Read-only access to current stats.
     #[must_use]
     pub fn stats(&self) -> &NetworkStats {
@@ -1269,6 +1282,40 @@ mod tests {
             SpikingNeuralNetwork::from_neurons(vec![LIFNeuron::new(0)], 0).err(),
             Some(Error::ZeroTimeStep)
         );
+    }
+
+    /// One grid per network: two grids in either order, and the odd one
+    /// second of three, last of three and third of four, where the network
+    /// kept neuron 0's grid and its stats read the other neurons' membranes
+    /// on it. One grid, either one, builds.
+    #[test]
+    fn from_neurons_refuses_two_grids() {
+        use VoltageResolution::{CentiMillivolt, Millivolt};
+        let on = |grids: &[VoltageResolution]| -> Vec<LIFNeuron> {
+            (0u16..)
+                .zip(grids)
+                .map(|(id, &grid)| {
+                    LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, grid)
+                })
+                .collect()
+        };
+        for grids in [
+            &[Millivolt, CentiMillivolt][..],
+            &[CentiMillivolt, Millivolt],
+            &[Millivolt, CentiMillivolt, Millivolt],
+            &[Millivolt, Millivolt, CentiMillivolt],
+            &[Millivolt, Millivolt, CentiMillivolt, Millivolt],
+        ] {
+            assert_eq!(
+                SpikingNeuralNetwork::from_neurons(on(grids), 1000).err(),
+                Some(Error::MixedVoltageGrids),
+                "{grids:?}"
+            );
+        }
+        for grid in [Millivolt, CentiMillivolt] {
+            let net = SpikingNeuralNetwork::from_neurons(on(&[grid; 3]), 1000).expect("one grid");
+            assert_eq!(net.voltage_resolution, grid);
+        }
     }
 
     #[test]
