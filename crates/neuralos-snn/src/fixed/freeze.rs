@@ -78,16 +78,17 @@ pub fn preamble() -> &'static str {
 /// delivers each synapse under its own `pre` (edges added out of `pre`
 /// order and not finalized since, or finalized twice), which
 /// `FixedNetwork::try_from` refuses too; a clock that is not at 0,
-/// since the file starts at 0 and writes no state; neurons on two grids
-/// and a `case` that is empty or holds anything but lowercase ASCII
-/// letters, digits and `-`, which the header line refuses; a run of
-/// `drive` that does not hold one current per neuron; a neuron that is
-/// not at rest (the assert in `neuron_chain` carries the reasons it
-/// cannot fire on the stranger path); and a neuron whose `id` is not
-/// its position, since the id is what a `FixedNetwork` indexes it by
-/// and what seeds its noise. And when the chain written for a neuron
-/// does not rebuild it, which is this module's own defect and not the
-/// caller's.
+/// since the file starts at 0 and writes no state; neurons on two
+/// grids, which no public constructor builds (`from_neurons` refuses
+/// them), and a `case` that is empty or holds anything but lowercase
+/// ASCII letters, digits and `-`, both of which the header line
+/// refuses; a run of `drive` that does not hold one current per neuron;
+/// a neuron that is not at rest (the assert in `neuron_chain` carries
+/// the reasons it cannot fire on the stranger path); and a neuron whose
+/// `id` is not its position, since the id is what a `FixedNetwork`
+/// indexes it by and what seeds its noise. And when the chain written
+/// for a neuron does not rebuild it, which is this module's own defect
+/// and not the caller's.
 #[must_use]
 pub fn module(
     net: &SpikingNeuralNetwork,
@@ -423,14 +424,17 @@ mod tests {
         let _ = module(&net, "two", Kind::Regression, 3, Rows::All, &silent());
     }
 
+    /// Two grids, a network only the crate itself builds: `from_neurons`
+    /// refuses it, so neuron 1 is put in its slot after.
     #[test]
     #[should_panic(expected = "mixed: the neurons store their potentials on two grids")]
     fn two_grids_are_refused() {
         let neurons = vec![
             quiet(0, VoltageResolution::Millivolt),
-            quiet(1, VoltageResolution::CentiMillivolt),
+            quiet(1, VoltageResolution::Millivolt),
         ];
-        let net = SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("neurons given");
+        let mut net = SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("one grid");
+        net.neurons_mut()[1] = quiet(1, VoltageResolution::CentiMillivolt);
         let _ = module(
             &net,
             "mixed",

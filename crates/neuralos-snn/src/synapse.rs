@@ -7,7 +7,8 @@
 //!
 //! # Invariants (testable)
 //!
-//! - `Synapse::new(id, id, _)` always returns `Err(Error::InvalidParameter)` (no self-connections).
+//! - `Synapse::new(id, id, _)` always refuses, with
+//!   [`Error::SelfConnection`] (no self-connections).
 //!
 //! With the `unstable-stdp` feature (`update_weight` and `STDPRule` exist in
 //! no other build, and may change or go in a minor release):
@@ -102,12 +103,15 @@ pub struct Synapse {
 impl Synapse {
     /// New synapse between `pre_id` and `post_id` with initial `weight`.
     ///
-    /// Returns `Err(Error::InvalidParameter)` on self-connection (`pre_id == post_id`).
     /// Synapse type is inferred from the sign of `weight`; biological parameters
     /// (`tau_rise`, `tau_decay`, weight bounds) are set from the type.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::SelfConnection`] when `pre_id == post_id`.
     pub fn new(pre_id: u16, post_id: u16, weight: i16) -> Result<Self, Error> {
         if pre_id == post_id {
-            return Err(Error::InvalidParameter);
+            return Err(Error::SelfConnection);
         }
 
         let synapse_type = if weight >= 0 {
@@ -329,7 +333,7 @@ mod tests {
     #[test]
     fn self_connection_rejected() {
         let err = Synapse::new(5, 5, 100).unwrap_err();
-        assert_eq!(err, Error::InvalidParameter);
+        assert_eq!(err, Error::SelfConnection);
     }
 
     #[test]
@@ -478,7 +482,7 @@ mod tests {
         #[test]
         fn prop_self_connection_always_rejected(id in 0u16..=1000, weight in -3000i16..=3000) {
             let result = Synapse::new(id, id, weight);
-            prop_assert!(result.is_err());
+            prop_assert_eq!(result.err(), Some(Error::SelfConnection));
         }
 
         /// Weight stays within `[min_weight, max_weight]` after any update.

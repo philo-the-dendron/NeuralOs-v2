@@ -68,13 +68,7 @@ impl FixedSynapse {
     /// does, and is the way to convert one.
     ///
     /// Each pulse is the std step's own expression, `weight / divisor as
-    /// i16`, so a divisor above 32,767 wraps negative here as it does there.
-    ///
-    /// # Panics
-    ///
-    /// When the divisor is 65,535 (`-1` as `i16`) and a weight is
-    /// `i16::MIN`: the division overflows here, at construction, where the
-    /// std step panics when that synapse's `pre` fires.
+    /// i16`, exact for every divisor the setter takes, 1 to 32,767.
     #[must_use]
     // `divisor as i16` is the std step's expression, verbatim (doc above).
     #[allow(clippy::cast_possible_wrap)]
@@ -241,36 +235,46 @@ impl<const N: usize, const S: usize> TryFrom<&SpikingNeuralNetwork> for FixedNet
     ///
     /// # Errors
     ///
-    /// [`Error::InvalidParameter`] when `net` has plasticity enabled (a
-    /// fixed network has none); when it has not exactly `N` neurons and
-    /// `S` synapses; or when its CSR does not deliver each synapse under
-    /// its own `pre`, in the order added. A caller gets there, for
-    /// example, by adding edges out of `pre` order with no
-    /// `finalize_synapses` after them, or by finalizing such edges a
-    /// second time (`finalize_synapses` is not idempotent, and
+    /// [`Error::PlasticityEnabled`] when `net` has plasticity enabled (a
+    /// fixed network has none); [`Error::NeuronCountMismatch`] when it has
+    /// not exactly `N` neurons, and [`Error::SynapseCountMismatch`] when it
+    /// has not exactly `S` synapses; [`Error::StaleCsr`] when its CSR does
+    /// not deliver each synapse under its own `pre`, in the order added. A
+    /// caller gets a stale CSR, for example, by adding edges out of `pre`
+    /// order with no `finalize_synapses` after them, or by finalizing such
+    /// edges a second time (`finalize_synapses` is not idempotent, and
     /// `build_topology` already finalizes). That network steps through a
-    /// stale CSR, delivering a pulse under another synapse's edge, and
-    /// this one, always sorted, can part from it in silence.
+    /// stale CSR, delivering a pulse under another synapse's edge, and this
+    /// one, always sorted, can part from it in silence.
     ///
     /// A network starts with plasticity off, and only a build with the
     /// `unstable-stdp` feature can turn it on: without the feature the
     /// first refusal is never met.
     fn try_from(net: &SpikingNeuralNetwork) -> Result<Self> {
-        if net.plasticity_enabled()
-            || usize::from(net.neuron_count()) != N
-            || usize::try_from(net.synapse_count()) != Ok(S)
-            || !net.csr_delivers_its_synapses()
-        {
-            return Err(Error::InvalidParameter);
+        if net.plasticity_enabled() {
+            return Err(Error::PlasticityEnabled);
         }
+        if usize::from(net.neuron_count()) != N {
+            return Err(Error::NeuronCountMismatch);
+        }
+        if usize::try_from(net.synapse_count()) != Ok(S) {
+            return Err(Error::SynapseCountMismatch);
+        }
+        if !net.csr_delivers_its_synapses() {
+            return Err(Error::StaleCsr);
+        }
+        // The two counts again, as the arrays take them. The neurons'
+        // cannot differ: a network holds at most 65,535, so `neuron_count`
+        // is exact. The synapses' differs only past 2^32, where
+        // `synapse_count`'s `u32` wraps.
         let neurons: [LIFNeuron; N] = net
             .neurons()
             .to_vec()
             .try_into()
-            .map_err(|_| Error::InvalidParameter)?;
+            .map_err(|_| Error::NeuronCountMismatch)?;
         let synapses: [FixedSynapse; S] = FixedSynapse::from_network(net)
             .try_into()
-            .map_err(|_| Error::InvalidParameter)?;
+            .map_err(|_| Error::SynapseCountMismatch)?;
         Ok(Self {
             neurons,
             synapses,
@@ -478,7 +482,7 @@ mod tests {
             .collect();
         let mut net =
             SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("three neurons, 1 ms");
-        net.set_synaptic_input_divisor(1).expect("nonzero");
+        net.set_synaptic_input_divisor(1).expect("in 1 to 32,767");
         net
     }
 
@@ -553,7 +557,7 @@ mod tests {
 
         assert_eq!(
             FixedNetwork::<3, 2>::try_from(&net).err(),
-            Some(Error::InvalidParameter),
+            Some(Error::StaleCsr),
             "the edges were added out of pre order and never finalized"
         );
 
@@ -626,7 +630,7 @@ mod tests {
         );
         assert_eq!(
             FixedNetwork::<4, 3>::try_from(&net).err(),
-            Some(Error::InvalidParameter),
+            Some(Error::StaleCsr),
             "and try_from refuses the network for it"
         );
     }
@@ -656,7 +660,7 @@ mod tests {
                 .expect("ids in range, no self edge");
         }
         net.finalize_synapses();
-        net.set_synaptic_input_divisor(3).expect("nonzero");
+        net.set_synaptic_input_divisor(3).expect("in 1 to 32,767");
         assert!(
             !net.synapses()
                 .windows(2)
@@ -692,6 +696,27 @@ mod tests {
         );
     }
 
+    /// At the largest divisor, 32,767, every weight divides in `i16`:
+    /// `i16::MIN` gives −1 and `i16::MAX` 1, where 65,535 overflowed on
+    /// `i16::MIN` here, at construction.
+    #[cfg(feature = "std")]
+    #[test]
+    fn from_network_divides_at_the_largest_divisor() {
+        let mut net =
+            SpikingNeuralNetwork::from_neurons((0..3).map(LIFNeuron::new).collect(), 1_000)
+                .expect("three neurons, 1 ms");
+        net.add_synapse(0, 1, i16::MIN).expect("ids in range");
+        net.add_synapse(1, 2, i16::MAX).expect("ids in range");
+        net.finalize_synapses();
+        net.set_synaptic_input_divisor(32_767)
+            .expect("the largest divisor");
+        let pulses: Vec<i16> = FixedSynapse::from_network(&net)
+            .iter()
+            .map(|s| s.pulse_ua)
+            .collect();
+        assert_eq!(pulses, [-1, 1]);
+    }
+
     /// `try_from` refuses what a fixed network cannot hold, and carries the
     /// time step and the current time of what it can.
     #[cfg(feature = "std")]
@@ -708,19 +733,19 @@ mod tests {
             net.set_plasticity_enabled(true);
             assert_eq!(
                 FixedNetwork::<3, 2>::try_from(&net).err(),
-                Some(Error::InvalidParameter),
+                Some(Error::PlasticityEnabled),
                 "plasticity on"
             );
             net.set_plasticity_enabled(false);
         }
         assert_eq!(
             FixedNetwork::<4, 2>::try_from(&net).err(),
-            Some(Error::InvalidParameter),
+            Some(Error::NeuronCountMismatch),
             "four neurons"
         );
         assert_eq!(
             FixedNetwork::<3, 1>::try_from(&net).err(),
-            Some(Error::InvalidParameter),
+            Some(Error::SynapseCountMismatch),
             "one synapse"
         );
         for _ in 0..5 {

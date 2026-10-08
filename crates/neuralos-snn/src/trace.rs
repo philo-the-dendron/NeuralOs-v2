@@ -8,12 +8,12 @@
 //! ```
 //!
 //! The header line (`header`, with `std`): these fields in this order, one
-//! space apart. `case` names the trace: lowercase ASCII letters, digits and
-//! `-`. `kind` says where it comes from ([`Kind`], each variant with its
-//! word); a reader reads the rows the same whatever the kind. `n` is the
-//! number of the network's neurons (every row carries one membrane per
-//! neuron), `dt_us` its time step in microseconds, `plasticity` whether it
-//! learns, and `divisor` its synaptic input divisor
+//! space apart. `case` names the trace: one or more lowercase ASCII
+//! letters, digits and `-`. `kind` says where it comes from ([`Kind`], each
+//! variant with its word); a reader reads the rows the same whatever the
+//! kind. `n` is the number of the network's neurons (every row carries one
+//! membrane per neuron), `dt_us` its time step in microseconds,
+//! `plasticity` whether it learns, and `divisor` its synaptic input divisor
 //! (`SpikingNeuralNetwork::synaptic_input_divisor`). `res` is the grid
 //! every neuron stores its potentials on, one for the whole network, which
 //! is how a reader reads the membranes: a quantum is 1 mV on `mV`, 0.01 mV
@@ -91,10 +91,11 @@ pub enum Rows {
 ///
 /// # Errors
 ///
-/// [`Error::InvalidParameter`] when `net`'s neurons do not all store their
-/// potentials on one grid, since `res=` names one for the whole trace; or
-/// when `case` is empty or holds anything but lowercase ASCII letters,
-/// digits and `-`.
+/// [`Error::MixedVoltageGrids`] when `net`'s neurons do not all store their
+/// potentials on one grid, since `res=` names one for the whole trace: a
+/// guard, which no network the public API builds meets (`from_neurons`
+/// refuses two grids); [`Error::BadCaseName`] when `case` is empty or holds
+/// anything but lowercase ASCII letters, digits and `-`.
 #[cfg(feature = "std")]
 pub fn header(
     net: &SpikingNeuralNetwork,
@@ -104,10 +105,10 @@ pub fn header(
     rows: Rows,
 ) -> Result<String> {
     let Some(grid) = one_grid(net) else {
-        return Err(Error::InvalidParameter);
+        return Err(Error::MixedVoltageGrids);
     };
     if !is_case_name(case) {
-        return Err(Error::InvalidParameter);
+        return Err(Error::BadCaseName);
     }
     Ok(format!(
         "# {FORMAT} case={case} kind={} n={} dt_us={} res={} plasticity={} divisor={} steps={steps} rows={}",
@@ -132,8 +133,8 @@ pub fn header(
 }
 
 /// The grid every neuron of `net` stores its potentials on, when they all
-/// share one; `None` when they do not, or when `net` has no neuron, which
-/// no constructor builds.
+/// share one; `None` when they do not, or when `net` has no neuron. No
+/// public constructor builds either: `from_neurons` refuses both.
 #[cfg(feature = "std")]
 pub(crate) fn one_grid(net: &SpikingNeuralNetwork) -> Option<VoltageResolution> {
     let mut grids = net.neurons().iter().map(|n| n.voltage_resolution);
@@ -195,15 +196,18 @@ mod tests {
 
     /// A network of one neuron per grid given, no synapse, a 0.5 ms step:
     /// every trace runs at 1 ms or 0.1 ms, so a step off both shows
-    /// `dt_us` is read.
+    /// `dt_us` is read. Built on the first grid, then each neuron put in
+    /// its slot: `from_neurons` refuses two grids, so a network on two is
+    /// one only the crate itself builds.
     fn on_grids(grids: &[VoltageResolution]) -> SpikingNeuralNetwork {
-        let neurons = (0u16..)
-            .zip(grids)
-            .map(|(id, &grid)| {
-                LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, grid)
-            })
-            .collect();
-        SpikingNeuralNetwork::from_neurons(neurons, 500).expect("neurons given")
+        let neuron =
+            |id, grid| LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, grid);
+        let first = (0u16..).zip(grids).map(|(id, _)| neuron(id, grids[0]));
+        let mut net = SpikingNeuralNetwork::from_neurons(first.collect(), 500).expect("one grid");
+        for ((id, &grid), slot) in (0u16..).zip(grids).zip(net.neurons_mut()) {
+            *slot = neuron(id, grid);
+        }
+        net
     }
 
     /// The time prints whole past the `u32` range.
@@ -221,7 +225,7 @@ mod tests {
     #[test]
     fn the_header_is_what_the_network_says_and_the_run_it_is_given() {
         let mut net = on_grids(&[VoltageResolution::CentiMillivolt; 2]);
-        net.set_synaptic_input_divisor(3).expect("nonzero");
+        net.set_synaptic_input_divisor(3).expect("in 1 to 32,767");
         for (kind, word) in [
             (Kind::Regression, "regression"),
             (Kind::Reference, "reference"),
@@ -243,7 +247,8 @@ mod tests {
     }
 
     /// `res=` names one grid for the whole trace, so a network whose
-    /// neurons do not share one is refused rather than misdescribed.
+    /// neurons do not share one is refused rather than misdescribed: the
+    /// guard, met only by a network the crate builds itself (`on_grids`).
     #[test]
     fn a_network_on_two_grids_is_refused() {
         let mixed = on_grids(&[
@@ -252,18 +257,17 @@ mod tests {
         ]);
         assert_eq!(
             header(&mixed, "mixed", Kind::Regression, 1, Rows::All),
-            Err(Error::InvalidParameter)
+            Err(Error::MixedVoltageGrids)
         );
         let one = on_grids(&[VoltageResolution::Millivolt; 2]);
         assert!(header(&one, "one", Kind::Regression, 1, Rows::All).is_ok());
     }
 
-    /// `n=` is the length of the neuron list the rows carry, even past the
-    /// `u16` that `neuron_count` returns: 65,537 neurons on one grid.
+    /// `n=` is the length of the neuron list the rows carry: 65,535 neurons
+    /// on one grid, the most a network holds.
     #[test]
-    fn n_counts_every_neuron_past_the_u16_range() {
-        let neurons = (0..=u16::MAX)
-            .chain(0..1)
+    fn n_counts_every_neuron_at_the_cap() {
+        let neurons = (0..u16::MAX)
             .map(|id| {
                 LIFNeuron::new_with_type_resolution(
                     id,
@@ -274,7 +278,7 @@ mod tests {
             .collect();
         let net = SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("neurons given");
         assert!(header(&net, "big", Kind::Regression, 1, Rows::All)
-            .is_ok_and(|h| h.contains(" n=65537 ")));
+            .is_ok_and(|h| h.contains(" n=65535 ")));
     }
 
     /// The case name's rule: what every name in the tree and every name
@@ -298,7 +302,7 @@ mod tests {
         ] {
             assert_eq!(
                 header(&net, bad, Kind::Regression, 1, Rows::All),
-                Err(Error::InvalidParameter),
+                Err(Error::BadCaseName),
                 "{bad:?}"
             );
         }

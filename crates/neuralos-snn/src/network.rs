@@ -10,7 +10,8 @@
 //!
 //! # Invariants (testable)
 //!
-//! - `SpikingNeuralNetwork::new(0, ...)` always returns `Err`.
+//! - `SpikingNeuralNetwork::new(0, ...)` always refuses, with
+//!   [`Error::NeuronCountOutOfRange`].
 //! - `step()` advances `current_time_us`, a `u64`, by exactly `time_step_us`
 //!   (saturating at `u64::MAX`, about 585,000 years of model time).
 //! - Topology builders never create self-connections.
@@ -101,14 +102,18 @@ pub enum NetworkTopology {
         /// Probability a local connection is rewired.
         rewiring_prob: f64,
     },
-    /// Layered feedforward. `layers` defines the neuron count per layer; layers
-    /// must sum to the network's `neuron_count`.
+    /// Layered feedforward. `layers` defines the neuron count per layer:
+    /// every layer has at least one neuron, and the sizes sum to the
+    /// network's `neuron_count`. `build_topology` refuses any other list.
     Feedforward {
         /// Neuron count per layer, input first.
         layers: &'static [u16],
     },
     /// Balanced E/I network with 4 connection classes (E→E, E→I, I→E, I→I).
     /// `excitatory_ratio ∈ (0.0, 1.0)` is the fraction of neurons that are excitatory.
+    /// The excitatory count is the neuron count times the ratio, truncated,
+    /// and `build_topology` refuses a network it leaves with no neuron of
+    /// one type: one neuron at the default 0.8 has no excitatory neuron.
     Balanced {
         /// Fraction of the neurons that are excitatory.
         excitatory_ratio: f64,
@@ -185,9 +190,9 @@ pub struct SpikingNeuralNetwork {
     /// `seed` (topology) so plasticity randomness decorrelates from wiring.
     #[cfg(feature = "unstable-stdp")]
     ternary_flip_lfsr: u32,
-    /// Voltage grid every neuron was constructed on (see
-    /// [`LIFNeuron::voltage_resolution`]). Kept at network level so stats can
-    /// convert native quanta back to mV.
+    /// The voltage grid every neuron is on, one per network: `from_neurons`
+    /// refuses two (see [`LIFNeuron::voltage_resolution`]). Kept at network
+    /// level so stats can convert native quanta back to mV.
     voltage_resolution: VoltageResolution,
     /// Synaptic transmission divisor — **THE coupling knob** (R4(ii),
     /// 2026-08-20). Each presynaptic spike injects
@@ -219,7 +224,8 @@ impl SpikingNeuralNetwork {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidParameter`] if `neuron_count == 0` or `time_step_us == 0`.
+    /// [`Error::NeuronCountOutOfRange`] if `neuron_count == 0`;
+    /// [`Error::ZeroTimeStep`] if `time_step_us == 0`.
     pub fn new(neuron_count: u16, time_step_us: u32, topology: NetworkTopology) -> Result<Self> {
         Self::new_with_voltage_resolution(
             neuron_count,
@@ -245,10 +251,10 @@ impl SpikingNeuralNetwork {
         resolution: VoltageResolution,
     ) -> Result<Self> {
         if neuron_count == 0 {
-            return Err(Error::InvalidParameter);
+            return Err(Error::NeuronCountOutOfRange);
         }
         if time_step_us == 0 {
-            return Err(Error::InvalidParameter);
+            return Err(Error::ZeroTimeStep);
         }
 
         // Neuron-type assignment honors the topology's ratio when `Balanced`
@@ -313,14 +319,23 @@ impl SpikingNeuralNetwork {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidParameter`] when `neurons` is empty or
-    /// `time_step_us == 0`.
+    /// [`Error::NeuronCountOutOfRange`] unless `neurons` holds 1 to 65,535
+    /// neurons, since ids are `u16` (`Spike::neuron_id`, `add_synapse`) and
+    /// so is the count; [`Error::ZeroTimeStep`] when `time_step_us == 0`;
+    /// [`Error::MixedVoltageGrids`] unless every neuron is on one voltage
+    /// grid, the one the network keeps for its stats.
     pub fn from_neurons(neurons: Vec<LIFNeuron>, time_step_us: u32) -> Result<Self> {
-        if neurons.is_empty() || time_step_us == 0 {
-            return Err(Error::InvalidParameter);
+        if !(1..=usize::from(u16::MAX)).contains(&neurons.len()) {
+            return Err(Error::NeuronCountOutOfRange);
         }
-        let neuron_count = neurons.len() as u16;
+        if time_step_us == 0 {
+            return Err(Error::ZeroTimeStep);
+        }
         let resolution = neurons[0].voltage_resolution;
+        if neurons.iter().any(|n| n.voltage_resolution != resolution) {
+            return Err(Error::MixedVoltageGrids);
+        }
+        let neuron_count = neurons.len() as u16; // exact: at most 65,535
         Ok(Self {
             neurons,
             synapses: Vec::new(),
@@ -349,6 +364,14 @@ impl SpikingNeuralNetwork {
     /// a single topology rather than accumulating. Runtime spike counters are
     /// preserved (use [`reset`](Self::reset) to clear those too).
     /// Resets `stats.total_synapses` to the resulting synapse count.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::BadLayerSizes`] for a `Feedforward` list with a layer of no
+    /// neuron, or whose sizes do not sum to the neuron count;
+    /// [`Error::MissingNeuronType`] for a `Balanced` ratio that leaves no
+    /// excitatory or no inhibitory neuron (each topology's doc states its
+    /// rule).
     pub fn build_topology(&mut self) -> Result<()> {
         self.synapses.clear();
         self.synapse_matrix.clear();
@@ -417,16 +440,6 @@ impl SpikingNeuralNetwork {
     /// # Errors
     ///
     /// None today: no path of the step returns `Err`.
-    ///
-    /// # Panics
-    ///
-    /// The pulse is `weight / divisor as i16`, so a divisor above 32,767
-    /// wraps negative and flips the pulse's sign
-    /// (`a_divisor_above_i16_max_flips_the_pulse`). At 65,535 it is `-1`, and
-    /// when a neuron fires into a synapse of weight `i16::MIN` the division
-    /// overflows and the step panics
-    /// (`the_divisor_minus_one_panics_on_the_weight_i16_min`).
-    /// [`add_synapse`](Self::add_synapse) accepts that weight.
     pub fn step(&mut self, input_currents: &[i16]) -> Result<Vec<Spike>> {
         let mut output_spikes: Vec<Spike> = Vec::new();
         let mut firing_neurons: Vec<u16> = Vec::new();
@@ -677,9 +690,15 @@ impl SpikingNeuralNetwork {
     }
 
     /// Append a synapse. Both the CSR and the `synapses` vec get a copy.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NeuronIdOutOfRange`] when `pre_id` or `post_id` is not
+    /// below the neuron count; [`Error::SelfConnection`] when they are one
+    /// id ([`Synapse::new`]).
     pub fn add_synapse(&mut self, pre_id: u16, post_id: u16, weight: i16) -> Result<()> {
         if pre_id as usize >= self.neurons.len() || post_id as usize >= self.neurons.len() {
-            return Err(Error::IndexOutOfBounds);
+            return Err(Error::NeuronIdOutOfRange);
         }
         let synapse = Synapse::new(pre_id, post_id, weight)?;
         let synapse_index = self.synapses.len();
@@ -784,10 +803,12 @@ impl SpikingNeuralNetwork {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidParameter`] if `divisor == 0`.
+    /// [`Error::DivisorOutOfRange`] unless `divisor` is 1 to 32,767: the
+    /// step divides by `divisor as i16`, and above 32,767 that cast is
+    /// negative.
     pub fn set_synaptic_input_divisor(&mut self, divisor: u16) -> Result<()> {
-        if divisor == 0 {
-            return Err(Error::InvalidParameter);
+        if !(1..=32_767).contains(&divisor) {
+            return Err(Error::DivisorOutOfRange);
         }
         self.synaptic_input_divisor = divisor;
         Ok(())
@@ -942,6 +963,14 @@ impl SpikingNeuralNetwork {
         &self.neurons
     }
 
+    /// The neurons, writable, for the crate's own tests: the one way to a
+    /// network on two grids, which `from_neurons` refuses, so the guards
+    /// in `trace::header` and the freezer keep a test each.
+    #[cfg(test)]
+    pub(crate) fn neurons_mut(&mut self) -> &mut [LIFNeuron] {
+        &mut self.neurons
+    }
+
     /// Read-only access to current stats.
     #[must_use]
     pub fn stats(&self) -> &NetworkStats {
@@ -1051,13 +1080,11 @@ impl SpikingNeuralNetwork {
     }
 
     /// Layered feedforward: connect each layer to the next with sparse projection.
+    /// Under the layer rule (`layer_sizes_fit`) the `u16` sums below stay
+    /// within the count, and no layer is divided by zero.
     fn build_feedforward(&mut self, layers: &[u16]) -> Result<()> {
-        if layers.is_empty() {
-            return Err(Error::InvalidParameter);
-        }
-        let total: u16 = layers.iter().sum();
-        if total as usize != self.neurons.len() {
-            return Err(Error::InvalidParameter);
+        if !layer_sizes_fit(layers, self.neurons.len()) {
+            return Err(Error::BadLayerSizes);
         }
         let mut offset = 0u16;
         for window in layers.windows(2) {
@@ -1085,8 +1112,10 @@ impl SpikingNeuralNetwork {
         let n = self.neurons.len() as u16;
         let exc_count = (n as f64 * excitatory_ratio.clamp(0.0, 1.0)) as u16;
         let inh_count = n - exc_count;
-        if inh_count == 0 {
-            return Err(Error::InvalidParameter);
+        // A neuron of each type, or an edge class below has no target: with
+        // no excitatory neuron the I→E edges divide by `exc_count`.
+        if exc_count == 0 || inh_count == 0 {
+            return Err(Error::MissingNeuronType);
         }
         let mut rng = self.seed;
         // E→E (weak excitatory)
@@ -1155,6 +1184,16 @@ fn advance_lfsr(lfsr: u32) -> u32 {
     (lfsr >> 1) ^ (if lfsr & 1 != 0 { LFSR_TAP } else { 0 })
 }
 
+/// The `Feedforward` rule: every layer has a neuron, and the sizes sum to
+/// the neuron count. Summed in `usize`, since the sizes' `u16` overflows
+/// past 65,535; an empty list sums to 0, which no network's count is. Its
+/// one home: `build_feedforward` refuses a list that breaks it, and
+/// `estimate_synapses` sizes none.
+fn layer_sizes_fit(layers: &[u16], neuron_count: usize) -> bool {
+    !layers.contains(&0)
+        && layers.iter().map(|&size| usize::from(size)).sum::<usize>() == neuron_count
+}
+
 /// Estimate synapse count for capacity pre-allocation.
 fn estimate_synapses(neuron_count: u16, topology: &NetworkTopology) -> usize {
     match topology {
@@ -1165,12 +1204,22 @@ fn estimate_synapses(neuron_count: u16, topology: &NetworkTopology) -> usize {
         NetworkTopology::SmallWorld {
             local_connections, ..
         } => neuron_count as usize * (*local_connections as usize),
-        NetworkTopology::Feedforward { layers } => layers
-            .windows(2)
-            .map(|w| w[0] as usize * w[1] as usize / 2)
-            .sum(),
+        // Only a list the layer rule takes: `build_topology` refuses any
+        // other before its first synapse, and a list's windows can ask for
+        // gigabytes (two layers of 32,768 ask for 2^29 synapses, 16 GiB).
+        NetworkTopology::Feedforward { layers }
+            if layer_sizes_fit(layers, usize::from(neuron_count)) =>
+        {
+            layers
+                .windows(2)
+                .map(|w| w[0] as usize * w[1] as usize / 2)
+                .sum()
+        }
+        NetworkTopology::Feedforward { .. } => 0,
         NetworkTopology::Balanced { excitatory_ratio } => {
-            let exc = (neuron_count as f64 * excitatory_ratio) as usize;
+            // Clamped as `new_with_voltage_resolution` and `build_balanced`
+            // clamp it: unclamped, a ratio above 1 takes `inh` below 0.
+            let exc = (neuron_count as f64 * excitatory_ratio.clamp(0.0, 1.0)) as usize;
             let inh = neuron_count as usize - exc;
             exc * 5 + exc * 3 + inh * 8 + inh * 2
         }
@@ -1189,13 +1238,84 @@ mod tests {
     #[test]
     fn empty_network_rejected() {
         let err = SpikingNeuralNetwork::new(0, 1000, NetworkTopology::default());
-        assert!(err.is_err());
+        assert_eq!(err.err(), Some(Error::NeuronCountOutOfRange));
     }
 
     #[test]
     fn zero_time_step_rejected() {
         let err = SpikingNeuralNetwork::new(10, 0, NetworkTopology::default());
-        assert!(err.is_err());
+        assert_eq!(err.err(), Some(Error::ZeroTimeStep));
+    }
+
+    /// Ids are `u16`: 65,535 neurons build, counted whole, and the last one
+    /// fires as id 65,534; one more is refused, where its count wrapped to
+    /// 0 and the first step panicked in the CSR.
+    #[test]
+    fn from_neurons_takes_65_535_neurons_and_refuses_one_more() {
+        let most = (0..u16::MAX).map(LIFNeuron::new).collect();
+        let mut net = SpikingNeuralNetwork::from_neurons(most, 1000).expect("the most neurons");
+        assert_eq!(net.neuron_count(), 65_535);
+        let mut drive = vec![0; 65_535];
+        drive[65_534] = 3000; // ON the threshold: the last neuron fires
+        let fired: Vec<u16> = net
+            .step(&drive)
+            .expect("step 0")
+            .iter()
+            .map(|s| s.neuron_id)
+            .collect();
+        assert_eq!(fired, [65_534]);
+        let one_more = (0..=u16::MAX).map(LIFNeuron::new).collect();
+        assert_eq!(
+            SpikingNeuralNetwork::from_neurons(one_more, 1000).err(),
+            Some(Error::NeuronCountOutOfRange)
+        );
+    }
+
+    /// `from_neurons` refuses an empty list and a zero step, each by name.
+    #[test]
+    fn from_neurons_refuses_by_rule() {
+        assert_eq!(
+            SpikingNeuralNetwork::from_neurons(Vec::new(), 1000).err(),
+            Some(Error::NeuronCountOutOfRange)
+        );
+        assert_eq!(
+            SpikingNeuralNetwork::from_neurons(vec![LIFNeuron::new(0)], 0).err(),
+            Some(Error::ZeroTimeStep)
+        );
+    }
+
+    /// One grid per network: two grids in either order, and the odd one
+    /// second of three, last of three and third of four, where the network
+    /// kept neuron 0's grid and its stats read the other neurons' membranes
+    /// on it. One grid, either one, builds.
+    #[test]
+    fn from_neurons_refuses_two_grids() {
+        use VoltageResolution::{CentiMillivolt, Millivolt};
+        let on = |grids: &[VoltageResolution]| -> Vec<LIFNeuron> {
+            (0u16..)
+                .zip(grids)
+                .map(|(id, &grid)| {
+                    LIFNeuron::new_with_type_resolution(id, NeuronType::Excitatory, grid)
+                })
+                .collect()
+        };
+        for grids in [
+            &[Millivolt, CentiMillivolt][..],
+            &[CentiMillivolt, Millivolt],
+            &[Millivolt, CentiMillivolt, Millivolt],
+            &[Millivolt, Millivolt, CentiMillivolt],
+            &[Millivolt, Millivolt, CentiMillivolt, Millivolt],
+        ] {
+            assert_eq!(
+                SpikingNeuralNetwork::from_neurons(on(grids), 1000).err(),
+                Some(Error::MixedVoltageGrids),
+                "{grids:?}"
+            );
+        }
+        for grid in [Millivolt, CentiMillivolt] {
+            let net = SpikingNeuralNetwork::from_neurons(on(&[grid; 3]), 1000).expect("one grid");
+            assert_eq!(net.voltage_resolution, grid);
+        }
     }
 
     #[test]
@@ -1286,7 +1406,104 @@ mod tests {
         )
         .expect("valid net init");
         let err = net.build_topology();
-        assert!(err.is_err(), "mismatched layer total must error");
+        assert_eq!(err, Err(Error::BadLayerSizes), "mismatched layer total");
+        // sums to 10, not 11: a neuron in no layer
+        let mut net =
+            SpikingNeuralNetwork::new(11, 1000, NetworkTopology::Feedforward { layers: &[5, 5] })
+                .expect("valid net init");
+        let err = net.build_topology();
+        assert_eq!(err, Err(Error::BadLayerSizes), "a total below the count");
+    }
+
+    /// A layer of no neuron, first or not, is refused: after the first one
+    /// the projection divided by its size, a panic; a first one built a
+    /// network whose first layer sends nothing. One neuron a layer builds.
+    #[test]
+    fn feedforward_layer_of_no_neuron_rejected() {
+        for layers in [&[5, 0, 5][..], &[10, 0], &[0, 10]] {
+            let mut net =
+                SpikingNeuralNetwork::new(10, 1000, NetworkTopology::Feedforward { layers })
+                    .expect("valid net init");
+            assert_eq!(
+                net.build_topology(),
+                Err(Error::BadLayerSizes),
+                "{layers:?}"
+            );
+        }
+        let mut net =
+            SpikingNeuralNetwork::new(3, 1000, NetworkTopology::Feedforward { layers: &[1, 1, 1] })
+                .expect("valid net init");
+        net.build_topology().expect("one neuron a layer");
+        assert_eq!(net.synapse_count(), 2);
+    }
+
+    /// Layer sizes past 65,535 are summed whole: in a `u16`, `[65535, 11]`
+    /// wrapped to 10 and passed the check on 10 neurons (a panic in a debug
+    /// build, a neuron id out of range from the projection in release),
+    /// and `[65535, 1]` on 65,535 overflowed too.
+    #[test]
+    fn feedforward_sum_past_u16_rejected() {
+        for (n, layers) in [(10, &[65_535, 11][..]), (65_535, &[65_535, 1])] {
+            let mut net =
+                SpikingNeuralNetwork::new(n, 1000, NetworkTopology::Feedforward { layers })
+                    .expect("valid net init");
+            assert_eq!(
+                net.build_topology(),
+                Err(Error::BadLayerSizes),
+                "{layers:?} on {n}"
+            );
+        }
+    }
+
+    /// The capacity estimate sizes only a list the layer rule takes: two
+    /// layers of 32,768 on 65,535 neurons asked for 2^29 synapses of 32
+    /// bytes, 16 GiB, and `new` aborted on the allocation before
+    /// `build_topology` could refuse the list. A list the rule takes is
+    /// sized as before.
+    #[test]
+    fn the_estimate_sizes_no_list_the_layer_rule_refuses() {
+        let ff = |layers: &'static [u16]| NetworkTopology::Feedforward { layers };
+        assert_eq!(estimate_synapses(65_535, &ff(&[32_768, 32_768])), 0);
+        assert_eq!(estimate_synapses(10, &ff(&[5, 0, 5])), 0);
+        assert_eq!(
+            estimate_synapses(30, &ff(&[10, 15, 5])),
+            10 * 15 / 2 + 15 * 5 / 2
+        );
+        let mut net =
+            SpikingNeuralNetwork::new(65_535, 1000, ff(&[32_768, 32_768])).expect("valid net init");
+        assert_eq!(net.build_topology(), Err(Error::BadLayerSizes));
+    }
+
+    /// The balanced rule's other half: no excitatory neuron. The I→E edges
+    /// divided by the excitatory count, a panic, for one neuron at the
+    /// default ratio, for a ratio of 0, one that truncates to no neuron,
+    /// one below 0, or NaN. One neuron of each type builds.
+    #[test]
+    fn balanced_zero_excitatory_rejected() {
+        for (n, ratio) in [(1, 0.8), (10, 0.0), (4, 0.2), (10, -0.5), (10, f64::NAN)] {
+            let mut net = SpikingNeuralNetwork::new(
+                n,
+                1000,
+                NetworkTopology::Balanced {
+                    excitatory_ratio: ratio,
+                },
+            )
+            .expect("valid net init");
+            assert_eq!(
+                net.build_topology(),
+                Err(Error::MissingNeuronType),
+                "{ratio} on {n}"
+            );
+        }
+        let mut net = SpikingNeuralNetwork::new(
+            2,
+            1000,
+            NetworkTopology::Balanced {
+                excitatory_ratio: 0.5,
+            },
+        )
+        .expect("valid net init");
+        net.build_topology().expect("one neuron of each type");
     }
 
     #[test]
@@ -1300,7 +1517,23 @@ mod tests {
         )
         .expect("valid net init");
         let err = net.build_topology();
-        assert!(err.is_err(), "0 inhibitory must error");
+        assert_eq!(err, Err(Error::MissingNeuronType), "0 inhibitory");
+    }
+
+    /// A ratio above 1 leaves no inhibitory neuron, as 1 does: the builders
+    /// clamp it, and `new`'s capacity estimate took it below zero, a panic
+    /// in a debug build before `build_topology` could refuse it.
+    #[test]
+    fn balanced_ratio_above_one_rejected() {
+        let mut net = SpikingNeuralNetwork::new(
+            10,
+            1000,
+            NetworkTopology::Balanced {
+                excitatory_ratio: 1.5,
+            },
+        )
+        .expect("valid net init");
+        assert_eq!(net.build_topology(), Err(Error::MissingNeuronType));
     }
 
     #[test]
@@ -1361,9 +1594,9 @@ mod tests {
         let mut net =
             SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default()).expect("valid");
         let err = net.add_synapse(0, 100, 50);
-        assert!(err.is_err());
+        assert_eq!(err, Err(Error::NeuronIdOutOfRange));
         let err = net.add_synapse(100, 0, 50);
-        assert!(err.is_err());
+        assert_eq!(err, Err(Error::NeuronIdOutOfRange));
     }
 
     #[test]
@@ -1371,7 +1604,7 @@ mod tests {
         let mut net =
             SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default()).expect("valid");
         let err = net.add_synapse(3, 3, 100);
-        assert!(err.is_err());
+        assert_eq!(err, Err(Error::SelfConnection));
     }
 
     #[test]
@@ -2371,30 +2604,29 @@ mod tests {
         );
     }
 
-    /// `weight / divisor as i16`: 65,534 is `-2`, so a +2000 weight delivers
-    /// −1000 μA. The wart as it is, stated in the step's `# Panics`.
+    /// The step divides by `divisor as i16`: from 32,768 the cast wrapped
+    /// negative (65,534 is `-2`, and a +2000 weight delivered −1000 μA),
+    /// and 65,535, `-1`, overflowed on a weight of `i16::MIN`, a panic in
+    /// the step. The setter refuses each, and the divisor it had stays.
     #[test]
-    fn a_divisor_above_i16_max_flips_the_pulse() {
+    fn a_divisor_above_i16_max_is_refused() {
         let mut net =
             SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
                 .expect("constructs");
-        net.build_topology().expect("empty build");
-        for n in &mut net.neurons {
-            n.noise_amplitude_ua = 0;
+        for divisor in [32_768, 65_534, 65_535] {
+            assert_eq!(
+                net.set_synaptic_input_divisor(divisor),
+                Err(Error::DivisorOutOfRange),
+                "{divisor}"
+            );
+            assert_eq!(net.synaptic_input_divisor(), 10, "{divisor}: unchanged");
         }
-        net.set_synaptic_input_divisor(65_534).expect("nonzero");
-        net.add_synapse(0, 1, 2000).expect("edge");
-        net.finalize_synapses();
-        let spikes = net.step(&[3000, 0]).expect("step 0");
-        assert_eq!(spikes.len(), 1, "pre fires on step 0");
-        assert_eq!(net.neurons[1].synaptic_current_ua, -1000);
     }
 
-    /// Divisor 65,535 is `-1`, and `i16::MIN / -1` overflows: a panic inside
-    /// a function that returns `Result`, when the synapse's `pre` fires.
+    /// 32,767, the largest divisor, divides a weight of `i16::MIN` in
+    /// `i16`: the pulse truncates to −1 μA, where 65,535 panicked.
     #[test]
-    #[should_panic(expected = "attempt to divide with overflow")]
-    fn the_divisor_minus_one_panics_on_the_weight_i16_min() {
+    fn the_largest_divisor_steps_the_weight_i16_min() {
         let mut net =
             SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
                 .expect("constructs");
@@ -2402,11 +2634,14 @@ mod tests {
         for n in &mut net.neurons {
             n.noise_amplitude_ua = 0; // 3000 μA lands ON the threshold: pre fires
         }
-        net.set_synaptic_input_divisor(65_535).expect("nonzero");
+        net.set_synaptic_input_divisor(32_767)
+            .expect("the largest divisor");
         net.add_synapse(0, 1, i16::MIN)
             .expect("add_synapse accepts it");
         net.finalize_synapses();
-        let _ = net.step(&[3000, 0]);
+        let spikes = net.step(&[3000, 0]).expect("step 0");
+        assert_eq!(spikes.len(), 1, "pre fires on step 0");
+        assert_eq!(net.neurons[1].synaptic_current_ua, -1);
     }
 
     /// The clock runs past 2^32 μs, where it used to saturate: the neurons are
@@ -2748,7 +2983,10 @@ mod tests {
             SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
                 .expect("constructs");
         assert_eq!(net.synaptic_input_divisor(), 10, "the historical value");
-        assert!(net.set_synaptic_input_divisor(0).is_err());
+        assert_eq!(
+            net.set_synaptic_input_divisor(0),
+            Err(Error::DivisorOutOfRange)
+        );
         net.set_synaptic_input_divisor(4).expect("set");
         assert_eq!(net.synaptic_input_divisor(), 4);
     }

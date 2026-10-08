@@ -346,7 +346,7 @@ fn synapse_checks() {
 
     ck_bool(
         "synapse::self_connection_rejected",
-        matches!(Synapse::new(5, 5, 100), Err(Error::InvalidParameter)),
+        matches!(Synapse::new(5, 5, 100), Err(Error::SelfConnection)),
     );
 
     let rule = STDPRule::new();
