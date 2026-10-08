@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn the_header_is_what_the_network_says_and_the_run_it_is_given() {
         let mut net = on_grids(&[VoltageResolution::CentiMillivolt; 2]);
-        net.set_synaptic_input_divisor(3).expect("nonzero");
+        net.set_synaptic_input_divisor(3).expect("in 1 to 32,767");
         for (kind, word) in [
             (Kind::Regression, "regression"),
             (Kind::Reference, "reference"),

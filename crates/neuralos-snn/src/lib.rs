@@ -66,8 +66,9 @@ pub enum Error {
     /// A neuron id not below the network's neuron count
     /// (`SpikingNeuralNetwork::add_synapse`).
     NeuronIdOutOfRange,
-    /// A synaptic input divisor of zero
-    /// (`SpikingNeuralNetwork::set_synaptic_input_divisor`).
+    /// A synaptic input divisor of 0 or above 32,767
+    /// (`SpikingNeuralNetwork::set_synaptic_input_divisor`): the step
+    /// divides by it as an `i16`.
     DivisorOutOfRange,
     /// A `Feedforward` layer list with a layer of no neuron, or whose sizes
     /// do not sum to the neuron count
@@ -102,7 +103,7 @@ impl core::fmt::Display for Error {
             Self::NeuronCountOutOfRange => "a network of no neuron",
             Self::ZeroTimeStep => "a time step of zero",
             Self::NeuronIdOutOfRange => "a neuron id not below the neuron count",
-            Self::DivisorOutOfRange => "a synaptic input divisor of zero",
+            Self::DivisorOutOfRange => "a synaptic input divisor outside 1 to 32,767",
             Self::BadLayerSizes => {
                 "a layer of no neuron, or layer sizes that do not sum to the neuron count"
             }
@@ -155,7 +156,10 @@ mod tests {
                 Error::NeuronIdOutOfRange,
                 "a neuron id not below the neuron count",
             ),
-            (Error::DivisorOutOfRange, "a synaptic input divisor of zero"),
+            (
+                Error::DivisorOutOfRange,
+                "a synaptic input divisor outside 1 to 32,767",
+            ),
             (
                 Error::BadLayerSizes,
                 "a layer of no neuron, or layer sizes that do not sum to the neuron count",

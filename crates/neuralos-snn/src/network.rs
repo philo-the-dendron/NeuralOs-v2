@@ -434,16 +434,6 @@ impl SpikingNeuralNetwork {
     /// # Errors
     ///
     /// None today: no path of the step returns `Err`.
-    ///
-    /// # Panics
-    ///
-    /// The pulse is `weight / divisor as i16`, so a divisor above 32,767
-    /// wraps negative and flips the pulse's sign
-    /// (`a_divisor_above_i16_max_flips_the_pulse`). At 65,535 it is `-1`, and
-    /// when a neuron fires into a synapse of weight `i16::MIN` the division
-    /// overflows and the step panics
-    /// (`the_divisor_minus_one_panics_on_the_weight_i16_min`).
-    /// [`add_synapse`](Self::add_synapse) accepts that weight.
     pub fn step(&mut self, input_currents: &[i16]) -> Result<Vec<Spike>> {
         let mut output_spikes: Vec<Spike> = Vec::new();
         let mut firing_neurons: Vec<u16> = Vec::new();
@@ -807,9 +797,11 @@ impl SpikingNeuralNetwork {
     ///
     /// # Errors
     ///
-    /// [`Error::DivisorOutOfRange`] if `divisor == 0`.
+    /// [`Error::DivisorOutOfRange`] unless `divisor` is 1 to 32,767: the
+    /// step divides by `divisor as i16`, and above 32,767 that cast is
+    /// negative.
     pub fn set_synaptic_input_divisor(&mut self, divisor: u16) -> Result<()> {
-        if divisor == 0 {
+        if !(1..=32_767).contains(&divisor) {
             return Err(Error::DivisorOutOfRange);
         }
         self.synaptic_input_divisor = divisor;
@@ -2540,30 +2532,29 @@ mod tests {
         );
     }
 
-    /// `weight / divisor as i16`: 65,534 is `-2`, so a +2000 weight delivers
-    /// −1000 μA. The wart as it is, stated in the step's `# Panics`.
+    /// The step divides by `divisor as i16`: from 32,768 the cast wrapped
+    /// negative (65,534 is `-2`, and a +2000 weight delivered −1000 μA),
+    /// and 65,535, `-1`, overflowed on a weight of `i16::MIN`, a panic in
+    /// the step. The setter refuses each, and the divisor it had stays.
     #[test]
-    fn a_divisor_above_i16_max_flips_the_pulse() {
+    fn a_divisor_above_i16_max_is_refused() {
         let mut net =
             SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
                 .expect("constructs");
-        net.build_topology().expect("empty build");
-        for n in &mut net.neurons {
-            n.noise_amplitude_ua = 0;
+        for divisor in [32_768, 65_534, 65_535] {
+            assert_eq!(
+                net.set_synaptic_input_divisor(divisor),
+                Err(Error::DivisorOutOfRange),
+                "{divisor}"
+            );
+            assert_eq!(net.synaptic_input_divisor(), 10, "{divisor}: unchanged");
         }
-        net.set_synaptic_input_divisor(65_534).expect("nonzero");
-        net.add_synapse(0, 1, 2000).expect("edge");
-        net.finalize_synapses();
-        let spikes = net.step(&[3000, 0]).expect("step 0");
-        assert_eq!(spikes.len(), 1, "pre fires on step 0");
-        assert_eq!(net.neurons[1].synaptic_current_ua, -1000);
     }
 
-    /// Divisor 65,535 is `-1`, and `i16::MIN / -1` overflows: a panic inside
-    /// a function that returns `Result`, when the synapse's `pre` fires.
+    /// 32,767, the largest divisor, divides a weight of `i16::MIN` in
+    /// `i16`: the pulse truncates to −1 μA, where 65,535 panicked.
     #[test]
-    #[should_panic(expected = "attempt to divide with overflow")]
-    fn the_divisor_minus_one_panics_on_the_weight_i16_min() {
+    fn the_largest_divisor_steps_the_weight_i16_min() {
         let mut net =
             SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
                 .expect("constructs");
@@ -2571,11 +2562,14 @@ mod tests {
         for n in &mut net.neurons {
             n.noise_amplitude_ua = 0; // 3000 μA lands ON the threshold: pre fires
         }
-        net.set_synaptic_input_divisor(65_535).expect("nonzero");
+        net.set_synaptic_input_divisor(32_767)
+            .expect("the largest divisor");
         net.add_synapse(0, 1, i16::MIN)
             .expect("add_synapse accepts it");
         net.finalize_synapses();
-        let _ = net.step(&[3000, 0]);
+        let spikes = net.step(&[3000, 0]).expect("step 0");
+        assert_eq!(spikes.len(), 1, "pre fires on step 0");
+        assert_eq!(net.neurons[1].synaptic_current_ua, -1);
     }
 
     /// The clock runs past 2^32 μs, where it used to saturate: the neurons are

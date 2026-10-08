@@ -313,7 +313,7 @@ fn chain_3() -> Run {
         })
         .collect();
     let mut net = wired(ns, &[(0, 1, 5_000), (1, 2, 5_000)]);
-    net.set_synaptic_input_divisor(1).expect("nonzero");
+    net.set_synaptic_input_divisor(1).expect("in 1 to 32,767");
     Run {
         net,
         drive: Box::new(|_| vec![600, 0, 0]),
@@ -340,7 +340,7 @@ fn feedforward_8() -> Run {
     )
     .expect("8 neurons, 1 ms");
     net.build_topology().expect("layers sum to 8");
-    net.set_synaptic_input_divisor(1).expect("nonzero");
+    net.set_synaptic_input_divisor(1).expect("in 1 to 32,767");
     Run {
         net,
         drive: Box::new(|_| vec![600, 600, 600, 148, 148, 148, 199, 199]),
@@ -477,7 +477,7 @@ fn plastic(enabled: bool) -> Run {
     net.set_plasticity_enabled(enabled);
     #[cfg(not(feature = "unstable-stdp"))]
     assert!(!enabled, "no switch without `unstable-stdp`");
-    net.set_synaptic_input_divisor(1).expect("nonzero");
+    net.set_synaptic_input_divisor(1).expect("in 1 to 32,767");
     Run {
         net,
         drive: Box::new(|_| vec![600, 200]),
@@ -542,7 +542,7 @@ fn ternary_weights() -> Run {
     let mut net = wired(ns, &[(0, 1, 2_400), (0, 2, 900), (1, 2, -1_500)]);
     let gamma = net.ternarize_weights();
     assert_eq!(gamma, 1_600, "the mean magnitude of 2,400, 900 and 1,500");
-    net.set_synaptic_input_divisor(1).expect("nonzero");
+    net.set_synaptic_input_divisor(1).expect("in 1 to 32,767");
     Run {
         net,
         drive: Box::new(|_| vec![600, 300, 300]),

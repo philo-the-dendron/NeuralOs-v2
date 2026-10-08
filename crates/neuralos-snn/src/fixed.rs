@@ -68,13 +68,7 @@ impl FixedSynapse {
     /// does, and is the way to convert one.
     ///
     /// Each pulse is the std step's own expression, `weight / divisor as
-    /// i16`, so a divisor above 32,767 wraps negative here as it does there.
-    ///
-    /// # Panics
-    ///
-    /// When the divisor is 65,535 (`-1` as `i16`) and a weight is
-    /// `i16::MIN`: the division overflows here, at construction, where the
-    /// std step panics when that synapse's `pre` fires.
+    /// i16`, exact for every divisor the setter takes, 1 to 32,767.
     #[must_use]
     // `divisor as i16` is the std step's expression, verbatim (doc above).
     #[allow(clippy::cast_possible_wrap)]
@@ -487,7 +481,7 @@ mod tests {
             .collect();
         let mut net =
             SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("three neurons, 1 ms");
-        net.set_synaptic_input_divisor(1).expect("nonzero");
+        net.set_synaptic_input_divisor(1).expect("in 1 to 32,767");
         net
     }
 
@@ -665,7 +659,7 @@ mod tests {
                 .expect("ids in range, no self edge");
         }
         net.finalize_synapses();
-        net.set_synaptic_input_divisor(3).expect("nonzero");
+        net.set_synaptic_input_divisor(3).expect("in 1 to 32,767");
         assert!(
             !net.synapses()
                 .windows(2)
@@ -699,6 +693,27 @@ mod tests {
             [2, 1],
             "pre 0's synapses in the order added, not by post"
         );
+    }
+
+    /// At the largest divisor, 32,767, every weight divides in `i16`:
+    /// `i16::MIN` gives −1 and `i16::MAX` 1, where 65,535 overflowed on
+    /// `i16::MIN` here, at construction.
+    #[cfg(feature = "std")]
+    #[test]
+    fn from_network_divides_at_the_largest_divisor() {
+        let mut net =
+            SpikingNeuralNetwork::from_neurons((0..3).map(LIFNeuron::new).collect(), 1_000)
+                .expect("three neurons, 1 ms");
+        net.add_synapse(0, 1, i16::MIN).expect("ids in range");
+        net.add_synapse(1, 2, i16::MAX).expect("ids in range");
+        net.finalize_synapses();
+        net.set_synaptic_input_divisor(32_767)
+            .expect("the largest divisor");
+        let pulses: Vec<i16> = FixedSynapse::from_network(&net)
+            .iter()
+            .map(|s| s.pulse_ua)
+            .collect();
+        assert_eq!(pulses, [-1, 1]);
     }
 
     /// `try_from` refuses what a fixed network cannot hold, and carries the
