@@ -241,36 +241,45 @@ impl<const N: usize, const S: usize> TryFrom<&SpikingNeuralNetwork> for FixedNet
     ///
     /// # Errors
     ///
-    /// [`Error::InvalidParameter`] when `net` has plasticity enabled (a
-    /// fixed network has none); when it has not exactly `N` neurons and
-    /// `S` synapses; or when its CSR does not deliver each synapse under
-    /// its own `pre`, in the order added. A caller gets there, for
-    /// example, by adding edges out of `pre` order with no
-    /// `finalize_synapses` after them, or by finalizing such edges a
-    /// second time (`finalize_synapses` is not idempotent, and
+    /// [`Error::PlasticityEnabled`] when `net` has plasticity enabled (a
+    /// fixed network has none); [`Error::NeuronCountMismatch`] when it has
+    /// not exactly `N` neurons, and [`Error::SynapseCountMismatch`] when it
+    /// has not exactly `S` synapses; [`Error::StaleCsr`] when its CSR does
+    /// not deliver each synapse under its own `pre`, in the order added. A
+    /// caller gets a stale CSR, for example, by adding edges out of `pre`
+    /// order with no `finalize_synapses` after them, or by finalizing such
+    /// edges a second time (`finalize_synapses` is not idempotent, and
     /// `build_topology` already finalizes). That network steps through a
-    /// stale CSR, delivering a pulse under another synapse's edge, and
-    /// this one, always sorted, can part from it in silence.
+    /// stale CSR, delivering a pulse under another synapse's edge, and this
+    /// one, always sorted, can part from it in silence.
     ///
     /// A network starts with plasticity off, and only a build with the
     /// `unstable-stdp` feature can turn it on: without the feature the
     /// first refusal is never met.
     fn try_from(net: &SpikingNeuralNetwork) -> Result<Self> {
-        if net.plasticity_enabled()
-            || usize::from(net.neuron_count()) != N
-            || usize::try_from(net.synapse_count()) != Ok(S)
-            || !net.csr_delivers_its_synapses()
-        {
-            return Err(Error::InvalidParameter);
+        if net.plasticity_enabled() {
+            return Err(Error::PlasticityEnabled);
         }
+        if usize::from(net.neuron_count()) != N {
+            return Err(Error::NeuronCountMismatch);
+        }
+        if usize::try_from(net.synapse_count()) != Ok(S) {
+            return Err(Error::SynapseCountMismatch);
+        }
+        if !net.csr_delivers_its_synapses() {
+            return Err(Error::StaleCsr);
+        }
+        // The two counts again, as the arrays take them: reached only
+        // through a count that wrapped its integer, the neurons' `u16`
+        // or the synapses' `u32`.
         let neurons: [LIFNeuron; N] = net
             .neurons()
             .to_vec()
             .try_into()
-            .map_err(|_| Error::InvalidParameter)?;
+            .map_err(|_| Error::NeuronCountMismatch)?;
         let synapses: [FixedSynapse; S] = FixedSynapse::from_network(net)
             .try_into()
-            .map_err(|_| Error::InvalidParameter)?;
+            .map_err(|_| Error::SynapseCountMismatch)?;
         Ok(Self {
             neurons,
             synapses,
@@ -553,7 +562,7 @@ mod tests {
 
         assert_eq!(
             FixedNetwork::<3, 2>::try_from(&net).err(),
-            Some(Error::InvalidParameter),
+            Some(Error::StaleCsr),
             "the edges were added out of pre order and never finalized"
         );
 
@@ -626,7 +635,7 @@ mod tests {
         );
         assert_eq!(
             FixedNetwork::<4, 3>::try_from(&net).err(),
-            Some(Error::InvalidParameter),
+            Some(Error::StaleCsr),
             "and try_from refuses the network for it"
         );
     }
@@ -708,19 +717,19 @@ mod tests {
             net.set_plasticity_enabled(true);
             assert_eq!(
                 FixedNetwork::<3, 2>::try_from(&net).err(),
-                Some(Error::InvalidParameter),
+                Some(Error::PlasticityEnabled),
                 "plasticity on"
             );
             net.set_plasticity_enabled(false);
         }
         assert_eq!(
             FixedNetwork::<4, 2>::try_from(&net).err(),
-            Some(Error::InvalidParameter),
+            Some(Error::NeuronCountMismatch),
             "four neurons"
         );
         assert_eq!(
             FixedNetwork::<3, 1>::try_from(&net).err(),
-            Some(Error::InvalidParameter),
+            Some(Error::SynapseCountMismatch),
             "one synapse"
         );
         for _ in 0..5 {

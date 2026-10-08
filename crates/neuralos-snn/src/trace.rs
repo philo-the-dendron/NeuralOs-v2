@@ -8,12 +8,12 @@
 //! ```
 //!
 //! The header line (`header`, with `std`): these fields in this order, one
-//! space apart. `case` names the trace: lowercase ASCII letters, digits and
-//! `-`. `kind` says where it comes from ([`Kind`], each variant with its
-//! word); a reader reads the rows the same whatever the kind. `n` is the
-//! number of the network's neurons (every row carries one membrane per
-//! neuron), `dt_us` its time step in microseconds, `plasticity` whether it
-//! learns, and `divisor` its synaptic input divisor
+//! space apart. `case` names the trace: one or more lowercase ASCII
+//! letters, digits and `-`. `kind` says where it comes from ([`Kind`], each
+//! variant with its word); a reader reads the rows the same whatever the
+//! kind. `n` is the number of the network's neurons (every row carries one
+//! membrane per neuron), `dt_us` its time step in microseconds,
+//! `plasticity` whether it learns, and `divisor` its synaptic input divisor
 //! (`SpikingNeuralNetwork::synaptic_input_divisor`). `res` is the grid
 //! every neuron stores its potentials on, one for the whole network, which
 //! is how a reader reads the membranes: a quantum is 1 mV on `mV`, 0.01 mV
@@ -91,10 +91,10 @@ pub enum Rows {
 ///
 /// # Errors
 ///
-/// [`Error::InvalidParameter`] when `net`'s neurons do not all store their
-/// potentials on one grid, since `res=` names one for the whole trace; or
-/// when `case` is empty or holds anything but lowercase ASCII letters,
-/// digits and `-`.
+/// [`Error::MixedVoltageGrids`] when `net`'s neurons do not all store their
+/// potentials on one grid, since `res=` names one for the whole trace;
+/// [`Error::BadCaseName`] when `case` is empty or holds anything but
+/// lowercase ASCII letters, digits and `-`.
 #[cfg(feature = "std")]
 pub fn header(
     net: &SpikingNeuralNetwork,
@@ -104,10 +104,10 @@ pub fn header(
     rows: Rows,
 ) -> Result<String> {
     let Some(grid) = one_grid(net) else {
-        return Err(Error::InvalidParameter);
+        return Err(Error::MixedVoltageGrids);
     };
     if !is_case_name(case) {
-        return Err(Error::InvalidParameter);
+        return Err(Error::BadCaseName);
     }
     Ok(format!(
         "# {FORMAT} case={case} kind={} n={} dt_us={} res={} plasticity={} divisor={} steps={steps} rows={}",
@@ -252,7 +252,7 @@ mod tests {
         ]);
         assert_eq!(
             header(&mixed, "mixed", Kind::Regression, 1, Rows::All),
-            Err(Error::InvalidParameter)
+            Err(Error::MixedVoltageGrids)
         );
         let one = on_grids(&[VoltageResolution::Millivolt; 2]);
         assert!(header(&one, "one", Kind::Regression, 1, Rows::All).is_ok());
@@ -298,7 +298,7 @@ mod tests {
         ] {
             assert_eq!(
                 header(&net, bad, Kind::Regression, 1, Rows::All),
-                Err(Error::InvalidParameter),
+                Err(Error::BadCaseName),
                 "{bad:?}"
             );
         }

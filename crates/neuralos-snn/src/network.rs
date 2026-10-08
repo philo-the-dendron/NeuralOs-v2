@@ -10,7 +10,8 @@
 //!
 //! # Invariants (testable)
 //!
-//! - `SpikingNeuralNetwork::new(0, ...)` always returns `Err`.
+//! - `SpikingNeuralNetwork::new(0, ...)` always refuses, with
+//!   [`Error::NeuronCountOutOfRange`].
 //! - `step()` advances `current_time_us`, a `u64`, by exactly `time_step_us`
 //!   (saturating at `u64::MAX`, about 585,000 years of model time).
 //! - Topology builders never create self-connections.
@@ -223,7 +224,8 @@ impl SpikingNeuralNetwork {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidParameter`] if `neuron_count == 0` or `time_step_us == 0`.
+    /// [`Error::NeuronCountOutOfRange`] if `neuron_count == 0`;
+    /// [`Error::ZeroTimeStep`] if `time_step_us == 0`.
     pub fn new(neuron_count: u16, time_step_us: u32, topology: NetworkTopology) -> Result<Self> {
         Self::new_with_voltage_resolution(
             neuron_count,
@@ -249,10 +251,10 @@ impl SpikingNeuralNetwork {
         resolution: VoltageResolution,
     ) -> Result<Self> {
         if neuron_count == 0 {
-            return Err(Error::InvalidParameter);
+            return Err(Error::NeuronCountOutOfRange);
         }
         if time_step_us == 0 {
-            return Err(Error::InvalidParameter);
+            return Err(Error::ZeroTimeStep);
         }
 
         // Neuron-type assignment honors the topology's ratio when `Balanced`
@@ -317,11 +319,14 @@ impl SpikingNeuralNetwork {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidParameter`] when `neurons` is empty or
-    /// `time_step_us == 0`.
+    /// [`Error::NeuronCountOutOfRange`] when `neurons` is empty;
+    /// [`Error::ZeroTimeStep`] when `time_step_us == 0`.
     pub fn from_neurons(neurons: Vec<LIFNeuron>, time_step_us: u32) -> Result<Self> {
-        if neurons.is_empty() || time_step_us == 0 {
-            return Err(Error::InvalidParameter);
+        if neurons.is_empty() {
+            return Err(Error::NeuronCountOutOfRange);
+        }
+        if time_step_us == 0 {
+            return Err(Error::ZeroTimeStep);
         }
         let neuron_count = neurons.len() as u16;
         let resolution = neurons[0].voltage_resolution;
@@ -353,6 +358,14 @@ impl SpikingNeuralNetwork {
     /// a single topology rather than accumulating. Runtime spike counters are
     /// preserved (use [`reset`](Self::reset) to clear those too).
     /// Resets `stats.total_synapses` to the resulting synapse count.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::BadLayerSizes`] for a `Feedforward` list with a layer of no
+    /// neuron, or whose sizes do not sum to the neuron count;
+    /// [`Error::MissingNeuronType`] for a `Balanced` ratio that leaves no
+    /// excitatory or no inhibitory neuron (each topology's doc states its
+    /// rule).
     pub fn build_topology(&mut self) -> Result<()> {
         self.synapses.clear();
         self.synapse_matrix.clear();
@@ -681,9 +694,15 @@ impl SpikingNeuralNetwork {
     }
 
     /// Append a synapse. Both the CSR and the `synapses` vec get a copy.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NeuronIdOutOfRange`] when `pre_id` or `post_id` is not
+    /// below the neuron count; [`Error::SelfConnection`] when they are one
+    /// id ([`Synapse::new`]).
     pub fn add_synapse(&mut self, pre_id: u16, post_id: u16, weight: i16) -> Result<()> {
         if pre_id as usize >= self.neurons.len() || post_id as usize >= self.neurons.len() {
-            return Err(Error::IndexOutOfBounds);
+            return Err(Error::NeuronIdOutOfRange);
         }
         let synapse = Synapse::new(pre_id, post_id, weight)?;
         let synapse_index = self.synapses.len();
@@ -788,10 +807,10 @@ impl SpikingNeuralNetwork {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidParameter`] if `divisor == 0`.
+    /// [`Error::DivisorOutOfRange`] if `divisor == 0`.
     pub fn set_synaptic_input_divisor(&mut self, divisor: u16) -> Result<()> {
         if divisor == 0 {
-            return Err(Error::InvalidParameter);
+            return Err(Error::DivisorOutOfRange);
         }
         self.synaptic_input_divisor = divisor;
         Ok(())
@@ -1059,7 +1078,7 @@ impl SpikingNeuralNetwork {
     /// within the count, and no layer is divided by zero.
     fn build_feedforward(&mut self, layers: &[u16]) -> Result<()> {
         if !layer_sizes_fit(layers, self.neurons.len()) {
-            return Err(Error::InvalidParameter);
+            return Err(Error::BadLayerSizes);
         }
         let mut offset = 0u16;
         for window in layers.windows(2) {
@@ -1090,7 +1109,7 @@ impl SpikingNeuralNetwork {
         // A neuron of each type, or an edge class below has no target: with
         // no excitatory neuron the I→E edges divide by `exc_count`.
         if exc_count == 0 || inh_count == 0 {
-            return Err(Error::InvalidParameter);
+            return Err(Error::MissingNeuronType);
         }
         let mut rng = self.seed;
         // E→E (weak excitatory)
@@ -1213,13 +1232,26 @@ mod tests {
     #[test]
     fn empty_network_rejected() {
         let err = SpikingNeuralNetwork::new(0, 1000, NetworkTopology::default());
-        assert!(err.is_err());
+        assert_eq!(err.err(), Some(Error::NeuronCountOutOfRange));
     }
 
     #[test]
     fn zero_time_step_rejected() {
         let err = SpikingNeuralNetwork::new(10, 0, NetworkTopology::default());
-        assert!(err.is_err());
+        assert_eq!(err.err(), Some(Error::ZeroTimeStep));
+    }
+
+    /// `from_neurons` refuses an empty list and a zero step, each by name.
+    #[test]
+    fn from_neurons_refuses_by_rule() {
+        assert_eq!(
+            SpikingNeuralNetwork::from_neurons(Vec::new(), 1000).err(),
+            Some(Error::NeuronCountOutOfRange)
+        );
+        assert_eq!(
+            SpikingNeuralNetwork::from_neurons(vec![LIFNeuron::new(0)], 0).err(),
+            Some(Error::ZeroTimeStep)
+        );
     }
 
     #[test]
@@ -1310,13 +1342,13 @@ mod tests {
         )
         .expect("valid net init");
         let err = net.build_topology();
-        assert!(err.is_err(), "mismatched layer total must error");
+        assert_eq!(err, Err(Error::BadLayerSizes), "mismatched layer total");
         // sums to 10, not 11: a neuron in no layer
         let mut net =
             SpikingNeuralNetwork::new(11, 1000, NetworkTopology::Feedforward { layers: &[5, 5] })
                 .expect("valid net init");
         let err = net.build_topology();
-        assert!(err.is_err(), "a total below the count must error");
+        assert_eq!(err, Err(Error::BadLayerSizes), "a total below the count");
     }
 
     /// A layer of no neuron, first or not, is refused: after the first one
@@ -1330,7 +1362,7 @@ mod tests {
                     .expect("valid net init");
             assert_eq!(
                 net.build_topology(),
-                Err(Error::InvalidParameter),
+                Err(Error::BadLayerSizes),
                 "{layers:?}"
             );
         }
@@ -1353,7 +1385,7 @@ mod tests {
                     .expect("valid net init");
             assert_eq!(
                 net.build_topology(),
-                Err(Error::InvalidParameter),
+                Err(Error::BadLayerSizes),
                 "{layers:?} on {n}"
             );
         }
@@ -1375,7 +1407,7 @@ mod tests {
         );
         let mut net =
             SpikingNeuralNetwork::new(65_535, 1000, ff(&[32_768, 32_768])).expect("valid net init");
-        assert_eq!(net.build_topology(), Err(Error::InvalidParameter));
+        assert_eq!(net.build_topology(), Err(Error::BadLayerSizes));
     }
 
     /// The balanced rule's other half: no excitatory neuron. The I→E edges
@@ -1395,7 +1427,7 @@ mod tests {
             .expect("valid net init");
             assert_eq!(
                 net.build_topology(),
-                Err(Error::InvalidParameter),
+                Err(Error::MissingNeuronType),
                 "{ratio} on {n}"
             );
         }
@@ -1421,7 +1453,7 @@ mod tests {
         )
         .expect("valid net init");
         let err = net.build_topology();
-        assert!(err.is_err(), "0 inhibitory must error");
+        assert_eq!(err, Err(Error::MissingNeuronType), "0 inhibitory");
     }
 
     /// A ratio above 1 leaves no inhibitory neuron, as 1 does: the builders
@@ -1437,7 +1469,7 @@ mod tests {
             },
         )
         .expect("valid net init");
-        assert_eq!(net.build_topology(), Err(Error::InvalidParameter));
+        assert_eq!(net.build_topology(), Err(Error::MissingNeuronType));
     }
 
     #[test]
@@ -1498,9 +1530,9 @@ mod tests {
         let mut net =
             SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default()).expect("valid");
         let err = net.add_synapse(0, 100, 50);
-        assert!(err.is_err());
+        assert_eq!(err, Err(Error::NeuronIdOutOfRange));
         let err = net.add_synapse(100, 0, 50);
-        assert!(err.is_err());
+        assert_eq!(err, Err(Error::NeuronIdOutOfRange));
     }
 
     #[test]
@@ -1508,7 +1540,7 @@ mod tests {
         let mut net =
             SpikingNeuralNetwork::new(10, 1000, NetworkTopology::default()).expect("valid");
         let err = net.add_synapse(3, 3, 100);
-        assert!(err.is_err());
+        assert_eq!(err, Err(Error::SelfConnection));
     }
 
     #[test]
@@ -2885,7 +2917,10 @@ mod tests {
             SpikingNeuralNetwork::new(2, 1000, NetworkTopology::Random { connectivity: 0.0 })
                 .expect("constructs");
         assert_eq!(net.synaptic_input_divisor(), 10, "the historical value");
-        assert!(net.set_synaptic_input_divisor(0).is_err());
+        assert_eq!(
+            net.set_synaptic_input_divisor(0),
+            Err(Error::DivisorOutOfRange)
+        );
         net.set_synaptic_input_divisor(4).expect("set");
         assert_eq!(net.synaptic_input_divisor(), 4);
     }
