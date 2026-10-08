@@ -57,8 +57,8 @@ pub enum Error {
     /// A synapse from a neuron to itself ([`Synapse::new`], and
     /// `SpikingNeuralNetwork::add_synapse` through it).
     SelfConnection,
-    /// A network of no neuron (`SpikingNeuralNetwork::new` and
-    /// `from_neurons`).
+    /// A network of no neuron, or of more than 65,535: ids are `u16`
+    /// (`SpikingNeuralNetwork::new` and `from_neurons`).
     NeuronCountOutOfRange,
     /// A time step of zero (`SpikingNeuralNetwork::new` and
     /// `from_neurons`).
@@ -100,7 +100,7 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
             Self::SelfConnection => "a synapse from a neuron to itself",
-            Self::NeuronCountOutOfRange => "a network of no neuron",
+            Self::NeuronCountOutOfRange => "a neuron count outside 1 to 65,535",
             Self::ZeroTimeStep => "a time step of zero",
             Self::NeuronIdOutOfRange => "a neuron id not below the neuron count",
             Self::DivisorOutOfRange => "a synaptic input divisor outside 1 to 32,767",
@@ -150,7 +150,10 @@ mod tests {
     fn each_variant_prints_its_rule() {
         let texts = [
             (Error::SelfConnection, "a synapse from a neuron to itself"),
-            (Error::NeuronCountOutOfRange, "a network of no neuron"),
+            (
+                Error::NeuronCountOutOfRange,
+                "a neuron count outside 1 to 65,535",
+            ),
             (Error::ZeroTimeStep, "a time step of zero"),
             (
                 Error::NeuronIdOutOfRange,

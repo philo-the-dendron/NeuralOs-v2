@@ -258,12 +258,11 @@ mod tests {
         assert!(header(&one, "one", Kind::Regression, 1, Rows::All).is_ok());
     }
 
-    /// `n=` is the length of the neuron list the rows carry, even past the
-    /// `u16` that `neuron_count` returns: 65,537 neurons on one grid.
+    /// `n=` is the length of the neuron list the rows carry: 65,535 neurons
+    /// on one grid, the most a network holds.
     #[test]
-    fn n_counts_every_neuron_past_the_u16_range() {
-        let neurons = (0..=u16::MAX)
-            .chain(0..1)
+    fn n_counts_every_neuron_at_the_cap() {
+        let neurons = (0..u16::MAX)
             .map(|id| {
                 LIFNeuron::new_with_type_resolution(
                     id,
@@ -274,7 +273,7 @@ mod tests {
             .collect();
         let net = SpikingNeuralNetwork::from_neurons(neurons, 1_000).expect("neurons given");
         assert!(header(&net, "big", Kind::Regression, 1, Rows::All)
-            .is_ok_and(|h| h.contains(" n=65537 ")));
+            .is_ok_and(|h| h.contains(" n=65535 ")));
     }
 
     /// The case name's rule: what every name in the tree and every name

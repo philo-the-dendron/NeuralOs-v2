@@ -263,9 +263,10 @@ impl<const N: usize, const S: usize> TryFrom<&SpikingNeuralNetwork> for FixedNet
         if !net.csr_delivers_its_synapses() {
             return Err(Error::StaleCsr);
         }
-        // The two counts again, as the arrays take them: reached only
-        // through a count that wrapped its integer, the neurons' `u16`
-        // or the synapses' `u32`.
+        // The two counts again, as the arrays take them. The neurons'
+        // cannot differ: a network holds at most 65,535, so `neuron_count`
+        // is exact. The synapses' differs only past 2^32, where
+        // `synapse_count`'s `u32` wraps.
         let neurons: [LIFNeuron; N] = net
             .neurons()
             .to_vec()

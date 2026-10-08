@@ -319,16 +319,17 @@ impl SpikingNeuralNetwork {
     ///
     /// # Errors
     ///
-    /// [`Error::NeuronCountOutOfRange`] when `neurons` is empty;
-    /// [`Error::ZeroTimeStep`] when `time_step_us == 0`.
+    /// [`Error::NeuronCountOutOfRange`] unless `neurons` holds 1 to 65,535
+    /// neurons, since ids are `u16` (`Spike::neuron_id`, `add_synapse`) and
+    /// so is the count; [`Error::ZeroTimeStep`] when `time_step_us == 0`.
     pub fn from_neurons(neurons: Vec<LIFNeuron>, time_step_us: u32) -> Result<Self> {
-        if neurons.is_empty() {
+        if !(1..=usize::from(u16::MAX)).contains(&neurons.len()) {
             return Err(Error::NeuronCountOutOfRange);
         }
         if time_step_us == 0 {
             return Err(Error::ZeroTimeStep);
         }
-        let neuron_count = neurons.len() as u16;
+        let neuron_count = neurons.len() as u16; // exact: at most 65,535
         let resolution = neurons[0].voltage_resolution;
         Ok(Self {
             neurons,
@@ -1231,6 +1232,30 @@ mod tests {
     fn zero_time_step_rejected() {
         let err = SpikingNeuralNetwork::new(10, 0, NetworkTopology::default());
         assert_eq!(err.err(), Some(Error::ZeroTimeStep));
+    }
+
+    /// Ids are `u16`: 65,535 neurons build, counted whole, and the last one
+    /// fires as id 65,534; one more is refused, where its count wrapped to
+    /// 0 and the first step panicked in the CSR.
+    #[test]
+    fn from_neurons_takes_65_535_neurons_and_refuses_one_more() {
+        let most = (0..u16::MAX).map(LIFNeuron::new).collect();
+        let mut net = SpikingNeuralNetwork::from_neurons(most, 1000).expect("the most neurons");
+        assert_eq!(net.neuron_count(), 65_535);
+        let mut drive = vec![0; 65_535];
+        drive[65_534] = 3000; // ON the threshold: the last neuron fires
+        let fired: Vec<u16> = net
+            .step(&drive)
+            .expect("step 0")
+            .iter()
+            .map(|s| s.neuron_id)
+            .collect();
+        assert_eq!(fired, [65_534]);
+        let one_more = (0..=u16::MAX).map(LIFNeuron::new).collect();
+        assert_eq!(
+            SpikingNeuralNetwork::from_neurons(one_more, 1000).err(),
+            Some(Error::NeuronCountOutOfRange)
+        );
     }
 
     /// `from_neurons` refuses an empty list and a zero step, each by name.
