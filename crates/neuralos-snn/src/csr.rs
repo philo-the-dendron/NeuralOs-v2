@@ -124,9 +124,10 @@ impl SparseSynapseMatrix {
         self.weight_index_of.push(synapse_index);
         // Incremental row_ptrs: bump every row after pre_id by 1. This is only
         // authoritative for sorted insertion; finalize() overwrites it for the
-        // general case.
-        for row in (pre_id as usize + 1)..self.row_ptrs.len() {
-            self.row_ptrs[row] += 1;
+        // general case. Over a slice, so the loop compiles to vector code in
+        // every build measured; indexed, it came out scalar in some.
+        for row_ptr in &mut self.row_ptrs[pre_id as usize + 1..] {
+            *row_ptr += 1;
         }
     }
 

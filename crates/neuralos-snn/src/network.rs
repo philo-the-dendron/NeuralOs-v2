@@ -59,6 +59,7 @@ use crate::lif_neuron::{LIFNeuron, NeuronType, VoltageResolution};
 use crate::synapse::STDPRule;
 use crate::synapse::Synapse;
 use crate::{Error, Result};
+use std::collections::HashMap;
 use std::vec::Vec;
 
 /// Default biological E/I ratio (80% excitatory, 20% inhibitory — cortical).
@@ -1022,22 +1023,26 @@ impl SpikingNeuralNetwork {
             return Ok(());
         }
         let total_possible = n * (n - 1);
+        // At most `total_possible`: the rule keeps `connectivity` within 0 to 1.
         let target = ((total_possible as f64) * connectivity) as usize;
         let mut rng = self.seed;
-        let mut pairs: Vec<(u16, u16)> = Vec::with_capacity(total_possible);
-        for pre in 0..n as u16 {
-            for post in 0..n as u16 {
-                if pre != post {
-                    pairs.push((pre, post));
-                }
-            }
-        }
-        for i in 0..target.min(pairs.len()) {
+        // The list of every pair is never stored: place k holds pair k
+        // (`pair_at`) unless a swap moved another pair there, and `moved`
+        // keeps only those places. The same draws and swaps as a stored
+        // list, so the same wiring, without its 4 bytes a pair.
+        let mut moved: HashMap<usize, usize> = HashMap::new();
+        for i in 0..target {
             rng = advance_lfsr(rng);
-            let range = (pairs.len() - i) as u32;
+            let range = (total_possible - i) as u32;
             let j = i + (rng % range) as usize;
-            pairs.swap(i, j);
-            let (pre_id, post_id) = pairs[i];
+            // Swap places i and j, then take place i, which no later draw reaches.
+            let at_i = moved.remove(&i).unwrap_or(i);
+            let drawn = if j == i {
+                at_i
+            } else {
+                moved.insert(j, at_i).unwrap_or(j)
+            };
+            let (pre_id, post_id) = pair_at(drawn, n);
             rng = advance_lfsr(rng);
             let weight = typed_weight(self.neurons[pre_id as usize].neuron_type, rng);
             self.add_synapse(pre_id, post_id, weight)?;
@@ -1191,6 +1196,15 @@ fn typed_weight(nt: NeuronType, rng: u32) -> i16 {
         NeuronType::Excitatory => DEFAULT_EXCITATORY_WEIGHT + ((rng & 0xFF) as i16 % 50),
         NeuronType::Inhibitory => DEFAULT_INHIBITORY_WEIGHT - ((rng & 0xFF) as i16 % 50),
     }
+}
+
+/// Pair `k` of the list of every (pre, post) with pre ≠ post on `n`
+/// neurons, by pre then post: each pre's row holds `n - 1` posts, itself
+/// skipped.
+fn pair_at(k: usize, n: usize) -> (u16, u16) {
+    let (pre, post) = (k / (n - 1), k % (n - 1));
+    let post = if post < pre { post } else { post + 1 };
+    (pre as u16, post as u16)
 }
 
 /// 16-bit Galois LFSR advance. Deterministic, no_std-friendly.
@@ -1946,7 +1960,7 @@ mod tests {
     #[test]
     #[cfg_attr(
         debug_assertions,
-        ignore = "65,535 neurons: about a minute in a debug build; release runs it"
+        ignore = "65,535 neurons: slow in a debug build; release runs it"
     )]
     fn smallworld_near_the_cap_wires_the_ring() {
         let (n, k) = (65_535u32, 2u32);
@@ -1975,6 +1989,54 @@ mod tests {
         assert_eq!(wrong, 0, "edges off the ring");
         built.dedup();
         assert_eq!(built.len(), ring.len(), "parallel edges");
+    }
+
+    /// `Random` keeps no list of every pair: on 65,535 neurons it builds
+    /// at 0 and at 1e-7 (429 synapses). The list asked 17 GB there, 4
+    /// bytes for each of 4,294,770,690 pairs, at any connectivity, and
+    /// aborted on a 15 GiB machine.
+    #[test]
+    fn random_builds_on_65_535_neurons() {
+        for (connectivity, synapses) in [(0.0, 0), (1e-7, 429)] {
+            let mut net =
+                SpikingNeuralNetwork::new(65_535, 1000, NetworkTopology::Random { connectivity })
+                    .expect("valid net init");
+            net.build_topology().expect("build");
+            assert_eq!(net.synapse_count(), synapses, "{connectivity}");
+        }
+    }
+
+    /// `Random` wires as the stored list did: the hash of every synapse,
+    /// for two builds in a row (the second continues the seed), each
+    /// measured at `main@9170afa`, which stored the list whole. 300 neurons
+    /// is past 256, where the list holds more pairs than one draw spans.
+    #[test]
+    fn random_wires_as_the_stored_list_did() {
+        for (n, connectivity, synapses, pin) in [
+            (2, 1.0, 2, [0xc5bd_377b_a6fd_5d87, 0xcd48_8a51_e44c_3f6b]),
+            (20, 1.0, 380, [0x9bda_53c5_4ed6_9348, 0xff82_5265_f00d_749a]),
+            (
+                50,
+                0.5,
+                1225,
+                [0x53d4_81c2_d27e_b05b, 0x21f0_b383_5f58_e87f],
+            ),
+            (
+                300,
+                0.1,
+                8970,
+                [0x4d16_19b7_1778_0061, 0xfe99_21d3_778e_1e6e],
+            ),
+        ] {
+            let mut net =
+                SpikingNeuralNetwork::new(n, 1000, NetworkTopology::Random { connectivity })
+                    .expect("valid net init");
+            for want in pin {
+                net.build_topology().expect("build");
+                assert_eq!(net.synapse_count(), synapses);
+                assert_eq!(wiring_hash(&net), want, "{n} neurons at {connectivity}");
+            }
+        }
     }
 
     #[test]
