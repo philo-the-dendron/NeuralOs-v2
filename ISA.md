@@ -4,9 +4,9 @@ slug: 20260815-125500_neuralos-v2
 project: NeuralOS v2
 phase: complete
 progress: 88/88
-head: "main@747b06f (PR #58 merged 2026-10-07 19:46 UTC: round 61, tier 2, the networks' clock and the noise default: the networks' clock a `u64`, the neuron's argument and stamps its low 32 bits, BREAKING; a neuron built silent and a topology builder adding 5 µA, BREAKING; STDP on wrapping 32-bit differences; the board round's evidence a fourth commit; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 61 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check; NIR at true scale under `--sim-units`, with its parity test against snnTorch, which ticks no check; the converter surface, the units mark and `--drive` with the report, which ticks no check; Affine under `--sim-units` and the input in thousandths, with a trained model in the parity set, which ticks no check; the mutation pass and the close-out check, which ticks no check; the import's memory with the weights, which ticks no check; the NIR round trip, C and an object's own keys, which ticks no check; the NIR mutation loop, which ticks no check; the NIR overflow fix, which ticks no check; the `.nir` file fix, which ticks no check; the networks' clock and the noise default, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/refusals, round 62 (tier 2, BREAKING: `Error` names each refusal's rule, thirteen unit variants, `InvalidParameter` gone and `IndexOutOfBounds` renamed `NeuronIdOutOfRange`; `build_topology` refuses the layer lists and ratios it panicked on, and `new`'s estimate sizes no list the layer rule refuses; the divisor refused above 32,767; `from_neurons` refusing more than 65,535 neurons and neurons on two grids; no trace, frozen file or firmware `.text` moves; reviewed, the review's fixes and the rename ruled 2026-10-08 and built, the series rebuilt twice; five commits and this, not pushed; no check ticks) · open(session): the re-check of the rebuild, then the landing, the push and the PR, each on the principal's word · next-work: ROADMAP § Practical next moves"
+head: "main@9170afa (PR #59 merged 2026-10-08 19:41 UTC: round 62, tier 2, the refusals: `Error` names each refusal's rule, thirteen unit variants, `InvalidParameter` gone and `IndexOutOfBounds` renamed `NeuronIdOutOfRange`, BREAKING; `build_topology` refuses the layer lists and ratios it panicked on; the divisor refused above 32,767; `from_neurons` refusing more than 65,535 neurons and neurons on two grids; mirror synced, branch deleted) · alpha.8 stamped 2026-09-14 (`docs/releases/v0.1.0-alpha.8.md` § Stamped); the tree is ahead of it by rounds 34 to 62 (D8, the spiking Linear edge; `trace::row`, and the freezer behind `unstable-freeze`; `nir2json --freeze`; the firmware's stranger slot and `stranger.sh`, check 7; capacity, the bar `44·N + 6·S ≤ 262,144` measured at its two corners on the C3, check 8; the README's first example a doctest with `missing_docs` on and the default build forbidding `unsafe`, checks 10 and 12; the `audit` job scanning the firmware's own lock, which ticks no check; `integrate_and_fire` § Semantics and the step's § Order with the one-step delay, check 11; STDP behind `unstable-stdp` and plasticity off at construction, check 9; the membrane average the mean of all neurons; the CSR agreeing with the synapse list; the frozen file built by constructors; the error types' 0.1.0 shape; the public enums' 0.1.0 shape; what stops being public; § Practical next moves the chapter, which ticks no check; the closed bridge chapter behind `unstable-bridge`, which ticks no check; the root and the paths, with `simd` on the exact `i64` factor, which ticks no check; the batch by name, `simd` on a `LIFBatch` and checked off x86, which ticks no check; NIR at true scale under `--sim-units`, with its parity test against snnTorch, which ticks no check; the converter surface, the units mark and `--drive` with the report, which ticks no check; Affine under `--sim-units` and the input in thousandths, with a trained model in the parity set, which ticks no check; the mutation pass and the close-out check, which ticks no check; the import's memory with the weights, which ticks no check; the NIR round trip, C and an object's own keys, which ticks no check; the NIR mutation loop, which ticks no check; the NIR overflow fix, which ticks no check; the `.nir` file fix, which ticks no check; the networks' clock and the noise default, which ticks no check; the refusals, which ticks no check), alpha.9 open; the fourteen checks hold, and 0.1.0 is the principal's call · wrote-from: work/constructor-holes, round 63 (tier 2, BREAKING: `build_topology` refuses a `Random` connectivity or a `SmallWorld` rewiring probability outside 0 to 1, NaN included, with one new variant, `ProbabilityOutOfRange`; `new` reserves nothing, `estimate_synapses` gone; SmallWorld sums `i + offset` wide; `Random` stores no list of every pair, its wiring the pin's, and the CSR's insert loop runs over a slice; a CI test runs every constructor case against its rule; no trace, frozen file or firmware `.text` moves; reviewed, with a narrow check of three blind spots, their fixes and the rulings of 2026-10-09 built, the series rebuilt three times; five commits and this, not pushed; no check ticks) · open(session): the landing, the push and the PR, each on the principal's word · next-work: ROADMAP § Practical next moves"
 started: 2026-08-15T12:55:00Z
-updated: 2026-10-08T16:19:00Z
+updated: 2026-10-10T01:20:00Z
 principal_stated_goal: "Session I: the null-ladder adjudication — BRANCH B (unattributed perturbation); P5 on infrastructure + method"
 ---
 
@@ -10267,3 +10267,36 @@ the cap overflows in a debug build and in release wires 28 wrong targets
 count, and layers of 32,767 and 32,768, a list the rule takes, still
 abort `new` on this 15 GiB box. No check ticks. **Guards.** 1: appended,
 head refreshed; 2: not in play, the examples agree; 3: not in play.
+
+## Close-out (round 63 — the constructor holes: a probability from 0 to 1, `new` reserving nothing, the ring and the pair list; tier 2 — 2026-10-09)
+
+Branch `work/constructor-holes` from `main@9170afa`, tier 2, built in
+scratch, rebuilt three times: `140f34c` SmallWorld's `i + offset` summed
+wide; `aa6e1d9` `new` reserving nothing, `estimate_synapses` gone;
+`69edb16` a connectivity or rewiring probability outside 0 to 1 refused,
+`ProbabilityOutOfRange`, BREAKING; `7a5d0d9` `Random` storing no list of
+every pair, the CSR's insert loop over a slice; `d1e3b98` every
+constructor case against its rule; this. **Rulings** (philo):
+2026-10-09, Call A nothing reserved, Call B both refused, Question C the
+sparse list, the spread to the topology RNG; the CSR line; the reviews'
+fixes, a cell for the roll's survivors. **Falsifiers**: 34 hand mutants,
+32 red, 2 green with reasons (the `u16` sum in debug, where its test is
+ignored; place i kept). **The pass**: 80 mutants run or read, 69 caught,
+2 timeouts caught, 7 unviable, 2 missed, memory only: a reservation of
+one, a row pointer past the count. **Measured** at the pin and at the
+reviewed build, before the fix round, its library the tip's but one
+parameter name: each panic, abort, clamp and off-ring edge, then each
+built or refused by name; GUARD 2's 7 examples agree, their control not;
+Leg A 175 of 175; the wiring the pin's at 171 Random and 192 SmallWorld
+cells; the differential 0 red; the API but the new variant; in cargo's
+default profile the bench 37 % to 77 % faster with default features, 2 %
+to 21 % slower with `unstable-stdp`. At the tip, with the repo's thin
+LTO: `Random` 26 % to 57 % slower, the default topology 24 % at 100
+neurons. **Unmoved**: the traces, the frozen file, the firmware `.text`
+(`6d07fe14` at one path), `Error`'s one byte. **Counts**: unit tests 310
+to 315 with the three features. **Record-only**: the CSR insert still
+costs about neurons × synapses; a refused `build_topology` wipes
+hand-added synapses and leaves the stat; a network too big for the box
+dies late, in `build_topology`; the builders' parallel edges and
+unreached neurons. No check ticks. **Guards.** 1: appended, head
+refreshed; 2: not in play, the examples agree; 3: not in play.
