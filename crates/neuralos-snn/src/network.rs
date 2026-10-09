@@ -217,7 +217,7 @@ const BUILT_NEURON_NOISE_UA: u8 = 5;
 impl SpikingNeuralNetwork {
     /// Construct a network with `neuron_count` neurons, `time_step_us` simulation
     /// step, and the given `topology`. Neurons are created with the biological
-    /// 80/20 E/I ratio unless the topology overrides (e.g., Feedforward is all E).
+    /// 80/20 E/I ratio, or with the ratio a `Balanced` topology gives.
     /// Each has noise amplitude 5 μA (`BUILT_NEURON_NOISE_UA`), unlike a neuron
     /// from `LIFNeuron::new`, which is silent; [`from_neurons`](Self::from_neurons)
     /// takes neurons as given.
@@ -286,12 +286,12 @@ impl SpikingNeuralNetwork {
             );
         }
 
-        let estimated_synapses = estimate_synapses(neuron_count, &topology);
-
+        // No room is reserved for synapses, as in `from_neurons`: they grow
+        // as `build_topology` adds them, after its rules.
         Ok(Self {
             neurons,
-            synapses: Vec::with_capacity(estimated_synapses),
-            synapse_matrix: SparseSynapseMatrix::new(neuron_count, estimated_synapses),
+            synapses: Vec::new(),
+            synapse_matrix: SparseSynapseMatrix::new(neuron_count, 0),
             time_step_us,
             current_time_us: 0,
             #[cfg(feature = "unstable-stdp")]
@@ -300,7 +300,7 @@ impl SpikingNeuralNetwork {
             topology,
             seed: DEFAULT_SEED,
             #[cfg(feature = "unstable-stdp")]
-            plasticity_queue: Vec::with_capacity(estimated_synapses),
+            plasticity_queue: Vec::new(),
             plasticity_enabled: false,
             #[cfg(feature = "unstable-stdp")]
             ternary_flip_lfsr: TERNARY_FLIP_SEED,
@@ -1189,43 +1189,10 @@ fn advance_lfsr(lfsr: u32) -> u32 {
 /// The `Feedforward` rule: every layer has a neuron, and the sizes sum to
 /// the neuron count. Summed in `usize`, since the sizes' `u16` overflows
 /// past 65,535; an empty list sums to 0, which no network's count is. Its
-/// one home: `build_feedforward` refuses a list that breaks it, and
-/// `estimate_synapses` sizes none.
+/// one home: `build_feedforward` refuses a list that breaks it.
 fn layer_sizes_fit(layers: &[u16], neuron_count: usize) -> bool {
     !layers.contains(&0)
         && layers.iter().map(|&size| usize::from(size)).sum::<usize>() == neuron_count
-}
-
-/// Estimate synapse count for capacity pre-allocation.
-fn estimate_synapses(neuron_count: u16, topology: &NetworkTopology) -> usize {
-    match topology {
-        NetworkTopology::Random { connectivity } => {
-            ((neuron_count as usize).saturating_mul(neuron_count as usize - 1) as f64
-                * *connectivity) as usize
-        }
-        NetworkTopology::SmallWorld {
-            local_connections, ..
-        } => neuron_count as usize * (*local_connections as usize),
-        // Only a list the layer rule takes: `build_topology` refuses any
-        // other before its first synapse, and a list's windows can ask for
-        // gigabytes (two layers of 32,768 ask for 2^29 synapses, 16 GiB).
-        NetworkTopology::Feedforward { layers }
-            if layer_sizes_fit(layers, usize::from(neuron_count)) =>
-        {
-            layers
-                .windows(2)
-                .map(|w| w[0] as usize * w[1] as usize / 2)
-                .sum()
-        }
-        NetworkTopology::Feedforward { .. } => 0,
-        NetworkTopology::Balanced { excitatory_ratio } => {
-            // Clamped as `new_with_voltage_resolution` and `build_balanced`
-            // clamp it: unclamped, a ratio above 1 takes `inh` below 0.
-            let exc = (neuron_count as f64 * excitatory_ratio.clamp(0.0, 1.0)) as usize;
-            let inh = neuron_count as usize - exc;
-            exc * 5 + exc * 3 + inh * 8 + inh * 2
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1457,23 +1424,24 @@ mod tests {
         }
     }
 
-    /// The capacity estimate sizes only a list the layer rule takes: two
-    /// layers of 32,768 on 65,535 neurons asked for 2^29 synapses of 32
-    /// bytes, 16 GiB, and `new` aborted on the allocation before
-    /// `build_topology` could refuse the list. A list the rule takes is
-    /// sized as before.
+    /// `new` reserves nothing, so no topology can fail it: two layers of
+    /// 32,768 on 65,535 neurons are refused by `build_topology`. Its
+    /// estimate asked 17 GB for layers of 32,767 and 32,768, a list the
+    /// rule takes, and 137 GB for a connectivity of 1, which aborted `new`
+    /// on a 15 GiB machine; 1e30 and infinity overflowed the capacity, a
+    /// panic.
     #[test]
-    fn the_estimate_sizes_no_list_the_layer_rule_refuses() {
+    fn new_takes_any_topology() {
         let ff = |layers: &'static [u16]| NetworkTopology::Feedforward { layers };
-        assert_eq!(estimate_synapses(65_535, &ff(&[32_768, 32_768])), 0);
-        assert_eq!(estimate_synapses(10, &ff(&[5, 0, 5])), 0);
-        assert_eq!(
-            estimate_synapses(30, &ff(&[10, 15, 5])),
-            10 * 15 / 2 + 15 * 5 / 2
-        );
         let mut net =
             SpikingNeuralNetwork::new(65_535, 1000, ff(&[32_768, 32_768])).expect("valid net init");
         assert_eq!(net.build_topology(), Err(Error::BadLayerSizes));
+        // Built, it would hold 268,427,264 synapses: `new` alone here.
+        SpikingNeuralNetwork::new(65_535, 1000, ff(&[32_767, 32_768])).expect("valid net init");
+        for connectivity in [1.0, 1e30, f64::INFINITY] {
+            SpikingNeuralNetwork::new(65_535, 1000, NetworkTopology::Random { connectivity })
+                .expect("valid net init");
+        }
     }
 
     /// The balanced rule's other half: no excitatory neuron. The I→E edges
@@ -1523,8 +1491,7 @@ mod tests {
     }
 
     /// A ratio above 1 leaves no inhibitory neuron, as 1 does: the builders
-    /// clamp it, and `new`'s capacity estimate took it below zero, a panic
-    /// in a debug build before `build_topology` could refuse it.
+    /// clamp it, and `build_topology` refuses it.
     #[test]
     fn balanced_ratio_above_one_rejected() {
         let mut net = SpikingNeuralNetwork::new(

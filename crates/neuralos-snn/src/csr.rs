@@ -83,19 +83,20 @@ pub struct SparseSynapseMatrix {
 }
 
 impl SparseSynapseMatrix {
-    /// New empty CSR matrix sized for `neuron_count` presynaptic neurons.
+    /// New empty CSR matrix sized for `neuron_count` presynaptic neurons,
+    /// with room for `capacity` synapses.
     #[must_use]
-    pub fn new(neuron_count: u16, estimated_synapses: usize) -> Self {
+    pub fn new(neuron_count: u16, capacity: usize) -> Self {
         Self {
-            weights: Vec::with_capacity(estimated_synapses),
-            col_indices: Vec::with_capacity(estimated_synapses),
-            synapse_indices: Vec::with_capacity(estimated_synapses),
-            pre_ids: Vec::with_capacity(estimated_synapses),
+            weights: Vec::with_capacity(capacity),
+            col_indices: Vec::with_capacity(capacity),
+            synapse_indices: Vec::with_capacity(capacity),
+            pre_ids: Vec::with_capacity(capacity),
             row_ptrs: vec![0; neuron_count as usize + 1],
-            weight_index_of: Vec::with_capacity(estimated_synapses),
+            weight_index_of: Vec::with_capacity(capacity),
             rv_row_ptrs: Vec::new(),
-            rv_pre_ids: Vec::with_capacity(estimated_synapses),
-            rv_syn_indices: Vec::with_capacity(estimated_synapses),
+            rv_pre_ids: Vec::with_capacity(capacity),
+            rv_syn_indices: Vec::with_capacity(capacity),
             neuron_count,
         }
     }
