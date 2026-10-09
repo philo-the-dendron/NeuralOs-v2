@@ -1052,7 +1052,9 @@ impl SpikingNeuralNetwork {
         let mut rng = self.seed;
         for i in 0..n {
             for offset in 1..=local_connections as u16 {
-                let local_target = (i + offset) % n;
+                // Summed wide: near 65,535 neurons `i + offset` passes
+                // `u16::MAX`. Exact: the target is below `n`.
+                let local_target = ((u32::from(i) + u32::from(offset)) % u32::from(n)) as u16;
                 // Bug fix vs v0.1: when `local_connections >= n`, the modulo
                 // wraps to self-connections (e.g., n=5, offset=5 → target = i). Skip them.
                 if local_target == i {
@@ -1815,6 +1817,46 @@ mod tests {
             50 * 4,
             "rewiring must conserve edge count (keep-or-replace, not augment)"
         );
+    }
+
+    /// `SmallWorld` near the cap wires the ring: each neuron to the next
+    /// `local_connections` neurons around it, computed here in `u32`. At
+    /// 65,535 neurons and 2 local connections the last neuron's
+    /// `i + offset` passed `u16::MAX`: a panic in a debug build, and in
+    /// release its second edge went to neuron 0 again, where the ring
+    /// says 1.
+    #[test]
+    #[cfg_attr(
+        debug_assertions,
+        ignore = "65,535 neurons: about a minute in a debug build; release runs it"
+    )]
+    fn smallworld_near_the_cap_wires_the_ring() {
+        let (n, k) = (65_535u32, 2u32);
+        let mut net = SpikingNeuralNetwork::new(
+            n as u16,
+            1000,
+            NetworkTopology::SmallWorld {
+                local_connections: k as u8,
+                rewiring_prob: 0.0,
+            },
+        )
+        .expect("valid net init");
+        net.build_topology().expect("build");
+        let mut built: Vec<(u32, u32)> = net
+            .synapses
+            .iter()
+            .map(|s| (u32::from(s.pre_neuron_id), u32::from(s.post_neuron_id)))
+            .collect();
+        built.sort_unstable();
+        let mut ring: Vec<(u32, u32)> = (0..n)
+            .flat_map(|i| (1..=k).map(move |offset| (i, (i + offset) % n)))
+            .collect();
+        ring.sort_unstable();
+        assert_eq!(built.len(), ring.len());
+        let wrong = built.iter().zip(&ring).filter(|(b, r)| b != r).count();
+        assert_eq!(wrong, 0, "edges off the ring");
+        built.dedup();
+        assert_eq!(built.len(), ring.len(), "parallel edges");
     }
 
     #[test]

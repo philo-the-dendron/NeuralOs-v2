@@ -45,7 +45,7 @@ the PR that made the check hold, as of this tree.
 
 ```bash
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; the count is the CI log's (one number, one home) + 5 rt model-gated #[ignore]
+cargo test   --workspace                          # offline; the count is the CI log's (one number, one home) + 5 rt model-gated #[ignore] + the library's tests that a debug build ignores (65,535 neurons), which the simd release gate runs
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate
 ```
