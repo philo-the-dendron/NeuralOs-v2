@@ -89,13 +89,15 @@ const DEFAULT_SYNAPTIC_INPUT_DIVISOR: u16 = 10;
 #[non_exhaustive]
 pub enum NetworkTopology {
     /// Random sparse connectivity. `connectivity ∈ [0.0, 1.0]` is the fraction of
-    /// all possible (pre ≠ post) pairs to wire.
+    /// all possible (pre ≠ post) pairs to wire; `build_topology` refuses
+    /// any other value, NaN included.
     Random {
         /// Fraction of the possible (pre ≠ post) pairs to wire.
         connectivity: f64,
     },
     /// Watts-Strogatz small-world. Ring lattice with `local_connections` per neuron,
-    /// each rewired with probability `rewiring_prob ∈ [0.0, 1.0]`.
+    /// each rewired with probability `rewiring_prob ∈ [0.0, 1.0]`;
+    /// `build_topology` refuses any other value, NaN included.
     SmallWorld {
         /// Ring-lattice neighbours per neuron, before rewiring.
         local_connections: u8,
@@ -113,7 +115,8 @@ pub enum NetworkTopology {
     /// `excitatory_ratio ∈ (0.0, 1.0)` is the fraction of neurons that are excitatory.
     /// The excitatory count is the neuron count times the ratio, truncated,
     /// and `build_topology` refuses a network it leaves with no neuron of
-    /// one type: one neuron at the default 0.8 has no excitatory neuron.
+    /// one type: a network of one neuron at the default 0.8 has no
+    /// excitatory neuron.
     Balanced {
         /// Fraction of the neurons that are excitatory.
         excitatory_ratio: f64,
@@ -359,14 +362,18 @@ impl SpikingNeuralNetwork {
 
     /// Build the configured topology. Must be called before [`step`](Self::step).
     ///
-    /// Idempotent: a second call clears any existing synapses, CSR state, and
-    /// pending plasticity entries before rebuilding, so repeated calls produce
-    /// a single topology rather than accumulating. Runtime spike counters are
-    /// preserved (use [`reset`](Self::reset) to clear those too).
-    /// Resets `stats.total_synapses` to the resulting synapse count.
+    /// A second call clears any existing synapses, CSR state and pending
+    /// plasticity entries before it builds, so synapses never accumulate;
+    /// `Random`, `SmallWorld` and `Balanced` go on from the seed the last
+    /// build left, so a second call can wire differently. Runtime spike
+    /// counters are preserved (use [`reset`](Self::reset) to clear those
+    /// too). On success, `stats.total_synapses` is the new synapse count.
     ///
     /// # Errors
     ///
+    /// [`Error::ProbabilityOutOfRange`] for a `Random` connectivity or a
+    /// `SmallWorld` rewiring probability outside 0 to 1, NaN included, at
+    /// any neuron count;
     /// [`Error::BadLayerSizes`] for a `Feedforward` list with a layer of no
     /// neuron, or whose sizes do not sum to the neuron count;
     /// [`Error::MissingNeuronType`] for a `Balanced` ratio that leaves no
@@ -1007,12 +1014,15 @@ impl SpikingNeuralNetwork {
 
     /// Random sparse connectivity via Fisher-Yates sampling without replacement.
     fn build_random(&mut self, connectivity: f64) -> Result<()> {
+        if !probability_fits(connectivity) {
+            return Err(Error::ProbabilityOutOfRange);
+        }
         let n = self.neurons.len();
         if n < 2 {
             return Ok(());
         }
         let total_possible = n * (n - 1);
-        let target = ((total_possible as f64) * connectivity.clamp(0.0, 1.0)) as usize;
+        let target = ((total_possible as f64) * connectivity) as usize;
         let mut rng = self.seed;
         let mut pairs: Vec<(u16, u16)> = Vec::with_capacity(total_possible);
         for pre in 0..n as u16 {
@@ -1044,11 +1054,13 @@ impl SpikingNeuralNetwork {
     /// (keep-or-replace), not shortcut augmentation — total edge count is
     /// conserved at `~n × local_connections` (minus any wrap-around self-skips).
     fn build_small_world(&mut self, local_connections: u8, rewiring_prob: f64) -> Result<()> {
+        if !probability_fits(rewiring_prob) {
+            return Err(Error::ProbabilityOutOfRange);
+        }
         let n = self.neurons.len() as u16;
         if n < 2 {
             return Ok(());
         }
-        let p = rewiring_prob.clamp(0.0, 1.0);
         let mut rng = self.seed;
         for i in 0..n {
             for offset in 1..=local_connections as u16 {
@@ -1062,7 +1074,7 @@ impl SpikingNeuralNetwork {
                 }
                 rng = advance_lfsr(rng);
                 let roll = (rng & 0xFFFF) as f64 / 65_536.0;
-                let target = if roll < p {
+                let target = if roll < rewiring_prob {
                     // Rewire: pick a uniformly random target ≠ i.
                     rng = advance_lfsr(rng);
                     let mut new_target = (rng % n as u32) as u16;
@@ -1184,6 +1196,14 @@ fn typed_weight(nt: NeuronType, rng: u32) -> i16 {
 /// 16-bit Galois LFSR advance. Deterministic, no_std-friendly.
 fn advance_lfsr(lfsr: u32) -> u32 {
     (lfsr >> 1) ^ (if lfsr & 1 != 0 { LFSR_TAP } else { 0 })
+}
+
+/// The probability rule, `Random`'s connectivity and `SmallWorld`'s
+/// rewiring probability alike: from 0 to 1. NaN is outside, as every
+/// comparison with it is false. Checked before a builder reads the neuron
+/// count, so it holds at every size.
+fn probability_fits(p: f64) -> bool {
+    (0.0..=1.0).contains(&p)
 }
 
 /// The `Feedforward` rule: every layer has a neuron, and the sizes sum to
@@ -1441,6 +1461,137 @@ mod tests {
         for connectivity in [1.0, 1e30, f64::INFINITY] {
             SpikingNeuralNetwork::new(65_535, 1000, NetworkTopology::Random { connectivity })
                 .expect("valid net init");
+        }
+    }
+
+    /// The probability rule, both parameters at both edges: 0 and 1 build,
+    /// -0.0 too; just past each edge, the infinities and NaN are refused, on
+    /// one neuron as on many. The builders clamped them: past 1 wired every
+    /// pair or rewired every edge, and below 0 or NaN wired or rewired
+    /// nothing.
+    #[test]
+    fn a_probability_outside_0_to_1_is_refused() {
+        let topologies = |p: f64| {
+            [
+                NetworkTopology::Random { connectivity: p },
+                NetworkTopology::SmallWorld {
+                    local_connections: 2,
+                    rewiring_prob: p,
+                },
+            ]
+        };
+        let outside = [
+            1.0_f64.next_up(),
+            0.0_f64.next_down(),
+            2.0,
+            -1.0,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NAN,
+        ];
+        for n in [1, 2, 10] {
+            for p in outside {
+                for topology in topologies(p) {
+                    let mut net =
+                        SpikingNeuralNetwork::new(n, 1000, topology).expect("valid net init");
+                    assert_eq!(
+                        net.build_topology(),
+                        Err(Error::ProbabilityOutOfRange),
+                        "{topology:?} on {n}"
+                    );
+                }
+            }
+            for p in [0.0, -0.0, 1.0] {
+                for topology in topologies(p) {
+                    let mut net =
+                        SpikingNeuralNetwork::new(n, 1000, topology).expect("valid net init");
+                    net.build_topology().expect("a probability from 0 to 1");
+                }
+            }
+        }
+    }
+
+    /// An FNV-1a hash of every synapse (pre, post, weight) in the order
+    /// added: two networks with one hash were wired alike.
+    fn wiring_hash(net: &SpikingNeuralNetwork) -> u64 {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for s in &net.synapses {
+            let bytes = [
+                s.pre_neuron_id.to_le_bytes(),
+                s.post_neuron_id.to_le_bytes(),
+                s.weight.to_le_bytes(),
+            ];
+            for b in bytes.concat() {
+                h ^= u64::from(b);
+                h = h.wrapping_mul(0x0100_0000_01b3);
+            }
+        }
+        h
+    }
+
+    /// `SmallWorld` keeps its wiring inside 0 to 1: the hash of every
+    /// synapse, for two builds in a row (the second continues the seed),
+    /// each measured at `main@9170afa`, where the builder clamped the
+    /// probability. 0, 0.3 and 1 on 200 neurons with 4 local connections;
+    /// 0.5 on 30 with 10; 0.75 on 100 with 16, whose second build draws a
+    /// roll equal to the probability; and 0.3 with more local connections
+    /// than neurons, where the offsets wrap past a neuron's own place.
+    #[test]
+    fn smallworld_keeps_its_wiring_inside_0_to_1() {
+        for (n, local_connections, rewiring_prob, synapses, pin) in [
+            (
+                200,
+                4,
+                0.0,
+                800,
+                [0x16d6_a58b_01b9_5ef5, 0x16d6_a58b_01b9_5ef5],
+            ),
+            (
+                200,
+                4,
+                0.3,
+                800,
+                [0x5081_e07d_8634_35bb, 0xca68_d1ee_206d_3eca],
+            ),
+            (
+                200,
+                4,
+                1.0,
+                800,
+                [0x2cab_c139_f6d2_2aa3, 0xfe29_df1c_6013_77f0],
+            ),
+            (
+                30,
+                10,
+                0.5,
+                300,
+                [0x2137_bf29_e8c2_3f2f, 0x1321_75de_a2a5_853f],
+            ),
+            (
+                100,
+                16,
+                0.75,
+                1600,
+                [0x8f58_2584_cbe4_723c, 0xd982_9650_36de_a02a],
+            ),
+            (
+                5,
+                10,
+                0.3,
+                40,
+                [0xfeef_3437_a7da_8474, 0x3a09_d8ba_0c1e_306c],
+            ),
+        ] {
+            let topology = NetworkTopology::SmallWorld {
+                local_connections,
+                rewiring_prob,
+            };
+            let mut net = SpikingNeuralNetwork::new(n, 1000, topology).expect("valid net init");
+            for want in pin {
+                net.build_topology().expect("build");
+                assert_eq!(net.synapse_count(), synapses);
+                assert_eq!(wiring_hash(&net), want, "{topology:?} on {n}");
+            }
         }
     }
 
@@ -1827,7 +1978,7 @@ mod tests {
     }
 
     #[test]
-    fn build_topology_is_idempotent_no_accumulation() {
+    fn build_topology_does_not_accumulate() {
         // Regression for the silent-accumulation footgun: a second build must
         // REPLACE the topology, not stack on top of the first.
         let mut net =

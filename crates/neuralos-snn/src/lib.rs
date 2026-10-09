@@ -77,6 +77,10 @@ pub enum Error {
     /// A `Balanced` ratio that leaves the network no excitatory or no
     /// inhibitory neuron (`SpikingNeuralNetwork::build_topology`).
     MissingNeuronType,
+    /// A `Random` connectivity or a `SmallWorld` rewiring probability
+    /// outside 0 to 1, NaN included
+    /// (`SpikingNeuralNetwork::build_topology`).
+    ProbabilityOutOfRange,
     /// A network with plasticity enabled, which a [`FixedNetwork`] does not
     /// have (`FixedNetwork::try_from`).
     PlasticityEnabled,
@@ -112,6 +116,7 @@ impl core::fmt::Display for Error {
             Self::MissingNeuronType => {
                 "a balanced network with no excitatory or no inhibitory neuron"
             }
+            Self::ProbabilityOutOfRange => "a connectivity or rewiring probability outside 0 to 1",
             Self::PlasticityEnabled => "a network with plasticity enabled",
             Self::NeuronCountMismatch => "a neuron count other than the fixed network's N",
             Self::SynapseCountMismatch => "a synapse count other than the fixed network's S",
@@ -133,9 +138,8 @@ const _: fn() = || {
     a::<Error>();
 };
 
-// One byte, every variant a unit. The assertion is its pin: a variant
-// that carries data grows the type and fails the build here, in every
-// configuration.
+// One byte. The assertion is its pin: a variant that grows the type
+// fails the build here, in every configuration.
 const _: () = assert!(core::mem::size_of::<Error>() == 1);
 
 /// Crate-wide `Result` alias.
@@ -174,6 +178,10 @@ mod tests {
                 "a balanced network with no excitatory or no inhibitory neuron",
             ),
             (
+                Error::ProbabilityOutOfRange,
+                "a connectivity or rewiring probability outside 0 to 1",
+            ),
+            (
                 Error::PlasticityEnabled,
                 "a network with plasticity enabled",
             ),
@@ -209,6 +217,7 @@ mod tests {
                 | Error::DivisorOutOfRange
                 | Error::BadLayerSizes
                 | Error::MissingNeuronType
+                | Error::ProbabilityOutOfRange
                 | Error::PlasticityEnabled
                 | Error::NeuronCountMismatch
                 | Error::SynapseCountMismatch
