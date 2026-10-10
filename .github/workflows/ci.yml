@@ -161,6 +161,8 @@ jobs:
 
       # The slice-length contract is assert_eq!; its regression test is only
       # distinguishable from debug_assert_eq! in release. Added 2026-08-30.
+      # It also runs the library's tests that a debug build ignores (65,535
+      # neurons; round 63), so it stays a release build.
       - name: simd release gate (neuralos-snn)
         env:
           NEURALOS_REQUIRE_AVX2: "1"

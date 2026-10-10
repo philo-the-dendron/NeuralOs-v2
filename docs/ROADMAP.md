@@ -45,7 +45,7 @@ the PR that made the check hold, as of this tree.
 
 ```bash
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; the count is the CI log's (one number, one home) + 5 rt model-gated #[ignore]
+cargo test   --workspace                          # offline; the count is the CI log's (one number, one home) + 5 rt model-gated #[ignore] + the library's tests that a debug build ignores (65,535 neurons), which the simd release gate runs
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --no-default-features -p neuralos-snn # the no_std gate
 ```
@@ -140,8 +140,9 @@ records it names in `evidence/INDEX.md`. Four lines, in order:
    fields, the rest of the field walk; the noise default (a neuron has
    none, a topology builder gives its neurons 5 μA), the networks' clock
    (a `u64`), the refusals (one `Error` variant per rule), the divisor's
-   range (1 to 32,767), the cap of 65,535 neurons and one grid per
-   network are in. Then the rename, the front door, the stamp.
+   range (1 to 32,767), the cap of 65,535 neurons, one grid per network
+   and a connectivity or rewiring probability from 0 to 1 are in. Then
+   the rename, the front door, the stamp.
 3. **0.1.0: the stamp.** The principal's call, once the fourteen checks
    of § 0.1.0 hold again at the final tree, after the rename.
 4. **After 0.1.0: the learning chapter** (`docs/VISION.md` § Realistic

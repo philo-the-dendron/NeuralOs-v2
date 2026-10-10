@@ -81,7 +81,7 @@ before it, the firmware `.text` re-pinned and the board fold read again
 # a mirror.
 cargo fmt    --all -- --check                    # formatting gate (2026-09-02): rustfmt under the pinned toolchain, default config
 cargo check  --workspace --all-targets
-cargo test   --workspace                          # offline; the count is the CI log's (one number, one home) + 5 rt model-gated #[ignore]
+cargo test   --workspace                          # offline; the count is the CI log's (one number, one home) + 5 rt model-gated #[ignore] + the library's tests that a debug build ignores (65,535 neurons), which the simd release gate runs
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test   -p neuralos-snn                      # the default config gate (PR L): `--workspace` unifies features, and rt and the app ask for `unstable-stdp`, rt for `unstable-bridge` and nir2json for `unstable-freeze`, so the lines above build the library with all three on; this one builds what crates.io users get
 cargo clippy -p neuralos-snn --all-targets -- -D warnings  # same gate, the lints
@@ -106,7 +106,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --features unstab
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features  # same gate, the no_std configuration (round 49): a `std`-only item is a code span there, never a link
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-stdp  # same gate, no_std with STDP
 RUSTDOCFLAGS="-D warnings" cargo doc -p neuralos-snn --no-deps --no-default-features --features unstable-bridge  # same gate, no_std with the bridge
-cargo test -p neuralos-snn --release --features simd -- --include-ignored   # simd release gate: the slice-length contract is assert_eq!, its regression test only fails in release (2026-08-30); --include-ignored pulls the two exhaustive sweeps in, ~12 s in release (round 12, 2026-09-02)
+cargo test -p neuralos-snn --release --features simd -- --include-ignored   # simd release gate: the slice-length contract is assert_eq!, its regression test only fails in release (2026-08-30); --include-ignored pulls the two exhaustive sweeps in, ~12 s in release (round 12, 2026-09-02); the library's tests that a debug build ignores (65,535 neurons) run here too (round 63)
 PATH="$PWD/.nirenv/bin:$PATH" cargo test -p neuralos-rt --features hdf5  # the hdf5 gate (vendored HDF5; cmake from .nirenv; the count is the CI log's)
 PATH="$PWD/.nirenv/bin:$PATH" cargo run -p neuralos-rt --features hdf5 --example nir_hdf5_gate  # THE NIR HDF5 EVIDENCE GATE (5/5)
 PATH="$PWD/.nirenv/bin:$PATH" cargo clippy -p neuralos-rt --features hdf5 --all-targets -- -D warnings  # hdf5 lint gate (in CI since the hdf5 leg; listed here 2026-09-02 so this block IS the CI set)
